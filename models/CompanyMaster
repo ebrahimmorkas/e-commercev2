@@ -65,6 +65,23 @@ const companyMasterSchema = mongoose.Schema({
         type: [mongoose.Schema.Types.ObjectId],
         ref: "CountryMaster",
         default: []
+    },
+    allowedSizes: {
+        type: [mongoose.Schema.Types.ObjectId],
+        ref: "SizeMaster",
+        default: []
+    },
+    numberOfMainCategoriesAllowed: {
+        type: Number,
+        default: null
+    },
+    numberOfSubcategoriesAllowed: {
+        type: Number,
+        default: null
+    },
+    isTaggingChildrenCategoryAllowed: {
+        type: Boolean,
+        default: true,
     }
 }, {
   timestamps: true

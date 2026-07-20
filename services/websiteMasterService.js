@@ -1,4 +1,4 @@
-const WebsiteMaster = require('../models/WebsiteMaster');
+const WebsiteMaster = require('../models/WebsiteMaster.js');
 const logger = require('../utils/logger');
 
 const fetchWebsiteMasterData = async () => {

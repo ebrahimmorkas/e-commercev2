@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const { sendError } = require("../utils/common");
+const { logException } = require("../utils/logger");
 
 const authenticate = async (req, res, next) => {
   try {
@@ -13,27 +14,27 @@ const authenticate = async (req, res, next) => {
 
     let decoded;
     try {
-      decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+      decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
     } catch (err) {
       if (err.name === "TokenExpiredError")
         return sendError(res, 401, "Access token has expired.");
       return sendError(res, 401, "Invalid access token.");
     }
 
-    const user = await User.findById(decoded._id);
+    const user = await User.findById(decoded.userId);
 
-    if (!user)
-      return sendError(res, 401, "User no longer exists.");
+    if (!user || user.status === "D")
+      return sendError(res, 401, "User not found");
 
-    if (!user.isActive)
+    // 'D' = deleted, 'I' = inactive - both are blocked from authenticating.
+    if (user.status === "I")
       return sendError(res, 403, "Your account has been deactivated. Please contact support.");
 
-    req.user = { _id: user._id, role: user.role };
+    req.user = { _id: user._id, role: user.role, vendorId: user.vendorId };
 
     next();
   } catch (error) {
-    console.error("[authenticate]", error);
-    return sendError(res, 500, "Internal server error.");
+    logException("Exception in authenticate middleware", error);
   }
 };
 

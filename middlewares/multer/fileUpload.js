@@ -2,8 +2,9 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const logger = require('../../utils/logger');
+require('dotenv').config();
 
-const ALLOWED_IMAGE_TYPES = /jpg|jpeg|png|gif/;
+const ALLOWED_IMAGE_TYPES = process.env.ALLOWED_IMAGE_TYPES_FOR_IMAGES;
 
 const createUploader = ({ folder, maxSizeMB = 5, allowedTypes = ALLOWED_IMAGE_TYPES }) => {
     try {

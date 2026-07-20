@@ -60,7 +60,7 @@ const countryMasterSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
-    
+
     country_code: {
         type: String,
         required: true,
@@ -72,6 +72,11 @@ const countryMasterSchema = new mongoose.Schema(
         type: String,
         required: true,
         trim: true,
+    },
+
+    currency_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
     },
   },
   {

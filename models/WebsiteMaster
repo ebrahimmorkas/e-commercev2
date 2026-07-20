@@ -54,6 +54,10 @@ const websiteMasterSchema = mongoose.Schema({
         enum: ['I', 'A', 'D'],
         default: 'A',
         required: true
+    },
+    isTaggingChildrenCategoryAllowed: {
+        type: Boolean,
+        default: true,
     }
 }, {
   timestamps: true
