@@ -1,6 +1,11 @@
 const mongoose = require('mongoose');
 
 const categorySchema = mongoose.Schema({
+    vendorId: {
+        type: mongoose.Types.ObjectId,
+        required: true,
+        index: true
+    },
     categoryName: {
         type: String,
         required: true,
@@ -13,18 +18,20 @@ const categorySchema = mongoose.Schema({
         ref: 'Category',
     },
     image: {
-        type: String,
-        required: false,
+        url: {
+            type: String,
+            default: null
+        },
+        publicId: {
+            type: String,
+            default: null
+        }
     },
     status: {
         type: String,
         enum: ['I', 'A', 'D'],
         default: 'A',
         required: true
-    },
-    precedence: {
-        type: Number,
-        min: 1
     },
     createdBy: {
         type: mongoose.Types.ObjectId,
@@ -40,7 +47,7 @@ const categorySchema = mongoose.Schema({
     },
     inActiveMarkeddBy: {
         type: mongoose.Types.ObjectId,
-        required: true,
+        default: null,
         index: true
     },
     actveMarkeddBy: {
@@ -60,5 +67,7 @@ const categorySchema = mongoose.Schema({
 });
 
 categorySchema.index({ parent_category_id: 1 });
+categorySchema.index({ vendorId: 1, parent_category_id: 1 });
+categorySchema.index({ vendorId: 1, status: 1 });
 
 module.exports = mongoose.model('Category', categorySchema);

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { addBanner, deleteBanner, updateBanner, getAllBanners, getAllBannersAdmin, getBannerById } = require('../controllers/bannerController');
-const createUploader = require('../middlewares/multer/fileUpload');
+const createUploader = require('../middlewares/multer/diskFileUpload');
 const bannerUpload = createUploader({ folder: 'uploads/banners', maxSizeMB: 5 });
 const {validateAddBanner, validateDeleteBanner, validateUpdateBanner} = require('../middlewares/validations/bannerValidations');
 
