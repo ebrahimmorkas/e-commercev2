@@ -13,6 +13,7 @@ const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  * Runs against the raw multer file object before it gets uploaded to storage.
  */
 const validateImageConstraints = (file, companyMasterData) => {
+    try {
     const allowedSizeMB = companyMasterData?.allowedCategoryImageMB;
     if (allowedSizeMB !== null && allowedSizeMB !== undefined) {
         const maxBytes = allowedSizeMB * 1024 * 1024;
@@ -27,11 +28,12 @@ const validateImageConstraints = (file, companyMasterData) => {
     if (allowedFormat) {
         const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
         if (ext !== allowedFormat) {
-            const err = new Error(`Only .${allowedFormat} images are allowed`);
-            err.statusCode = 400;
-            throw err;
+            return common.returnResult(false, 400, `Only .${allowedFormat} images are allowed`)
         }
     }
+} catch(err) {
+    throw err;
+} 
 };
 
 const invalidateCategoryCache = async (vendorId) => {
@@ -185,7 +187,10 @@ const addCategory = async (vendorId, userId, data, file, websiteMasterData, comp
 
         let image = { url: null, publicId: null };
         if (file) {
-            validateImageConstraints(file, companyMasterData);
+            const isImageConstraintsProper = validateImageConstraints(file, companyMasterData);
+            if(!isImageConstraintsProper.isSuccess) {
+                return common.returnResult(isImageConstraintsProper.isSuccess, isImageConstraintsProper.statusCode, isImageConstraintsProper.message);
+            }
             const uploaded = await storageService.upload(file.buffer, {
                 folder: `${vendorId}/categories`
             });
@@ -301,7 +306,10 @@ const updateCategory = async (vendorId, userId, categoryId, data, file, websiteM
         }
 
         if (file) {
-            validateImageConstraints(file, companyMasterData); No
+            const isImageConstraintsProper = validateImageConstraints(file, companyMasterData); 
+            if(!isImageConstraintsProper.isSuccess) {
+                return common.returnResult(isImageConstraintsProper.isSuccess, isImageConstraintsProper.statusCode, isImageConstraintsProper.message);
+            }
             const previousPublicId = category.image?.publicId;
             const uploaded = await storageService.upload(file.buffer, {
                 folder: `${vendorId}/categories`
@@ -329,7 +337,7 @@ const updateCategory = async (vendorId, userId, categoryId, data, file, websiteM
 const softDeleteCategory = async (vendorId, userId, categoryId) => {
     try {
         const category = await Category.findOne({ _id: categoryId, vendorId, status: { $ne: 'D' } });
-        if (!category) return { notFound: true };
+        if (!category) return common.returnResult(false, 404, `Category not found`);
 
         const descendantIds = await getDescendantIds(vendorId, categoryId);
         const allIds = [categoryId, ...descendantIds];
@@ -342,7 +350,7 @@ const softDeleteCategory = async (vendorId, userId, categoryId) => {
         logger.logInfo(1, 0, 'Category and its descendants soft deleted', { vendorId, categoryId, affectedCount: allIds.length });
 
         await invalidateCategoryCache(vendorId);
-        return { deleted: true, affectedCount: allIds.length };
+        return common.returnResult(true, 200, `${allIds.length} categories deleted successfully`)
     } catch (err) {
         throw err;
     }

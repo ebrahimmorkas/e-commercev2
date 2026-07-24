@@ -72,7 +72,6 @@ const updateCategory = async (req, res) => {
         return common.sendSuccess(res, 200, 'Category updated successfully');
     } catch (error) {
         logger.logException('categoryController: updateCategory - Exception while updating category', { vendorId, error });
-        return common.sendError(res, error.statusCode || 500, error.statusCode ? error.message : 'Failed to update category');
     }
 };
 
@@ -84,14 +83,13 @@ const deleteCategory = async (req, res) => {
         const userId = req.user?._id;
         const result = await categoryService.softDeleteCategory(vendorId, userId, category_id);
 
-        if (result.notFound) {
-            return common.sendError(res, 404, 'Category not found');
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
         }
 
-        return common.sendSuccess(res, 200, 'Category deleted successfully');
+        return common.sendSuccess(res, result.statusCode, result.message);
     } catch (error) {
         logger.logException('categoryController: deleteCategory - Exception while deleting category', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to delete category');
     }
 };
 
@@ -108,7 +106,6 @@ const getCategories = async (req, res) => {
         return common.sendSuccess(res, 200, 'Categories fetched successfully', categories);
     } catch (error) {
         logger.logException('categoryController: getCategories - Exception while fetching categories', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to fetch categories');
     }
 };
 
@@ -125,7 +122,6 @@ const getAdminCategories = async (req, res) => {
         return common.sendSuccess(res, 200, 'Categories fetched successfully', categories);
     } catch (error) {
         logger.logException('categoryController: getAdminCategories - Exception while fetching admin categories', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to fetch categories');
     }
 };
 
