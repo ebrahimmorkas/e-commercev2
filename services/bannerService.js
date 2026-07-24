@@ -7,7 +7,7 @@ const fs = require('fs');
 const invalidateBannerCache = async (vendorId) => {
     try {
         await redisService.del(redisKeys.banner(vendorId));
-        logger.logInfo('Banner cache invalidated', { vendorId });
+        logger.logInfo(1,0,'Banner cache invalidated', { vendorId });
     } catch (err) {
         throw err;
     }
@@ -56,7 +56,7 @@ const addBanner = async (vendorId, bannerData, imagePath, existingCount) => {
         });
 
         const saved = await banner.save();
-        logger.logInfo('Banner added successfully', { vendorId, bannerId: saved._id });
+        logger.logInfo(1,0,'Banner added successfully', { vendorId, bannerId: saved._id });
 
         await invalidateBannerCache(vendorId);
         return saved;
@@ -75,7 +75,7 @@ const softDeleteBanner = async (vendorId, bannerId) => {
         // Delete image from filesystem
         if (banner.image && fs.existsSync(banner.image)) {
             fs.unlinkSync(banner.image);
-            logger.logInfo('Banner image deleted from filesystem', { vendorId, bannerId });
+            logger.logInfo(1,0,'Banner image deleted from filesystem', { vendorId, bannerId });
         }
 
         banner.isDeleted = true;
@@ -91,7 +91,7 @@ const softDeleteBanner = async (vendorId, bannerId) => {
             if (nextDefault) {
                 nextDefault.isDefault = true;
                 await nextDefault.save();
-                logger.logInfo('New default banner assigned', { vendorId, bannerId: nextDefault._id });
+                logger.logInfo(1,0,'New default banner assigned', { vendorId, bannerId: nextDefault._id });
             }
         }
 
@@ -112,7 +112,7 @@ const softDeleteBanner = async (vendorId, bannerId) => {
             await Banner.bulkWrite(bulkOps);
         }
 
-        logger.logInfo('Banner soft deleted and precedences re-ordered', { vendorId, bannerId });
+        logger.logInfo(1,0,'Banner soft deleted and precedences re-ordered', { vendorId, bannerId });
         await invalidateBannerCache(vendorId);
         return { deleted: true };
     } catch (err) {
@@ -156,7 +156,7 @@ const updateBanner = async (vendorId, bannerId, updateData, newImagePath) => {
         if (newImagePath) {
             if (banner.image && fs.existsSync(banner.image)) {
                 fs.unlinkSync(banner.image);
-                logger.logInfo('Old banner image deleted from filesystem', { vendorId, bannerId });
+                logger.logInfo(1,0,'Old banner image deleted from filesystem', { vendorId, bannerId });
             }
             banner.image = newImagePath;
         }
@@ -167,7 +167,7 @@ const updateBanner = async (vendorId, bannerId, updateData, newImagePath) => {
         if (endDate !== undefined) banner.endDate = endDate;
 
         const updated = await banner.save();
-        logger.logInfo('Banner updated successfully', { vendorId, bannerId });
+        logger.logInfo(1,0,'Banner updated successfully', { vendorId, bannerId });
         await invalidateBannerCache(vendorId);
         return updated;
     } catch (err) {
@@ -182,7 +182,7 @@ const fetchAllActiveBanners = async (vendorId) => {
             null,
             { sort: { isDefault: -1, precedence: 1 } }
         );
-        logger.logInfo('Active banners fetched from DB', { vendorId });
+        logger.logInfo(1,0,'Active banners fetched from DB', { vendorId });
         return banners;
     } catch (err) {
         throw err;
@@ -196,7 +196,7 @@ const fetchAllBannersAdmin = async (vendorId) => {
             null,
             { sort: { isDefault: -1, precedence: 1 } }
         );
-        logger.logInfo('All banners fetched from DB for admin', { vendorId });
+        logger.logInfo(1,0,'All banners fetched from DB for admin', { vendorId });
         return banners;
     } catch (err) {
         throw err;
@@ -207,7 +207,7 @@ const fetchBannerById = async (vendorId, bannerId) => {
     try {
         const banner = await Banner.findOne({ _id: bannerId, vendorId, isDeleted: false });
         if (!banner) return null;
-        logger.logInfo('Banner fetched by ID', { vendorId, bannerId });
+        logger.logInfo(1,0,'Banner fetched by ID', { vendorId, bannerId });
         return banner;
     } catch (err) {
         throw err;

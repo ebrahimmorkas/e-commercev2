@@ -23,19 +23,19 @@ const connectRedis = async () => {
     });
 
     client.on('error', (err) => {
-      logger.logInfo("Redis Client Error", { err });
+      logger.logInfo(0,1, "Redis Client Error", { err });
     });
 
     client.on('ready', () => {
-      logger.logInfo("Redis connected");
+      logger.logInfo(1,0,"Redis connected");
     });
 
     client.on('reconnecting', () => {
-        logger.logInfo("Redis reconnecitng");
+        logger.logInfo(0,1,"Redis reconnecitng");
     });
 
     client.on('end', () => {
-      logger.logInfo("Redis connection closed");
+      logger.logInfo(1,0,"Redis connection closed");
     });
 
     await client.connect();
@@ -59,7 +59,7 @@ const closeRedis = async () => {
     if (client && client.isOpen) {
       await client.quit();
       client = null;
-      logger.logInfo("Redis connection closed gracefully");
+      logger.logInfo(1,0,"Redis connection closed gracefully");
     }
   } catch (err) {
     logger.Exception("Error closing Redis", { err });

@@ -10,7 +10,7 @@ const ensureVendorDataCached = async (req, res, next) => {
     try {
         const vendorId = req.vendorId;
         if (!vendorId) {
-            logger.logInfo(`Vendor ID not found`);
+            logger.logInfo(0,1,`Vendor ID not found`);
             return common.sendError(res, 400, `Vendor identification failed`);
         }
 

@@ -50,7 +50,7 @@ const categorySchema = mongoose.Schema({
         default: null,
         index: true
     },
-    actveMarkeddBy: {
+    activeMarkedBy: {
         type: mongoose.Types.ObjectId,
         index: true
     },

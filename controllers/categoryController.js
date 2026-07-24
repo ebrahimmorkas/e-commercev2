@@ -4,9 +4,27 @@ const redisKeys = require('../utils/redisKeys');
 const logger = require('../utils/logger');
 const common = require('../utils/common');
 
+const isCategoryFeatureBlocked = (req, res) => {
+    const websiteMasterData = req.websiteMasterData;
+    const companyMasterData = req.companyMasterData;
+
+    if (!websiteMasterData?.isCategoryFeatureOn) {
+        common.sendError(res, 403, websiteMasterData?.temporaryFeatureOffMessage);
+        return true;
+    }
+
+    if (!companyMasterData?.isCategoryFeatureOn) {
+        common.sendError(res, 403, websiteMasterData?.featureDisabledForVendorMessage);
+        return true;
+    }
+
+    return false;
+};
+
 const addCategory = async (req, res) => {
     const vendorId = req.vendorId;
     try {
+        if (isCategoryFeatureBlocked(req, res)) return;
         const userId = req.user?._id;
         const websiteMasterData = req.websiteMasterData;
         const companyMasterData = req.companyMasterData;
@@ -19,11 +37,12 @@ const addCategory = async (req, res) => {
             websiteMasterData,
             companyMasterData
         );
-
+        if(!category.isSuccess) {
+            return common.sendError(res, category.statusCode, category.message);
+        }
         return common.sendSuccess(res, 201, 'Category added successfully', category);
     } catch (error) {
         logger.logException('categoryController: addCategory - Exception while adding category', { vendorId, error });
-        return common.sendError(res, error.statusCode || 500, error.statusCode ? error.message : 'Failed to add category');
     }
 };
 
@@ -31,11 +50,12 @@ const updateCategory = async (req, res) => {
     const vendorId = req.vendorId;
     const { category_id } = req.body;
     try {
+        if (isCategoryFeatureBlocked(req, res)) return;
         const userId = req.user?._id;
         const websiteMasterData = req.websiteMasterData;
         const companyMasterData = req.companyMasterData;
 
-        const updated = await categoryService.updateCategory(
+        const categoryUpdate = await categoryService.updateCategory(
             vendorId,
             userId,
             category_id,
@@ -45,11 +65,11 @@ const updateCategory = async (req, res) => {
             companyMasterData
         );
 
-        if (!updated) {
-            return common.sendError(res, 404, 'Category not found');
+        if (!categoryUpdate.isSuccess) {
+            return common.returnResult(false, categoryUpdate.statusCode, categoryUpdate.message);
         }
 
-        return common.sendSuccess(res, 200, 'Category updated successfully', updated);
+        return common.sendSuccess(res, 200, 'Category updated successfully');
     } catch (error) {
         logger.logException('categoryController: updateCategory - Exception while updating category', { vendorId, error });
         return common.sendError(res, error.statusCode || 500, error.statusCode ? error.message : 'Failed to update category');
@@ -60,6 +80,7 @@ const deleteCategory = async (req, res) => {
     const vendorId = req.vendorId;
     const { category_id } = req.body;
     try {
+        if (isCategoryFeatureBlocked(req, res)) return;
         const userId = req.user?._id;
         const result = await categoryService.softDeleteCategory(vendorId, userId, category_id);
 
@@ -77,6 +98,7 @@ const deleteCategory = async (req, res) => {
 const getCategories = async (req, res) => {
     const vendorId = req.vendorId;
     try {
+        if (isCategoryFeatureBlocked(req, res)) return;
         const categories = await redisService.getOrSet(
             redisKeys.category(vendorId),
             async () => await categoryService.fetchActiveCategories(vendorId),
@@ -93,6 +115,7 @@ const getCategories = async (req, res) => {
 const getAdminCategories = async (req, res) => {
     const vendorId = req.vendorId;
     try {
+        if (isCategoryFeatureBlocked(req, res)) return;
         const categories = await redisService.getOrSet(
             redisKeys.categoryAdmin(vendorId),
             async () => await categoryService.fetchAdminCategories(vendorId),

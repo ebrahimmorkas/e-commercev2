@@ -12,6 +12,10 @@ const sendError = (res, statusCode, message, errors = null) => {
   return res.status(statusCode).json(payload);
 };
 
+const returnResult = (isSuccess, statusCode, message, meta = {}) => {
+    return {isSuccess, statusCode, message, meta};
+}
+
 // Validates the ID of documents
 const validateObjectId = (id) => {
   if (!id) {
@@ -122,6 +126,7 @@ const getDefault = async (Model, vendorID) => {
 module.exports = {
   sendSuccess,
   sendError,
+  returnResult,
   validateObjectId,
   validateModelExists,
   setActiveStatusToFalse,

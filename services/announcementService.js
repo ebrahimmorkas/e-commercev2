@@ -6,7 +6,7 @@ const redisKeys = require('../utils/redisKeys');
 const invalidateAnnouncementCache = async (vendorId) => {
     try {
         await redisService.del(redisKeys.announcement(vendorId));
-        logger.logInfo('Announcement cache invalidated', { vendorId });
+        logger.logInfo(1,0,'Announcement cache invalidated', { vendorId });
     } catch (err) {
         throw err;
     }
@@ -60,7 +60,7 @@ const addAnnouncement = async (vendorId, announcementData, existingCount) => {
         });
 
         const saved = await announcement.save();
-        logger.logInfo('Announcement added successfully', { vendorId, announcementId: saved._id });
+        logger.logInfo(1,0,'Announcement added successfully', { vendorId, announcementId: saved._id });
 
         await invalidateAnnouncementCache(vendorId);
         return saved;
@@ -89,7 +89,7 @@ const softDeleteAnnouncement = async (vendorId, announcementId) => {
             if (nextDefault) {
                 nextDefault.isDefault = true;
                 await nextDefault.save();
-                logger.logInfo('New default announcement assigned', { vendorId, announcementId: nextDefault._id });
+                logger.logInfo(1,0,'New default announcement assigned', { vendorId, announcementId: nextDefault._id });
             }
         }
 
@@ -111,7 +111,7 @@ const softDeleteAnnouncement = async (vendorId, announcementId) => {
             await Announcement.bulkWrite(bulkOps);
         }
 
-        logger.logInfo('Announcement soft deleted and precedences re-ordered', { vendorId, announcementId });
+        logger.logInfo(1,0,'Announcement soft deleted and precedences re-ordered', { vendorId, announcementId });
         await invalidateAnnouncementCache(vendorId);
         return { deleted: true };
     } catch (err) {
@@ -164,7 +164,7 @@ const updateAnnouncement = async (vendorId, announcementId, updateData) => {
         if (endDate !== undefined) announcement.endDate = endDate;
 
         const updated = await announcement.save();
-        logger.logInfo('Announcement updated successfully', { vendorId, announcementId });
+        logger.logInfo(1,0,'Announcement updated successfully', { vendorId, announcementId });
         await invalidateAnnouncementCache(vendorId);
         return updated;
     } catch (err) {
@@ -179,7 +179,7 @@ const fetchAllActiveAnnouncements = async (vendorId) => {
             null,
             { sort: { isDefault: -1, precedence: 1 } }
         );
-        logger.logInfo('Active announcements fetched from DB', { vendorId });
+        logger.logInfo(1,0,'Active announcements fetched from DB', { vendorId });
         return announcements;
     } catch (err) {
         throw err;
@@ -193,7 +193,7 @@ const fetchAllAnnouncementsAdmin = async (vendorId) => {
             null,
             { sort: { isDefault: -1, precedence: 1 } }
         );
-        logger.logInfo('All announcements fetched from DB for admin', { vendorId });
+        logger.logInfo(1,0,'All announcements fetched from DB for admin', { vendorId });
         return announcements;
     } catch (err) {
         throw err;
@@ -204,7 +204,7 @@ const fetchAnnouncementById = async (vendorId, announcementId) => {
     try {
         const announcement = await Announcement.findOne({ _id: announcementId, vendorId, isDeleted: false });
         if (!announcement) return null;
-        logger.logInfo('Announcement fetched by ID', { vendorId, announcementId });
+        logger.logInfo(1,0,'Announcement fetched by ID', { vendorId, announcementId });
         return announcement;
     } catch (err) {
         throw err;

@@ -96,12 +96,12 @@ const validateDeleteAnnouncement = (req, res, next) => {
         console.log(req.body);
     const { announcement_id } = req.body;
     if (!announcement_id) {
-        logger.logInfo(`announcementValidation: validateDeleteAnnouncement - announcement ID no provided`);
+        logger.logInfo(0,1,`announcementValidation: validateDeleteAnnouncement - announcement ID not provided`);
         return common.sendError(res, 400, 'Validation failed', ['Announcement ID is required']);
     }
     const mongoose = require('mongoose');
     if (!mongoose.Types.ObjectId.isValid(announcement_id)) {
-        logger.logInfo(`announcementValidation: validateDeleteAnnouncement - Invalid announcement ID ${announcement_id}`);
+        logger.logInfo(0,1,`announcementValidation: validateDeleteAnnouncement - Invalid announcement ID ${announcement_id}`);
         return common.sendError(res, 400, 'Validation failed', ['Invalid announcement ID']);
     }
     next();

@@ -58,6 +58,21 @@ const websiteMasterSchema = mongoose.Schema({
     isTaggingChildrenCategoryAllowed: {
         type: Boolean,
         default: true,
+    },
+    isCategoryFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    temporaryFeatureOffMessage: {
+        type: String,
+        default: 'This feature is temporarily unavailable. Please check back later.'
+    },
+    featureDisabledForVendorMessage: {
+        type: String,
+        default: 'This feature is not enabled for your account. Please contact support.'
+    },
+    isBulkUploadForCategoriesFeatureOn: {
+        type: Boolean,
     }
 }, {
   timestamps: true

@@ -84,11 +84,11 @@ const validateDeleteBanner = (req, res, next) => {
     try {
         const { banner_id } = req.body;
         if (!banner_id) {
-            logger.logInfo('bannerValidations: validateDeleteBanner - Banner ID not provided');
+            logger.logInfo(0,1,'bannerValidations: validateDeleteBanner - Banner ID not provided');
             return common.sendError(res, 400, 'Validation failed', ['Banner ID is required']);
         }
         if (!mongoose.Types.ObjectId.isValid(banner_id)) {
-            logger.logInfo(`bannerValidations: validateDeleteBanner - Invalid banner ID ${banner_id}`);
+            logger.logInfo(0,1,`bannerValidations: validateDeleteBanner - Invalid banner ID ${banner_id}`);
             return common.sendError(res, 400, 'Validation failed', ['Invalid banner ID']);
         }
         next();

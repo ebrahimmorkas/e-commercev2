@@ -81,14 +81,6 @@ const companySettingsSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
-  hallStartTimings: {
-    type: String,
-    required: true,
-  },
-  hallEndTimings: {
-    type: String,
-    required: true,
-  },
   createdBy: {
     userID: mongoose.Types.ObjectId,
     vendorID: mongoose.Types.ObjectId,
@@ -97,14 +89,10 @@ const companySettingsSchema = new mongoose.Schema({
     userID: mongoose.Types.ObjectId,
     vendorID: mongoose.Types.ObjectId,
   },
-  isActive: {
+  isAnnouncementFeatureOn: {
     type: Boolean,
-    default: true,
   },
-  isDeleted: {
-    type: Boolean, 
-    default: false,
-  }
+  
 }, {
   timestamps: true
 });

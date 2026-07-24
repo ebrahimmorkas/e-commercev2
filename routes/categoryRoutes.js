@@ -1,20 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const {
-    addCategory,
-    updateCategory,
-    deleteCategory,
-    getCategories,
-    getAdminCategories
-} = require('../controllers/categoryController');
+const { addCategory, updateCategory, deleteCategory, getCategories, getAdminCategories } = require('../controllers/categoryController');
 const createMemoryUploader = require('../middlewares/multer/memoryFileUpload');
 const categoryUpload = createMemoryUploader({ maxSizeMB: 5 });
 const validate = require('../middlewares/validate');
-const {
-    addCategorySchema,
-    updateCategorySchema,
-    deleteCategorySchema
-} = require('../middlewares/validations/categoryValidations');
+const { addCategorySchema, updateCategorySchema, deleteCategorySchema } = require('../middlewares/validations/categoryValidations');
 // const authorize = require('../middlewares/authorize');
 // TODO: add authorize('admin') to add/update/delete/get-admin-categories once you wire it in.
 

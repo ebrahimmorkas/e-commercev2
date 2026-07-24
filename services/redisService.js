@@ -21,7 +21,7 @@ class RedisService {
 
   validateKey(key) {
     if (!key || typeof key !== "string") {
-        logger.logInfo("Invald redis key", {key});
+        logger.logInfo(0,1,"Invald redis key", {key});
     }
   }
 
@@ -46,11 +46,11 @@ class RedisService {
       const data = await client.get(key);
 
       if (data === null) {
-        logger.logInfo("Cache MISS", { key });
+        logger.logInfo(0,1,"Cache MISS", { key });
         return null;
       }
 
-      logger.logInfo("Cache HIT", { key });
+      logger.logInfo(null,null,"Cache HIT", { key });
 
       return this.safeParse(data, key);
     } catch (err) {
@@ -72,7 +72,7 @@ class RedisService {
 
       await client.setEx(key, ttl, JSON.stringify(value));
 
-      logger.logInfo("Cache SET", { key, ttl });
+      logger.logInfo(1,0,"Cache SET", { key, ttl });
 
       return true;
     } catch (err) {
@@ -92,7 +92,7 @@ class RedisService {
 
       await client.del(key);
 
-      logger.logInfo("Cache DEL", { key });
+      logger.logInfo(null,null,"Cache DEL", { key });
 
       return true;
     } catch (err) {
@@ -111,7 +111,7 @@ class RedisService {
 
       if (cached !== null) return cached;
 
-      logger.logInfo("Cache MISS - fetching", { key });
+      logger.logInfo(null,null,"Cache MISS - fetching", { key });
 
       // console.log(`30 jun 1 ${fetchFunction}`);
 

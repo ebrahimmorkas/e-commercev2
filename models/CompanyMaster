@@ -82,6 +82,25 @@ const companyMasterSchema = mongoose.Schema({
     isTaggingChildrenCategoryAllowed: {
         type: Boolean,
         default: true,
+    },
+    allowedBannerMB: {
+        type: Number,
+        default: 2
+    },
+    allowedCategoryImageMB: {
+        type: Number,
+        default: 2
+    },
+    allowedCategoryImagesFormat: {
+        type: String,
+        enum: ['jpg', 'png', 'jpeg']
+    },
+    isCategoryFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    isBulkUploadForCategoriesFeatureOn: {
+        type: Boolean,
     }
 }, {
   timestamps: true

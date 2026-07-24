@@ -56,7 +56,7 @@ const bannerSchema = new mongoose.Schema({
         required: true,
         index: true
     },
-    actveMarkeddBy: {
+    activeMarkedBy: {
         type: mongoose.Types.ObjectId,
         index: true
     },

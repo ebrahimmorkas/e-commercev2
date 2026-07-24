@@ -1,16 +1,44 @@
+const path = require('path');
 const Category = require('../models/Category');
 const logger = require('../utils/logger');
 const redisService = require('./redisService');
 const redisKeys = require('../utils/redisKeys');
 const storageService = require('./storageService');
+const common = require('../utils/common');
 
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Vendor-configurable image checks (companyMaster.allowedCategoryImageMB / allowedCategoryImagesFormat).
+ * Runs against the raw multer file object before it gets uploaded to storage.
+ */
+const validateImageConstraints = (file, companyMasterData) => {
+    const allowedSizeMB = companyMasterData?.allowedCategoryImageMB;
+    if (allowedSizeMB !== null && allowedSizeMB !== undefined) {
+        const maxBytes = allowedSizeMB * 1024 * 1024;
+        if (file.size > maxBytes) {
+            const err = new Error(`Image size must not exceed ${allowedSizeMB}MB`);
+            err.statusCode = 400;
+            throw err;
+        }
+    }
+
+    const allowedFormat = companyMasterData?.allowedCategoryImagesFormat;
+    if (allowedFormat) {
+        const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
+        if (ext !== allowedFormat) {
+            const err = new Error(`Only .${allowedFormat} images are allowed`);
+            err.statusCode = 400;
+            throw err;
+        }
+    }
+};
 
 const invalidateCategoryCache = async (vendorId) => {
     try {
         await redisService.del(redisKeys.category(vendorId));
         await redisService.del(redisKeys.categoryAdmin(vendorId));
-        logger.logInfo('Category cache invalidated', { vendorId });
+        logger.logInfo(1, 0, 'Category cache invalidated', { vendorId });
     } catch (err) {
         throw err;
     }
@@ -116,34 +144,30 @@ const checkSubCategoryLimit = async (vendorId, parentCategoryId, companyMasterDa
  * (or as a new main category if parentCategoryId is null).
  */
 const validateAttachment = async (vendorId, parentCategoryId, websiteMasterData, companyMasterData) => {
-    if (parentCategoryId) {
-        const parentCheck = await validateParentForAttachment(vendorId, parentCategoryId);
-        if (!parentCheck.valid) {
-            const err = new Error(parentCheck.reason);
-            err.statusCode = 400;
-            throw err;
-        }
+    try {
+        if (parentCategoryId) {
+            const parentCheck = await validateParentForAttachment(vendorId, parentCategoryId);
+            if (!parentCheck.valid) {
+                return common.returnResult(false, 400, parentCheck.reason);
+            }
 
-        const nesting = checkNestingAllowed(websiteMasterData, companyMasterData);
-        if (!nesting.allowed) {
-            const err = new Error(nesting.reason);
-            err.statusCode = 403;
-            throw err;
-        }
+            const nesting = checkNestingAllowed(websiteMasterData, companyMasterData);
+            if (!nesting.allowed) {
+                return common.returnResult(false, 403, nesting.reason);
+            }
 
-        const subLimit = await checkSubCategoryLimit(vendorId, parentCategoryId, companyMasterData);
-        if (!subLimit.allowed) {
-            const err = new Error(subLimit.reason);
-            err.statusCode = 403;
-            throw err;
+            const subLimit = await checkSubCategoryLimit(vendorId, parentCategoryId, companyMasterData);
+            if (!subLimit.allowed) {
+                return common.returnResult(false, 403, subLimit.reason);
+            }
+        } else {
+            const mainLimit = await checkMainCategoryLimit(vendorId, companyMasterData);
+            if (!mainLimit.allowed) {
+                return common.returnResult(false, 403, mainLimit.reason);
+            }
         }
-    } else {
-        const mainLimit = await checkMainCategoryLimit(vendorId, companyMasterData);
-        if (!mainLimit.allowed) {
-            const err = new Error(mainLimit.reason);
-            err.statusCode = 403;
-            throw err;
-        }
+    } catch (err) {
+        throw err;
     }
 };
 
@@ -153,15 +177,15 @@ const addCategory = async (vendorId, userId, data, file, websiteMasterData, comp
 
         const taken = await isNameTaken(vendorId, categoryName, parent_category_id);
         if (taken) {
-            const err = new Error('A category with this name already exists under the same parent');
-            err.statusCode = 409;
-            throw err;
+            return common.returnResult(false, 409, `A category with this name already exists under the same parent`);
         }
+
 
         await validateAttachment(vendorId, parent_category_id, websiteMasterData, companyMasterData);
 
         let image = { url: null, publicId: null };
         if (file) {
+            validateImageConstraints(file, companyMasterData);
             const uploaded = await storageService.upload(file.buffer, {
                 folder: `${vendorId}/categories`
             });
@@ -181,7 +205,7 @@ const addCategory = async (vendorId, userId, data, file, websiteMasterData, comp
         };
 
         if (status === 'A') {
-            categoryData.actveMarkeddBy = userId;
+            categoryData.activeMarkedBy = userId;
             categoryData.activeMarkedDate = now;
         } else if (status === 'I') {
             categoryData.inActiveMarkeddBy = userId;
@@ -191,10 +215,10 @@ const addCategory = async (vendorId, userId, data, file, websiteMasterData, comp
         const category = new Category(categoryData);
         const saved = await category.save();
 
-        logger.logInfo('Category added successfully', { vendorId, categoryId: saved._id });
+        logger.logInfo(1, 0, 'Category added successfully', { vendorId, categoryId: saved._id });
 
         await invalidateCategoryCache(vendorId);
-        return saved;
+        return common.returnResult(true, 200, `Category added successfully`);
     } catch (err) {
         throw err;
     }
@@ -203,7 +227,9 @@ const addCategory = async (vendorId, userId, data, file, websiteMasterData, comp
 const updateCategory = async (vendorId, userId, categoryId, data, file, websiteMasterData, companyMasterData) => {
     try {
         const category = await Category.findOne({ _id: categoryId, vendorId, status: { $ne: 'D' } });
-        if (!category) return null;
+        if (!category) {
+            return common.returnResult(false, 404, `Category not found`);
+        }
 
         const { categoryName, parent_category_id, status } = data;
 
@@ -217,29 +243,26 @@ const updateCategory = async (vendorId, userId, categoryId, data, file, websiteM
         if (categoryName !== undefined || isReparenting) {
             const taken = await isNameTaken(vendorId, targetName, targetParentId, categoryId);
             if (taken) {
-                const err = new Error('A category with this name already exists under the same parent');
-                err.statusCode = 409;
-                throw err;
+                return common.returnResult(false, 409, `A category with this name already exists under the same parent`);
             }
         }
 
         if (isReparenting) {
             if (parent_category_id) {
                 if (String(parent_category_id) === String(categoryId)) {
-                    const err = new Error('A category cannot be its own parent');
-                    err.statusCode = 400;
-                    throw err;
+                    return common.returnResult(false, 400, `A category cannot be its own parent`);
                 }
 
                 const descendantIds = await getDescendantIds(vendorId, categoryId);
                 if (descendantIds.some((id) => String(id) === String(parent_category_id))) {
-                    const err = new Error('Cannot move a category under one of its own descendants');
-                    err.statusCode = 400;
-                    throw err;
+                    return common.returnResult(false, 400, `Cannot move a category under one of its own descendants`);
                 }
             }
 
-            await validateAttachment(vendorId, parent_category_id, websiteMasterData, companyMasterData);
+            const validateAttachment = await validateAttachment(vendorId, parent_category_id, websiteMasterData, companyMasterData);
+            if(!validateAttachment.isSuccess) {
+                return common.returnResult(false, validateAttachment.statusCode, validateAttachment.message);
+            }
             category.parent_category_id = parent_category_id;
         }
 
@@ -254,13 +277,13 @@ const updateCategory = async (vendorId, userId, categoryId, data, file, websiteM
 
             if (status === 'A') {
                 category.status = 'A';
-                category.actveMarkeddBy = userId;
+                category.activeMarkedBy = userId;
                 category.activeMarkedDate = now;
 
                 if (descendantIds.length > 0) {
                     await Category.updateMany(
                         { _id: { $in: descendantIds } },
-                        { $set: { status: 'A', actveMarkeddBy: userId, activeMarkedDate: now } }
+                        { $set: { status: 'A', activeMarkedBy: userId, activeMarkedDate: now } }
                     );
                 }
             } else if (status === 'I') {
@@ -278,6 +301,7 @@ const updateCategory = async (vendorId, userId, categoryId, data, file, websiteM
         }
 
         if (file) {
+            validateImageConstraints(file, companyMasterData); No
             const previousPublicId = category.image?.publicId;
             const uploaded = await storageService.upload(file.buffer, {
                 folder: `${vendorId}/categories`
@@ -293,10 +317,10 @@ const updateCategory = async (vendorId, userId, categoryId, data, file, websiteM
         category.updatedBy = userId;
 
         const updated = await category.save();
-        logger.logInfo('Category updated successfully', { vendorId, categoryId });
+        logger.logInfo(1, 0, 'Category updated successfully', { vendorId, categoryId });
 
         await invalidateCategoryCache(vendorId);
-        return updated;
+        return common.returnResult(true, 200, `Category Updated Successfully`);
     } catch (err) {
         throw err;
     }
@@ -315,7 +339,7 @@ const softDeleteCategory = async (vendorId, userId, categoryId) => {
             { $set: { status: 'D', deletedBy: userId } }
         );
 
-        logger.logInfo('Category and its descendants soft deleted', { vendorId, categoryId, affectedCount: allIds.length });
+        logger.logInfo(1, 0, 'Category and its descendants soft deleted', { vendorId, categoryId, affectedCount: allIds.length });
 
         await invalidateCategoryCache(vendorId);
         return { deleted: true, affectedCount: allIds.length };
@@ -331,7 +355,7 @@ const fetchActiveCategories = async (vendorId) => {
             null,
             { sort: { createdAt: 1 } }
         );
-        logger.logInfo('Active categories fetched from DB', { vendorId });
+        logger.logInfo(1, 0, 'Active categories fetched from DB', { vendorId });
         return categories;
     } catch (err) {
         throw err;
@@ -345,7 +369,7 @@ const fetchAdminCategories = async (vendorId) => {
             null,
             { sort: { createdAt: 1 } }
         );
-        logger.logInfo('Admin categories fetched from DB', { vendorId });
+        logger.logInfo(1, 0, 'Admin categories fetched from DB', { vendorId });
         return categories;
     } catch (err) {
         throw err;

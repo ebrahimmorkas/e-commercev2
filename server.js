@@ -12,6 +12,7 @@ const companySettingsRoutes = require('./routes/companySettingsRoutes');
 const companyMasterRoutes = require('./routes/companyMasterRoutes');
 const announcementRoutes = require('./routes/announcementRoutes');
 const bannerRoutes = require('./routes/bannerRoutes');
+const categoryRoutes = require('./routes/categoryRoutes.js');
 
 const app = express();
 
@@ -29,7 +30,7 @@ app.use('/uploads', express.static('uploads'));
 app.use(vendorDetection);
 
 if (process.env.IS_REDIS_SERVER_ON == 1) {
-    logger.logInfo("Redis is enabled");
+    logger.logInfo(1, 0, "Redis is enabled");
     connectRedis();
     app.use(ensureVendorDataCached);
 }
@@ -38,6 +39,7 @@ if (process.env.IS_REDIS_SERVER_ON == 1) {
 // Public Routes
 app.use('/api/company-master', companyMasterRoutes);
 app.use('/api/company-settings', companySettingsRoutes);
+app.use('/api/category', categoryRoutes);
 // Private Routes
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/banners', bannerRoutes);
