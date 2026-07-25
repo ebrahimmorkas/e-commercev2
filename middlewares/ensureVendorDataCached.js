@@ -14,11 +14,11 @@ const ensureVendorDataCached = async (req, res, next) => {
             return common.sendError(res, 400, `Vendor identification failed`);
         }
 
-        // const companySettings = await redisService.getOrSet(
-        //     redisKeys.companySettings(vendorId),
-        //     async () => await companySettingsService.fetchCompanySettingsByVendorId(vendorId),
-        //     3600
-        // );
+        const companySettingsData = await redisService.getOrSet(
+            redisKeys.companySettings(vendorId),
+            async () => await companySettingsService.fetchCompanySettingsByVendorId(vendorId),
+            3600
+        );
 
         const websiteMasterData = await redisService.getOrSet(
             redisKeys.websiteMaster(),
@@ -40,7 +40,7 @@ const ensureVendorDataCached = async (req, res, next) => {
             return common.sendError(res, 500, `Failed to load vendor configuration`);
         }
 
-        // req.companySettings = companySettings;
+        req.companySettingsData = companySettingsData;
         req.websiteMasterData = websiteMasterData;
         req.companyMasterData = companyMasterData;
         next();

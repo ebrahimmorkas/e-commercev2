@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const RefreshToken = require('../models/RefreshToken');
 const { generateAccessToken, generateRefreshToken, verifyRefreshToken, hashToken } = require('../utils/token');
+const common = require('../utils/common');
 require('dotenv').config();
 
 const SALT_ROUNDS = process.env.SALT_ROUNDS;
@@ -16,8 +17,7 @@ const registerUser = async ({ vendorId, name, username, email, phone_no, whatsap
         });
 
         if (existingUser) {
-            // Expected/business failure - NOT an exception, so we return, not throw.
-            return fail(409, 'User already exists with the given username, email or phone number');
+            return common.returnResult(false, 409, `User already exists with the given username, email or phone number`);
         }
 
         const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
@@ -33,14 +33,7 @@ const registerUser = async ({ vendorId, name, username, email, phone_no, whatsap
             authProvider: 'local'
         });
 
-        return ok({
-            _id: user._id,
-            name: user.name,
-            username: user.username,
-            email: user.email,
-            phone_no: user.phone_no,
-            role: user.role
-        });
+        return common.returnResult(true, 200, `User created successfully`);
     } catch (err) {
         throw err;
     }
@@ -54,16 +47,17 @@ const loginUser = async ({ identifier, password }, deviceMeta) => {
         });
 
         if (!user) {
-            return fail(401, 'Invalid credentials');
+            return common.returnResult(false, 401, `Invalid credentials`);
         }
 
         if (user.authProvider !== 'local' || !user.password) {
-            return fail(400, `This account is registered via ${user.authProvider}. Please use that method to sign in.`);
+            // return common.returnResult(false , 400, `This account is registered via ${user.authProvider}. Please use that method to sign in.`);
+            return common.returnResult(false , 400, `Invalid credentials`);
         }
 
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) {
-            return fail(401, 'Invalid credentials');
+            return common.returnResult(false, 401, 'Invalid credentials');
         }
 
         const accessToken = generateAccessToken({
@@ -83,16 +77,8 @@ const loginUser = async ({ identifier, password }, deviceMeta) => {
             expiresAt: new Date(decodedRefresh.exp * 1000)
         });
 
-        return ok({
-            accessToken,
-            refreshToken,
-            user: {
-                _id: user._id,
-                name: user.name,
-                username: user.username,
-                email: user.email,
-                role: user.role
-            }
+        return common.returnResult(true, 200, `Login Success`, { accessToken, refreshToken, 
+            user: { _id: user._id, name: user.name, username: user.username, email: user.email, role: user.role }
         });
     } catch (err) {
         throw err;
@@ -111,7 +97,7 @@ const refreshAccessToken = async (incomingRefreshToken, deviceMeta) => {
     let session = null;
     try {
         if (!incomingRefreshToken) {
-            return fail(401, 'Refresh token is missing');
+            return common.returnResult(false, 401, 'Refresh token is missing');
         }
 
         let decoded;
@@ -120,7 +106,7 @@ const refreshAccessToken = async (incomingRefreshToken, deviceMeta) => {
         } catch (verifyErr) {
             // Invalid/expired JWT is an expected outcome (token naturally expires,
             // gets tampered with, etc.) - not a server exception.
-            return fail(401, 'Invalid or expired refresh token');
+            return common.returnResult(false, 401, 'Invalid or expired refresh token');
         }
 
         const incomingHash = hashToken(incomingRefreshToken);
@@ -132,18 +118,18 @@ const refreshAccessToken = async (incomingRefreshToken, deviceMeta) => {
         });
 
         if (!session) {
-            return fail(401, 'Session not found. Please login again');
+            return common.returnResult(false, 401, 'Session not found. Please login again');
         }
 
         if (session.expiresAt < new Date()) {
             await RefreshToken.deleteOne({ _id: session._id });
-            return fail(401, 'Session expired. Please login again');
+            return common.returnResult(false, 401, 'Session expired. Please login again');
         }
 
         const user = await User.findById(decoded.userId);
         if (!user || user.status === 'D') {
             await RefreshToken.deleteOne({ _id: session._id });
-            return fail(401, 'User not found or inactive');
+            return common.returnResult(false, 401, 'User not found or inactive');
         }
 
         const newRefreshToken = generateRefreshToken({ userId: user._id });
@@ -162,10 +148,7 @@ const refreshAccessToken = async (incomingRefreshToken, deviceMeta) => {
             vendorId: user.vendorId
         });
 
-        return ok({
-            accessToken: newAccessToken,
-            refreshToken: newRefreshToken
-        });
+        return common.returnResult(true, 200, { accessToken: newAccessToken, refreshToken: newRefreshToken });
     } catch (err) {
         // Genuine exception (e.g. session.save() failed mid-rotation). We already trusted
         // this session, so invalidate it defensively rather than leaving it in a half-rotated
@@ -180,13 +163,13 @@ const refreshAccessToken = async (incomingRefreshToken, deviceMeta) => {
 const logoutUser = async (incomingRefreshToken) => {
     try {
         if (!incomingRefreshToken) {
-            return fail(400, 'No active session found');
+            return common.returnResult(false, 400, 'No active session found');
         }
 
         const incomingHash = hashToken(incomingRefreshToken);
         await RefreshToken.deleteOne({ tokenHash: incomingHash });
 
-        return ok(true);
+        return common.returnResult(true, 200, `User Logged out successfully`);
     } catch (err) {
         throw err;
     }
@@ -195,19 +178,19 @@ const logoutUser = async (incomingRefreshToken) => {
 const logoutAllDevices = async (incomingRefreshToken) => {
     try {
         if (!incomingRefreshToken) {
-            return fail(400, 'No active session found');
+            return common.returnResult(false, 400, 'No active session found');
         }
 
         let decoded;
         try {
             decoded = verifyRefreshToken(incomingRefreshToken);
         } catch (verifyErr) {
-            return fail(401, 'Invalid or expired refresh token');
+            return common.returnResult(false, 401, 'Invalid or expired refresh token');
         }
 
         await RefreshToken.deleteMany({ userId: decoded.userId });
 
-        return ok(true);
+        return common.returnResult(true, 200, `Logged out from all the devices`);
     } catch (err) {
         throw err;
     }

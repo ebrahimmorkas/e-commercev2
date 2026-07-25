@@ -37,20 +37,19 @@ const addAnnouncement = async (req, res) => {
     }
 };
 
+
 const deleteAnnouncement = async (req, res) => {
     const vendorId = req.vendorId;
     const { announcement_id } = req.body;
     try {
-        const result = await announcementService.softDeleteAnnouncement(vendorId, announcement_id);
+        const result = await announcementService.softDeleteAnnouncement(vendorId, announcement_id, req.user._id);
 
-        if (result.notFound) {
-            return common.sendError(res, 404, 'Announcement not found');
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
         }
-
-        return common.sendSuccess(res, 200, 'Announcement deleted successfully');
+        return common.sendSuccess(res, result.statusCode, result.message);
     } catch (error) {
         logger.logException('announcementController: deleteAnnouncment - exception in deleting announcement', { vendorId, error });
-        // return common.sendError(res, 500, 'Failed to delete announcement');
     }
 };
 
@@ -78,29 +77,30 @@ const updateAnnouncement = async (req, res) => {
 const getAllAnnouncements = async (req, res) => {
     const vendorId = req.vendorId;
     try {
-        const announcements = await redisService.getOrSet(
+        const companySettingsData = req.companySettingsData;
+        if (!companySettingsData?.showAnnouncements) {
+            return common.sendError(res, 403, 'Announcements are disabled for this store');
+        }
+
+        const result = await redisService.getOrSet(
             redisKeys.announcement(vendorId),
             async () => await announcementService.fetchAllActiveAnnouncements(vendorId),
             3600
         );
 
-        return common.sendSuccess(res, 200, 'Announcements fetched successfully', announcements);
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta.announcements);
     } catch (error) {
-        console.log('ACTUAL ERROR MESSAGE:', error.message);
-            console.log('ACTUAL ERROR STACK:', error.stack);
         logger.logException('announcementController: getAllAnnouncements - Exception while fetching announcements', { vendorId, error });
-        // return common.sendError(res, 500, 'Failed to fetch announcements');
     }
 };
 
 const getAllAnnouncementsAdmin = async (req, res) => {
     const vendorId = req.vendorId;
     try {
-        const announcements = await announcementService.fetchAllAnnouncementsAdmin(vendorId);
-        return common.sendSuccess(res, 200, 'Announcements fetched successfully', announcements);
+        const result = await announcementService.fetchAllAnnouncementsAdmin(vendorId);
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta.announcements);
     } catch (error) {
         logger.logException('announcementController: getAllAnnouncementsAdmin - Exception while fetching all announcements for admin', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to fetch announcements');
     }
 };
 

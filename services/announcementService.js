@@ -2,6 +2,7 @@ const Announcement = require('../models/Announcement');
 const logger = require('../utils/logger');
 const redisService = require('./redisService');
 const redisKeys = require('../utils/redisKeys');
+const common = require('../utils/common');
 
 const invalidateAnnouncementCache = async (vendorId) => {
     try {
@@ -14,9 +15,13 @@ const invalidateAnnouncementCache = async (vendorId) => {
 
 const getAnnouncementCount = async (vendorId) => {
     try {
-        return await Announcement.countDocuments({ vendorId, isDeleted: false });
+        const count = await Announcement.countDocuments({ vendorId, status: { $ne: 'D' } });
+        if(count == 0) {
+            return common.returnResult(false, 200, `No Announcements to show`);
+        }
+        return common.returnResult(true, 200, 'Announcement count fetched successfully', { count });
     } catch (err) {
-        logger.logException(`announcementService: getAnnouncementCount - Exception while getting Announcement count`)
+        throw err;
     }
 };
 
@@ -69,20 +74,25 @@ const addAnnouncement = async (vendorId, announcementData, existingCount) => {
     }
 };
 
-const softDeleteAnnouncement = async (vendorId, announcementId) => {
+const softDeleteAnnouncement = async (vendorId, announcementId, userId) => {
     try {
-        const announcement = await Announcement.findOne({ _id: announcementId, vendorId, isDeleted: false });
-        if (!announcement) return { notFound: true };
+        const announcement = await Announcement.findOne({ _id: announcementId, vendorId, status: { $ne: 'D' } });
+        if (!announcement) {
+            return common.returnResult(false, 404, 'Announcement not found', {});
+        }
+
+        const wasDefault = announcement.isDefault;
 
         // Soft delete
-        announcement.isDeleted = true;
+        announcement.status = 'D';
         announcement.isDefault = false;
+        announcement.deletedBy = userId;
         await announcement.save();
 
         // If deleted announcement was default, auto-assign lowest precedence remaining as new default
-        if (announcement.isDefault) {
+        if (wasDefault) {
             const nextDefault = await Announcement.findOne(
-                { vendorId, isDeleted: false },
+                { vendorId, status: { $ne: 'D' } },
                 null,
                 { sort: { precedence: 1 } }
             );
@@ -95,7 +105,7 @@ const softDeleteAnnouncement = async (vendorId, announcementId) => {
 
         // Re-order remaining announcements to fill precedence gaps cleanly
         const remaining = await Announcement.find(
-            { vendorId, isDeleted: false },
+            { vendorId, status: { $ne: 'D' } },
             null,
             { sort: { precedence: 1 } }
         );
@@ -113,11 +123,12 @@ const softDeleteAnnouncement = async (vendorId, announcementId) => {
 
         logger.logInfo(1,0,'Announcement soft deleted and precedences re-ordered', { vendorId, announcementId });
         await invalidateAnnouncementCache(vendorId);
-        return { deleted: true };
+        return common.returnResult(true, 200, 'Announcement deleted successfully', {});
     } catch (err) {
         throw err;
     }
 };
+
 
 const updateAnnouncement = async (vendorId, announcementId, updateData) => {
     try {
@@ -175,12 +186,12 @@ const updateAnnouncement = async (vendorId, announcementId, updateData) => {
 const fetchAllActiveAnnouncements = async (vendorId) => {
     try {
         const announcements = await Announcement.find(
-            { vendorId, isDeleted: false, isActive: true },
+            { vendorId, status: 'A', endDate: { $gte: new Date() } },
             null,
             { sort: { isDefault: -1, precedence: 1 } }
         );
         logger.logInfo(1,0,'Active announcements fetched from DB', { vendorId });
-        return announcements;
+        return common.returnResult(true, 200, 'Announcements fetched successfully', { announcements });
     } catch (err) {
         throw err;
     }
@@ -189,25 +200,30 @@ const fetchAllActiveAnnouncements = async (vendorId) => {
 const fetchAllAnnouncementsAdmin = async (vendorId) => {
     try {
         const announcements = await Announcement.find(
-            { vendorId, isDeleted: false },
+            { vendorId, status: { $in: ['A', 'I'] } },
             null,
             { sort: { isDefault: -1, precedence: 1 } }
         );
         logger.logInfo(1,0,'All announcements fetched from DB for admin', { vendorId });
-        return announcements;
+        return common.returnResult(true, 200, 'Announcements fetched successfully', { announcements });
     } catch (err) {
         throw err;
     }
 };
 
-const fetchAnnouncementById = async (vendorId, announcementId) => {
+const fetchAnnouncementById = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { id } = req.params;
     try {
-        const announcement = await Announcement.findOne({ _id: announcementId, vendorId, isDeleted: false });
-        if (!announcement) return null;
-        logger.logInfo(1,0,'Announcement fetched by ID', { vendorId, announcementId });
-        return announcement;
-    } catch (err) {
-        throw err;
+        const result = await announcementService.fetchAnnouncementById(vendorId, id);
+
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta.announcement);
+    } catch (error) {
+        logger.logException('announcementController: getAnnouncementById - Exception while fetching announcement by ID', { vendorId, error });
+        return common.sendError(res, 500, 'Failed to fetch announcement');
     }
 };
 

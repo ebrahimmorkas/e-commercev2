@@ -31,6 +31,11 @@ const register = async (req, res) => {
             password
         });
 
+        if(!newUser.isSuccess) {
+            logInfo(0, 1, newUser.message);
+            return sendError(res, 400, newUser.message);
+        }
+
         logInfo(1, 0, 'User registered successfully', { userId: newUser._id });
         return sendSuccess(res, 201, 'User registered successfully', newUser);
     } catch (err) {
@@ -48,10 +53,16 @@ const login = async (req, res) => {
         }
 
         const deviceMeta = getDeviceMeta(req);
-        const { accessToken, refreshToken, user } = await authService.loginUser({ identifier, password }, deviceMeta);
+        const loginUser = await authService.loginUser({ identifier, password }, deviceMeta);
 
-        res.cookie('refreshToken', refreshToken, refreshTokenCookieOptions);
+        if(!loginUser.isSuccess) {
+            logInfo(0, 1, loginUser.message);
+            return sendError(res, 400, loginUser.message);
+        }
 
+        res.cookie('refreshToken', loginUser.meta.refreshToken, refreshTokenCookieOptions);
+
+        accessToken = loginUser.meta.accessToken;
         logInfo(1, 0, 'User logged in successfully', { userId: user._id });
         return sendSuccess(res, 200, 'Login successful', { user, accessToken });
     } catch (err) {
@@ -68,6 +79,11 @@ const refreshToken = async (req, res) => {
             incomingRefreshToken,
             deviceMeta
         );
+
+        if(!loginUser.isSuccess) {
+            logInfo(0, 1, loginUser.message);
+            return sendError(res, 400, loginUser.message);
+        }
 
         res.cookie('refreshToken', newRefreshToken, refreshTokenCookieOptions);
 

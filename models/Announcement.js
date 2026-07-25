@@ -69,9 +69,8 @@ const announcementSchema = new mongoose.Schema({
         type: mongoose.Types.ObjectId,
         index: true
     },
-    inActiveMarkeddBy: {
+    inActiveMarkedBy: {
         type: mongoose.Types.ObjectId,
-        required: true,
         index: true
     },
     activeMarkedBy: {
