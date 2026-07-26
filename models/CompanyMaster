@@ -51,6 +51,17 @@ const companyMasterSchema = mongoose.Schema({
         type: Number,
         default: 2
     },
+    allowedBannerImagesMB: {
+        type: Number,
+        default: 2
+    },
+    allowedBannerImagesFormat: {
+        type: String,
+        enum: ['jpg', 'png', 'jpeg']
+    },
+    isBulkUploadForFeatureOn: {
+        type: Boolean,
+    },
     isWebsiteBuilderFeatureOn: {
         type: Boolean,
         default: false
@@ -82,10 +93,6 @@ const companyMasterSchema = mongoose.Schema({
     isTaggingChildrenCategoryAllowed: {
         type: Boolean,
         default: true,
-    },
-    allowedBannerMB: {
-        type: Number,
-        default: 2
     },
     allowedCategoryImageMB: {
         type: Number,

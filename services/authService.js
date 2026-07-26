@@ -7,8 +7,14 @@ require('dotenv').config();
 
 const SALT_ROUNDS = process.env.SALT_ROUNDS;
 
-const fail = (statusCode, message) => ({ error: true, statusCode, message });
-const ok = (data) => ({ error: false, data });
+const getUserCount = async (vendorId) => {
+    try {
+        const count = await User.countDocuments({ vendorId, status: { $ne: 'D' } });
+        return common.returnResult(true, 200, 'User count fetched successfully', { count });
+    } catch (err) {
+        throw err;
+    }
+};
 
 const registerUser = async ({ vendorId, name, username, email, phone_no, whatsapp_no, password }) => {
     try {
@@ -33,7 +39,9 @@ const registerUser = async ({ vendorId, name, username, email, phone_no, whatsap
             authProvider: 'local'
         });
 
-        return common.returnResult(true, 200, `User created successfully`);
+        return common.returnResult(true, 201, `User registered successfully`, {
+            user: { _id: user._id, name: user.name, username: user.username, email: user.email }
+        });
     } catch (err) {
         throw err;
     }
@@ -148,7 +156,7 @@ const refreshAccessToken = async (incomingRefreshToken, deviceMeta) => {
             vendorId: user.vendorId
         });
 
-        return common.returnResult(true, 200, { accessToken: newAccessToken, refreshToken: newRefreshToken });
+        return common.returnResult(true, 200, 'Token refreshed successfully', { accessToken: newAccessToken, refreshToken: newRefreshToken });
     } catch (err) {
         // Genuine exception (e.g. session.save() failed mid-rotation). We already trusted
         // this session, so invalidate it defensively rather than leaving it in a half-rotated
@@ -201,5 +209,6 @@ module.exports = {
     loginUser,
     refreshAccessToken,
     logoutUser,
-    logoutAllDevices
+    logoutAllDevices,
+    getUserCount
 };

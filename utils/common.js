@@ -16,6 +16,22 @@ const returnResult = (isSuccess, statusCode, message, meta = {}) => {
     return {isSuccess, statusCode, message, meta};
 }
 
+const checkFeatureOnOrOff = async (vendorId, websiteMasterData, companyMasterData, websiteMasterField, companyMasterField) => {
+    try {
+            if (!websiteMasterData[websiteMasterField]) {
+                return returnResult(false, 403, websiteMasterData.temporaryFeatureOffMessage);
+            }
+            
+            if (!companyMasterData[companyMasterField]) {
+                return returnResult(false, 403, websiteMasterData.featureDisabledForVendorMessage);
+            }
+
+            return returnResult(true, 200 `All Good`);
+        } catch (err) {
+            throw err;        
+          }
+}
+
 // Validates the ID of documents
 const validateObjectId = (id) => {
   if (!id) {
@@ -127,6 +143,7 @@ module.exports = {
   sendSuccess,
   sendError,
   returnResult,
+  checkFeatureOnOrOff,
   validateObjectId,
   validateModelExists,
   setActiveStatusToFalse,

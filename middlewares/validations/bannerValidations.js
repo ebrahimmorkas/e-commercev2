@@ -35,7 +35,7 @@ const validateAddBanner = async (req, res, next) => {
             const nameExists = await Banner.exists({
                 vendorId,
                 name: name.trim(),
-                isDeleted: false
+                status: { $ne: 'D' }
             });
             if (nameExists) {
                 errors.push('Banner with this name already exists');
@@ -100,7 +100,7 @@ const validateDeleteBanner = (req, res, next) => {
 const validateUpdateBanner = async (req, res, next) => {
     try {
         const vendorId = req.vendorId;
-        const { banner_id, name, isActive, startDate, endDate, isDefault, precedence } = req.body;
+        const { banner_id, name, status, startDate, endDate, isDefault, precedence } = req.body;
         const errors = [];
 
         // banner_id
@@ -131,7 +131,7 @@ const validateUpdateBanner = async (req, res, next) => {
                 const nameExists = await Banner.exists({
                     vendorId,
                     name: name.trim(),
-                    isDeleted: false,
+                    status: { $ne: 'D' },
                     _id: { $ne: banner_id }
                 });
                 if (nameExists) {
@@ -140,9 +140,9 @@ const validateUpdateBanner = async (req, res, next) => {
             }
         }
 
-        // isActive
-        if (isActive !== undefined && isActive !== 'true' && isActive !== 'false' && typeof isActive !== 'boolean') {
-            errors.push('isActive must be a boolean');
+        // status
+        if (status !== undefined && !['A', 'I'].includes(status)) {
+            errors.push('Status must be either A (active) or I (inactive)');
         }
 
         // isDefault
@@ -153,7 +153,7 @@ const validateUpdateBanner = async (req, res, next) => {
         }
 
         // Fetch existing doc for date cross-validation
-        const existing = await Banner.findOne({ _id: banner_id, vendorId, isDeleted: false });
+        const existing = await Banner.findOne({ _id: banner_id, vendorId, status: { $ne: 'D' } });
         if (!existing) {
             cleanupUploadedFile(req);
             return common.sendError(res, 404, 'Banner not found');

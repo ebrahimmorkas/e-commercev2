@@ -7,20 +7,12 @@ const redisService = require('../services/redisService');
 const addAnnouncement = async (req, res) => {
     const vendorId = req.vendorId;
     try {
-        // Step 1: Check WebsiteMaster 
         const websiteMasterData = req.websiteMasterData;
-        // console.log(`Here is your website msater data ${websiteMasterData.isAnnouncementFeatureOn}`)
-        if (!websiteMasterData?.isAnnouncementFeatureOn) {
-            return common.sendError(res, 403, 'This feature is temporarily off');
-        }
-
-        // Step 2: Check CompanyMaster (vendor-level toggle)
         const companyMasterData = req.companyMasterData;
-        if (!companyMasterData?.isAnnouncementFeatureOn) {
-            return common.sendError(res, 403, 'This feature is disabled in your plan');
+        const validiyResult = await common.checkFeatureOnOrOff(vendorId, websiteMasterData, companyMasterData, "isAnnouncementFeatureOn", "isAnnouncementFeatureOn");
+        if(!validiyResult.isSuccess) {
+            return common.sendError(res, validiyResult.statusCode, validiyResult.message)
         }
-
-        // Step 3: Check announcement count against allowed limit
         const { numberOfAnnouncementsAllowed } = companyMasterData;
         const existingCount = await announcementService.getAnnouncementCount(vendorId);
         if (existingCount >= numberOfAnnouncementsAllowed) {
@@ -28,12 +20,14 @@ const addAnnouncement = async (req, res) => {
         }
 
         // Step 4: Add announcement
-        const announcement = await announcementService.addAnnouncement(vendorId, req.body, existingCount);
-        return common.sendSuccess(res, 201, 'Announcement added successfully', announcement);
+        const result = await announcementService.addAnnouncement(vendorId, req.body, existingCount);
+        if(result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, 201, 'Announcement added successfully', result);
 
     } catch (error) {
-        logger.logException('announementController - exception in adding announcement', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to add announcement');
+        logger.logException('announementController - exception in adding announcement', { vendorId, error }); 
     }
 };
 
@@ -42,6 +36,12 @@ const deleteAnnouncement = async (req, res) => {
     const vendorId = req.vendorId;
     const { announcement_id } = req.body;
     try {
+        const websiteMasterData = req.websiteMasterData;
+        const companyMasterData = req.companyMasterData;
+        const validiyResult = await common.checkFeatureOnOrOff(vendorId, websiteMasterData, companyMasterData, "isAnnouncementFeatureOn", "isAnnouncementFeatureOn");
+        if(!validiyResult.isSuccess) {
+            return common.sendError(res, validiyResult.statusCode, validiyResult.message)
+        }
         const result = await announcementService.softDeleteAnnouncement(vendorId, announcement_id, req.user._id);
 
         if (!result.isSuccess) {
@@ -58,6 +58,12 @@ const updateAnnouncement = async (req, res) => {
         const vendorId = req.vendorId;
         const { announcement_id } = req.body;
         try {
+            const websiteMasterData = req.websiteMasterData;
+        const companyMasterData = req.companyMasterData;
+        const validiyResult = await common.checkFeatureOnOrOff(vendorId, websiteMasterData, companyMasterData, "isAnnouncementFeatureOn", "isAnnouncementFeatureOn");
+        if(!validiyResult.isSuccess) {
+            return common.sendError(res, validiyResult.statusCode, validiyResult.message)
+        }
             const updated = await announcementService.updateAnnouncement(vendorId, announcement_id, req.body);
 
             if (!updated) {
@@ -77,9 +83,15 @@ const updateAnnouncement = async (req, res) => {
 const getAllAnnouncements = async (req, res) => {
     const vendorId = req.vendorId;
     try {
+        const websiteMasterData = req.websiteMasterData;
+        const companyMasterData = req.companyMasterData;
+        const validiyResult = await common.checkFeatureOnOrOff(vendorId, websiteMasterData, companyMasterData, "isAnnouncementFeatureOn", "isAnnouncementFeatureOn");
+        if(!validiyResult.isSuccess) {
+            return common.sendError(res, validiyResult.statusCode, validiyResult.message)
+        }
         const companySettingsData = req.companySettingsData;
         if (!companySettingsData?.showAnnouncements) {
-            return common.sendError(res, 403, 'Announcements are disabled for this store');
+            return common.sendError(res, 403, websiteMasterData.featureDisabledMessageForClient);
         }
 
         const result = await redisService.getOrSet(
@@ -87,6 +99,10 @@ const getAllAnnouncements = async (req, res) => {
             async () => await announcementService.fetchAllActiveAnnouncements(vendorId),
             3600
         );
+
+        if(!result.statusCode) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
 
         return common.sendSuccess(res, result.statusCode, result.message, result.meta.announcements);
     } catch (error) {
@@ -97,7 +113,16 @@ const getAllAnnouncements = async (req, res) => {
 const getAllAnnouncementsAdmin = async (req, res) => {
     const vendorId = req.vendorId;
     try {
+        const websiteMasterData = req.websiteMasterData;
+        const companyMasterData = req.companyMasterData;
+        const validiyResult = await common.checkFeatureOnOrOff(vendorId, websiteMasterData, companyMasterData, "isAnnouncementFeatureOn", "isAnnouncementFeatureOn");
+        if(!validiyResult.isSuccess) {
+            return common.sendError(res, validiyResult.statusCode, validiyResult.message)
+        }
         const result = await announcementService.fetchAllAnnouncementsAdmin(vendorId);
+        if(!result.statusCode) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
         return common.sendSuccess(res, result.statusCode, result.message, result.meta.announcements);
     } catch (error) {
         logger.logException('announcementController: getAllAnnouncementsAdmin - Exception while fetching all announcements for admin', { vendorId, error });
@@ -108,6 +133,12 @@ const getAnnouncementById = async (req, res) => {
     const vendorId = req.vendorId;
     const { id } = req.params;
     try {
+        const websiteMasterData = req.websiteMasterData;
+        const companyMasterData = req.companyMasterData;
+        const validiyResult = await common.checkFeatureOnOrOff(vendorId, websiteMasterData, companyMasterData, "isAnnouncementFeatureOn", "isAnnouncementFeatureOn");
+        if(!validiyResult.isSuccess) {
+            return common.sendError(res, validiyResult.statusCode, validiyResult.message)
+        }
         const announcement = await announcementService.fetchAnnouncementById(vendorId, id);
 
         if (!announcement) {

@@ -1,4 +1,4 @@
-const authService = require('../services/authServie');
+const authService = require('../services/authService');
 const { sendSuccess, sendError } = require('../utils/common');
 const { logInfo, logException } = require('../utils/logger');
 const { accessTokenCookieOptions, refreshTokenCookieOptions } = require('../utils/cookieOptions');
@@ -21,6 +21,16 @@ const register = async (req, res) => {
             return sendError(res, 400, 'name, username, email, phone_no and password are required');
         }
 
+        const companyMasterData = req.companyMasterData;
+        const { numberOfUsersAllowed } = companyMasterData;
+        const countResult = await authService.getUserCount(vendorId);
+        if (!countResult.isSuccess) {
+            return sendError(res, countResult.statusCode, countResult.message);
+        }
+        if (countResult.meta.count >= numberOfUsersAllowed) {
+            return sendError(res, 403, 'You have exceeded the number of users allowed');
+        }
+
         const newUser = await authService.registerUser({
             vendorId,
             name,
@@ -33,11 +43,11 @@ const register = async (req, res) => {
 
         if(!newUser.isSuccess) {
             logInfo(0, 1, newUser.message);
-            return sendError(res, 400, newUser.message);
+            return sendError(res, newUser.statusCode, newUser.message);
         }
 
-        logInfo(1, 0, 'User registered successfully', { userId: newUser._id });
-        return sendSuccess(res, 201, 'User registered successfully', newUser);
+        logInfo(1, 0, newUser.message, { userId: newUser.meta.user._id });
+        return sendSuccess(res, newUser.statusCode, newUser.message, newUser.meta.user);
     } catch (err) {
         logException('Error while registering user', err);
     }
@@ -60,11 +70,12 @@ const login = async (req, res) => {
             return sendError(res, 400, loginUser.message);
         }
 
+        const { accessToken, user } = loginUser.meta;
+
         res.cookie('refreshToken', loginUser.meta.refreshToken, refreshTokenCookieOptions);
 
-        accessToken = loginUser.meta.accessToken;
         logInfo(1, 0, 'User logged in successfully', { userId: user._id });
-        return sendSuccess(res, 200, 'Login successful', { user, accessToken });
+        return sendSuccess(res, loginUser.statusCode, loginUser.message, { user, accessToken });
     } catch (err) {
         logException('Error while logging in user', err);
     }
@@ -75,20 +86,19 @@ const refreshToken = async (req, res) => {
         const incomingRefreshToken = req.cookies?.refreshToken;
         const deviceMeta = getDeviceMeta(req);
 
-        const { accessToken, refreshToken: newRefreshToken } = await authService.refreshAccessToken(
-            incomingRefreshToken,
-            deviceMeta
-        );
+        const result = await authService.refreshAccessToken(incomingRefreshToken, deviceMeta);
 
-        if(!loginUser.isSuccess) {
-            logInfo(0, 1, loginUser.message);
-            return sendError(res, 400, loginUser.message);
+        if(!result.isSuccess) {
+            logInfo(0, 1, result.message);
+            return sendError(res, result.statusCode, result.message);
         }
+
+        const { accessToken, refreshToken: newRefreshToken } = result.meta;
 
         res.cookie('refreshToken', newRefreshToken, refreshTokenCookieOptions);
 
-        logInfo(1, 0, 'Access token refreshed successfully', {});
-        return sendSuccess(res, 200, 'Token refreshed successfully', { accessToken });
+        logInfo(1, 0, result.message, {});
+        return sendSuccess(res, result.statusCode, result.message, { accessToken });
     } catch (err) {
         res.clearCookie('refreshToken', refreshTokenCookieOptions);
         logException('Error while refreshing access token', err);
@@ -97,13 +107,18 @@ const refreshToken = async (req, res) => {
 
 const logout = async (req, res) => {
     try {
-        const incomingRefreshToken = req.cookies?.refreshToken;
-        await authService.logoutUser(incomingRefreshToken);
+const incomingRefreshToken = req.cookies?.refreshToken;
+        const result = await authService.logoutUser(incomingRefreshToken);
 
         res.clearCookie('refreshToken', refreshTokenCookieOptions);
 
-        logInfo(1, 0, 'User logged out successfully', {});
-        return sendSuccess(res, 200, 'Logout successful');
+        if (!result.isSuccess) {
+            logInfo(0, 1, result.message);
+            return sendError(res, result.statusCode, result.message);
+        }
+
+        logInfo(1, 0, result.message, {});
+        return sendSuccess(res, result.statusCode, result.message);
     } catch (err) {
         logException('Error while logging out user', err);
     }
@@ -112,12 +127,17 @@ const logout = async (req, res) => {
 const logoutAll = async (req, res) => {
     try {
         const incomingRefreshToken = req.cookies?.refreshToken;
-        await authService.logoutAllDevices(incomingRefreshToken);
+        const result = await authService.logoutAllDevices(incomingRefreshToken);
 
         res.clearCookie('refreshToken', refreshTokenCookieOptions);
 
-        logInfo(1, 0, 'User logged out from all devices successfully', {});
-        return sendSuccess(res, 200, 'Logged out from all devices successfully');
+        if (!result.isSuccess) {
+            logInfo(0, 1, result.message);
+            return sendError(res, result.statusCode, result.message);
+        }
+
+        logInfo(1, 0, result.message, {});
+        return sendSuccess(res, result.statusCode, result.message);
     } catch (err) {
         logException('Error while logging out from all devices', err);
     }

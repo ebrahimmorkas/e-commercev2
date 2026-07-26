@@ -2,6 +2,7 @@ const Banner = require('../models/Banner');
 const logger = require('../utils/logger');
 const redisService = require('./redisService');
 const redisKeys = require('../utils/redisKeys');
+const common = require('../utils/common');
 const fs = require('fs');
 
 const invalidateBannerCache = async (vendorId) => {
@@ -15,13 +16,17 @@ const invalidateBannerCache = async (vendorId) => {
 
 const getBannerCount = async (vendorId) => {
     try {
-        return await Banner.countDocuments({ vendorId, isDeleted: false });
+        const count = await Banner.countDocuments({ vendorId, status: { $ne: 'D' } });
+        if (count == 0) {
+            return common.returnResult(false, 404, `No records to show`);
+        }
+        return common.returnResult(true, 200, 'Banner count fetched successfully', { count });
     } catch (err) {
         throw err;
     }
 };
 
-const addBanner = async (vendorId, bannerData, imagePath, existingCount) => {
+const addBanner = async (vendorId, bannerData, imagePath, existingCount, userId) => {
     try {
         const isDefault = existingCount === 0;
 
@@ -34,12 +39,12 @@ const addBanner = async (vendorId, bannerData, imagePath, existingCount) => {
             const conflictExists = await Banner.exists({
                 vendorId,
                 precedence,
-                isDeleted: false
+                status: { $ne: 'D' }
             });
 
             if (conflictExists) {
                 await Banner.updateMany(
-                    { vendorId, precedence: { $gte: precedence }, isDeleted: false },
+                    { vendorId, precedence: { $gte: precedence }, status: { $ne: 'D' } },
                     { $inc: { precedence: 1 } }
                 );
             }
@@ -52,23 +57,26 @@ const addBanner = async (vendorId, bannerData, imagePath, existingCount) => {
             startDate: bannerData.startDate,
             endDate: bannerData.endDate,
             isDefault,
-            precedence
+            precedence,
+            createdBy: userId
         });
 
         const saved = await banner.save();
         logger.logInfo(1,0,'Banner added successfully', { vendorId, bannerId: saved._id });
 
         await invalidateBannerCache(vendorId);
-        return saved;
+        return common.returnResult(true, 201, 'Banner added successfully', { banner: saved });
     } catch (err) {
         throw err;
     }
 };
 
-const softDeleteBanner = async (vendorId, bannerId) => {
+const softDeleteBanner = async (vendorId, bannerId, userId) => {
     try {
-        const banner = await Banner.findOne({ _id: bannerId, vendorId, isDeleted: false });
-        if (!banner) return { notFound: true };
+        const banner = await Banner.findOne({ _id: bannerId, vendorId, status: { $ne: 'D' } });
+        if (!banner) {
+            return common.returnResult(false, 404, 'Banner not found', {});
+        }
 
         const wasDefault = banner.isDefault;
 
@@ -78,13 +86,14 @@ const softDeleteBanner = async (vendorId, bannerId) => {
             logger.logInfo(1,0,'Banner image deleted from filesystem', { vendorId, bannerId });
         }
 
-        banner.isDeleted = true;
+        banner.status = 'D';
         banner.isDefault = false;
+        banner.deletedBy = userId;
         await banner.save();
 
         if (wasDefault) {
             const nextDefault = await Banner.findOne(
-                { vendorId, isDeleted: false },
+                { vendorId, status: { $ne: 'D' } },
                 null,
                 { sort: { precedence: 1 } }
             );
@@ -96,7 +105,7 @@ const softDeleteBanner = async (vendorId, bannerId) => {
         }
 
         const remaining = await Banner.find(
-            { vendorId, isDeleted: false },
+            { vendorId, status: { $ne: 'D' } },
             null,
             { sort: { precedence: 1 } }
         );
@@ -114,30 +123,32 @@ const softDeleteBanner = async (vendorId, bannerId) => {
 
         logger.logInfo(1,0,'Banner soft deleted and precedences re-ordered', { vendorId, bannerId });
         await invalidateBannerCache(vendorId);
-        return { deleted: true };
+        return common.returnResult(true, 200, 'Banner deleted successfully', {});
     } catch (err) {
         throw err;
     }
 };
 
-const updateBanner = async (vendorId, bannerId, updateData, newImagePath) => {
+const updateBanner = async (vendorId, bannerId, updateData, newImagePath, userId) => {
     try {
-        const banner = await Banner.findOne({ _id: bannerId, vendorId, isDeleted: false });
-        if (!banner) return null;
+        const banner = await Banner.findOne({ _id: bannerId, vendorId, status: { $ne: 'D' } });
+        if (!banner) {
+            return common.returnResult(false, 404, 'Banner not found', {});
+        }
 
-        const { name, isActive, startDate, endDate, isDefault, precedence } = updateData;
+        const { name, status, startDate, endDate, isDefault, precedence } = updateData;
 
         if (precedence !== undefined && parseInt(precedence) !== banner.precedence) {
             const oldPrecedence = banner.precedence;
             const newPrecedence = parseInt(precedence);
 
             await Banner.updateMany(
-                { vendorId, precedence: { $gt: oldPrecedence }, isDeleted: false, _id: { $ne: bannerId } },
+                { vendorId, precedence: { $gt: oldPrecedence }, status: { $ne: 'D' }, _id: { $ne: bannerId } },
                 { $inc: { precedence: -1 } }
             );
 
             await Banner.updateMany(
-                { vendorId, precedence: { $gte: newPrecedence }, isDeleted: false, _id: { $ne: bannerId } },
+                { vendorId, precedence: { $gte: newPrecedence }, status: { $ne: 'D' }, _id: { $ne: bannerId } },
                 { $inc: { precedence: 1 } }
             );
 
@@ -146,10 +157,21 @@ const updateBanner = async (vendorId, bannerId, updateData, newImagePath) => {
 
         if (isDefault === true && !banner.isDefault) {
             await Banner.updateOne(
-                { vendorId, isDefault: true, isDeleted: false },
+                { vendorId, isDefault: true, status: { $ne: 'D' } },
                 { $set: { isDefault: false } }
             );
             banner.isDefault = true;
+        }
+
+        if (status !== undefined && status !== banner.status) {
+            if (status === 'A') {
+                banner.activeMarkedBy = userId;
+                banner.activeMarkedDate = new Date();
+            } else if (status === 'I') {
+                banner.inActiveMarkedBy = userId;
+                banner.inactiveMarkedDate = new Date();
+            }
+            banner.status = status;
         }
 
         // If new image uploaded, delete old one from filesystem
@@ -162,14 +184,15 @@ const updateBanner = async (vendorId, bannerId, updateData, newImagePath) => {
         }
 
         if (name !== undefined) banner.name = name;
-        if (isActive !== undefined) banner.isActive = isActive;
         if (startDate !== undefined) banner.startDate = startDate;
         if (endDate !== undefined) banner.endDate = endDate;
+
+        banner.updatedBy = userId;
 
         const updated = await banner.save();
         logger.logInfo(1,0,'Banner updated successfully', { vendorId, bannerId });
         await invalidateBannerCache(vendorId);
-        return updated;
+        return common.returnResult(true, 200, 'Banner updated successfully', { banner: updated });
     } catch (err) {
         throw err;
     }
@@ -178,12 +201,15 @@ const updateBanner = async (vendorId, bannerId, updateData, newImagePath) => {
 const fetchAllActiveBanners = async (vendorId) => {
     try {
         const banners = await Banner.find(
-            { vendorId, isDeleted: false, isActive: true },
+            { vendorId, status: 'A', endDate: { $gte: new Date() } },
             null,
             { sort: { isDefault: -1, precedence: 1 } }
         );
+        if(banners.length < 0) {
+            return common.returnResult(false, 404, `No records to show`);
+        }
         logger.logInfo(1,0,'Active banners fetched from DB', { vendorId });
-        return banners;
+        return common.returnResult(true, 200, 'Banners fetched successfully', { banners });
     } catch (err) {
         throw err;
     }
@@ -192,12 +218,15 @@ const fetchAllActiveBanners = async (vendorId) => {
 const fetchAllBannersAdmin = async (vendorId) => {
     try {
         const banners = await Banner.find(
-            { vendorId, isDeleted: false },
+            { vendorId, status: { $in: ['A', 'I'] } },
             null,
             { sort: { isDefault: -1, precedence: 1 } }
         );
+        if(banners.length < 0) {
+            return common.returnResult(false, 404, `No records to show`);
+        }
         logger.logInfo(1,0,'All banners fetched from DB for admin', { vendorId });
-        return banners;
+        return common.returnResult(true, 200, 'Banners fetched successfully', { banners });
     } catch (err) {
         throw err;
     }
@@ -205,10 +234,12 @@ const fetchAllBannersAdmin = async (vendorId) => {
 
 const fetchBannerById = async (vendorId, bannerId) => {
     try {
-        const banner = await Banner.findOne({ _id: bannerId, vendorId, isDeleted: false });
-        if (!banner) return null;
+        const banner = await Banner.findOne({ _id: bannerId, vendorId, status: { $ne: 'D' } });
+        if (!banner) {
+            return common.returnResult(false, 404, 'Banner not found', {});
+        }
         logger.logInfo(1,0,'Banner fetched by ID', { vendorId, bannerId });
-        return banner;
+        return common.returnResult(true, 200, 'Banner fetched successfully', { banner });
     } catch (err) {
         throw err;
     }

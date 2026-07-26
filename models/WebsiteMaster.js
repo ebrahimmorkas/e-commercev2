@@ -1,6 +1,10 @@
 const mongoose = require('mongoose');
 
 const websiteMasterSchema = mongoose.Schema({
+    numberOfUsersAllowed: {
+        type: Number,
+        default: 5,
+    },
     isSendingEmailFeatureOn: {
         type: Boolean,
         default: false
@@ -70,6 +74,10 @@ const websiteMasterSchema = mongoose.Schema({
     featureDisabledForVendorMessage: {
         type: String,
         default: 'This feature is not enabled for your account. Please contact support.'
+    },
+    featureDisabledMessageForClient: {
+        type: String,
+        default: 'This feature is disabled for this store.'
     },
     isBulkUploadForCategoriesFeatureOn: {
         type: Boolean,
