@@ -23,7 +23,7 @@ const validateAddAnnouncement = async (req, res, next) => {
             const nameExists = await Announcement.exists({
                 vendorId,
                 name: name.trim(),
-                isDeleted: false
+                status: { $ne: "D" },
             });
             if (nameExists) {
                 errors.push('Announcement with this name already exists');

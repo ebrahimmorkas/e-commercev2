@@ -96,7 +96,7 @@ class RedisService {
 
       return true;
     } catch (err) {
-      logger.Exception("Redis DEL error", { key, err });
+      logger.logException("Redis DEL error", { key, err });
       return false;
     }
   }
@@ -123,12 +123,12 @@ class RedisService {
 
       return freshData;
     } catch (err) {
-      logger.Exception("Redis getOrSet error", { key, err });
+      logger.logException("Redis getOrSet error", { key, err });
 
       try {
         return await fetchFunction();
       } catch (fetchErr) {
-        logger.Exception("Fallback fetch failed", { key, fetchErr });
+        logger.logException("Fallback fetch failed", { key, fetchErr });
         throw fetchErr;
       }
     }

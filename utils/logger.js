@@ -4,16 +4,29 @@ function logInfo(success, failure, message, meta = {}) {
   logger.info(meta, message);
 }
 
-function logException(message, err = {}) {
-  const errorData = err instanceof Error
-    ? {
-        message: err.message,
-        stack: err.stack,
-        name: err.name
-      }
-    : err;
+function logException(message, data = {}) {
+    if (data instanceof Error) {
+        return logger.error({
+            error: {
+                message: data.message,
+                stack: data.stack,
+                name: data.name
+            }
+        }, message);
+    }
 
-  logger.error({ error: errorData }, message);
+    if (data.error instanceof Error) {
+        return logger.error({
+            ...data,
+            error: {
+                message: data.error.message,
+                stack: data.error.stack,
+                name: data.error.name
+            }
+        }, message);
+    }
+
+    logger.error(data, message);
 }
 
 module.exports = {

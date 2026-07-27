@@ -6,7 +6,7 @@ const fetchCompanySettingsByVendorId = async (vendorId) => {
         logger.logInfo(null,null,'Fetching company settings from DB', { vendorId });
         const settings = await CompanySettings.findOne({ vendorId });
         if (!settings) {
-            logger.logError(0,1,'Company settings not found', { vendorId });
+            logger.logInfo(0,1,'Company settings not found', { vendorId });
             return null;
         }
         logger.logInfo(1,0,'Company settings fetched successfully', { vendorId });

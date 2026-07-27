@@ -7,7 +7,7 @@ const fetchCompanyMasterByVendorId = async (vendorId) => {
   const companyMasterData = await CompanyMaster.findOne({ vendorId });
   // console.log(`companyMaster data is: ${companyMasterData} and vendorId is ${vendorId}`)
   if (!companyMasterData) {
-    logger.logError(0,1,'Company master data not found', { vendorId });
+    logger.logInfo(0,1,'Company master data not found', { vendorId });
     return null;
   }
   logger.logInfo(1,0,'Company master data fetched successfully', { vendorId });

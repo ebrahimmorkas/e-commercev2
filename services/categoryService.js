@@ -162,11 +162,13 @@ const validateAttachment = async (vendorId, parentCategoryId, websiteMasterData,
             if (!subLimit.allowed) {
                 return common.returnResult(false, 403, subLimit.reason);
             }
+            return common.returnResult(true, 200, `Everything working good`);
         } else {
             const mainLimit = await checkMainCategoryLimit(vendorId, companyMasterData);
             if (!mainLimit.allowed) {
                 return common.returnResult(false, 403, mainLimit.reason);
             }
+            return common.returnResult(true, 200, `Can add category`);
         }
     } catch (err) {
         throw err;
@@ -183,7 +185,10 @@ const addCategory = async (vendorId, userId, data, file, websiteMasterData, comp
         }
 
 
-        await validateAttachment(vendorId, parent_category_id, websiteMasterData, companyMasterData);
+        const validateResults = await validateAttachment(vendorId, parent_category_id, websiteMasterData, companyMasterData);
+        if(!validateResults.isSuccess) {
+            return common.returnResult(false, validateResults.statusCode, validateResults.message);
+        }
 
         let image = { url: null, publicId: null };
         if (file) {

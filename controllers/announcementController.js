@@ -15,7 +15,7 @@ const addAnnouncement = async (req, res) => {
         }
         const { numberOfAnnouncementsAllowed } = companyMasterData;
         const existingCount = await announcementService.getAnnouncementCount(vendorId);
-        if (existingCount >= numberOfAnnouncementsAllowed) {
+        if (existingCount.meta.count >= numberOfAnnouncementsAllowed) {
             return common.sendError(res, 403, 'You have exceeded the number of announcements allowed');
         }
 

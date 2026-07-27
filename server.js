@@ -52,6 +52,7 @@ app.get("/", (req, res) => {
 app.get('/flush-redis', async (req, res) => {
     const redisService = require('./services/redisService');
     await redisService.del('website-master');
+    await redisService.del('company-master-configuration:6a63443e263b29b8e59374eb')
     res.send('Flushed');
 });
 // End of dummy to be removed

@@ -84,7 +84,11 @@ const announcementSchema = new mongoose.Schema({
     inactiveMarkedDate: {
         type: Date,
         default: null
-    }
+    },
+     remarks: {
+        type: String,
+        default: null
+     }
 }, {
     timestamps: true
 });

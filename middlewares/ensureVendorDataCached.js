@@ -1,6 +1,6 @@
 const redisService = require('../services/redisService');
 const redisKeys = require('../utils/redisKeys');
-// const companySettingsService = require('../services/companySettingsService');
+const companySettingsService = require('../services/companySettingsService');
 const companyMasterService = require('../services/companyMasterService');
 const websiteMasterService = require('../services/websiteMasterService');
 const logger = require('../utils/logger');

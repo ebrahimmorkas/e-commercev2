@@ -6,7 +6,7 @@ const fetchWebsiteMasterData = async () => {
         logger.logInfo(null,null,'Fetching website master data from DB');
         const websiteMasterData = await WebsiteMaster.findOne();
         if (!websiteMasterData) {
-            logger.logError(0,1,`Website master data not found`)
+            logger.logInfo(0,1,`Website master data not found`)
             return null;
         }
         logger.logInfo(1,0,`Website Master data fetched succesfully`);

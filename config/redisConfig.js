@@ -42,7 +42,7 @@ const connectRedis = async () => {
 
     return client;
   } catch (err) {
-    logger.Exception("Redis connection failed", { err });
+    logger.logException("Redis connection failed", { err });
     return null; 
   }
 };
@@ -62,7 +62,7 @@ const closeRedis = async () => {
       logger.logInfo(1,0,"Redis connection closed gracefully");
     }
   } catch (err) {
-    logger.Exception("Error closing Redis", { err });
+    logger.logException("Error closing Redis", { err });
   }
 };
 

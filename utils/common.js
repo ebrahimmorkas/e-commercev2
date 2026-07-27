@@ -26,7 +26,7 @@ const checkFeatureOnOrOff = async (vendorId, websiteMasterData, companyMasterDat
                 return returnResult(false, 403, websiteMasterData.featureDisabledForVendorMessage);
             }
 
-            return returnResult(true, 200 `All Good`);
+            return returnResult(true, 200, `All Good`);
         } catch (err) {
             throw err;        
           }
