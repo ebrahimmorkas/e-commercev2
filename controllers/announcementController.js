@@ -20,7 +20,7 @@ const addAnnouncement = async (req, res) => {
         }
 
         // Step 4: Add announcement
-        const result = await announcementService.addAnnouncement(vendorId, req.body, existingCount);
+        const result = await announcementService.addAnnouncement(vendorId, req.body, existingCount.meta.count);
         if(result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
