@@ -15,8 +15,8 @@ const userSchema = mongoose.Schema({
     },
     username: {
         type: String,
-        unique: true,
-        required: true
+        required: true,
+        lowercase: true
     },
     password: {
         type: String,
@@ -42,8 +42,7 @@ const userSchema = mongoose.Schema({
         required: true,
         trim: true,
         minlength: 10,
-        maxlength: 14,
-        unique: true
+        maxlength: 14
     },
     whatsapp_no: {
         type: String,
@@ -55,7 +54,6 @@ const userSchema = mongoose.Schema({
     email: {
         type: String,
         required: true,
-        unique: true,
         lowercase: true,
         trim: true
     },
@@ -102,5 +100,30 @@ const userSchema = mongoose.Schema({
 }, {
     timestamps: true
 });
+
+userSchema.index(
+    { vendorId: 1, username: 1 },
+    { unique: true }
+);
+
+userSchema.index(
+    { vendorId: 1, email: 1 },
+    { unique: true }
+);
+
+userSchema.index(
+    { vendorId: 1, phone_no: 1 },
+    { unique: true }
+);
+
+userSchema.index(
+    { vendorId: 1, whatsapp_no: 1 },
+    {
+        unique: true,
+        partialFilterExpression: {
+            whatsapp_no: { $exists: true, $type: "string" }
+        }
+    }
+);
 
 module.exports = mongoose.model('User', userSchema);

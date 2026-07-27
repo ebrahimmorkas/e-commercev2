@@ -2,14 +2,14 @@ const mongoose = require("mongoose");
 
 const addressSchema = new mongoose.Schema(
   {
-    user_id: {
+    userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
       index: true,
     },
 
-    vendor_id: {
+    vendorId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Vendor",
       required: true,
@@ -122,6 +122,6 @@ const addressSchema = new mongoose.Schema(
 );
 
 // Speeds up the most common query: "give me this user's addresses for this vendor".
-addressSchema.index({ user_id: 1, vendor_id: 1, status: 1 });
+addressSchema.index({ userId: 1, vendorId: 1, status: 1 });
 
 module.exports = mongoose.model("Address", addressSchema);

@@ -14,21 +14,20 @@ const {
 
 // Every address route needs: which vendor storefront (domain) + that vendor's
 // cached config (for allowedCountries) + which user is logged in.
-router.use(vendorDetection, ensureVendorDataCached, authenticate);
 
-router.post("/", validate(createAddressSchema, "body"), addressController.createAddress);
+router.post("/add-address", validate(createAddressSchema, "body"), addressController.createAddress);
 
-router.get("/", addressController.listAddresses);
+router.get("/get-address", addressController.listAddresses);
 
 router.get("/:id", validate(addressIdParamSchema, "params"), addressController.getAddressById);
 
 router.put(
-  "/:id",
+  "/update-address",
   validate(addressIdParamSchema, "params"),
   validate(updateAddressSchema, "body"),
   addressController.updateAddress
 );
 
-router.delete("/:id", validate(addressIdParamSchema, "params"), addressController.deleteAddress);
+router.delete("/delete-address", validate(addressIdParamSchema, "params"), addressController.deleteAddress);
 
 module.exports = router;

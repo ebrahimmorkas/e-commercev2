@@ -66,7 +66,7 @@ const updateAddress = async (req, res) => {
     const userId = req.user._id;
     const vendorId = req.vendorId;
     const allowedCountries = req.companyMasterData?.allowedCountries || [];
-    const { id } = req.params;
+    const { address_Id } = req.body;
 
     const result = await addressService.updateAddress(id, req.body, { userId, vendorId, allowedCountries });
 
@@ -86,7 +86,7 @@ const deleteAddress = async (req, res) => {
   try {
     const userId = req.user._id;
     const vendorId = req.vendorId;
-    const { id } = req.params;
+    const { address_id } = req.body;
 
     const result = await addressService.deleteAddress(id, { userId, vendorId });
 

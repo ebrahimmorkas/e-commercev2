@@ -13,6 +13,7 @@ const companyMasterRoutes = require('./routes/companyMasterRoutes');
 const announcementRoutes = require('./routes/announcementRoutes');
 const bannerRoutes = require('./routes/bannerRoutes');
 const categoryRoutes = require('./routes/categoryRoutes.js');
+const  addressRoutes = require('./routes/addressRoutes.js');
 
 const app = express();
 
@@ -43,6 +44,7 @@ app.use('/api/category', categoryRoutes);
 // Private Routes
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/banners', bannerRoutes);
+app.use('api/address', addressRoutes);
 
 // Start of dummy to be removed
 app.get("/", (req, res) => {

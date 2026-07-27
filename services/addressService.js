@@ -55,8 +55,8 @@ const createAddress = async (payload, context) => {
 
     const address = await Address.create({
       ...payload,
-      user_id: userId,
-      vendor_id: vendorId,
+      userId: userId,
+      vendorId: vendorId,
       createdBy: userId,
     });
 
@@ -72,8 +72,8 @@ const createAddress = async (payload, context) => {
 const listAddresses = async ({ userId, vendorId }) => {
   try {
     const addresses = await Address.find({
-      user_id: userId,
-      vendor_id: vendorId,
+      userId: userId,
+      vendorId: vendorId,
       status: { $ne: "D" },
     })
       .populate("country_id", "country_name")
@@ -99,8 +99,8 @@ const getAddressById = async (addressId, { userId, vendorId }) => {
   try {
     const address = await Address.findOne({
       _id: addressId,
-      user_id: userId,
-      vendor_id: vendorId,
+      userId: userId,
+      vendorId: vendorId,
       status: { $ne: "D" },
     })
       .populate("country_id", "country_name")
@@ -127,8 +127,8 @@ const updateAddress = async (addressId, payload, context) => {
 
     const address = await Address.findOne({
       _id: addressId,
-      user_id: userId,
-      vendor_id: vendorId,
+      userId: userId,
+      vendorId: vendorId,
       status: { $ne: "D" },
     });
 
@@ -168,8 +168,8 @@ const deleteAddress = async (addressId, { userId, vendorId }) => {
   try {
     const address = await Address.findOne({
       _id: addressId,
-      user_id: userId,
-      vendor_id: vendorId,
+      userId: userId,
+      vendorId: vendorId,
       status: { $ne: "D" },
     });
 
