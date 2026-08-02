@@ -5,7 +5,7 @@ const { generateAccessToken, generateRefreshToken, verifyRefreshToken, hashToken
 const common = require('../utils/common');
 require('dotenv').config();
 
-const SALT_ROUNDS = process.env.SALT_ROUNDS;
+const SALT_ROUNDS = Number(process.env.SALT_ROUNDS);
 
 const getUserCount = async (vendorId) => {
     try {
@@ -19,6 +19,7 @@ const getUserCount = async (vendorId) => {
 const registerUser = async ({ vendorId, name, username, email, phone_no, whatsapp_no, password }) => {
     try {
         const existingUser = await User.findOne({
+            vendorId,
             $or: [{ username }, { email }, { phone_no }]
         });
 
@@ -43,13 +44,22 @@ const registerUser = async ({ vendorId, name, username, email, phone_no, whatsap
             user: { _id: user._id, name: user.name, username: user.username, email: user.email }
         });
     } catch (err) {
+        // Handling of race condtion when register button is clicked at the same time for same credentials
+        if (err.code === 11000) {
+            return common.returnResult(false, 409, `User already exists with the given username, email or phone number`);
+        }
         throw err;
     }
 };
 
-const loginUser = async ({ identifier, password }, deviceMeta) => {
+const loginUser = async ({ identifier, password }, deviceMeta, vendorId) => {
     try {
+        if (!vendorId) {
+            // Vendor detection fails
+            return common.returnResult(false, 401, `Invalid credentials`);
+        }
         const user = await User.findOne({
+            vendorId,
             $or: [{ username: identifier }, { email: identifier }, { phone_no: identifier }],
             status: { $ne: 'D' }
         });
@@ -105,16 +115,16 @@ const refreshAccessToken = async (incomingRefreshToken, deviceMeta) => {
     let session = null;
     try {
         if (!incomingRefreshToken) {
-            return common.returnResult(false, 401, 'Refresh token is missing');
+            // return common.returnResult(false, 401, 'Refresh token is missing');
+            return common.returnResult(false, 401, 'Session expired');
         }
 
         let decoded;
         try {
             decoded = verifyRefreshToken(incomingRefreshToken);
         } catch (verifyErr) {
-            // Invalid/expired JWT is an expected outcome (token naturally expires,
-            // gets tampered with, etc.) - not a server exception.
-            return common.returnResult(false, 401, 'Invalid or expired refresh token');
+            // return common.returnResult(false, 401, 'Invalid or expired refresh token');
+            return common.returnResult(false, 401, 'Session expired');
         }
 
         const incomingHash = hashToken(incomingRefreshToken);
@@ -156,7 +166,7 @@ const refreshAccessToken = async (incomingRefreshToken, deviceMeta) => {
             vendorId: user.vendorId
         });
 
-        return common.returnResult(true, 200, 'Token refreshed successfully', { accessToken: newAccessToken, refreshToken: newRefreshToken });
+        return common.returnResult(true, 200, 'Session renewed successfully', { accessToken: newAccessToken, refreshToken: newRefreshToken });
     } catch (err) {
         // Genuine exception (e.g. session.save() failed mid-rotation). We already trusted
         // this session, so invalidate it defensively rather than leaving it in a half-rotated

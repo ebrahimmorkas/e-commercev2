@@ -55,6 +55,11 @@ const register = async (req, res) => {
 
 const login = async (req, res) => {
     try {
+        const vendorId = req.vendorId;
+        if (!vendorId) {
+            // Vendor detection fails
+            return sendError(res, 400, 'nvalid credentials');
+        }
         const { identifier, password } = req.body;
 
         if (!identifier || !password) {
@@ -63,7 +68,7 @@ const login = async (req, res) => {
         }
 
         const deviceMeta = getDeviceMeta(req);
-        const loginUser = await authService.loginUser({ identifier, password }, deviceMeta);
+        const loginUser = await authService.loginUser({ identifier, password }, deviceMeta, vendorId);
 
         if(!loginUser.isSuccess) {
             logInfo(0, 1, loginUser.message);
