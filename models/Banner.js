@@ -17,6 +17,10 @@ const bannerSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    imageAssetId: {
+        type: mongoose.Types.ObjectId,
+        ref: 'ImageAsset'
+    },
     status: {
         type: String,
         enum: ['I', 'A', 'D'],

@@ -2,14 +2,6 @@ const Banner = require('../../models/Banner');
 const common = require('../../utils/common');
 const logger = require('../../utils/logger');
 const mongoose = require('mongoose');
-const fs = require('fs');
-
-// Helper to delete uploaded file if validation fails
-const cleanupUploadedFile = (req) => {
-    if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-    }
-};
 
 const validateAddBanner = async (req, res, next) => {
     try {
@@ -69,13 +61,11 @@ const validateAddBanner = async (req, res, next) => {
         }
 
         if (errors.length > 0) {
-            cleanupUploadedFile(req);
             return common.sendError(res, 400, 'Validation failed', errors);
         }
 
         next();
     } catch (err) {
-        cleanupUploadedFile(req);
         logger.logException('bannerValidations: validateAddBanner - Exception in validation middleware', { err });
     }
 };
@@ -105,11 +95,9 @@ const validateUpdateBanner = async (req, res, next) => {
 
         // banner_id
         if (!banner_id) {
-            cleanupUploadedFile(req);
             return common.sendError(res, 400, 'Validation failed', ['Banner ID is required']);
         }
         if (!mongoose.Types.ObjectId.isValid(banner_id)) {
-            cleanupUploadedFile(req);
             return common.sendError(res, 400, 'Validation failed', ['Invalid banner ID']);
         }
 
@@ -155,7 +143,6 @@ const validateUpdateBanner = async (req, res, next) => {
         // Fetch existing doc for date cross-validation
         const existing = await Banner.findOne({ _id: banner_id, vendorId, status: { $ne: 'D' } });
         if (!existing) {
-            cleanupUploadedFile(req);
             return common.sendError(res, 404, 'Banner not found');
         }
 
@@ -185,13 +172,11 @@ const validateUpdateBanner = async (req, res, next) => {
         }
 
         if (errors.length > 0) {
-            cleanupUploadedFile(req);
             return common.sendError(res, 400, 'Validation failed', errors);
         }
 
         next();
     } catch (err) {
-        cleanupUploadedFile(req);
         logger.logException('bannerValidations: validateUpdateBanner - Exception in validation middleware', { err });
     }
 };

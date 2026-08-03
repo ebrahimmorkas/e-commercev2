@@ -9,6 +9,7 @@ const common = require('../utils/common');
 const ensureVendorDataCached = async (req, res, next) => {
     try {
         const vendorId = req.vendorId;
+        console.log(`Vendor ID ${vendorId}`);
         if (!vendorId) {
             logger.logInfo(0,1,`Vendor ID not found`);
             return common.sendError(res, 400, `Vendor identification failed`);

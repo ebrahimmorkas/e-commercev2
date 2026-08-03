@@ -108,7 +108,12 @@ const companyMasterSchema = mongoose.Schema({
     },
     isBulkUploadForCategoriesFeatureOn: {
         type: Boolean,
-    }
+    },
+    imageService: {
+        type: String,
+        enum: ['cloudinary', 'aws', 'r2', 'local'],
+        default: 'cloudinary'
+    },
 }, {
   timestamps: true
 });

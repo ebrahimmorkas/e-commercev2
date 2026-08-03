@@ -81,6 +81,15 @@ const websiteMasterSchema = mongoose.Schema({
     },
     isBulkUploadForCategoriesFeatureOn: {
         type: Boolean,
+    },
+    mainImageService: {
+        type: String,
+        enum: ['cloudinary', 'aws', 'r2', 'local'],
+        required: true
+    },
+    enforceMainImageService: {
+        type: Boolean,
+        default: false
     }
 }, {
   timestamps: true

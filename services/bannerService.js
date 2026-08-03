@@ -3,7 +3,7 @@ const logger = require('../utils/logger');
 const redisService = require('./redisService');
 const redisKeys = require('../utils/redisKeys');
 const common = require('../utils/common');
-const fs = require('fs');
+const imageUploadService = require('./imageUploadService');
 
 const invalidateBannerCache = async (vendorId) => {
     try {
@@ -18,7 +18,7 @@ const getBannerCount = async (vendorId) => {
     try {
         const count = await Banner.countDocuments({ vendorId, status: { $ne: 'D' } });
         if (count == 0) {
-            return common.returnResult(false, 404, `No records to show`);
+            return common.returnResult(false, 404, `No records to show`, {count});
         }
         return common.returnResult(true, 200, 'Banner count fetched successfully', { count });
     } catch (err) {
@@ -26,8 +26,22 @@ const getBannerCount = async (vendorId) => {
     }
 };
 
-const addBanner = async (vendorId, bannerData, imagePath, existingCount, userId) => {
+const addBanner = async (vendorId, bannerData, file, existingCount, userId, companyMasterData, websiteMasterData) => {
     try {
+        const uploadResult = await imageUploadService.uploadImage({
+            vendorId,
+            module: 'banner',
+            file,
+            userId,
+            maxSizeField: 'allowedBannerMB',
+            companyMasterData,
+            websiteMasterData
+        });
+        if (!uploadResult.isSuccess) {
+            return common.returnResult(false, uploadResult.statusCode, uploadResult.message);
+        }
+        const imageAsset = uploadResult.meta.image;
+
         const isDefault = existingCount === 0;
 
         let { precedence } = bannerData;
@@ -53,7 +67,8 @@ const addBanner = async (vendorId, bannerData, imagePath, existingCount, userId)
         const banner = new Banner({
             vendorId,
             name: bannerData.name,
-            image: imagePath,
+            image: imageAsset.url,
+            imageAssetId: imageAsset._id,
             startDate: bannerData.startDate,
             endDate: bannerData.endDate,
             isDefault,
@@ -81,9 +96,11 @@ const softDeleteBanner = async (vendorId, bannerId, userId) => {
         const wasDefault = banner.isDefault;
 
         // Delete image from filesystem
-        if (banner.image && fs.existsSync(banner.image)) {
-            fs.unlinkSync(banner.image);
-            logger.logInfo(1,0,'Banner image deleted from filesystem', { vendorId, bannerId });
+        if (banner.imageAssetId) {
+            const imageDeleteResult = await imageUploadService.deleteImage({ imageId: banner.imageAssetId, userId });
+            if (!imageDeleteResult.isSuccess) {
+                return common.returnResult(false, imageDeleteResult.statusCode, imageDeleteResult.message);
+            }
         }
 
         banner.status = 'D';
@@ -129,7 +146,7 @@ const softDeleteBanner = async (vendorId, bannerId, userId) => {
     }
 };
 
-const updateBanner = async (vendorId, bannerId, updateData, newImagePath, userId) => {
+const updateBanner = async (vendorId, bannerId, updateData, newImageFile, userId, companyMasterData, websiteMasterData) => {
     try {
         const banner = await Banner.findOne({ _id: bannerId, vendorId, status: { $ne: 'D' } });
         if (!banner) {
@@ -174,13 +191,32 @@ const updateBanner = async (vendorId, bannerId, updateData, newImagePath, userId
             banner.status = status;
         }
 
-        // If new image uploaded, delete old one from filesystem
-        if (newImagePath) {
-            if (banner.image && fs.existsSync(banner.image)) {
-                fs.unlinkSync(banner.image);
-                logger.logInfo(1,0,'Old banner image deleted from filesystem', { vendorId, bannerId });
+        if (newImageFile) {
+            if (banner.imageAssetId) {
+                const imageUpdateResult = await imageUploadService.updateImage({
+                    imageId: banner.imageAssetId,
+                    file: newImageFile,
+                    userId,
+                    maxSizeField: 'allowedBannerMB',
+                    companyMasterData,
+                    websiteMasterData
+                });
+                if (!imageUpdateResult.isSuccess) {
+                    return common.returnResult(false, imageUpdateResult.statusCode, imageUpdateResult.message);
+                }
+                banner.image = imageUpdateResult.meta.image.url;
+            } else {
+                // Legacy banner with no imageAssetId yet — start tracking it from now on
+                const uploadResult = await imageUploadService.uploadImage({
+                    vendorId, module: 'banner', file: newImageFile, userId,
+                    maxSizeField: 'allowedBannerMB', companyMasterData, websiteMasterData
+                });
+                if (!uploadResult.isSuccess) {
+                    return common.returnResult(false, uploadResult.statusCode, uploadResult.message);
+                }
+                banner.image = uploadResult.meta.image.url;
+                banner.imageAssetId = uploadResult.meta.image._id;
             }
-            banner.image = newImagePath;
         }
 
         if (name !== undefined) banner.name = name;

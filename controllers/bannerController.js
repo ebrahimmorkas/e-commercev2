@@ -16,15 +16,19 @@ const addBanner = async (req, res) => {
 
         const { numberOfBannersAllowed } = companyMasterData;
         const countResult = await bannerService.getBannerCount(vendorId);
-        if (!countResult.isSuccess) {
-            return common.sendError(res, countResult.statusCode, countResult.message);
+        if(!countResult.meta.count == 0) {
+            if (!countResult.isSuccess) {
+                return common.sendError(res, countResult.statusCode, countResult.message);
+            }
         }
+        
         if (countResult.meta.count >= numberOfBannersAllowed) {
             return common.sendError(res, 403, 'You have exceeded the number of banners allowed');
         }
 
-        const imagePath = req.file.path;
-        const result = await bannerService.addBanner(vendorId, req.body, imagePath, countResult.meta.count, req.user._id);
+        const result = await bannerService.addBanner(vendorId, req.body, req.file, countResult.meta.count, req.user._id, companyMasterData, websiteMasterData);
+        // const result = await bannerService.addBanner(vendorId, req.body, req.file, countResult.meta.count, '6a63443e263b29b8e59374eb', companyMasterData, websiteMasterData);
+        
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
@@ -66,14 +70,12 @@ const updateBanner = async (req, res) => {
         if(!validiyResult.isSuccess) {
             return common.sendError(res, validiyResult.statusCode, validiyResult.message)
         }
-        const newImagePath = req.file ? req.file.path : null;
-
         const updateData = {
             ...req.body,
             isDefault: req.body.isDefault !== undefined ? req.body.isDefault === 'true' || req.body.isDefault === true : undefined
         };
 
-        const result = await bannerService.updateBanner(vendorId, banner_id, updateData, newImagePath, req.user._id);
+        const result = await bannerService.updateBanner(vendorId, banner_id, updateData, req.file || null, req.user._id, companyMasterData, websiteMasterData);
 
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
