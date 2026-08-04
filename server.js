@@ -1,6 +1,7 @@
 const express = require('express');
-const connectDB = require('./config/dbConfig')
 const cors = require('cors')
+const cookieParser = require('cookie-parser')
+const connectDB = require('./config/dbConfig')
 const logger = require('./utils/logger.js')
 const {connectRedis} = require('./config/redisConfig');
 require('dotenv').config();
@@ -19,13 +20,15 @@ const authRoutes = require('./routes/authRoutes.js');
 const app = express();
 
 app.use(cors({
-  origin: '*',
+  origin: 'true',
+  credentials: true,
 }));
 
 connectDB();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 app.use('/uploads', express.static('uploads'));
 
 // Apply middlewares to all routes

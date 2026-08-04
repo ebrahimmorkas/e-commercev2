@@ -30,7 +30,7 @@ const getAnnouncementCount = async (vendorId) => {
     try {
         const count = await Announcement.countDocuments({ vendorId, status: { $ne: 'D' } });
         if(count == 0) {
-            return common.returnResult(false, 200, `No Announcements to show`);
+            return common.returnResult(true, 200, 'Announcement count fetched successfully', { count });
         }
         return common.returnResult(true, 200, 'Announcement count fetched successfully', { count });
     } catch (err) {

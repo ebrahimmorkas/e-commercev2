@@ -72,13 +72,13 @@ const validateAddBanner = async (req, res, next) => {
 
 const validateDeleteBanner = (req, res, next) => {
     try {
-        const { banner_id } = req.body;
-        if (!banner_id) {
+        const { bannerId } = req.body;
+        if (!bannerId) {
             logger.logInfo(0,1,'bannerValidations: validateDeleteBanner - Banner ID not provided');
             return common.sendError(res, 400, 'Validation failed', ['Banner ID is required']);
         }
-        if (!mongoose.Types.ObjectId.isValid(banner_id)) {
-            logger.logInfo(0,1,`bannerValidations: validateDeleteBanner - Invalid banner ID ${banner_id}`);
+        if (!mongoose.Types.ObjectId.isValid(bannerId)) {
+            logger.logInfo(0,1,`bannerValidations: validateDeleteBanner - Invalid banner ID ${bannerId}`);
             return common.sendError(res, 400, 'Validation failed', ['Invalid banner ID']);
         }
         next();
@@ -90,19 +90,19 @@ const validateDeleteBanner = (req, res, next) => {
 const validateUpdateBanner = async (req, res, next) => {
     try {
         const vendorId = req.vendorId;
-        const { banner_id, name, status, startDate, endDate, isDefault, precedence } = req.body;
+        const { bannerId: bannerId, name, status, startDate, endDate, isDefault, precedence } = req.body;
         const errors = [];
 
-        // banner_id
-        if (!banner_id) {
+        // bannerId
+        if (!bannerId) {
             return common.sendError(res, 400, 'Validation failed', ['Banner ID is required']);
         }
-        if (!mongoose.Types.ObjectId.isValid(banner_id)) {
+        if (!mongoose.Types.ObjectId.isValid(bannerId)) {
             return common.sendError(res, 400, 'Validation failed', ['Invalid banner ID']);
         }
 
         // At least one field must be provided
-        const bodyKeys = Object.keys(req.body).filter(k => k !== 'banner_id');
+        const bodyKeys = Object.keys(req.body).filter(k => k !== 'bannerId');
         if (bodyKeys.length === 0 && !req.file) {
             return common.sendError(res, 400, 'Validation failed', ['At least one field must be provided for update']);
         }
@@ -120,7 +120,7 @@ const validateUpdateBanner = async (req, res, next) => {
                     vendorId,
                     name: name.trim(),
                     status: { $ne: 'D' },
-                    _id: { $ne: banner_id }
+                    _id: { $ne: bannerId }
                 });
                 if (nameExists) {
                     errors.push('Banner with this name already exists');
@@ -141,7 +141,7 @@ const validateUpdateBanner = async (req, res, next) => {
         }
 
         // Fetch existing doc for date cross-validation
-        const existing = await Banner.findOne({ _id: banner_id, vendorId, status: { $ne: 'D' } });
+        const existing = await Banner.findOne({ _id: bannerId, vendorId, status: { $ne: 'D' } });
         if (!existing) {
             return common.sendError(res, 404, 'Banner not found');
         }

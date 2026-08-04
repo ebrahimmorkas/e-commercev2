@@ -143,7 +143,7 @@ const validateUpdateAnnouncement = async (req, res, next) => {
                 const nameExists = await Announcement.exists({
                     vendorId,
                     name: name.trim(),
-                    isDeleted: false,
+                    status: { $ne: 'D' },
                     _id: { $ne: announcement_id }
                 });
                 if (nameExists) {
@@ -189,7 +189,7 @@ const validateUpdateAnnouncement = async (req, res, next) => {
         }
 
         // Fetch existing doc for date cross-validation
-        const existing = await Announcement.findOne({ _id: announcement_id, vendorId, isDeleted: false });
+        const existing = await Announcement.findOne({ _id: announcement_id, vendorId, status: { $ne: 'D' } });
         if (!existing) {
             return common.sendError(res, 404, 'Announcement not found');
         }

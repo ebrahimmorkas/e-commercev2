@@ -27,7 +27,6 @@ const addBanner = async (req, res) => {
         }
 
         const result = await bannerService.addBanner(vendorId, req.body, req.file, countResult.meta.count, req.user._id, companyMasterData, websiteMasterData);
-        // const result = await bannerService.addBanner(vendorId, req.body, req.file, countResult.meta.count, '6a63443e263b29b8e59374eb', companyMasterData, websiteMasterData);
         
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
@@ -41,7 +40,7 @@ const addBanner = async (req, res) => {
 
 const deleteBanner = async (req, res) => {
     const vendorId = req.vendorId;
-    const { banner_id } = req.body;
+    const { bannerId } = req.body;
     try {
         const websiteMasterData = req.websiteMasterData;
         const companyMasterData = req.companyMasterData;
@@ -49,7 +48,7 @@ const deleteBanner = async (req, res) => {
         if(!validiyResult.isSuccess) {
             return common.sendError(res, validiyResult.statusCode, validiyResult.message)
         }
-        const result = await bannerService.softDeleteBanner(vendorId, banner_id, req.user._id);
+        const result = await bannerService.softDeleteBanner(vendorId, bannerId, req.user._id);
 
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
@@ -62,7 +61,7 @@ const deleteBanner = async (req, res) => {
 
 const updateBanner = async (req, res) => {
     const vendorId = req.vendorId;
-    const { banner_id } = req.body;
+    const { bannerId } = req.body;
     try {
         const websiteMasterData = req.websiteMasterData;
         const companyMasterData = req.companyMasterData;
@@ -75,7 +74,8 @@ const updateBanner = async (req, res) => {
             isDefault: req.body.isDefault !== undefined ? req.body.isDefault === 'true' || req.body.isDefault === true : undefined
         };
 
-        const result = await bannerService.updateBanner(vendorId, banner_id, updateData, req.file || null, req.user._id, companyMasterData, websiteMasterData);
+        const result = await bannerService.updateBanner(vendorId, bannerId, updateData, req.file || null, req.user._id, companyMasterData, websiteMasterData);
+        
 
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);

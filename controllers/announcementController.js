@@ -21,10 +21,10 @@ const addAnnouncement = async (req, res) => {
 
         // Step 4: Add announcement
         const result = await announcementService.addAnnouncement(vendorId, req.body, existingCount.meta.count);
-        if(result.isSuccess) {
+        if(!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, 201, 'Announcement added successfully', result);
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta.announcement);
 
     } catch (error) {
         logger.logException('announementController - exception in adding announcement', { vendorId, error }); 
@@ -66,14 +66,13 @@ const updateAnnouncement = async (req, res) => {
         }
             const updated = await announcementService.updateAnnouncement(vendorId, announcement_id, req.body);
 
-            if (!updated) {
-                return common.sendError(res, 404, 'Announcement not found');
+            if (!updated.isSuccess) {
+                return common.sendError(res, updated.statusCode, updated.message, updated.meta.announcement);
             }
 
             return common.sendSuccess(res, 200, 'Announcement updated successfully', updated);
         } catch (error) {
             logger.logException('announcementController - exception in updating announcement', { vendorId, error });
-            // return common.sendError(res, 500, 'Failed to update announcement');
         }
     } catch (err) {
         logger.logException(`announcementController: updateAnnouncement - Exception while updating the announcement from controller ${err}`)
@@ -120,7 +119,7 @@ const getAllAnnouncementsAdmin = async (req, res) => {
             return common.sendError(res, validiyResult.statusCode, validiyResult.message)
         }
         const result = await announcementService.fetchAllAnnouncementsAdmin(vendorId);
-        if(!result.statusCode) {
+        if(!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
         return common.sendSuccess(res, result.statusCode, result.message, result.meta.announcements);
