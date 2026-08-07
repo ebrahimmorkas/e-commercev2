@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const crypto = require('crypto');
 
 const sendSuccess = (res, statusCode, message, data = null) => {
   const payload = { success: true, message };
@@ -32,6 +33,46 @@ const checkFeatureOnOrOff = async (vendorId, websiteMasterData, companyMasterDat
           }
 }
 
+const ID_ENCRYPTION_ALGORITHM = 'aes-256-cbc';
+
+// IMPORTANT: set these in .env before deploying.
+// ID_ENCRYPTION_KEY = 64 hex chars (32 bytes)
+// ID_ENCRYPTION_IV  = 32 hex chars (16 bytes)
+// If not set, a random key/IV is generated per process start, which means
+// every encoded productId/reviewId link becomes invalid on restart/redeploy.
+const ID_ENCRYPTION_KEY = process.env.ID_ENCRYPTION_KEY
+  ? Buffer.from(process.env.ID_ENCRYPTION_KEY, 'hex')
+  : crypto.randomBytes(32);
+const ID_ENCRYPTION_IV = process.env.ID_ENCRYPTION_IV
+  ? Buffer.from(process.env.ID_ENCRYPTION_IV, 'hex')
+  : crypto.randomBytes(16);
+
+// Reversible encoding: raw Mongo ObjectId -> opaque string safe for a URL param.
+const encodeId = (id) => {
+  try {
+    if (!id) return null;
+    const cipher = crypto.createCipheriv(ID_ENCRYPTION_ALGORITHM, ID_ENCRYPTION_KEY, ID_ENCRYPTION_IV);
+    let encoded = cipher.update(id.toString(), 'utf8', 'base64url');
+    encoded += cipher.final('base64url');
+    return encoded;
+  } catch (err) {
+    throw err;
+  }
+};
+
+// Reverse of encodeId: opaque string from a URL param -> raw Mongo ObjectId string.
+const decodeId = (encodedId) => {
+  try {
+    if (!encodedId) return null;
+    const decipher = crypto.createDecipheriv(ID_ENCRYPTION_ALGORITHM, ID_ENCRYPTION_KEY, ID_ENCRYPTION_IV);
+    let decoded = decipher.update(encodedId, 'base64url', 'utf8');
+    decoded += decipher.final('utf8');
+    return decoded;
+  } catch (err) {
+    throw err;
+  }
+};
+
 // Validates the ID of documents
 const validateObjectId = (id) => {
   if (!id) {
@@ -56,49 +97,58 @@ const validateModelExists = (Model) => {
 };
 
 // Sets isActive to true
-const setActiveStatusToFalse = async (Model, id) => {
+const setActiveStatusToTrue = async (Model, id, userId) => {
   const idCheck = validateObjectId(id);
   if (!idCheck.valid) return { success: false, message: idCheck.message };
-
+ 
   const modelCheck = validateModelExists(Model);
-  if (!modelCheck.valid) return {success: false, message: modelCheck.message}
-
+  if (!modelCheck.valid) return { success: false, message: modelCheck.message };
+ 
   const doc = await Model.findById(id);
   if (!doc) return { success: false, message: "Document not found." };
-
-  doc.isActive = true;
+ 
+  doc.status = 'A';
+  doc.activeMarkedBy = userId;
+  doc.activeMarkedDate = new Date();
   await doc.save({ validateBeforeSave: false });
-
+ 
   return { success: true, document: doc };
 };
-
-// Sets isActive to false
-const setActiveStatusToTrue = async (Model, id) => {
+ 
+// Sets status to 'I' (inactive)
+const setActiveStatusToFalse = async (Model, id, userId) => {
   const idCheck = validateObjectId(id);
   if (!idCheck.valid) return { success: false, message: idCheck.message };
-
+ 
+  const modelCheck = validateModelExists(Model);
+  if (!modelCheck.valid) return { success: false, message: modelCheck.message };
+ 
   const doc = await Model.findById(id);
   if (!doc) return { success: false, message: "Document not found." };
-
-  doc.isActive = false;
-  if ("isDefault" in doc) doc.isDefault = false; 
+ 
+  doc.status = 'I';
+  doc.inActiveMarkedBy = userId;
+  doc.inactiveMarkedDate = new Date();
   await doc.save({ validateBeforeSave: false });
-
+ 
   return { success: true, document: doc };
 };
-
-// Soft delete
-const softDelete = async (Model, id) => {
+ 
+// Soft delete - sets status to 'D'
+const softDelete = async (Model, id, userId) => {
   const idCheck = validateObjectId(id);
   if (!idCheck.valid) return { success: false, message: idCheck.message };
-
+ 
+  const modelCheck = validateModelExists(Model);
+  if (!modelCheck.valid) return { success: false, message: modelCheck.message };
+ 
   const doc = await Model.findById(id);
   if (!doc) return { success: false, message: "Document not found." };
-
-  doc.isDeleted = true;
-  if ("isDefault" in doc) doc.isDefault = false; 
+ 
+  doc.status = 'D';
+  doc.deletedBy = userId;
   await doc.save({ validateBeforeSave: false });
-
+ 
   return { success: true, document: doc };
 };
 
@@ -112,15 +162,13 @@ const hardDelete = async (Model, id) => {
 };
 
 // GetAll
-const getAll = async (Model, filter = {}, vendorID) => {
-    const idCheck = validateObjectId(id);
-    if (!idCheck.valid) return { success: false, message: idCheck.message };
-
+const getAll = async (Model, filter = {}, vendorId) => {
     const modelCheck = validateModelExists(Model);
-    if (!modelCheck.valid) return {success: false, message: modelCheck.message}
-
-    filter.vendorID = vendorID;
-  return await Model.find(filter);
+    if (!modelCheck.valid) return { success: false, message: modelCheck.message };
+ 
+    filter.vendorId = vendorId;
+    filter.status = filter.status || { $ne: 'D' };
+    return await Model.find(filter);
 };
 
 // Get Document by ID
@@ -153,5 +201,7 @@ module.exports = {
   getAll,
   getByID,
   getDefault,
+  encodeId,
+  decodeId
 };
 

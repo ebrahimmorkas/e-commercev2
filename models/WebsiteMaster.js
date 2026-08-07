@@ -90,7 +90,18 @@ const websiteMasterSchema = mongoose.Schema({
     enforceMainImageService: {
         type: Boolean,
         default: false
-    }
+    },
+    isDiscountFeatureOn: {
+        type: Boolean,
+        default: true,
+    },
+    isGroupFeatureOn: {
+        type: Boolean,
+    },
+    isProductReviewFeatureOn: {
+        type: Boolean,
+        default: true
+    },
 }, {
   timestamps: true
 });

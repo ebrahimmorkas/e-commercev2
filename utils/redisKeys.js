@@ -6,6 +6,7 @@ const redisKeys = {
   banner: (vendorId) => `banner:${vendorId}`,
   category: (vendorID) => `categories:${vendorID}`,
   categoryAdmin: (vendorID) => `categories-admin:${vendorID}`,
+  reviews: (vendorId, productId) => `reviews:${vendorId} - ${productId}`
 };
 
 module.exports = redisKeys;

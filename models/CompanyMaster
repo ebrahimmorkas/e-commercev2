@@ -82,6 +82,8 @@ const companyMasterSchema = mongoose.Schema({
         ref: "SizeMaster",
         default: []
     },
+
+    // Categories
     numberOfMainCategoriesAllowed: {
         type: Number,
         default: null
@@ -109,10 +111,60 @@ const companyMasterSchema = mongoose.Schema({
     isBulkUploadForCategoriesFeatureOn: {
         type: Boolean,
     },
+
+    // Image
     imageService: {
         type: String,
         enum: ['cloudinary', 'aws', 'r2', 'local'],
         default: 'cloudinary'
+    },
+
+    // Discount
+    isDiscountFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    numberOfDiscountsPerMonth: {
+        type: Number,
+        default: 3
+    },
+
+    // Product
+    numberOfProductsAllowed: {
+        type: Number,
+    },
+    isProductVariantAddigOn: {
+        type: Boolean,
+        default: true
+    },
+    numberOfProductsVaiantsAllowed: {
+        type: Number
+    },
+    numberOfAdditionalImagesAllowedInVariant: {
+        type: Number
+    },
+
+    // Groups
+    isGroupFeatureOn: {
+        type: Boolean,
+    },
+    numberOfGroupsAllowed: {
+        type: Number,
+        default: 6
+    },
+    numberOfMembersPerGroup: {
+        type: Number,
+        default: 50
+    },
+
+    // Review
+    isReviewFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    numberOfReviewsAllowedOnProduct: {
+        type: Number,
+        default: null
     },
 }, {
   timestamps: true
