@@ -77,11 +77,6 @@ const companyMasterSchema = mongoose.Schema({
         ref: "CountryMaster",
         default: []
     },
-    allowedSizes: {
-        type: [mongoose.Schema.Types.ObjectId],
-        ref: "SizeMaster",
-        default: []
-    },
 
     // Categories
     numberOfMainCategoriesAllowed: {
@@ -133,15 +128,32 @@ const companyMasterSchema = mongoose.Schema({
     numberOfProductsAllowed: {
         type: Number,
     },
-    isProductVariantAddigOn: {
-        type: Boolean,
-        default: true
-    },
     numberOfProductsVaiantsAllowed: {
         type: Number
     },
     numberOfAdditionalImagesAllowedInVariant: {
         type: Number
+    },
+    allowedSizes: {
+        type: [mongoose.Schema.Types.ObjectId],
+        ref: "SizeMaster",
+        default: []
+    },
+    allowedProductImageMB: {
+        type: Number,
+        default: 2
+    },
+    allowedProductImagesFormat: {
+        type: String,
+        enum: ['jpg', 'png', 'jpeg']
+    },
+    // Vendor wil be able to add only Main Category if this is false
+    isCategoryNestingAllowed: {
+        type: Boolean,    
+    },
+    isBulkPricingFeatureOn: {
+        type: Boolean,
+        default: true
     },
 
     // Groups

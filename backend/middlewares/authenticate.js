@@ -8,7 +8,7 @@ const authenticate = async (req, res, next) => {
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith("Bearer "))
-      return sendError(res, 401, "Access token is required.");
+      return sendError(res, 401, "Please Login Again");
 
     const token = authHeader.split(" ")[1];
 
@@ -17,8 +17,10 @@ const authenticate = async (req, res, next) => {
       decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
     } catch (err) {
       if (err.name === "TokenExpiredError")
-        return sendError(res, 401, "Access token has expired.");
-      return sendError(res, 401, "Invalid access token.");
+        // return sendError(res, 401, "Access token has expired.");
+        return sendError(res, 401, "Please Login Again");
+      // return sendError(res, 401, "Invalid access token.");
+      return sendError(res, 401, "Please Login Again");
     }
 
     const user = await User.findById(decoded.userId);
@@ -30,7 +32,7 @@ const authenticate = async (req, res, next) => {
     if (user.status === "I")
       return sendError(res, 403, "Your account has been deactivated. Please contact support.");
 
-    req.user = { _id: user._id, role: user.role, vendorId: user.vendorId };
+    req.user = { _id: user._id, role: user.role, country: user.country,  state: user.state, city: user.city};
 
     next();
   } catch (error) {

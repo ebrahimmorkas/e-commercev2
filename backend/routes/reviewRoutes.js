@@ -4,7 +4,7 @@ const reviewController = require('../controllers/reviewController');
 const authenticate = require('../middlewares/authenticate');
 const authorize = require('../middlewares/authorize');
 const validate = require('../middlewares/validate');
-const { createReviewSchema, updateReviewSchema, listReviewsQuerySchema } = require('../validators/reviewValidation');
+const { createReviewSchema, updateReviewSchema, listReviewsQuerySchema } = require('../middlewares/validations/reviewValidations');
 
 router.get('/product/:productId', validate(listReviewsQuerySchema, 'query'), reviewController.getReviewsByProduct);
 router.get('/:reviewId', reviewController.getReviewById);

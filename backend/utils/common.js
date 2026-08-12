@@ -74,13 +74,61 @@ const decodeId = (encodedId) => {
 };
 
 // Validates the ID of documents
-const validateObjectId = (id) => {
-  if (!id) {
-    return { valid: false, message: "ID is required." };
+// const validateObjectId = (id) => {
+//   if (!id) {
+//     return { valid: false, message: "ID is required." };
+//   }
+//   if (!mongoose.Types.ObjectId.isValid(id)) {
+//     return { valid: false, message: "Invalid ID format." };
+//   }
+//   return { valid: true };
+// };
+
+// Validates the ID of documents
+const validateObjectId = (ids) => {
+  // Array of IDs
+  if (Array.isArray(ids)) {
+    if (ids.length === 0) {
+      return {
+        valid: false,
+        message: "At least one ID is required."
+      };
+    }
+
+    const invalidIds = [];
+
+    for (const id of ids) {
+      if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+        invalidIds.push(id);
+      }
+    }
+
+    if (invalidIds.length > 0) {
+      return {
+        valid: false,
+        message: "One or more IDs are invalid.",
+        invalidIds
+      };
+    }
+
+    return { valid: true };
   }
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    return { valid: false, message: "Invalid ID format." };
+
+  // Single ID
+  if (!ids) {
+    return {
+      valid: false,
+      message: "ID is required."
+    };
   }
+
+  if (!mongoose.Types.ObjectId.isValid(ids)) {
+    return {
+      valid: false,
+      message: "Invalid ID format."
+    };
+  }
+
   return { valid: true };
 };
 
@@ -180,6 +228,62 @@ const getByID = async (Model, id) => {
   return { success: true, document: doc };
 };
 
+// Check whether the document exists or not
+const checkWhetherDocumentExists = async (Model, ids, vendorId = "not applicable") => {
+  // Validate document ID(s)
+  const idCheck = validateObjectId(ids);
+
+  if (!idCheck.valid) {
+    return idCheck;
+  }
+
+  // Validate vendorId only when applicable
+  if (vendorId !== "not applicable") {
+    const vendorCheck = validateObjectId(vendorId);
+
+    if (!vendorCheck.valid) {
+      return vendorCheck;
+    }
+  }
+
+  const idArray = Array.isArray(ids) ? ids : [ids];
+
+  // Build query
+  const query = {
+    _id: { $in: idArray }
+  };
+
+  if (vendorId !== "not applicable") {
+    query.vendorId = vendorId;
+  }
+
+  // Fetch only IDs
+  const existingDocuments = await Model.find(
+    query,
+    { _id: 1 }
+  ).lean();
+
+  const existingIds = new Set(
+    existingDocuments.map(doc => doc._id.toString())
+  );
+
+  const missingIds = idArray.filter(
+    id => !existingIds.has(id.toString())
+  );
+
+  if (missingIds.length > 0) {
+    return {
+      success: false,
+      message: "One or more documents not found.",
+      missingIds
+    };
+  }
+
+  return {
+    success: true
+  };
+};
+
 // Get default document
 const getDefault = async (Model, vendorID) => {
   const doc = await Model.findOne({ vendorID, isDefault: true, isActive: true });
@@ -202,6 +306,7 @@ module.exports = {
   getByID,
   getDefault,
   encodeId,
-  decodeId
+  decodeId,
+  checkWhetherDocumentExists
 };
 

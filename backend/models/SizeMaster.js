@@ -14,14 +14,16 @@ const sizeMasterSchema = mongoose.Schema({
         enum: ['I', 'A', 'D'],
         default: 'A'
     },
-    values: {
-        type: [String],
+    allowedUnits: {
+        type: [{
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'UnitMaster'
+        }],
         required: true,
-        default: []
-    },
-    tagged_with_unit: {
-        type: mongoose.Schema.Types.ObjectId,
-        required: true
+        validate: {
+            validator: (arr) => Array.isArray(arr) && arr.length > 0,
+            message: 'At least one allowed unit is required for a size.'
+        }
     }
 }, {
     timestamps: true

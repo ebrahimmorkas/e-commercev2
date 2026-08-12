@@ -92,11 +92,14 @@ const companySettingsSchema = new mongoose.Schema({
   isAnnouncementFeatureOn: {
     type: Boolean,
   },
-
   showReviewsToCustomers: {
       type: Boolean,
       default: true
   },
+  isAnnouncementRotationOn: {
+    type: Boolean,
+    default: false
+  }
     
 }, {
   timestamps: true

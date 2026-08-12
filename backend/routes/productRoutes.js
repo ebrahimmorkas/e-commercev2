@@ -1,33 +1,98 @@
 const express = require('express');
 const router = express.Router();
 
+const productController = require('../controllers/productController');
+const validate = require('../middlewares/validate');
+const {
+  createProductSchema,
+  updateProductSchema,
+  productIdParamSchema,
+  listQuerySchema
+} = require('../middlewares/validations/productValidations');
+
 const authenticate = require('../middlewares/authenticate');
 const authorize = require('../middlewares/authorize');
 const vendorDetection = require('../middlewares/vendorDetection');
-const productController = require('../controllers/productController');
+const ensureVendorDataCached = require('../middlewares/ensureVendorDataCached');
 
-// -----------------------------------------------------------------------
-// Storefront (public) routes — vendorDetection resolves the vendor from
-// the request domain, no authentication required.
-// -----------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Client-facing (public storefront) routes - status 'A' only, no auth
+// middleware at all. Browsing must stay open to guests. When a request DOES
+// carry a valid Bearer token, getAllProductsClient / getProductById resolve
+// it themselves (via token.resolveUserFromAuthHeader) so location-based
+// filtering can run for logged-in customers - see productController.js.
+// vendorDetection + ensureVendorDataCached still run because the response
+// needs vendorId scoping and companyMaster/websiteMaster for feature-gated
+// display decisions on the frontend.
+// ---------------------------------------------------------------------------
+router.get(
+  '/get-all',
+  vendorDetection,
+  ensureVendorDataCached,
+  validate(listQuerySchema, 'query'),
+  productController.getAllProductsClient
+);
 
-router.get('/products', productController.listStorefrontProducts);
-router.get('/products/:slug', productController.getStorefrontProductBySlug);
+router.get(
+  '/get-product/:productId',
+  vendorDetection,
+  ensureVendorDataCached,
+  validate(productIdParamSchema, 'params'),
+  productController.getProductById
+);
 
-// -----------------------------------------------------------------------
-// Vendor-admin routes — authenticate + authorize only.
-// productId is read from req.body (not the URL) per requirement.
-// NOTE: 'vendor' and 'admin' are placeholder role strings — adjust to
-// match whatever role values actually exist on your User model.
-// -----------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Admin (vendor back-office) routes - status 'I' + 'A', requires login.
+// Order matters: vendorDetection must run before ensureVendorDataCached
+// (needs req.vendorId), and before authorize (role check doesn't need
+// vendor context, but keeping vendor resolution first fails fast on a bad
+// domain before bothering with token checks).
+// ---------------------------------------------------------------------------
+router.get(
+  '/admin-get-all',
+  vendorDetection,
+  ensureVendorDataCached,
+  validate(listQuerySchema, 'query'),
+  productController.getAllProductsAdmin
+);
 
-router.post('/', authenticate, authorize('admin'), productController.createProduct);
-router.get('/', authenticate, authorize('admin'), productController.listProducts);
-// Using POST here rather than GET, since GET requests can't reliably
-// carry a body through every client/proxy — the browser fetch API and
-// axios support it, but not everything does.
-router.post('/details', authenticate, authorize('admin'), productController.getProductById);
-router.put('/', authenticate, authorize('admin'), productController.updateProduct);
-router.delete('/', authenticate, authorize('admin'), productController.deleteProduct);
+router.get(
+  '/admin/products/:productId',
+  vendorDetection,
+  authenticate,
+  authorize('admin'),
+  ensureVendorDataCached,
+  validate(productIdParamSchema, 'params'),
+  productController.getProductById
+);
+
+router.post(
+  '/add-product',
+  vendorDetection,
+  ensureVendorDataCached,
+  validate(createProductSchema, 'body'),
+  productController.createProduct
+);
+
+router.put(
+  '/admin/products/:productId',
+  vendorDetection,
+  authenticate,
+  authorize('admin'),
+  ensureVendorDataCached,
+  validate(productIdParamSchema, 'params'),
+  validate(updateProductSchema, 'body'),
+  productController.updateProduct
+);
+
+router.delete(
+  '/admin/products/:productId',
+  vendorDetection,
+  authenticate,
+  authorize('admin'),
+  ensureVendorDataCached,
+  validate(productIdParamSchema, 'params'),
+  productController.deleteProduct
+);
 
 module.exports = router;
