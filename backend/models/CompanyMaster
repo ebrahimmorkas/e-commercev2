@@ -96,7 +96,7 @@ const companyMasterSchema = mongoose.Schema({
         default: 2
     },
     allowedCategoryImagesFormat: {
-        type: String,
+        type: [String],
         enum: ['jpg', 'png', 'jpeg']
     },
     isCategoryFeatureOn: {

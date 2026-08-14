@@ -22,8 +22,9 @@ const categorySchema = mongoose.Schema({
             type: String,
             default: null
         },
-        publicId: {
-            type: String,
+        imageAssetId: {
+            type: mongoose.Types.ObjectId,
+            ref: 'ImageAsset',
             default: null
         }
     },

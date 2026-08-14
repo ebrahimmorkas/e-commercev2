@@ -114,7 +114,13 @@ const extractCellText = (cellValue) => {
       return cellValue.richText.map((part) => part.text).join('');
     }
     if ('text' in cellValue) return cellValue.text;
-    if ('result' in cellValue) return cellValue.result;
+    if ('result' in cellValue) {
+      const result = cellValue.result;
+      if (result && typeof result === 'object' && 'error' in result) {
+        return null; // or `result.error` if you want to surface it to the vendor
+      }
+      return result;
+    }
     if (cellValue instanceof Date) return cellValue;
     return cellValue;
   }

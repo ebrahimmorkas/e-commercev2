@@ -6,15 +6,20 @@ const multer = require('multer');
 const storage = multer.memoryStorage();
 
 const ALLOWED_MIME_TYPES = [
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
-  'application/vnd.ms-excel' // .xls
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' // .xlsx only
 ];
 
+const ALLOWED_EXTENSIONS = ['.xlsx'];
+
 const fileFilter = (req, file, cb) => {
-  if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+  const ext = require('path').extname(file.originalname || '').toLowerCase();
+  const mimeOk = ALLOWED_MIME_TYPES.includes(file.mimetype);
+  const extOk = ALLOWED_EXTENSIONS.includes(ext);
+
+  if (mimeOk && extOk) {
     return cb(null, true);
   }
-  return cb(new Error('Only .xlsx or .xls files are allowed'), false);
+  return cb(new Error('Only .xlsx files are allowed'), false);
 };
 
 const upload = multer({
