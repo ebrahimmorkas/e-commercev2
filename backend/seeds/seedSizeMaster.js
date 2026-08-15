@@ -2,40 +2,60 @@ require("dotenv").config();
 
 const mongoose = require("mongoose");
 
-const UnitMaster = require("../models/UnitMaster");
 const SizeMaster = require("../models/SizeMaster");
+const UnitMaster = require("../models/UnitMaster");
 
 async function seedSizes() {
     try {
-        await mongoose.connect('mongodb://127.0.0.1:27017/ecommerce-v2');
+        await mongoose.connect(process.env.MONGODB_URI);
         console.log("✅ MongoDB Connected");
 
+        // Find units required for measurable sizes
         const centimeter = await UnitMaster.findOne({
             name: "Centimeter"
         });
 
-        const meter = await UnitMaster.findOne({
-            name: "Meter"
+        const kilogram = await UnitMaster.findOne({
+            name: "Kilogram"
         });
 
-        if (!centimeter || !meter) {
+        if (!centimeter || !kilogram) {
             throw new Error(
-                "Centimeter and Meter units must exist. Run seed-unit-master.js first."
+                "Centimeter and Kilogram units must exist in UnitMaster first."
             );
         }
 
         const sizes = [
+            // -------------------------
+            // LABEL SIZES
+            // -------------------------
+            {
+                name: "Clothing Size",
+                type: "LABEL",
+                values: ["L", "XL"],
+                status: "A"
+            },
+            {
+                name: "Age Group",
+                type: "LABEL",
+                values: ["Teenagers", "Senior"],
+                status: "A"
+            },
+
+            // -------------------------
+            // MEASURABLE SIZES
+            // -------------------------
             {
                 name: "Length",
-                allowedUnits: [centimeter._id, meter._id]
+                type: "MEASURABLE",
+                allowedUnits: [centimeter._id],
+                status: "A"
             },
             {
-                name: "Breadth",
-                allowedUnits: [centimeter._id, meter._id]
-            },
-            {
-                name: "Height",
-                allowedUnits: [centimeter._id, meter._id]
+                name: "Weight",
+                type: "MEASURABLE",
+                allowedUnits: [kilogram._id],
+                status: "A"
             }
         ];
 
@@ -49,19 +69,19 @@ async function seedSizes() {
                 continue;
             }
 
-            await SizeMaster.create({
-                name: size.name,
-                status: "A",
-                allowedUnits: size.allowedUnits
-            });
+            await SizeMaster.create(size);
 
             console.log(`✅ ${size.name} inserted.`);
         }
 
         console.log("🎉 SizeMaster seeded successfully.");
+
+        await mongoose.connection.close();
         process.exit(0);
     } catch (error) {
         console.error("❌ Error:", error);
+
+        await mongoose.connection.close();
         process.exit(1);
     }
 }

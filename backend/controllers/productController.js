@@ -20,13 +20,6 @@ const getAllProductsAdmin = async (req, res) => {
 const getAllProductsClient = async (req, res) => {
   const vendorId = req.vendorId;
   try {
-    // No auth middleware runs on this route - browsing must stay open to
-    // guests. If a valid Bearer token IS present, resolve it here so
-    // fetchAllProductsForClient can apply location-based filtering
-    // (excluded countries/states/cities, applicable tax) for a logged-in
-    // customer. Any failure (no token, invalid/expired token, inactive or
-    // deleted user) is simply treated as "guest" - it never blocks the
-    // request, since this route never required login to begin with.
     let user;
     const authResult = await token.resolveUserFromAuthHeader(req.headers.authorization);
     if (authResult.ok) user = authResult.user;

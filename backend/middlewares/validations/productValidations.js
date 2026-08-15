@@ -94,12 +94,26 @@ const stringMapSchema = Joi.object().pattern(
     'object.base': 'Description must be a set of key-value pairs.'
 });
 
-const baseVariantFields = {
+const baseSizeEntryFields = {
     isDefault: Joi.boolean().default(false).label('Default flag'),
-    color: Joi.string().trim().min(1).max(40).required().label('Color'),
     sizeId: objectId().required().label('Size'),
-    unitId: objectId().required().label('Unit'),
-    displayName: Joi.string().trim().max(150).allow('', null).label('Display name'),
+    // CHANGED: unitId is optional here - Joi has no way to know whether the
+    // referenced SizeMaster is MEASURABLE (needs a unit) or LABEL (must not
+    // have one) without a DB lookup, so that branch lives in
+    // resolveAndValidateVariants in productService.js instead.
+    unitId: objectId().optional().label('Unit'),
+    // CHANGED: value can now be a single string OR an array of strings, so
+    // one size entry can expand into multiple sellable sizes at once (e.g.
+    // values: ["Large", "Small"]). Expansion into separate size records
+    // (with auto-suffixed sku/variantCode) happens in
+    // resolveAndValidateVariants in productService.js.
+    value: Joi.alternatives()
+        .try(
+            Joi.string().trim().min(1).max(100),
+            Joi.array().items(Joi.string().trim().min(1).max(100)).min(1)
+        )
+        .required()
+        .label('Size value(s)'),
     price: Joi.number().positive().required().label('Price'),
     // FIX (point 3 & 4): cancelledPrice stays fully optional - vendor
     // decides whether to set it at all. When it IS set, price must always
@@ -108,6 +122,29 @@ const baseVariantFields = {
         .label('Cancelled price')
         .messages({ 'number.greater': 'Cancelled price must be greater than the price.' }),
     stock: Joi.number().integer().min(0).required().label('Stock'),
+    weight: Joi.string().trim().allow('', null).label('Weight'),
+    sku: Joi.string().trim().min(1).required().label('SKU'),
+    barcode: Joi.string().trim().allow('', null).label('Barcode'),
+    variantCode: Joi.string().trim().min(1).required().label('Variant code')
+};
+
+const createSizeEntrySchema = Joi.object({ ...baseSizeEntryFields });
+
+// On update, an existing size entry is matched by _id (kept/updated); a new
+// one is submitted without _id (created). Any existing size entry whose
+// _id is missing from the submitted array is treated as removed.
+const updateSizeEntrySchema = Joi.object({
+    _id: objectId().optional().label('Size entry id'),
+    ...baseSizeEntryFields
+});
+
+// CHANGED: color-level fields only. isDefault/sizeId/unitId/price/
+// cancelledPrice/stock/weight/sku/barcode/variantCode all moved down into
+// baseSizeEntryFields above - a vendor can now add multiple sizes under one
+// color, each with its own price/stock/SKU/barcode.
+const baseVariantFields = {
+    color: Joi.string().trim().min(1).max(40).required().label('Color'),
+    displayName: Joi.string().trim().max(150).allow('', null).label('Display name'),
     isDescriptionSame: Joi.boolean().default(true).label('Reuse description'),
     isDisclaimerSame: Joi.boolean().default(true).label('Reuse disclaimer'),
     isBulkPricingSame: Joi.boolean().default(true).label('Reuse bulk pricing'),
@@ -119,10 +156,6 @@ const baseVariantFields = {
     exchange: returnExchangeLikeSchema('Exchange'),
     shipping: shippingSchema,
     precedence: Joi.number().integer().default(0).label('Precedence'),
-    weight: Joi.string().trim().allow('', null).label('Weight'),
-    sku: Joi.string().trim().min(1).required().label('SKU'),
-    barcode: Joi.string().trim().allow('', null).label('Barcode'),
-    variantCode: Joi.string().trim().min(1).required().label('Variant code'),
     excludeCountries: Joi.array().items(objectId()).label('Excluded countries'),
     excludeStates: Joi.array().items(objectId()).label('Excluded states'),
     excludeCities: Joi.array().items(objectId()).label('Excluded cities'),
@@ -131,7 +164,10 @@ const baseVariantFields = {
     // image / additionalImages intentionally omitted - handled in a later pass.
 };
 
-const createVariantSchema = Joi.object({ ...baseVariantFields });
+const createVariantSchema = Joi.object({
+    ...baseVariantFields,
+    sizes: Joi.array().items(createSizeEntrySchema).min(1).required().label('Sizes')
+});
 
 // On update, an existing variant is matched by _id (kept/updated); a new
 // variant is submitted without _id (created). Any existing variant whose
@@ -139,7 +175,8 @@ const createVariantSchema = Joi.object({ ...baseVariantFields });
 // productService.updateProduct for the default-variant guard around this.
 const updateVariantSchema = Joi.object({
     _id: objectId().optional().label('Variant id'),
-    ...baseVariantFields
+    ...baseVariantFields,
+    sizes: Joi.array().items(updateSizeEntrySchema).min(1).label('Sizes')
 });
 
 const createProductSchema = Joi.object({
@@ -191,8 +228,6 @@ const productIdParamSchema = Joi.object({
 });
 
 const listQuerySchema = Joi.object({
-    page: Joi.number().integer().min(1).default(1).label('Page'),
-    limit: Joi.number().integer().min(1).max(100).default(20).label('Limit'),
     search: Joi.string().trim().allow('', null).label('Search'),
     mainCategory: objectId().label('Main category'),
     subCategory: objectId().label('Sub category')

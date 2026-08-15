@@ -1,33 +1,70 @@
 const mongoose = require('mongoose');
-const { timeStamp } = require('node:console');
 
 const sizeMasterSchema = mongoose.Schema({
     name: {
-        type: String,        
+        type: String,
         required: true,
         minlength: 2,
         maxlength: 20,
         trim: true
     },
-    status: {
+
+    type: {
         type: String,
-        enum: ['I', 'A', 'D'],
-        default: 'A'
+        enum: ['MEASURABLE', 'LABEL'],
+        required: true
     },
+
     allowedUnits: {
         type: [{
             type: mongoose.Schema.Types.ObjectId,
             ref: 'UnitMaster'
         }],
-        required: true,
-        validate: {
-            validator: (arr) => Array.isArray(arr) && arr.length > 0,
-            message: 'At least one allowed unit is required for a size.'
-        }
+        default: []
+    },
+
+    values: {
+        type: [String],
+        default: []
+    },
+
+    status: {
+        type: String,
+        enum: ['I', 'A', 'D'],
+        default: 'A'
     }
 }, {
     timestamps: true
-})
+});
 
+sizeMasterSchema.pre('validate', function () {
+    if (this.type === 'MEASURABLE') {
+        if (!this.allowedUnits || this.allowedUnits.length === 0) {
+            throw new Error(
+                'At least one allowed unit is required for a measurable size.'
+            );
+        }
+
+        if (this.values && this.values.length > 0) {
+            throw new Error(
+                'Values are not allowed for a measurable size.'
+            );
+        }
+    }
+
+    if (this.type === 'LABEL') {
+        if (this.allowedUnits && this.allowedUnits.length > 0) {
+            throw new Error(
+                'Units are not allowed for a label size.'
+            );
+        }
+
+        if (!this.values || this.values.length === 0) {
+            throw new Error(
+                'At least one value is required for a label size.'
+            );
+        }
+    }
+});
 
 module.exports = mongoose.model('SizeMaster', sizeMasterSchema);
