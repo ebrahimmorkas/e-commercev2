@@ -36,8 +36,33 @@ const deleteCategorySchema = Joi.object({
   category_id: objectId.required(),
 });
 
+const bulkCategoryRowSchema = Joi.object({
+    categoryPath: Joi.string()
+        .trim()
+        .min(1)
+        .max(1000)
+        .empty(null)
+        .required()
+        .custom((value, helpers) => {
+            const segments = value.split('>').map((s) => s.trim()).filter(Boolean);
+            if (segments.length === 0) return helpers.error('any.invalid');
+            for (const seg of segments) {
+                if (seg.length > 100) return helpers.error('any.invalid');
+            }
+            return value;
+        })
+        .messages({
+            'any.invalid': "categoryPath must contain valid, non-empty '>'-separated segments, each under 100 characters",
+            'any.required': 'categoryPath is required'
+        }),
+    imagePath: Joi.string().trim().max(500).empty(null).empty('').optional(),
+    status: Joi.string().trim().uppercase().empty(null).empty('').valid('A', 'I').default('A'),
+    __rowNumber: Joi.number().optional()
+}).unknown(false);
+
 module.exports = {
   addCategorySchema,
   updateCategorySchema,
   deleteCategorySchema,
+  bulkCategoryRowSchema   
 };

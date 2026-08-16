@@ -1,197 +1,134 @@
 const productService = require('../services/productService');
 const logger = require('../utils/logger.js');
-const common = require('../utils/common.js');
+const common = require('../utils/common');
+const token = require('../utils/token');
 
-// ---------------------------------------------------------------------
-// Vendor-admin handlers — productId is read from req.body (not req.params)
-// ---------------------------------------------------------------------
-
-const createProduct = async (req, res) => {
-    try {
-        const vendorId = req.user.vendorId;
-        const userId = req.user._id;
-
-        const { name, mainCategory, subCategory, slug, productCode } = req.body;
-        if (!name || !mainCategory || !subCategory || !slug || !productCode) {
-            return common.sendError(res, 400, 'name, mainCategory, subCategory, slug and productCode are required.');
-        }
-
-        const productData = {
-            ...req.body,
-            vendorId,
-            createdBy: userId,
-            updatedBy: userId
-        };
-
-        const result = await productService.createProduct(productData);
-
-        if (!result.isSuccess) {
-            return common.sendError(res, result.statusCode, result.message);
-        }
-
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
-    } catch (error) {
-        logger.logException('Error creating product', { error });
+const getAllProductsAdmin = async (req, res) => {
+  const vendorId = req.vendorId;
+  try {
+    const result = await productService.fetchAllProductsForAdmin(vendorId, req.query);
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
     }
+    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+  } catch (error) {
+    logger.logException('Error fetching products for admin', { vendorId, error });
+    return common.sendError(res, 500, 'Failed to fetch products');
+  }
 };
 
-const updateProduct = async (req, res) => {
-    try {
-        const vendorId = req.user.vendorId;
-        const userId = req.user._id;
-        const { productId, ...updateData } = req.body;
+const getAllProductsClient = async (req, res) => {
+  const vendorId = req.vendorId;
+  try {
+    let user;
+    const authResult = await token.resolveUserFromAuthHeader(req.headers.authorization);
+    if (authResult.ok) user = authResult.user;
 
-        if (!productId) {
-            return common.sendError(res, 400, 'productId is required.');
-        }
-
-        const result = await productService.updateProduct(productId, vendorId, updateData, userId);
-
-        if (!result.isSuccess) {
-            return common.sendError(res, result.statusCode, result.message);
-        }
-
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
-    } catch (error) {
-        logger.logException('Error updating product', { error });
+    const result = await productService.fetchAllProductsForClient(vendorId, req.query, user);
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
     }
+    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+  } catch (error) {
+    logger.logException('Error fetching products for client', { vendorId, error });
+    return common.sendError(res, 500, 'Failed to fetch products');
+  }
 };
 
 const getProductById = async (req, res) => {
-    try {
-        const vendorId = req.user.vendorId;
-        const { productId } = req.body;
-
-        if (!productId) {
-            return common.sendError(res, 400, 'productId is required.');
-        }
-
-        const result = await productService.getProductById(productId, vendorId);
-
-        if (!result.isSuccess) {
-            return common.sendError(res, result.statusCode, result.message);
-        }
-
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
-    } catch (error) {
-        logger.logException('Error fetching product', { error });
+  const vendorId = req.vendorId;
+  const { productId } = req.params;
+  try {
+    // Two different routes hit this same function:
+    //  - /admin/products/:productId  -> `authenticate` already ran, so
+    //    req.user is already set. Reuse it, don't re-hit the DB.
+    //  - /products/:productId        -> no auth middleware at all, so
+    //    resolve the token here directly. Any failure is treated as
+    //    "guest" and never blocks the request.
+    let user = req.user;
+    if (!user) {
+      const authResult = await token.resolveUserFromAuthHeader(req.headers.authorization);
+      if (authResult.ok) user = authResult.user;
     }
+
+    const isAdmin = !!(user && user.role === 'admin');
+    const result = await productService.fetchProductById(vendorId, productId, isAdmin, user);
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+  } catch (error) {
+    logger.logException('Error fetching product by id', { vendorId, productId, error });
+    return common.sendError(res, 500, 'Failed to fetch product');
+  }
 };
 
-const listProducts = async (req, res) => {
-    try {
-        const vendorId = req.user.vendorId;
-
-        const filters = {
-            status: req.query.status,
-            mainCategory: req.query.mainCategory,
-            subCategory: req.query.subCategory,
-            brand: req.query.brand,
-            search: req.query.search,
-            minPrice: req.query.minPrice,
-            maxPrice: req.query.maxPrice
-        };
-
-        const pagination = {
-            page: req.query.page,
-            limit: req.query.limit,
-            sortBy: req.query.sortBy,
-            sortOrder: req.query.sortOrder
-        };
-
-        const result = await productService.listProducts(vendorId, filters, pagination);
-
-        if (!result.isSuccess) {
-            return common.sendError(res, result.statusCode, result.message);
-        }
-
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
-    } catch (error) {
-        logger.logException('Error listing products', { error });
+const createProduct = async (req, res) => {
+  const vendorId = req.vendorId;
+//   const userId = req.user._id;
+const userId = "6a6ed077b8ad83c8d068dda3";
+  try {
+    const result = await productService.createProduct(
+      vendorId,
+      userId,
+      req.companyMasterData,
+      req.websiteMasterData,
+      req.body
+    );
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
     }
+    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+  } catch (error) {
+    logger.logException('Error creating product', { vendorId, error });
+    return common.sendError(res, 500, 'Failed to create product');
+  }
+};
+
+const updateProduct = async (req, res) => {
+  const vendorId = req.vendorId;
+  const userId = req.user._id;
+  const { productId } = req.params;
+  try {
+    const result = await productService.updateProduct(
+      vendorId,
+      userId,
+      productId,
+      req.companyMasterData,
+      req.websiteMasterData,
+      req.body
+    );
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+  } catch (error) {
+    logger.logException('Error updating product', { vendorId, productId, error });
+    return common.sendError(res, 500, 'Failed to update product');
+  }
 };
 
 const deleteProduct = async (req, res) => {
-    try {
-        const vendorId = req.user.vendorId;
-        const userId = req.user._id;
-        const { productId } = req.body;
-
-        if (!productId) {
-            return common.sendError(res, 400, 'productId is required.');
-        }
-
-        const result = await productService.deleteProduct(productId, vendorId, userId);
-
-        if (!result.isSuccess) {
-            return common.sendError(res, result.statusCode, result.message);
-        }
-
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
-    } catch (error) {
-        logger.logException('Error deleting product', { error });
+  const vendorId = req.vendorId;
+  const userId = req.user._id;
+  const { productId } = req.params;
+  try {
+    const result = await productService.deleteProduct(vendorId, userId, productId);
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
     }
-};
-
-// ---------------------------------------------------------------------
-// Storefront (public) handlers — vendorId comes from vendorDetection
-// ---------------------------------------------------------------------
-
-const listStorefrontProducts = async (req, res) => {
-    try {
-        const vendorId = req.vendorId;
-
-        const filters = {
-            mainCategory: req.query.mainCategory,
-            subCategory: req.query.subCategory,
-            brand: req.query.brand,
-            search: req.query.search,
-            minPrice: req.query.minPrice,
-            maxPrice: req.query.maxPrice
-        };
-
-        const pagination = {
-            page: req.query.page,
-            limit: req.query.limit,
-            sortBy: req.query.sortBy,
-            sortOrder: req.query.sortOrder
-        };
-
-        const result = await productService.listStorefrontProducts(vendorId, filters, pagination);
-
-        if (!result.isSuccess) {
-            return common.sendError(res, result.statusCode, result.message);
-        }
-
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
-    } catch (error) {
-        logger.logException('Error listing storefront products', { error });
-    }
-};
-
-const getStorefrontProductBySlug = async (req, res) => {
-    try {
-        const vendorId = req.vendorId;
-        const { slug } = req.params;
-
-        const result = await productService.getProductBySlug(vendorId, slug);
-
-        if (!result.isSuccess) {
-            return common.sendError(res, result.statusCode, result.message);
-        }
-
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
-    } catch (error) {
-        logger.logException('Error fetching storefront product', { error });
-    }
+    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+  } catch (error) {
+    logger.logException('Error deleting product', { vendorId, productId, error });
+    return common.sendError(res, 500, 'Failed to delete product');
+  }
 };
 
 module.exports = {
-    createProduct,
-    updateProduct,
-    getProductById,
-    listProducts,
-    deleteProduct,
-    listStorefrontProducts,
-    getStorefrontProductBySlug
+  getAllProductsAdmin,
+  getAllProductsClient,
+  getProductById,
+  createProduct,
+  updateProduct,
+  deleteProduct
 };

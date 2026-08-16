@@ -16,6 +16,10 @@ const bannerRoutes = require('./routes/bannerRoutes');
 const categoryRoutes = require('./routes/categoryRoutes.js');
 const addressRoutes = require('./routes/addressRoutes.js');
 const authRoutes = require('./routes/authRoutes.js');
+const productRoutes = require('./routes/productRoutes.js');
+const reviewRoutes = require('./routes/reviewRoutes.js');
+const discountRoutes = require('./routes/discountRoutes.js');
+const groupRoutes = require('./routes/groupRoutes.js');
 
 const app = express();
 
@@ -48,8 +52,12 @@ app.use('/api/category', categoryRoutes);
 // Private Routes
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/banners', bannerRoutes);
-app.use('api/address', addressRoutes);
+app.use('/api/address', addressRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/reviewRoutes', reviewRoutes);
+app.use('/api/discount', discountRoutes);
+app.use('/api/groups', groupRoutes);
 
 // Start of dummy to be removed
 app.get("/", (req, res) => {

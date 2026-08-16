@@ -102,6 +102,18 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: true
     },
+    isBulkPricingFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    bulkUploadExcelMaxSizeMB: {
+        type: Number,
+        default: 5
+    },
+    bulkUploadZipMaxSizeMB: {
+        type: Number,
+        default: 50
+    },
 }, {
   timestamps: true
 });

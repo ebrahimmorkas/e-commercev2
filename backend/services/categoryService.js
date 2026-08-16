@@ -1,40 +1,16 @@
 const path = require('path');
+const { parseExcelBuffer } = require('../utils/excelParser');
+const { extractZipEntries } = require('../utils/zipExtractor');
+const { processExcelRows } = require('../utils/excelRowProcessor');
 const Category = require('../models/Category');
 const logger = require('../utils/logger');
 const redisService = require('./redisService');
 const redisKeys = require('../utils/redisKeys');
-const storageService = require('./storageService');
+const imageUploadService = require('./imageUploadService');
 const common = require('../utils/common');
+const { bulkCategoryRowSchema } = require('../middlewares/validations/categoryValidations');
 
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-/**
- * Vendor-configurable image checks (companyMaster.allowedCategoryImageMB / allowedCategoryImagesFormat).
- * Runs against the raw multer file object before it gets uploaded to storage.
- */
-const validateImageConstraints = (file, companyMasterData) => {
-    try {
-    const allowedSizeMB = companyMasterData?.allowedCategoryImageMB;
-    if (allowedSizeMB !== null && allowedSizeMB !== undefined) {
-        const maxBytes = allowedSizeMB * 1024 * 1024;
-        if (file.size > maxBytes) {
-            const err = new Error(`Image size must not exceed ${allowedSizeMB}MB`);
-            err.statusCode = 400;
-            throw err;
-        }
-    }
-
-    const allowedFormat = companyMasterData?.allowedCategoryImagesFormat;
-    if (allowedFormat) {
-        const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
-        if (ext !== allowedFormat) {
-            return common.returnResult(false, 400, `Only .${allowedFormat} images are allowed`)
-        }
-    }
-} catch(err) {
-    throw err;
-} 
-};
 
 const invalidateCategoryCache = async (vendorId) => {
     try {
@@ -90,9 +66,9 @@ const getDescendantIds = async (vendorId, rootId) => {
     }
 };
 
-const validateParentForAttachment = async (vendorId, parentCategoryId) => {
+const validateParentForAttachment = async (vendorId, parentCategoryId, session = null) => {
     try {
-        const parent = await Category.findOne({ _id: parentCategoryId, vendorId });
+        const parent = await Category.findOne({ _id: parentCategoryId, vendorId }).session(session);
         if (!parent) return { valid: false, reason: 'Parent category not found' };
         if (parent.status !== 'A') return { valid: false, reason: 'Cannot attach a category under a parent that is not active' };
         return { valid: true, parent };
@@ -111,12 +87,12 @@ const checkNestingAllowed = (websiteMasterData, companyMasterData) => {
     return { allowed: true };
 };
 
-const checkMainCategoryLimit = async (vendorId, companyMasterData) => {
+const checkMainCategoryLimit = async (vendorId, companyMasterData, session = null) => {
     try {
         const limit = companyMasterData?.numberOfMainCategoriesAllowed;
-        if (limit === null || limit === undefined) return { allowed: true }; // null = infinite
+        if (limit === null || limit === undefined) return { allowed: true };
 
-        const count = await Category.countDocuments({ vendorId, parent_category_id: null, status: { $ne: 'D' } });
+        const count = await Category.countDocuments({ vendorId, parent_category_id: null, status: { $ne: 'D' } }).session(session);
         if (count >= limit) {
             return { allowed: false, reason: 'Main category limit reached for your plan' };
         }
@@ -126,12 +102,12 @@ const checkMainCategoryLimit = async (vendorId, companyMasterData) => {
     }
 };
 
-const checkSubCategoryLimit = async (vendorId, parentCategoryId, companyMasterData) => {
+const checkSubCategoryLimit = async (vendorId, parentCategoryId, companyMasterData, session = null) => {
     try {
         const limit = companyMasterData?.numberOfSubcategoriesAllowed;
-        if (limit === null || limit === undefined) return { allowed: true }; // null = infinite
+        if (limit === null || limit === undefined) return { allowed: true };
 
-        const count = await Category.countDocuments({ vendorId, parent_category_id: parentCategoryId, status: { $ne: 'D' } });
+        const count = await Category.countDocuments({ vendorId, parent_category_id: parentCategoryId, status: { $ne: 'D' } }).session(session);
         if (count >= limit) {
             return { allowed: false, reason: 'Sub-category limit reached for this parent category' };
         }
@@ -141,14 +117,10 @@ const checkSubCategoryLimit = async (vendorId, parentCategoryId, companyMasterDa
     }
 };
 
-/**
- * Runs every check needed before attaching a category (create or reparent) under the given parent
- * (or as a new main category if parentCategoryId is null).
- */
-const validateAttachment = async (vendorId, parentCategoryId, websiteMasterData, companyMasterData) => {
+const validateAttachment = async (vendorId, parentCategoryId, websiteMasterData, companyMasterData, session = null) => {
     try {
         if (parentCategoryId) {
-            const parentCheck = await validateParentForAttachment(vendorId, parentCategoryId);
+            const parentCheck = await validateParentForAttachment(vendorId, parentCategoryId, session);
             if (!parentCheck.valid) {
                 return common.returnResult(false, 400, parentCheck.reason);
             }
@@ -158,13 +130,13 @@ const validateAttachment = async (vendorId, parentCategoryId, websiteMasterData,
                 return common.returnResult(false, 403, nesting.reason);
             }
 
-            const subLimit = await checkSubCategoryLimit(vendorId, parentCategoryId, companyMasterData);
+            const subLimit = await checkSubCategoryLimit(vendorId, parentCategoryId, companyMasterData, session);
             if (!subLimit.allowed) {
                 return common.returnResult(false, 403, subLimit.reason);
             }
             return common.returnResult(true, 200, `Everything working good`);
         } else {
-            const mainLimit = await checkMainCategoryLimit(vendorId, companyMasterData);
+            const mainLimit = await checkMainCategoryLimit(vendorId, companyMasterData, session);
             if (!mainLimit.allowed) {
                 return common.returnResult(false, 403, mainLimit.reason);
             }
@@ -190,17 +162,22 @@ const addCategory = async (vendorId, userId, data, file, websiteMasterData, comp
             return common.returnResult(false, validateResults.statusCode, validateResults.message);
         }
 
-        let image = { url: null, publicId: null };
+        let image = { url: null, imageAssetId: null };
         if (file) {
-            const isImageConstraintsProper = validateImageConstraints(file, companyMasterData);
-            if(!isImageConstraintsProper.isSuccess) {
-                return common.returnResult(isImageConstraintsProper.isSuccess, isImageConstraintsProper.statusCode, isImageConstraintsProper.message);
-            }
-            const uploaded = await storageService.upload(file.buffer, {
-                folder: `${vendorId}/categories`
+            const uploadResult = await imageUploadService.uploadImage({
+                vendorId,
+                module: 'category',
+                file,
+                userId,
+                maxSizeField: 'allowedCategoryImageMB',
+                allowedFormatsField: 'allowedCategoryImagesFormat',
+                companyMasterData,
+                websiteMasterData
             });
-            image = { url: uploaded.url, publicId: uploaded.publicId };
-            file.buffer = null;
+            if (!uploadResult.isSuccess) {
+                return common.returnResult(false, uploadResult.statusCode, uploadResult.message);
+            }
+            image = { url: uploadResult.meta.image.url, imageAssetId: uploadResult.meta.image._id };
         }
 
         const now = new Date();
@@ -269,9 +246,9 @@ const updateCategory = async (vendorId, userId, categoryId, data, file, websiteM
                 }
             }
 
-            const validateAttachment = await validateAttachment(vendorId, parent_category_id, websiteMasterData, companyMasterData);
-            if(!validateAttachment.isSuccess) {
-                return common.returnResult(false, validateAttachment.statusCode, validateAttachment.message);
+            const attachmentCheck = await validateAttachment(vendorId, parent_category_id, websiteMasterData, companyMasterData);
+            if(!attachmentCheck.isSuccess) {
+                return common.returnResult(false, attachmentCheck.statusCode, attachmentCheck.message);
             }
             category.parent_category_id = parent_category_id;
         }
@@ -311,19 +288,31 @@ const updateCategory = async (vendorId, userId, categoryId, data, file, websiteM
         }
 
         if (file) {
-            const isImageConstraintsProper = validateImageConstraints(file, companyMasterData); 
-            if(!isImageConstraintsProper.isSuccess) {
-                return common.returnResult(isImageConstraintsProper.isSuccess, isImageConstraintsProper.statusCode, isImageConstraintsProper.message);
-            }
-            const previousPublicId = category.image?.publicId;
-            const uploaded = await storageService.upload(file.buffer, {
-                folder: `${vendorId}/categories`
-            });
-            category.image = { url: uploaded.url, publicId: uploaded.publicId };
-            file.buffer = null;
-
-            if (previousPublicId) {
-                await storageService.delete(previousPublicId);
+            if (category.image?.imageAssetId) {
+                const imageUpdateResult = await imageUploadService.updateImage({
+                    imageId: category.image.imageAssetId,
+                    file,
+                    userId,
+                    maxSizeField: 'allowedCategoryImageMB',
+                    allowedFormatsField: 'allowedCategoryImagesFormat',
+                    companyMasterData,
+                    websiteMasterData
+                });
+                if (!imageUpdateResult.isSuccess) {
+                    return common.returnResult(false, imageUpdateResult.statusCode, imageUpdateResult.message);
+                }
+                category.image = { url: imageUpdateResult.meta.image.url, imageAssetId: imageUpdateResult.meta.image._id };
+            } else {
+                const uploadResult = await imageUploadService.uploadImage({
+                    vendorId, module: 'category', file, userId,
+                    maxSizeField: 'allowedCategoryImageMB',
+                    allowedFormatsField: 'allowedCategoryImagesFormat',
+                    companyMasterData, websiteMasterData
+                });
+                if (!uploadResult.isSuccess) {
+                    return common.returnResult(false, uploadResult.statusCode, uploadResult.message);
+                }
+                category.image = { url: uploadResult.meta.image.url, imageAssetId: uploadResult.meta.image._id };
             }
         }
 
@@ -346,6 +335,17 @@ const softDeleteCategory = async (vendorId, userId, categoryId) => {
 
         const descendantIds = await getDescendantIds(vendorId, categoryId);
         const allIds = [categoryId, ...descendantIds];
+
+        const categoriesWithImages = await Category.find(
+            { _id: { $in: allIds }, 'image.imageAssetId': { $ne: null } },
+            '_id image.imageAssetId'
+        );
+        for (const cat of categoriesWithImages) {
+            const imageDeleteResult = await imageUploadService.deleteImage({ imageId: cat.image.imageAssetId, userId });
+            if (!imageDeleteResult.isSuccess) {
+                logger.logInfo(0, 1, 'Failed to delete category image during soft delete', { vendorId, categoryId: cat._id });
+            }
+        }
 
         await Category.updateMany(
             { _id: { $in: allIds } },
@@ -389,10 +389,218 @@ const fetchAdminCategories = async (vendorId) => {
     }
 };
 
+const BULK_CATEGORY_COLUMNS = [
+    { key: 'categoryPath', header: 'categoryPath', required: true },
+    { key: 'imagePath', header: 'imagePath', required: false },
+    { key: 'status', header: 'status', required: false }
+];
+
+const EXTENSION_MIME_MAP = {
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    webp: 'image/webp',
+    gif: 'image/gif'
+};
+
+const normalizePath = (segments) => segments.map((s) => s.trim().toLowerCase()).join('>');
+
+const bulkUploadCategories = async (vendorId, userId, excelBuffer, zipBuffer, websiteMasterData, companyMasterData) => {
+    try {
+        const { rows } = await parseExcelBuffer(excelBuffer, BULK_CATEGORY_COLUMNS);
+
+        if (rows.length === 0) {
+            return common.returnResult(false, 400, 'Excel file contains no data rows');
+        }
+
+        let zipEntries;
+        try {
+            zipEntries = extractZipEntries(zipBuffer);
+        } catch (err) {
+            return common.returnResult(false, 400, `Could not read zip file: ${err.message}`);
+        }
+
+        // normalizedPath -> { resolvable: boolean, categoryId?, reason? }  (this batch, in file order)
+        const batchMap = new Map();
+        // normalizedPath -> categoryId, resolved from DB (pre-existing categories, cached per run)
+        const dbPathCache = new Map();
+
+        // Resolves the parent chain for a row. Checks this batch first (so later rows can
+        // attach under categories created earlier in the SAME file), then falls back to DB
+        // for chains that already existed before this upload. Fails if neither has it.
+        const resolveParent = async (parentSegments) => {
+            if (parentSegments.length === 0) {
+                return { found: true, parentId: null };
+            }
+
+            let currentParentId = null;
+            let walkedKey = '';
+
+            for (const segment of parentSegments) {
+                const trimmedSeg = segment.trim();
+                walkedKey = walkedKey ? `${walkedKey}>${trimmedSeg.toLowerCase()}` : trimmedSeg.toLowerCase();
+
+                if (dbPathCache.has(walkedKey)) {
+                    currentParentId = dbPathCache.get(walkedKey);
+                    continue;
+                }
+
+                if (batchMap.has(walkedKey)) {
+                    const entry = batchMap.get(walkedKey);
+                    if (!entry.resolvable) {
+                        return { found: false, reason: `Parent category failed: ${entry.reason}` };
+                    }
+                    currentParentId = entry.categoryId;
+                    dbPathCache.set(walkedKey, currentParentId);
+                    continue;
+                }
+
+                const found = await Category.findOne({
+                    vendorId,
+                    parent_category_id: currentParentId,
+                    status: { $ne: 'D' },
+                    categoryName: { $regex: `^${escapeRegex(trimmedSeg)}$`, $options: 'i' }
+                });
+
+                if (!found) {
+                    return { found: false, reason: `Parent '${trimmedSeg}' not found — add it in an earlier row` };
+                }
+
+                currentParentId = found._id;
+                dbPathCache.set(walkedKey, currentParentId);
+            }
+
+            return { found: true, parentId: currentParentId };
+        };
+
+        const result = await processExcelRows(
+            rows,
+            async (row) => {
+                const { error, value } = bulkCategoryRowSchema.validate(row, { abortEarly: false });
+                if (error) {
+                    return { success: false, errors: error.details.map((d) => d.message.replace(/"/g, '')) };
+                }
+
+                const segments = value.categoryPath.split('>').map((s) => s.trim()).filter(Boolean);
+                const leafName = segments[segments.length - 1];
+                const parentSegments = segments.slice(0, -1);
+                const fullKey = normalizePath(segments);
+
+                const parentResolution = await resolveParent(parentSegments);
+                if (!parentResolution.found) {
+                    batchMap.set(fullKey, { resolvable: false, reason: parentResolution.reason });
+                    return { success: false, errors: [parentResolution.reason] };
+                }
+                const parentId = parentResolution.parentId;
+
+                // Duplicate check — batch first (cheap), DB fallback for pre-existing categories
+                let existingId = null;
+                if (batchMap.has(fullKey)) {
+                    const entry = batchMap.get(fullKey);
+                    if (entry.resolvable) existingId = entry.categoryId;
+                } else {
+                    const dupExisting = await Category.findOne({
+                        vendorId,
+                        parent_category_id: parentId,
+                        status: { $ne: 'D' },
+                        categoryName: { $regex: `^${escapeRegex(leafName)}$`, $options: 'i' }
+                    });
+                    if (dupExisting) existingId = dupExisting._id;
+                }
+                if (existingId) {
+                    const reason = `Category '${value.categoryPath}' already exists`;
+                    // resolvable:true — children CAN still attach to this existing category,
+                    // even though this row itself is reported as failed below.
+                    batchMap.set(fullKey, { resolvable: true, categoryId: existingId, reason });
+                    return { success: false, errors: [reason] };
+                }
+
+                const attachmentCheck = await validateAttachment(vendorId, parentId, websiteMasterData, companyMasterData);
+                if (!attachmentCheck.isSuccess) {
+                    batchMap.set(fullKey, { resolvable: false, reason: attachmentCheck.message });
+                    return { success: false, errors: [attachmentCheck.message] };
+                }
+
+                let image = { url: null, imageAssetId: null };
+                if (value.imagePath) {
+                    const zipData = zipEntries.get(value.imagePath.trim().toLowerCase());
+                    if (!zipData) {
+                        const reason = `Image '${value.imagePath}' not found in zip file`;
+                        batchMap.set(fullKey, { resolvable: false, reason });
+                        return { success: false, errors: [reason] };
+                    }
+
+                    const pseudoFile = {
+                        buffer: zipData,
+                        originalname: path.basename(value.imagePath),
+                        mimetype: 'application/octet-stream', // real type is verified inside imageUploadService
+                        size: zipData.length
+                    };
+
+                    const uploadResult = await imageUploadService.uploadImage({
+                        vendorId,
+                        module: 'category',
+                        file: pseudoFile,
+                        userId,
+                        maxSizeField: 'allowedCategoryImageMB',
+                        allowedFormatsField: 'allowedCategoryImagesFormat',
+                        companyMasterData,
+                        websiteMasterData
+                    });
+
+                    if (!uploadResult.isSuccess) {
+                        batchMap.set(fullKey, { resolvable: false, reason: uploadResult.message });
+                        return { success: false, errors: [uploadResult.message] };
+                    }
+
+                    image = { url: uploadResult.meta.image.url, imageAssetId: uploadResult.meta.image._id };
+                }
+
+                const now = new Date();
+                const categoryData = {
+                    vendorId,
+                    categoryName: leafName,
+                    parent_category_id: parentId,
+                    image,
+                    status: value.status,
+                    createdBy: userId,
+                    updatedBy: userId
+                };
+                if (value.status === 'A') {
+                    categoryData.activeMarkedBy = userId;
+                    categoryData.activeMarkedDate = now;
+                } else {
+                    categoryData.inActiveMarkeddBy = userId;
+                    categoryData.inactiveMarkedDate = now;
+                }
+
+                const saved = await Category.create(categoryData);
+
+                batchMap.set(fullKey, { resolvable: true, categoryId: saved._id });
+                return { success: true };
+            },
+            { allowPartialSuccess: true, useTransaction: false }
+        );
+
+        if (result.successCount > 0) {
+            await invalidateCategoryCache(vendorId);
+        }
+
+        logger.logInfo(1, 0, 'Bulk category upload processed', {
+            vendorId, total: result.totalRows, success: result.successCount, failed: result.failedCount
+        });
+
+        return common.returnResult(true, 200, 'Bulk category upload processed', result);
+    } catch (err) {
+        throw err;
+    }
+};
+
 module.exports = {
     addCategory,
     updateCategory,
     softDeleteCategory,
     fetchActiveCategories,
-    fetchAdminCategories
+    fetchAdminCategories,
+    bulkUploadCategories
 };

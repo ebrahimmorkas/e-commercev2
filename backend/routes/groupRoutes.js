@@ -5,7 +5,7 @@ const groupController = require('../controllers/groupController');
 const authenticate = require('../middlewares/authenticate');
 const authorize = require('../middlewares/authorize');
 const validate = require('../middlewares/validate');
-const { createGroupSchema, updateGroupSchema, groupIdBodySchema, groupIdParamSchema, listGroupsQuerySchema } = require('../validations/groupValidation');
+const { createGroupSchema, updateGroupSchema, groupIdBodySchema, groupIdParamSchema, listGroupsQuerySchema } = require('../middlewares/validations/groupValidations');
 
 router.post('/', authenticate, authorize('admin'), validate(createGroupSchema, 'body'), groupController.createGroup);
 router.get('/', authenticate, authorize('admin'), validate(listGroupsQuerySchema, 'query'), groupController.getAllGroups);

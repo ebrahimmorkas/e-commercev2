@@ -63,6 +63,18 @@ const userSchema = mongoose.Schema({
         default: "user",
         required: true,
     },
+    country: {
+        type: String,
+        required: true,
+    },
+    city: {
+        type: String,
+        required: true,
+    },  
+    state: {
+        type: String,
+        required: true,
+    },  
     updated_by: {
         type: mongoose.Types.ObjectId,
         index: true

@@ -2,6 +2,14 @@ const ImageAsset = require('../models/ImageAsset');
 const { getProvider } = require('./providers/providerFactory');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
+const { fileTypeFromBuffer } = require('file-type');
+
+const MIME_EXTENSION_MAP = {
+    'image/jpeg': ['jpg', 'jpeg'],
+    'image/png': ['png'],
+    'image/webp': ['webp'],
+    'image/gif': ['gif']
+};
 
 // Resolves which provider a vendor's upload should go to right now.
 // enforceMainImageService=true always wins with mainImageService.
@@ -42,6 +50,24 @@ const validateFile = (file, { maxSizeField, allowedFormatsField }, companyMaster
     return { valid: true };
 };
 
+// Verifies the buffer's actual magic bytes match a real image AND match the claimed
+// extension - catches corrupted files, renamed non-images, and zip-extracted junk
+// BEFORE we spend an API call on a provider (Cloudinary/S3/R2).
+const validateFileContent = async (file) => {
+    const detected = await fileTypeFromBuffer(file.buffer);
+    if (!detected || !detected.mime.startsWith('image/')) {
+        return { valid: false, message: 'File is not a valid, readable image.' };
+    }
+
+    const extension = getFileExtension(file.originalname);
+    const expectedExtensions = MIME_EXTENSION_MAP[detected.mime] || [];
+    if (!expectedExtensions.includes(extension)) {
+        return { valid: false, message: `File content does not match its .${extension} extension.` };
+    }
+
+    return { valid: true, detectedMime: detected.mime };
+};
+
 const uploadImage = async ({
     vendorId,
     module,
@@ -63,6 +89,12 @@ const uploadImage = async ({
             return common.returnResult(false, 400, validation.message);
         }
 
+        const contentCheck = await validateFileContent(file);
+        if (!contentCheck.valid) {
+            return common.returnResult(false, 400, contentCheck.message);
+        }
+        const verifiedMimeType = contentCheck.detectedMime;
+
         if (maxCountField && companyMasterData && companyMasterData[maxCountField] != null) {
             const maxCount = companyMasterData[maxCountField];
             const existingCount = await ImageAsset.countDocuments({ vendorId, module, status: 'A' });
@@ -81,7 +113,7 @@ const uploadImage = async ({
             vendorId,
             module,
             originalName: file.originalname,
-            mimeType: file.mimetype
+            mimeType: verifiedMimeType
         });
 
         const imageAsset = await ImageAsset.create({
@@ -91,7 +123,7 @@ const uploadImage = async ({
             url,
             key,
             originalName: file.originalname,
-            mimeType: file.mimetype,
+            mimeType: verifiedMimeType,
             size: file.size,
             status: 'A',
             createdBy: userId
@@ -155,6 +187,12 @@ const updateImage = async ({
             return common.returnResult(false, 400, validation.message);
         }
 
+        const contentCheck = await validateFileContent(file);
+        if (!contentCheck.valid) {
+            return common.returnResult(false, 400, contentCheck.message);
+        }
+        const verifiedMimeType = contentCheck.detectedMime;
+
         // Re-resolve provider in case enforcement/vendor preference has changed since the last upload.
         const providerName = resolveImageProvider(companyMasterData, websiteMasterData);
         if (!providerName) {
@@ -169,14 +207,14 @@ const updateImage = async ({
             vendorId: existingImage.vendorId,
             module: existingImage.module,
             originalName: file.originalname,
-            mimeType: file.mimetype
+            mimeType: verifiedMimeType
         });
 
         existingImage.provider = providerName;
         existingImage.url = url;
         existingImage.key = key;
         existingImage.originalName = file.originalname;
-        existingImage.mimeType = file.mimetype;
+        existingImage.mimeType = verifiedMimeType;
         existingImage.size = file.size;
         existingImage.updatedBy = userId;
 
