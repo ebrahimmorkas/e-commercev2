@@ -1,1 +1,25 @@
 @import "tailwindcss";
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* Layered alongside Tailwind's own utilities so the group-hover:[animation-play-state:paused]
+   arbitrary-property utility (also layered) can out-specificity this rule as intended -
+   an unlayered rule here would otherwise always win over it regardless of specificity. */
+@layer utilities {
+  .animate-marquee {
+    animation: marquee 25s linear infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee {
+    animation: none;
+  }
+}
