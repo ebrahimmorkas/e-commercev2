@@ -55,7 +55,7 @@ const updateCategory = async (req, res) => {
         );
 
         if (!categoryUpdate.isSuccess) {
-            return common.returnResult(false, categoryUpdate.statusCode, categoryUpdate.message);
+            return common.sendError(res, categoryUpdate.statusCode, categoryUpdate.message);
         }
 
         return common.sendSuccess(res, 200, 'Category updated successfully');
