@@ -22,6 +22,7 @@ const discountRoutes = require('./routes/discountRoutes.js');
 const groupRoutes = require('./routes/groupRoutes.js');
 const sizeMasterRoutes = require('./routes/sizeMasterRoutes.js');
 const unitMasterRoutes = require('./routes/unitMasterRoutes');
+const countryMasterRoutes = require('./routes/countryMasterRoutes.js');
 const redisService = require('./services/redisService');
 
 const app = express();
@@ -54,6 +55,7 @@ app.use('/api/company-settings', companySettingsRoutes);
 app.use('/api/category', categoryRoutes);
 app.use('/api/sizes', sizeMasterRoutes);
 app.use('/api/units', unitMasterRoutes);
+app.use('/api/countries', countryMasterRoutes);
 // Private Routes
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/banners', bannerRoutes);
