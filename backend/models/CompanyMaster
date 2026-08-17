@@ -150,6 +150,7 @@ const companyMasterSchema = mongoose.Schema({
     // Vendor wil be able to add only Main Category if this is false
     isCategoryNestingAllowed: {
         type: Boolean,    
+        default: true
     },
     isBulkPricingFeatureOn: {
         type: Boolean,

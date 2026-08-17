@@ -3,7 +3,7 @@ const path = require('path');
 const logger = require('../../utils/logger');
 require('dotenv').config();
 
-const ALLOWED_IMAGE_TYPES = process.env.ALLOWED_IMAGE_TYPES_FOR_IMAGES;
+const ALLOWED_IMAGE_TYPES = new RegExp(process.env.ALLOWED_IMAGE_TYPES_FOR_IMAGES, 'i');
 
 /**
  * Creates a multer instance backed by memory storage (no disk writes), so the

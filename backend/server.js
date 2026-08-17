@@ -20,6 +20,7 @@ const productRoutes = require('./routes/productRoutes.js');
 const reviewRoutes = require('./routes/reviewRoutes.js');
 const discountRoutes = require('./routes/discountRoutes.js');
 const groupRoutes = require('./routes/groupRoutes.js');
+const redisService = require('./services/redisService');
 
 const app = express();
 
@@ -65,9 +66,9 @@ app.get("/", (req, res) => {
 });
 
 app.get('/flush-redis', async (req, res) => {
-    const redisService = require('./services/redisService');
     await redisService.del('website-master');
     await redisService.del('company-master-configuration:6a63443e263b29b8e59374eb')
+    await redisService.del('company-settings:6a63443e263b29b8e59374eb')
     res.send('Flushed');
 });
 // End of dummy to be removed

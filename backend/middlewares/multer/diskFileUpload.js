@@ -4,7 +4,7 @@ const fs = require('fs');
 const logger = require('../../utils/logger');
 require('dotenv').config();
 
-const ALLOWED_IMAGE_TYPES = process.env.ALLOWED_IMAGE_TYPES_FOR_IMAGES;
+const ALLOWED_IMAGE_TYPES = new RegExp(process.env.ALLOWED_IMAGE_TYPES_FOR_IMAGES, 'i');
 
 const createUploader = ({ folder, maxSizeMB = 5, allowedTypes = ALLOWED_IMAGE_TYPES }) => {
     try {
