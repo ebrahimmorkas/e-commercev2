@@ -20,6 +20,8 @@ const productRoutes = require('./routes/productRoutes.js');
 const reviewRoutes = require('./routes/reviewRoutes.js');
 const discountRoutes = require('./routes/discountRoutes.js');
 const groupRoutes = require('./routes/groupRoutes.js');
+const sizeMasterRoutes = require('./routes/sizeMasterRoutes.js');
+const unitMasterRoutes = require('./routes/unitMasterRoutes');
 const redisService = require('./services/redisService');
 
 const app = express();
@@ -50,6 +52,8 @@ if (process.env.IS_REDIS_SERVER_ON == 1) {
 app.use('/api/company-master', companyMasterRoutes);
 app.use('/api/company-settings', companySettingsRoutes);
 app.use('/api/category', categoryRoutes);
+app.use('/api/sizes', sizeMasterRoutes);
+app.use('/api/units', unitMasterRoutes);
 // Private Routes
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/banners', bannerRoutes);
