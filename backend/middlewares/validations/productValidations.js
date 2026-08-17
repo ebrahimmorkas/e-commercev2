@@ -6,11 +6,12 @@ const objectId = () => Joi.string().hex().length(24).messages({
 });
 
 // --- description entry (matches descriptionEntrySchema in Product.js) -------
-// Reused for product description, variantAdditionalDescription, and
-// sizeAdditionalDescription - same shape, same duplicate-key rule.
+// key and value are both required whenever an entry is present - there's no
+// scenario where one is filled without the other, so this is enforced as a
+// plain pairing rather than a conditional XOR rule.
 const descriptionEntrySchema = Joi.object({
     key: Joi.string().trim().min(1).required().label('Key'),
-    value: Joi.string().trim().allow('', null).label('Value')
+    value: Joi.string().trim().min(1).required().label('Value')
 });
 
 const descriptionArraySchema = Joi.array()
@@ -18,6 +19,8 @@ const descriptionArraySchema = Joi.array()
     .unique((a, b) => a.key.trim().toLowerCase() === b.key.trim().toLowerCase())
     .messages({ 'array.unique': 'Description keys must be unique.' })
     .label('Description');
+// Description itself stays fully optional (no .required()/.min(1) here) -
+// a product/variant/size can have zero description entries.
 
 // --- Bulk pricing (matches bulkPricingSchema in Product.js) -----------------
 const bulkPricingItemSchema = Joi.object({
@@ -30,9 +33,6 @@ const bulkPricingItemSchema = Joi.object({
 });
 
 // --- Measurement value (matches measurementValueSchema in Product.js) -------
-// Cross-referenced against the size's SizeMaster.measurements in
-// productService.js (measurementLabel must exist on that master, unit must
-// be inside that measurement's allowedUnits) - Joi only enforces shape here.
 const measurementValueSchema = Joi.object({
     measurementId: objectId().required().label('Measurement'),
     unit: objectId().required().label('Unit'),
@@ -46,8 +46,6 @@ const weightSchema = Joi.object({
 });
 
 // --- Policy (matches policySchema in Product.js - warranty/return/exchange) --
-// duration/durationType are required only when isAvailable is true; when
-// false they're ignored/optional so the vendor doesn't have to send nulls.
 const policySchema = Joi.object({
     isAvailable: Joi.boolean().default(false),
     duration: Joi.number().min(0).when('isAvailable', {
@@ -63,9 +61,6 @@ const policySchema = Joi.object({
 });
 
 // --- Shipping (matches shippingSchema in Product.js) --------------------------
-// value is required and must be a plain number whenever type is CUSTOM
-// (vendor-entered custom shipping cost); forbidden when COMPANY_SETTINGS
-// (shipping cost comes from company-wide config instead).
 const shippingSchema = Joi.object({
     type: Joi.string().valid('CUSTOM', 'COMPANY_SETTINGS').required().label('Shipping type'),
     value: Joi.number().when('type', {
@@ -76,12 +71,10 @@ const shippingSchema = Joi.object({
 });
 
 // --- Size (matches sizeSchema in Product.js) ----------------------------------
-// Fully specified. sizeId is required and cross-referenced against
-// SizeMaster + CompanyMaster.allowedSizes in productService.js. values/
-// labelValue are mutually exclusive based on sizeType, matching the
-// Mongoose required-function behavior. image/additionalImages are NEVER
-// part of this schema - they arrive as multipart files, matched by array
-// position (see productRoutes.js).
+// cancelledPrice remains optional (point 7); when present, price must be
+// strictly less than it (point 1) - enforced via the object-level .custom()
+// below since it's a cross-field rule Joi.number() alone can't express
+// cleanly against a sibling that may be null/absent.
 const sizeSchema = Joi.object({
     isDefaultSize: Joi.boolean().default(false),
     sizeType: Joi.string().valid('MEASURABLE', 'LABEL').required().label('Size type'),
@@ -124,12 +117,17 @@ const sizeSchema = Joi.object({
     sku: Joi.string().trim().min(1).required().label('SKU'),
     barcode: Joi.string().trim().allow('', null).label('Barcode'),
     sizeCode: Joi.string().trim().label('Size code')
-});
+})
+    .custom((size, helpers) => {
+        if (size.cancelledPrice !== null && size.cancelledPrice !== undefined && size.price >= size.cancelledPrice) {
+            return helpers.error('size.priceNotLessThanCancelledPrice');
+        }
+        return size;
+    })
+    .messages({ 'size.priceNotLessThanCancelledPrice': 'Price must be less than cancelled price.' });
 
 // Cross-item rules within one variant's sizes array: at most one default
-// size, and no two sizes may resolve to the exact same sizeId + value
-// (same sizeId with a DIFFERENT label/measurement value is fine and
-// expected - e.g. shoe sizes 7/8/9 all referencing one SizeMaster doc).
+// size, and no two sizes may resolve to the exact same sizeId + value.
 const validateSizesArray = (sizesArray, helpers) => {
     const seenKeys = new Set();
     let defaultCount = 0;
@@ -164,7 +162,9 @@ const validateSizesArray = (sizesArray, helpers) => {
 };
 
 // --- Variant (matches variantSchema in Product.js) ----------------------------
-// sizes is now fully required - every variant must have at least one size.
+// color stays optional (not every product line needs color-based variants);
+// when present, it's checked against the product's own `colors` array by
+// the whole-schema validateProductLevelRules custom below (point 2).
 const variantSchema = Joi.object({
     isDefaultVariant: Joi.boolean().default(false),
     color: Joi.string().trim().allow(null).label('Color'),
@@ -184,9 +184,6 @@ const variantSchema = Joi.object({
     variantCode: Joi.string().trim().label('Variant code')
 });
 
-// Cross-item rules that can't be expressed per-item: colors must be
-// distinct across a product's variants (case-insensitive), and at most one
-// variant may be marked as the default.
 const validateVariantsArray = (variantsArray, helpers) => {
     const seenColors = new Set();
     let defaultCount = 0;
@@ -211,22 +208,33 @@ const validateVariantsArray = (variantsArray, helpers) => {
     return variantsArray;
 };
 
-// --- Product (pass 2 + 3 + 4: basic details, variants, sizes) -----------------
-// mainCategory/subCategory are intentionally optional here - whether they're
-// even allowed at all (isCategoryFeatureOn) and whether nesting is allowed
-// (isCategoryNestingAllowed) depend on vendor-specific CompanyMaster data,
-// which Joi has no access to - that's enforced in productService.js instead.
-// productCode/variantCode/sizeCode are optional here for the same reason:
-// whether they're required from the vendor or server-generated depends on
-// CompanySettings (isProductCodeAutoGenerated / isVariantCodeAutoGenerated /
-// isSizeCodeAutoGenerated), also enforced in the service.
-// variants is now required with at least one entry - every product must
-// have at least one variant, and every variant must have at least one size.
+// Whole-product-level rule (point 2): every variant.color that is set must
+// be an EXACT match (case-sensitive - frontend supplies a dropdown built
+// from product.colors, not free text) to one of the entries in the
+// product's own `colors` array. Needs access to both sibling fields at
+// once, which is why this lives as a top-level .custom() on
+// createProductSchema rather than inside variantSchema/validateVariantsArray.
+const validateColorsAgainstVariants = (product, helpers) => {
+    const productColors = new Set(product.colors || []);
+
+    for (const variant of (product.variants || [])) {
+        if (variant.color && !productColors.has(variant.color)) {
+            return helpers.error('product.invalidVariantColor', { color: variant.color });
+        }
+    }
+
+    return product;
+};
+
+// --- Product (pass 2 + 3 + 4, plus cross-cutting validations) -----------------
+// colors is now required with at least one entry (point 2) - the frontend
+// gates variant creation on this being filled first, so Joi enforces the
+// same rule server-side.
 const createProductSchema = Joi.object({
     name: Joi.string().trim().min(1).required().label('Product name'),
     description: descriptionArraySchema,
     disclaimer: Joi.string().trim().allow('', null).label('Disclaimer'),
-    colors: Joi.array().items(Joi.string().trim()).label('Colors'),
+    colors: Joi.array().items(Joi.string().trim()).min(1).required().label('Colors'),
     mainCategory: objectId().allow(null).label('Main category'),
     subCategory: objectId().allow(null).label('Sub category'),
     searchKeywords: Joi.array().items(Joi.string().trim()).label('Search keywords'),
@@ -242,7 +250,11 @@ const createProductSchema = Joi.object({
         })
         .label('Variants')
 })
-    .with('subCategory', 'mainCategory'); // can't send a sub category without also naming the main category it falls under
+    .with('subCategory', 'mainCategory') // can't send a sub category without also naming the main category it falls under
+    .custom(validateColorsAgainstVariants)
+    .messages({
+        'product.invalidVariantColor': 'Variant color "{{#color}}" is not one of the product\'s selected colors.'
+    });
 
 module.exports = {
     createProductSchema

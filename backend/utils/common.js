@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const crypto = require('crypto');
 const StateMaster = require('../models/StateMaster');
 const CityMaster = require('../models/CityMaster');
+const CountryMaster = require('../models/CountryMaster');
 
 const sendSuccess = (res, statusCode, message, data = null) => {
   const payload = { success: true, message };
@@ -19,13 +20,6 @@ const returnResult = (isSuccess, statusCode, message, meta = {}) => {
     return {isSuccess, statusCode, message, meta};
 }
 
-// Validates a size's excludeCountries/excludeStates/excludeCities against the
-// vendor's CompanyMaster.allowedCountries. There is no allowedStates /
-// allowedCities concept on CompanyMaster (by design - not vendor-configurable),
-// so states/cities are validated indirectly: a state is only a legal
-// exclusion if its own country is inside allowedCountries, and a city is
-// only legal if the state it belongs to (and therefore that state's
-// country) is inside allowedCountries.
 const validateGeographyExclusions = async ({ excludeCountries = [], excludeStates = [], excludeCities = [], allowedCountries = [] }) => {
     try {
         const allowedCountryIds = new Set((allowedCountries || []).map(id => id.toString()));
@@ -33,6 +27,15 @@ const validateGeographyExclusions = async ({ excludeCountries = [], excludeState
         const invalidCountries = (excludeCountries || []).filter(id => !allowedCountryIds.has(id.toString()));
         if (invalidCountries.length > 0) {
             return returnResult(false, 400, `One or more excluded countries are outside your allowed countries: ${invalidCountries.join(', ')}`);
+        }
+
+        if (excludeCountries && excludeCountries.length > 0) {
+            const countryDocs = await CountryMaster.find({ _id: { $in: excludeCountries }, status: 'A' });
+            const foundCountryIds = new Set(countryDocs.map(doc => doc._id.toString()));
+            const missingCountries = excludeCountries.filter(id => !foundCountryIds.has(id.toString()));
+            if (missingCountries.length > 0) {
+                return returnResult(false, 400, `One or more excluded countries not found or inactive: ${missingCountries.join(', ')}`);
+            }
         }
 
         if (excludeStates && excludeStates.length > 0) {

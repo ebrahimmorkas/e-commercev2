@@ -498,10 +498,17 @@ const resolveSize = async ({
                 sizeMasterDoc.measurements.map(m => [m._id.toString(), m])
             );
 
+            const unitIdsToCheck = [...new Set(size.values.map(v => v.unit.toString()))];
+            const activeUnits = await UnitMaster.find({ _id: { $in: unitIdsToCheck }, status: 'A' });
+            const activeUnitIds = new Set(activeUnits.map(u => u._id.toString()));
+
             for (const entry of size.values) {
                 const measurementDef = measurementMap.get(entry.measurementId.toString());
                 if (!measurementDef) {
                     return common.returnResult(false, 400, `Invalid measurement for size "${sizeMasterDoc.name}".`);
+                }
+                if (!activeUnitIds.has(entry.unit.toString())) {
+                    return common.returnResult(false, 400, `Unit provided for "${measurementDef.label}" not found or inactive.`);
                 }
                 const allowedUnitIds = new Set(measurementDef.allowedUnits.map(id => id.toString()));
                 if (!allowedUnitIds.has(entry.unit.toString())) {
@@ -568,6 +575,44 @@ const resolveSize = async ({
     } catch (err) {
         throw err;
     }
+};
+
+// ---------------------------------------------------------------------------
+// Bulk pricing chain validation (point 6). "Bounds" = the highest quantity
+// covered and the cheapest price offered by a bulk pricing array, used as
+// the base the next level down must continue from and undercut.
+// ---------------------------------------------------------------------------
+
+const getBulkPricingBounds = (bulkPricingArray) => {
+    if (!bulkPricingArray || bulkPricingArray.length === 0) return null;
+    return {
+        maxQuantity: Math.max(...bulkPricingArray.map(b => b.maximumQuantity)),
+        minPrice: Math.min(...bulkPricingArray.map(b => b.price))
+    };
+};
+
+const validateAdditionalBulkPricingChain = (additionalArray, parentBounds, levelLabel) => {
+    if (!additionalArray || additionalArray.length === 0) {
+        return common.returnResult(true, 200, 'All Good');
+    }
+    if (!parentBounds) {
+        return common.returnResult(true, 200, 'All Good');
+    }
+
+    const sorted = [...additionalArray].sort((a, b) => a.minimumQuantity - b.minimumQuantity);
+    let expectedNextMin = parentBounds.maxQuantity + 1;
+
+    for (const tier of sorted) {
+        if (tier.minimumQuantity !== expectedNextMin) {
+            return common.returnResult(false, 400, `${levelLabel} bulk pricing quantities must continue immediately after the previous tier - expected minimum quantity ${expectedNextMin}.`);
+        }
+        if (tier.price >= parentBounds.minPrice) {
+            return common.returnResult(false, 400, `${levelLabel} bulk pricing price (${tier.price}) must be less than ${parentBounds.minPrice}.`);
+        }
+        expectedNextMin = tier.maximumQuantity + 1;
+    }
+
+    return common.returnResult(true, 200, 'All Good');
 };
 
 const generateUniqueSlug = async (vendorId, name) => {
@@ -671,6 +716,12 @@ const createProduct = async (vendorId, userId, companyMasterData, websiteMasterD
         const usedManualBarcodesInPayload = new Set();
         const sizeMasterCache = new Map();
 
+        // --- bulk pricing chain setup (point 6) --------------------------------
+        const productBulkBounds = getBulkPricingBounds(body.bulkPricing);
+        const productMaxBulkPrice = (body.bulkPricing && body.bulkPricing.length > 0)
+            ? Math.max(...body.bulkPricing.map(b => b.price))
+            : null;
+
         for (const variant of (body.variants || [])) {
             const variantCodeResult = await resolveVariantCode({
                 vendorId,
@@ -680,6 +731,26 @@ const createProduct = async (vendorId, userId, companyMasterData, websiteMasterD
             });
             if (!variantCodeResult.isSuccess) {
                 return common.returnResult(false, variantCodeResult.statusCode, variantCodeResult.message);
+            }
+
+            // --- variant-level bulk pricing chain --------------------------------
+            // Only chains off the product's tiers when this variant says its
+            // bulk pricing is "same as product" - otherwise the chain is
+            // broken here and nothing downstream (including sizes) is
+            // constrained by product/variant bulk pricing at all.
+            let variantBulkBounds = null;
+            if (variant.isBulkPricingSameFromProductBasicDetails) {
+                const variantChainResult = validateAdditionalBulkPricingChain(
+                    variant.variantAdditionalBulkPricing, productBulkBounds, 'Variant additional'
+                );
+                if (!variantChainResult.isSuccess) {
+                    return common.returnResult(false, variantChainResult.statusCode, variantChainResult.message);
+                }
+                const effectiveVariantArray = [
+                    ...(body.bulkPricing || []),
+                    ...(variant.variantAdditionalBulkPricing || [])
+                ];
+                variantBulkBounds = getBulkPricingBounds(effectiveVariantArray);
             }
 
             const resolvedSizes = [];
@@ -692,6 +763,28 @@ const createProduct = async (vendorId, userId, companyMasterData, websiteMasterD
                     return common.returnResult(false, sizeResult.statusCode, sizeResult.message);
                 }
 
+                // --- size-level bulk pricing chain ---------------------------------
+                // Only runs when BOTH levels above agreed to chain (variant
+                // said "same as product" AND this size says "same as
+                // variant"). If either link broke, size bulk pricing is free.
+                if (variant.isBulkPricingSameFromProductBasicDetails && size.isBulkPricingSameFromVariantsDetails) {
+                    const sizeChainResult = validateAdditionalBulkPricingChain(
+                        size.sizeAdditionalBulkPricing, variantBulkBounds, 'Size additional'
+                    );
+                    if (!sizeChainResult.isSuccess) {
+                        return common.returnResult(false, sizeChainResult.statusCode, sizeChainResult.message);
+                    }
+                }
+
+                // --- size's own selling price vs product's bulk pricing ceiling ----
+                // A single unit should never cost less than (or equal to) the
+                // cheapest bulk tier already offered at the product level.
+                if (variant.isBulkPricingSameFromProductBasicDetails && productMaxBulkPrice !== null) {
+                    if (size.price <= productMaxBulkPrice) {
+                        return common.returnResult(false, 400, `Size price (${size.price}) must be greater than the product's bulk pricing price (${productMaxBulkPrice}).`);
+                    }
+                }
+
                 resolvedSizes.push({
                     ...size,
                     sku: sizeResult.meta.sku,
@@ -699,7 +792,8 @@ const createProduct = async (vendorId, userId, companyMasterData, websiteMasterD
                     sizeCode: sizeResult.meta.sizeCode,
                     labelValue: sizeResult.meta.labelValue,
                     createdBy: userId,
-                    status: 'A'
+                    status: 'A',
+                    remarks: 'MANUAL'
                 });
             }
 
@@ -708,6 +802,7 @@ const createProduct = async (vendorId, userId, companyMasterData, websiteMasterD
                 variantCode: variantCodeResult.meta.variantCode,
                 createdBy: userId,
                 status: 'A',
+                remarks: 'MANUAL',
                 sizes: resolvedSizes
             });
         }
@@ -742,7 +837,8 @@ const createProduct = async (vendorId, userId, companyMasterData, websiteMasterD
             variants,
             vendorId,
             createdBy: userId,
-            status: 'A'
+            status: 'A',
+            remarks: 'MANUAL'
         });
 
         await product.save();

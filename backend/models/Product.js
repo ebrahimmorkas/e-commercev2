@@ -30,8 +30,8 @@ const descriptionEntrySchema = new mongoose.Schema(
         },
         value: {
             type: String,
-            trim: true,
-            default: null
+            required: true,
+            trim: true
         }
     },
     { _id: false }
