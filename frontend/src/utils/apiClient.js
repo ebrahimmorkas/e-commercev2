@@ -73,7 +73,10 @@ const performRefresh = async () => {
  * @param {Object} options.headers - Additional headers
  */
 export const apiRequest = async (path, { method = 'GET', body, auth = true, headers = {}, _isRetry = false } = {}) => {
-  const requestHeaders = { 'Content-Type': 'application/json', ...headers };
+  // FormData (file uploads) must NOT get a JSON Content-Type or be stringified -
+  // the browser needs to set its own multipart/form-data boundary.
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+  const requestHeaders = { ...(isFormData ? {} : { 'Content-Type': 'application/json' }), ...headers };
 
   if (auth) {
     const token = getAccessToken();
@@ -86,7 +89,7 @@ export const apiRequest = async (path, { method = 'GET', body, auth = true, head
       method,
       headers: requestHeaders,
       credentials: 'include',
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body !== undefined ? (isFormData ? body : JSON.stringify(body)) : undefined,
     });
   } catch {
     throw new ApiError('Unable to reach the server. Please check your connection.', 0);

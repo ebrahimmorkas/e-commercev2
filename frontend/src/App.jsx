@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import AnnouncementsPage from './admin/features/anoucements/pages/AnnouncementsPage';
+import CategoriesPage from './admin/masters/category/pages/CategoriesPage';
 import LoginPage from './admin/features/login/pages/LoginPage';
 import { useAuth } from './admin/features/login/hooks/useAuth';
 import Spinner from './components/common/Spinner';
@@ -34,6 +35,8 @@ function App() {
       <div className="flex-1 min-w-0">
         {activePage === 'announcements' ? (
           <AnnouncementsPage />
+        ) : activePage === 'categories' ? (
+          <CategoriesPage />
         ) : (
           <EmptyState
             title={`${PAGE_LABELS[activePage] || 'This page'} is coming soon`}
