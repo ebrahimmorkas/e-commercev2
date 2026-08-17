@@ -112,6 +112,35 @@ const shippingSchema = new mongoose.Schema({
     }
 }, { _id: false });
 
+const measurementValueSchema = new mongoose.Schema({
+    measurementId: {
+        type: mongoose.Types.ObjectId,
+        required: true
+    },
+    unit: {
+        type: mongoose.Types.ObjectId,
+        ref: 'UnitMaster',
+        required: true
+    },
+    value: {
+        type: Number,
+        required: true
+    }
+}, { _id: false });
+
+const weightSchema = new mongoose.Schema({
+    value: {
+        type: Number,
+        required: true,
+        min: 0
+    },
+    unit: {
+        type: mongoose.Types.ObjectId,
+        ref: 'UnitMaster',
+        required: true
+    }
+}, { _id: false });
+
 const sizeSchema = new mongoose.Schema(
     {
         isDefaultSize: {
@@ -123,18 +152,24 @@ const sizeSchema = new mongoose.Schema(
             enum: ["MEASURABLE", "LABEL"],
             required: true
         },
+        // Vendor-facing display name for this size, entered by the vendor for
+        // BOTH types - shown on the frontend instead of the underlying
+        // SizeMaster.name (which is only an internal/admin label).
         sizeName: {
             type: String,
-            required: function () {
-                return this.sizeType === "MEASURABLE";
-            },
-            default: null
+            required: true,
+            trim: true
         },
         image: {
-            type: String
+            url: { type: String, default: null },
+            imageAssetId: { type: mongoose.Types.ObjectId, ref: 'ImageAsset', default: null }
         },
         additionalImages: {
-            type: [String]
+            type: [{
+                url: { type: String },
+                imageAssetId: { type: mongoose.Types.ObjectId, ref: 'ImageAsset' }
+            }],
+            default: []
         },
         sizeAdditionalDisclaimer: {
             type: String,
@@ -198,21 +233,37 @@ const sizeSchema = new mongoose.Schema(
         excludeZipCodes: [{
             type: String
         }],
+        // Free-text, vendor-entered - NOT a reference to any master collection.
         brand: {
-            type: mongoose.Types.ObjectId,
+            type: String,
+            trim: true,
             default: null
         },
+        // Required reference into the (dev-managed, not vendor-facing)
+        // SizeMaster collection. The SAME sizeId may legitimately repeat
+        // across DIFFERENT sizes within one variant (e.g. shoe sizes 7, 8, 9
+        // all referencing a single "Shoe Size" SizeMaster doc) - duplication
+        // is only rejected when the resolved VALUE also matches (see
+        // validateSizesArray in productValidations.js).
         sizeId: {
             type: mongoose.Types.ObjectId,
-            default: null
+            ref: 'SizeMaster',
+            required: true
         },
 
+        // MEASURABLE only - one entry per measurement the vendor filled in
+        // (partial submission allowed). Never stored on SizeMaster itself -
+        // SizeMaster only defines WHICH measurements/units exist, this is
+        // the actual per-size data entered against that definition.
         values: {
-            type: [Number],
-            required: function () {
-                return this.sizeType === "MEASURABLE";
-            },
+            type: [measurementValueSchema],
             default: undefined
+        },
+        // LABEL only - the single value the vendor selected out of
+        // SizeMaster.values (e.g. "S" out of ["S","L"]).
+        labelValue: {
+            type: String,
+            default: null
         },
         price: {
             type: Number,
@@ -230,12 +281,12 @@ const sizeSchema = new mongoose.Schema(
             default: 0
         },
         weight: {
-            type: String,
+            type: weightSchema,
             default: null
         },
         sku: {
             type: String,
-            default: null
+            required: true
         },
         barcode: {
             type: String,
@@ -396,6 +447,18 @@ productSchema.index({
     "variants.variantCode": 1
 }, { unique: true, sparse: true });
 
+// sku: unique per vendor, across ALL of that vendor's products (matches the
+// variantCode scope). Required on every size, so no sparse needed.
+productSchema.index({
+    vendorId: 1,
+    "variants.sizes.sku": 1
+}, { unique: true });
+
+// barcode: globally unique across ALL vendors (mirrors a real physical
+// barcode) - deliberately NOT scoped by vendorId. Optional field, so sparse.
+productSchema.index({
+    "variants.sizes.barcode": 1
+}, { unique: true, sparse: true });
 productSchema.index({
     vendorId: 1,
     status: 1

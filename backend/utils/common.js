@@ -1,5 +1,7 @@
 const mongoose = require("mongoose");
 const crypto = require('crypto');
+const StateMaster = require('../models/StateMaster');
+const CityMaster = require('../models/CityMaster');
 
 const sendSuccess = (res, statusCode, message, data = null) => {
   const payload = { success: true, message };
@@ -16,6 +18,65 @@ const sendError = (res, statusCode, message, errors = null) => {
 const returnResult = (isSuccess, statusCode, message, meta = {}) => {
     return {isSuccess, statusCode, message, meta};
 }
+
+// Validates a size's excludeCountries/excludeStates/excludeCities against the
+// vendor's CompanyMaster.allowedCountries. There is no allowedStates /
+// allowedCities concept on CompanyMaster (by design - not vendor-configurable),
+// so states/cities are validated indirectly: a state is only a legal
+// exclusion if its own country is inside allowedCountries, and a city is
+// only legal if the state it belongs to (and therefore that state's
+// country) is inside allowedCountries.
+const validateGeographyExclusions = async ({ excludeCountries = [], excludeStates = [], excludeCities = [], allowedCountries = [] }) => {
+    try {
+        const allowedCountryIds = new Set((allowedCountries || []).map(id => id.toString()));
+
+        const invalidCountries = (excludeCountries || []).filter(id => !allowedCountryIds.has(id.toString()));
+        if (invalidCountries.length > 0) {
+            return returnResult(false, 400, `One or more excluded countries are outside your allowed countries: ${invalidCountries.join(', ')}`);
+        }
+
+        if (excludeStates && excludeStates.length > 0) {
+            const stateDocs = await StateMaster.find({ _id: { $in: excludeStates }, status: 'A' });
+            const foundStateIds = new Set(stateDocs.map(doc => doc._id.toString()));
+
+            const missingStates = excludeStates.filter(id => !foundStateIds.has(id.toString()));
+            if (missingStates.length > 0) {
+                return returnResult(false, 400, `One or more excluded states not found or inactive: ${missingStates.join(', ')}`);
+            }
+
+            const invalidStates = stateDocs.filter(doc => !allowedCountryIds.has(doc.country_id.toString()));
+            if (invalidStates.length > 0) {
+                return returnResult(false, 400, `One or more excluded states belong to a country outside your allowed countries.`);
+            }
+        }
+
+        if (excludeCities && excludeCities.length > 0) {
+            const cityDocs = await CityMaster.find({ _id: { $in: excludeCities }, status: 'A' });
+            const foundCityIds = new Set(cityDocs.map(doc => doc._id.toString()));
+
+            const missingCities = excludeCities.filter(id => !foundCityIds.has(id.toString()));
+            if (missingCities.length > 0) {
+                return returnResult(false, 400, `One or more excluded cities not found or inactive: ${missingCities.join(', ')}`);
+            }
+
+            const stateIds = cityDocs.map(doc => doc.state_id);
+            const relatedStates = await StateMaster.find({ _id: { $in: stateIds } });
+            const stateToCountryMap = new Map(relatedStates.map(state => [state._id.toString(), state.country_id.toString()]));
+
+            const invalidCities = cityDocs.filter(doc => {
+                const countryId = stateToCountryMap.get(doc.state_id.toString());
+                return !countryId || !allowedCountryIds.has(countryId);
+            });
+            if (invalidCities.length > 0) {
+                return returnResult(false, 400, `One or more excluded cities belong to a country outside your allowed countries.`);
+            }
+        }
+
+        return returnResult(true, 200, 'All Good');
+    } catch (err) {
+        throw err;
+    }
+};
 
 const checkFeatureOnOrOff = async (vendorId, websiteMasterData, companyMasterData, websiteMasterField, companyMasterField) => {
     try {
@@ -296,6 +357,7 @@ module.exports = {
   sendError,
   returnResult,
   checkFeatureOnOrOff,
+  validateGeographyExclusions,
   validateObjectId,
   validateModelExists,
   setActiveStatusToFalse,
