@@ -9,7 +9,9 @@ const redisKeys = {
   reviews: (vendorId, productId) => `reviews:${vendorId} - ${productId}`,
   sizes: (vendorId) => `sizes:${vendorId}`,  
   units: () => `units`,
-countries: (vendorId) => `countries:${vendorId}`,
+  countries: (vendorId) => `countries:${vendorId}`,
+  states: (vendorId) => `states:${vendorId}`,
+
 };
 
 module.exports = redisKeys;
