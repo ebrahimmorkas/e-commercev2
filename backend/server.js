@@ -25,6 +25,7 @@ const unitMasterRoutes = require('./routes/unitMasterRoutes');
 const countryMasterRoutes = require('./routes/countryMasterRoutes.js');
 const stateMasterRoutes = require('./routes/stateMasterRoutes.js');
 const cityMasterRoutes = require('./routes/cityMasterRoutes.js');
+const taxMasterRoutes = require('./routes/taxMasterRoutes.js');
 const redisService = require('./services/redisService');
 
 const app = express();
@@ -60,6 +61,8 @@ app.use('/api/units', unitMasterRoutes);
 app.use('/api/countries', countryMasterRoutes);
 app.use('/api/states', stateMasterRoutes);
 app.use('/api/cities', cityMasterRoutes);
+app.use('/api/taxes', taxMasterRoutes);
+
 // Private Routes
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/banners', bannerRoutes);

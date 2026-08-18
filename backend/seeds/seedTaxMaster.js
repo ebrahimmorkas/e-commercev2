@@ -2,74 +2,71 @@ require("dotenv").config();
 
 const mongoose = require("mongoose");
 
-const CountryMaster = require("../models/CountryMaster");
-const User = require("../models/User");
 const TaxMaster = require("../models/TaxMaster");
+const CountryMaster = require("../models/CountryMaster");
 
 async function seedTaxes() {
     try {
         await mongoose.connect('mongodb://127.0.0.1:27017/ecommerce-v2');
         console.log("✅ MongoDB Connected");
 
+        // =========================================================
+        // FIND COUNTRIES
+        // =========================================================
+
         const india = await CountryMaster.findOne({
             country_code: "IND"
         });
 
-        if (!india) {
-            throw new Error(
-                "India not found. Run seed-country-master.js first."
-            );
-        }
-
-        const admin = await User.findOne({
-            email: "admin@example.com"
+        const uae = await CountryMaster.findOne({
+            country_code: "ARE"
         });
 
-        if (!admin) {
+        const usa = await CountryMaster.findOne({
+            country_code: "USA"
+        });
+
+        if (!india) {
             throw new Error(
-                "Admin user not found. Run seed-user.js first."
+                "India not found. Please seed CountryMaster first."
             );
         }
 
+        if (!uae) {
+            throw new Error(
+                "UAE not found. Please seed CountryMaster first."
+            );
+        }
+
+        if (!usa) {
+            throw new Error(
+                "USA not found. Please seed CountryMaster first."
+            );
+        }
+
+        // =========================================================
+        // TAX RECORDS
+        // =========================================================
+
         const taxes = [
-            {
-                name: "GST 5%",
-                code: "IN_GST_5",
-                totalRate: 5,
-                components: [
-                    {
-                        label: "CGST",
-                        rate: 2.5
-                    },
-                    {
-                        label: "SGST",
-                        rate: 2.5
-                    }
-                ],
-                isDefault: false,
-                precedence: 5
-            },
-            {
-                name: "GST 12%",
-                code: "IN_GST_12",
-                totalRate: 12,
-                components: [
-                    {
-                        label: "CGST",
-                        rate: 6
-                    },
-                    {
-                        label: "SGST",
-                        rate: 6
-                    }
-                ],
-                isDefault: false,
-                precedence: 12
-            },
+
+            // =====================================================
+            // INDIA - GST 18%
+            // =====================================================
+
             {
                 name: "GST 18%",
                 code: "IN_GST_18",
+
+                countryId: india._id,
+                stateId: null,
+
+                hsnCode: null,
+                sacCode: null,
+
+                taxType: "percentage",
                 totalRate: 18,
+
                 components: [
                     {
                         label: "CGST",
@@ -80,65 +77,122 @@ async function seedTaxes() {
                         rate: 9
                     }
                 ],
+
+                priceType: "exclusive",
+
+                applicableFrom: new Date(),
+                applicableTo: null,
+
                 isDefault: true,
-                precedence: 18
+                precedence: 18,
+
+                status: "A"
             },
+
+            // =====================================================
+            // UAE - VAT 5%
+            // =====================================================
+
             {
-                name: "GST 28%",
-                code: "IN_GST_28",
-                totalRate: 28,
-                components: [
-                    {
-                        label: "CGST",
-                        rate: 14
-                    },
-                    {
-                        label: "SGST",
-                        rate: 14
-                    }
-                ],
+                name: "VAT 5%",
+                code: "AE_VAT_5",
+
+                countryId: uae._id,
+                stateId: null,
+
+                hsnCode: null,
+                sacCode: null,
+
+                taxType: "percentage",
+                totalRate: 5,
+
+                components: [],
+
+                priceType: "exclusive",
+
+                applicableFrom: new Date(),
+                applicableTo: null,
+
+                isDefault: true,
+                precedence: 5,
+
+                status: "A"
+            },
+
+            // =====================================================
+            // USA - PLACEHOLDER
+            // =====================================================
+            // USA does not have a single federal sales tax.
+            // Actual sales tax should be configured using stateId.
+            // Therefore this is NOT marked as default.
+            // =====================================================
+
+            {
+                name: "US Sales Tax - State Specific",
+                code: "US_SALES_TAX_STATE_SPECIFIC",
+
+                countryId: usa._id,
+                stateId: null,
+
+                hsnCode: null,
+                sacCode: null,
+
+                taxType: "percentage",
+                totalRate: 0,
+
+                components: [],
+
+                priceType: "exclusive",
+
+                applicableFrom: new Date(),
+                applicableTo: null,
+
                 isDefault: false,
-                precedence: 28
+                precedence: 0,
+
+                status: "A"
             }
         ];
 
+        // =========================================================
+        // INSERT
+        // =========================================================
+
         for (const tax of taxes) {
+
             const existingTax = await TaxMaster.findOne({
                 code: tax.code
             });
 
             if (existingTax) {
-                console.log(`⚠️ ${tax.code} already exists.`);
+                console.log(
+                    `⚠️ ${tax.code} already exists.`
+                );
+
                 continue;
             }
 
-            await TaxMaster.create({
-                name: tax.name,
-                code: tax.code,
-                countryId: india._id,
-                stateId: null,
-                hsnCode: null,
-                sacCode: null,
-                taxType: "percentage",
-                totalRate: tax.totalRate,
-                components: tax.components,
-                priceType: "exclusive",
-                applicableFrom: new Date(),
-                applicableTo: null,
-                isDefault: tax.isDefault,
-                precedence: tax.precedence,
-                status: "A",
-                createdBy: admin._id,
-                updatedBy: admin._id
-            });
+            await TaxMaster.create(tax);
 
-            console.log(`✅ ${tax.name} inserted.`);
+            console.log(
+                `✅ ${tax.name} inserted.`
+            );
         }
 
-        console.log("🎉 TaxMaster seeded successfully.");
+        console.log(
+            "\n🎉 TaxMaster seed completed successfully."
+        );
+
+        await mongoose.connection.close();
+
         process.exit(0);
+
     } catch (error) {
+
         console.error("❌ Error:", error);
+
+        await mongoose.connection.close();
+
         process.exit(1);
     }
 }
