@@ -20,6 +20,33 @@ const returnResult = (isSuccess, statusCode, message, meta = {}) => {
     return {isSuccess, statusCode, message, meta};
 }
 
+// Resolves the display name for whichever location cookie IDs are present -
+// used only to build the human-readable excludeText message (e.g. "This
+// size is not present in Maharashtra."). Matching itself is done by raw ID
+// comparison elsewhere; this is purely for the message text.
+const resolveLocationNames = async ({ countryId, stateId, cityId }) => {
+    try {
+        const result = { countryName: null, stateName: null, cityName: null };
+
+        if (countryId && mongoose.Types.ObjectId.isValid(countryId)) {
+            const countryDoc = await CountryMaster.findById(countryId);
+            if (countryDoc) result.countryName = countryDoc.country_name;
+        }
+        if (stateId && mongoose.Types.ObjectId.isValid(stateId)) {
+            const stateDoc = await StateMaster.findById(stateId);
+            if (stateDoc) result.stateName = stateDoc.state_name;
+        }
+        if (cityId && mongoose.Types.ObjectId.isValid(cityId)) {
+            const cityDoc = await CityMaster.findById(cityId);
+            if (cityDoc) result.cityName = cityDoc.city_name;
+        }
+
+        return result;
+    } catch (err) {
+        throw err;
+    }
+};
+
 const validateGeographyExclusions = async ({ excludeCountries = [], excludeStates = [], excludeCities = [], allowedCountries = [] }) => {
     try {
         const allowedCountryIds = new Set((allowedCountries || []).map(id => id.toString()));
@@ -361,6 +388,7 @@ module.exports = {
   returnResult,
   checkFeatureOnOrOff,
   validateGeographyExclusions,
+  resolveLocationNames,
   validateObjectId,
   validateModelExists,
   setActiveStatusToFalse,

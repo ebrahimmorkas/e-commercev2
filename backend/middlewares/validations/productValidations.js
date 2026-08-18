@@ -256,6 +256,11 @@ const createProductSchema = Joi.object({
         'product.invalidVariantColor': 'Variant color "{{#color}}" is not one of the product\'s selected colors.'
     });
 
+const idParamSchema = Joi.object({
+    id: objectId().required().label('Product ID')
+});
+
 module.exports = {
-    createProductSchema
+    createProductSchema,
+    idParamSchema
 };

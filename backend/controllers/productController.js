@@ -31,8 +31,81 @@ const createProduct = async (req, res) => {
     }
 };
 
+const getAllProductsAdmin = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        const result = await productService.fetchAllProductsForAdmin(vendorId);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('Error fetching products for admin', { vendorId, error });
+        return common.sendError(res, 500, 'Failed to fetch products');
+    }
+};
+
+const getProductByIdAdmin = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { id } = req.params;
+    try {
+        const result = await productService.fetchProductByIdForAdmin(vendorId, id);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('Error fetching product by id for admin', { vendorId, id, error });
+        return common.sendError(res, 500, 'Failed to fetch product');
+    }
+};
+
+// Cookies carry raw ObjectId strings for Country/State/City (set at login),
+// and a plain zip_code string. Any/all may be absent - handled downstream
+// as "location unknown" (generic excludeText, per spec).
+const readLocationCookies = (req) => ({
+    countryId: req.cookies?.Country || null,
+    stateId: req.cookies?.State || null,
+    cityId: req.cookies?.City || null,
+    zipCode: req.cookies?.zip_code || null
+});
+
+const getAllProductsClient = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        const locationCookies = readLocationCookies(req);
+        const result = await productService.fetchAllProductsForClient(vendorId, req.companySettingsData, locationCookies);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('Error fetching products for client', { vendorId, error });
+        return common.sendError(res, 500, 'Failed to fetch products');
+    }
+};
+
+const getProductByIdClient = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { id } = req.params;
+    try {
+        const locationCookies = readLocationCookies(req);
+        const result = await productService.fetchProductByIdForClient(vendorId, id, req.companySettingsData, locationCookies);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('Error fetching product by id for client', { vendorId, id, error });
+        return common.sendError(res, 500, 'Failed to fetch product');
+    }
+};
+
 module.exports = {
-    createProduct
-    // TODO: updateProduct, deleteProduct, getAllProductsAdmin,
-    // getAllProductsClient, getProductById - add incrementally.
+    createProduct,
+    getAllProductsAdmin,
+    getProductByIdAdmin,
+    getAllProductsClient,
+    getProductByIdClient
+    // TODO: updateProduct, deleteProduct - add incrementally.
 };

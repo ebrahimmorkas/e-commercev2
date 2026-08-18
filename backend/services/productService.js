@@ -851,8 +851,300 @@ const createProduct = async (vendorId, userId, companyMasterData, websiteMasterD
     }
 };
 
+// ---------------------------------------------------------------------------
+// GET - response shaping (combine "sameFrom" data, resolve size-level
+// location exclusions). Only exclusion/hiding logic differs between admin
+// and client; the combine logic runs identically for both.
+// ---------------------------------------------------------------------------
+
+const GENERIC_EXCLUDE_TEXT = 'This size is not available in certain countries, states, cities, and zip codes.';
+
+const combineArrays = (parentArray, additionalArray, sameFlag) => {
+    if (sameFlag) {
+        return [...(parentArray || []), ...(additionalArray || [])];
+    }
+    return [...(additionalArray || [])];
+};
+
+// disclaimer is a single string at every level, but the response always
+// returns it as an array (even a single item) so the frontend can render it
+// "points-wise" consistently regardless of how many levels contributed.
+const combineDisclaimerArray = (parentArray, additionalDisclaimer, sameFlag) => {
+    const additional = additionalDisclaimer ? [additionalDisclaimer] : [];
+    if (sameFlag) {
+        return [...(parentArray || []), ...additional];
+    }
+    return additional;
+};
+
+const buildLocationContext = async (locationCookies) => {
+    const { countryId, stateId, cityId, zipCode } = locationCookies;
+    if (!countryId && !stateId && !cityId && !zipCode) {
+        return null;
+    }
+    const names = await common.resolveLocationNames({ countryId, stateId, cityId });
+    return {
+        countryId: countryId || null,
+        countryName: names.countryName,
+        stateId: stateId || null,
+        stateName: names.stateName,
+        cityId: cityId || null,
+        cityName: names.cityName,
+        zipCode: zipCode || null
+    };
+};
+
+const findExclusionMatch = (size, locationContext) => {
+    if (locationContext.countryId && (size.excludeCountries || []).some(id => id.toString() === locationContext.countryId)) {
+        return { label: locationContext.countryName || 'your country' };
+    }
+    if (locationContext.stateId && (size.excludeStates || []).some(id => id.toString() === locationContext.stateId)) {
+        return { label: locationContext.stateName || 'your state' };
+    }
+    if (locationContext.cityId && (size.excludeCities || []).some(id => id.toString() === locationContext.cityId)) {
+        return { label: locationContext.cityName || 'your city' };
+    }
+    if (locationContext.zipCode && (size.excludeZipCodes || []).some(z => z === locationContext.zipCode)) {
+        return { label: locationContext.zipCode };
+    }
+    return null;
+};
+
+// Returns { hide, excludeText } for one size. hide=true means omit the size
+// from the response entirely; excludeText (when set) is displayed as-is by
+// the frontend, no further computation needed there.
+const resolveSizeVisibility = (size, locationContext, shouldHide) => {
+    const hasExclusions =
+        (size.excludeCountries?.length || 0) +
+        (size.excludeStates?.length || 0) +
+        (size.excludeCities?.length || 0) +
+        (size.excludeZipCodes?.length || 0) > 0;
+
+    if (!hasExclusions) {
+        return { hide: false, excludeText: null };
+    }
+
+    // Anonymous visitor, or logged in with empty cookies - location unknown.
+    if (!locationContext) {
+        return { hide: false, excludeText: GENERIC_EXCLUDE_TEXT };
+    }
+
+    const match = findExclusionMatch(size, locationContext);
+    if (!match) {
+        return { hide: false, excludeText: null };
+    }
+
+    if (shouldHide) {
+        return { hide: true, excludeText: null };
+    }
+
+    return { hide: false, excludeText: `This size is not present in ${match.label}.` };
+};
+
+const shapeSizeForResponse = (size, variantCombined, isAdmin, locationContext, shouldHide) => {
+    const description = combineArrays(variantCombined.description, size.sizeAdditionalDescription, size.isDescriptionSameFromVariantsDetails);
+    const disclaimer = combineDisclaimerArray(variantCombined.disclaimer, size.sizeAdditionalDisclaimer, size.isDisclaimerSameFromVariantsDetails);
+    const bulkPricing = combineArrays(variantCombined.bulkPricing, size.sizeAdditionalBulkPricing, size.isBulkPricingSameFromVariantsDetails);
+
+    let visibility = { hide: false, excludeText: null };
+    if (!isAdmin) {
+        visibility = resolveSizeVisibility(size, locationContext, shouldHide);
+        if (visibility.hide) return null;
+    }
+
+    return {
+        _id: size._id,
+        isDefaultSize: size.isDefaultSize,
+        sizeType: size.sizeType,
+        sizeName: size.sizeName,
+        image: size.image,
+        additionalImages: size.additionalImages,
+        description,
+        disclaimer,
+        bulkPricing,
+        warranty: size.warranty,
+        return: size.return,
+        exchange: size.exchange,
+        shipping: size.shipping,
+        precedence: size.precedence,
+        brand: size.brand,
+        sizeId: size.sizeId,
+        values: size.values,
+        labelValue: size.labelValue,
+        price: size.price,
+        cancelledPrice: size.cancelledPrice,
+        stock: size.stock,
+        weight: size.weight,
+        sku: size.sku,
+        barcode: size.barcode,
+        sizeCode: size.sizeCode,
+        status: size.status,
+        // Raw exclusion config is only useful to admin (for editing) - a
+        // customer only needs the resolved excludeText, not the config that
+        // produced it.
+        ...(isAdmin ? {
+            excludeCountries: size.excludeCountries,
+            excludeStates: size.excludeStates,
+            excludeCities: size.excludeCities,
+            excludeZipCodes: size.excludeZipCodes
+        } : {}),
+        ...(visibility.excludeText ? { excludeText: visibility.excludeText } : {})
+    };
+};
+
+const shapeVariantForResponse = (variant, productCombined, isAdmin, locationContext, shouldHide) => {
+    const description = combineArrays(productCombined.description, variant.variantAdditionalDescription, variant.isDescriptionSameFromProductBasicDetails);
+    const disclaimer = combineDisclaimerArray(productCombined.disclaimer, variant.variantAdditionalDisclaimer, variant.isDisclaimerSameFromProductBasicDetails);
+    const bulkPricing = combineArrays(productCombined.bulkPricing, variant.variantAdditionalBulkPricing, variant.isBulkPricingSameFromProductBasicDetails);
+
+    const variantCombined = { description, disclaimer, bulkPricing };
+
+    const shapedSizes = (variant.sizes || [])
+        .map(size => shapeSizeForResponse(size, variantCombined, isAdmin, locationContext, shouldHide))
+        .filter(Boolean);
+
+    // A variant with zero visible sizes has nothing purchasable left under
+    // it - drop it from the client response. Admin always sees every
+    // variant regardless.
+    if (!isAdmin && shapedSizes.length === 0) {
+        return null;
+    }
+
+    return {
+        _id: variant._id,
+        isDefaultVariant: variant.isDefaultVariant,
+        color: variant.color,
+        displayName: variant.displayName,
+        variantCode: variant.variantCode,
+        description,
+        disclaimer,
+        bulkPricing,
+        sizes: shapedSizes,
+        status: variant.status
+    };
+};
+
+const shapeProductForResponse = (product, isAdmin, locationContext, shouldHide) => {
+    const productCombined = {
+        description: product.description || [],
+        disclaimer: product.disclaimer ? [product.disclaimer] : [],
+        bulkPricing: product.bulkPricing || []
+    };
+
+    const shapedVariants = (product.variants || [])
+        .map(variant => shapeVariantForResponse(variant, productCombined, isAdmin, locationContext, shouldHide))
+        .filter(Boolean);
+
+    // Whole product has nothing purchasable left after exclusions - hide it
+    // entirely from the client (point 4: hide the whole product only when
+    // ALL of its sizes, across every variant, ended up excluded).
+    if (!isAdmin && shapedVariants.length === 0) {
+        return null;
+    }
+
+    return {
+        _id: product._id,
+        vendorId: product.vendorId,
+        name: product.name,
+        description: productCombined.description,
+        colors: product.colors,
+        mainCategory: product.mainCategory,
+        subCategory: product.subCategory,
+        disclaimer: productCombined.disclaimer,
+        searchKeywords: product.searchKeywords,
+        recommendedProducts: product.recommendedProducts,
+        taxIds: product.taxIds,
+        precedence: product.precedence,
+        slug: product.slug,
+        productCode: product.productCode,
+        bulkPricing: productCombined.bulkPricing,
+        status: product.status,
+        createdAt: product.createdAt,
+        updatedAt: product.updatedAt,
+        variants: shapedVariants
+    };
+};
+
+// ---------------------------------------------------------------------------
+// Exported GET functions
+// ---------------------------------------------------------------------------
+
+const fetchAllProductsForAdmin = async (vendorId) => {
+    try {
+        const products = await common.getAll(Product, { status: { $in: ['I', 'A'] } }, vendorId);
+        const shaped = products.map(p => shapeProductForResponse(p.toObject(), true, null, false));
+        return common.returnResult(true, 200, 'Products fetched successfully', { products: shaped });
+    } catch (err) {
+        throw err;
+    }
+};
+
+const fetchAllProductsForClient = async (vendorId, companySettingsData, locationCookies) => {
+    try {
+        const shouldHide = companySettingsData.shouldProductsBeHiddenWhenLocationsAreExcluded;
+        const locationContext = await buildLocationContext(locationCookies);
+
+        const products = await common.getAll(Product, { status: 'A' }, vendorId);
+        const shaped = products
+            .map(p => shapeProductForResponse(p.toObject(), false, locationContext, shouldHide))
+            .filter(Boolean);
+
+        return common.returnResult(true, 200, 'Products fetched successfully', { products: shaped });
+    } catch (err) {
+        throw err;
+    }
+};
+
+const fetchProductByIdForAdmin = async (vendorId, productId) => {
+    try {
+        const result = await common.getByID(Product, productId);
+        if (!result.success) {
+            return common.returnResult(false, 404, result.message);
+        }
+
+        const product = result.document;
+        if (product.vendorId.toString() !== vendorId.toString() || !['I', 'A'].includes(product.status)) {
+            return common.returnResult(false, 404, 'Product not found.');
+        }
+
+        const shaped = shapeProductForResponse(product.toObject(), true, null, false);
+        return common.returnResult(true, 200, 'Product fetched successfully', { product: shaped });
+    } catch (err) {
+        throw err;
+    }
+};
+
+const fetchProductByIdForClient = async (vendorId, productId, companySettingsData, locationCookies) => {
+    try {
+        const result = await common.getByID(Product, productId);
+        if (!result.success) {
+            return common.returnResult(false, 404, result.message);
+        }
+
+        const product = result.document;
+        if (product.vendorId.toString() !== vendorId.toString() || product.status !== 'A') {
+            return common.returnResult(false, 404, 'Product not found.');
+        }
+
+        const shouldHide = companySettingsData.shouldProductsBeHiddenWhenLocationsAreExcluded;
+        const locationContext = await buildLocationContext(locationCookies);
+
+        const shaped = shapeProductForResponse(product.toObject(), false, locationContext, shouldHide);
+        if (!shaped) {
+            return common.returnResult(false, 404, 'Product not found.');
+        }
+
+        return common.returnResult(true, 200, 'Product fetched successfully', { product: shaped });
+    } catch (err) {
+        throw err;
+    }
+};
+
 module.exports = {
-    createProduct
-    // TODO: updateProduct, deleteProduct, fetchAllProductsForAdmin,
-    // fetchAllProductsForClient, fetchProductById - add incrementally.
+    createProduct,
+    fetchAllProductsForAdmin,
+    fetchAllProductsForClient,
+    fetchProductByIdForAdmin,
+    fetchProductByIdForClient
+    // TODO: updateProduct, deleteProduct - add incrementally.
 };
