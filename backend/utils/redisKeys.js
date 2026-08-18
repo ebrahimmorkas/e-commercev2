@@ -13,6 +13,7 @@ const redisKeys = {
   states: (vendorId) => `states:${vendorId}`,
   cities: (vendorId) => `cities:${vendorId}`,
   taxes: (vendorId) => `taxes:${vendorId}`,
+  locationTaxBundle: (vendorId) => `location-tax-bundle:${vendorId}`,
 };
 
 module.exports = redisKeys;
