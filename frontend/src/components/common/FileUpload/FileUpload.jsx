@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 const UploadIcon = () => (
   <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -59,9 +59,10 @@ const FileUpload = ({
   const [isDragActive, setIsDragActive] = useState(false);
   const inputRef = useRef(null);
 
-  const emitChange = (nextItems) => {
-    onFilesSelected?.(nextItems.filter((item) => !item.error).map((item) => item.file));
-  };
+  useEffect(() => {
+    onFilesSelected?.(items.filter((item) => !item.error).map((item) => item.file));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
 
   const addFiles = (fileList) => {
     if (disabled) return;
@@ -77,18 +78,12 @@ const FileUpload = ({
 
     setItems((prev) => {
       const combined = multiple ? [...prev, ...incoming] : incoming;
-      const limited = maxFiles ? combined.slice(0, maxFiles) : combined;
-      emitChange(limited);
-      return limited;
+      return maxFiles ? combined.slice(0, maxFiles) : combined;
     });
   };
 
   const removeItem = (id) => {
-    setItems((prev) => {
-      const next = prev.filter((item) => item.id !== id);
-      emitChange(next);
-      return next;
-    });
+    setItems((prev) => prev.filter((item) => item.id !== id));
   };
 
   const handleDrop = (e) => {
