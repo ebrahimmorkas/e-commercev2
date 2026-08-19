@@ -3,11 +3,18 @@ const Category = require('../models/Category');
 const TaxMaster = require('../models/TaxMaster');
 const SizeMaster = require('../models/SizeMaster');
 const UnitMaster = require('../models/UnitMaster');
+const CountryMaster = require('../models/CountryMaster');
+const StateMaster = require('../models/StateMaster');
+const CityMaster = require('../models/CityMaster');
 const imageUploadService = require('./imageUploadService');
 const counterService = require('./counterService');
-const { extractZipEntries } = require('../utils/zipExtractor');
+const { extractZipEntries, createZipBuffer } = require('../utils/zipExtractor');
+const { parseExcelBuffer } = require('../utils/excelParser');
+const { processExcelRows } = require('../utils/excelRowProcessor');
+const { createProductSchema } = require('../middlewares/validations/productValidations');
 const slugify = require('../utils/slugify');
 const crypto = require('crypto');
+const path = require('path');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
 
@@ -682,7 +689,7 @@ const createProduct = async (vendorId, userId, companyMasterData, websiteMasterD
                 'isBulkPricingFeatureOn', 'isBulkPricingFeatureOn'
             );
             if (!featureCheck.isSuccess) {
-                return common.returnResult(false, featureCheck.statusCode, featureCheck.message);
+                return common.returnResult(false, featureCheck.statusCode, `Bulk Pricing is not enabled for your plan. Therefore you can't add the product with bulk pricing.`);
             }
         }
 
@@ -1140,11 +1147,550 @@ const fetchProductByIdForClient = async (vendorId, productId, companySettingsDat
     }
 };
 
+// =============================================================================
+// BULK UPLOAD — reuses createProduct() as-is per product. See conversation
+// notes: categories/recommended products must pre-exist in DB; a failure
+// anywhere inside one product (any variant/size) fails that WHOLE product,
+// since createProduct() validates+saves the nested tree atomically.
+// =============================================================================
+
+const PRODUCT_SHEET_COLUMNS = [
+    { key: 'productTempCode', header: 'ProductTempCode*', required: true },
+    { key: 'name', header: 'Name*', required: true },
+    { key: 'colors', header: 'Colors*', required: true },
+    { key: 'categoryPath', header: 'CategoryPath', required: false },
+    { key: 'disclaimer', header: 'Disclaimer', required: false },
+    { key: 'searchKeywords', header: 'SearchKeywords', required: false },
+    { key: 'recommendedProductCodes', header: 'RecommendedProductCodes', required: false },
+    { key: 'taxCodes', header: 'TaxCodes', required: false },
+    { key: 'precedence', header: 'Precedence', required: false },
+    { key: 'productCode', header: 'ProductCode', required: false }
+];
+
+const VARIANT_SHEET_COLUMNS = [
+    { key: 'variantTempCode', header: 'VariantTempCode*', required: true },
+    { key: 'productTempCode', header: 'ProductTempCode*', required: true },
+    { key: 'isDefaultVariant', header: 'IsDefaultVariant*', required: true },
+    { key: 'color', header: 'Color', required: false },
+    { key: 'displayName', header: 'DisplayName', required: false },
+    { key: 'isDescriptionSameFromProductBasicDetails', header: 'IsDescriptionSameFromProductBasicDetails*', required: true },
+    { key: 'isDisclaimerSameFromProductBasicDetails', header: 'IsDisclaimerSameFromProductBasicDetails*', required: true },
+    { key: 'isBulkPricingSameFromProductBasicDetails', header: 'IsBulkPricingSameFromProductBasicDetails*', required: true },
+    { key: 'variantAdditionalDisclaimer', header: 'VariantAdditionalDisclaimer', required: false },
+    { key: 'variantCode', header: 'VariantCode', required: false }
+];
+
+const SIZE_SHEET_COLUMNS = [
+    { key: 'sizeTempCode', header: 'SizeTempCode*', required: true },
+    { key: 'variantTempCode', header: 'VariantTempCode*', required: true },
+    { key: 'isDefaultSize', header: 'IsDefaultSize*', required: true },
+    { key: 'sizeType', header: 'SizeType*', required: true },
+    { key: 'sizeMasterName', header: 'SizeMasterName*', required: true },
+    { key: 'sizeName', header: 'SizeName*', required: true },
+    { key: 'labelValue', header: 'LabelValue', required: false },
+    { key: 'brand', header: 'Brand', required: false },
+    { key: 'price', header: 'Price*', required: true },
+    { key: 'cancelledPrice', header: 'CancelledPrice', required: false },
+    { key: 'stock', header: 'Stock', required: false },
+    { key: 'weightValue', header: 'WeightValue', required: false },
+    { key: 'weightUnitName', header: 'WeightUnitName', required: false },
+    { key: 'sku', header: 'SKU*', required: true },
+    { key: 'barcode', header: 'Barcode', required: false },
+    { key: 'sizeCode', header: 'SizeCode', required: false },
+    { key: 'isDescriptionSameFromVariantsDetails', header: 'IsDescriptionSameFromVariantsDetails*', required: true },
+    { key: 'isDisclaimerSameFromVariantsDetails', header: 'IsDisclaimerSameFromVariantsDetails*', required: true },
+    { key: 'isBulkPricingSameFromVariantsDetails', header: 'IsBulkPricingSameFromVariantsDetails*', required: true },
+    { key: 'sizeAdditionalDisclaimer', header: 'SizeAdditionalDisclaimer', required: false },
+    { key: 'excludeCountries', header: 'ExcludeCountries', required: false },
+    { key: 'excludeStates', header: 'ExcludeStates', required: false },
+    { key: 'excludeCities', header: 'ExcludeCities', required: false },
+    { key: 'excludeZipCodes', header: 'ExcludeZipCodes', required: false },
+    { key: 'precedence', header: 'Precedence', required: false },
+    { key: 'warrantyAvailable', header: 'WarrantyAvailable*', required: true },
+    { key: 'warrantyDuration', header: 'WarrantyDuration', required: false },
+    { key: 'warrantyDurationType', header: 'WarrantyDurationType', required: false },
+    { key: 'returnAvailable', header: 'ReturnAvailable*', required: true },
+    { key: 'returnDuration', header: 'ReturnDuration', required: false },
+    { key: 'returnDurationType', header: 'ReturnDurationType', required: false },
+    { key: 'exchangeAvailable', header: 'ExchangeAvailable*', required: true },
+    { key: 'exchangeDuration', header: 'ExchangeDuration', required: false },
+    { key: 'exchangeDurationType', header: 'ExchangeDurationType', required: false },
+    { key: 'shippingType', header: 'ShippingType*', required: true },
+    { key: 'shippingValue', header: 'ShippingValue', required: false },
+    { key: 'mainImageFileName', header: 'MainImageFileName', required: false },
+    { key: 'additionalImageFileNames', header: 'AdditionalImageFileNames', required: false }
+];
+
+const MEASUREMENT_VALUE_SHEET_COLUMNS = [
+    { key: 'sizeTempCode', header: 'SizeTempCode*', required: true },
+    { key: 'measurementLabel', header: 'MeasurementLabel*', required: true },
+    { key: 'unitName', header: 'UnitName*', required: true },
+    { key: 'value', header: 'Value*', required: true }
+];
+
+const DESCRIPTION_SHEET_COLUMNS = [
+    { key: 'level', header: 'Level*', required: true },
+    { key: 'refTempCode', header: 'RefTempCode*', required: true },
+    { key: 'key', header: 'Key*', required: true },
+    { key: 'value', header: 'Value*', required: true }
+];
+
+const BULK_PRICING_SHEET_COLUMNS = [
+    { key: 'level', header: 'Level*', required: true },
+    { key: 'refTempCode', header: 'RefTempCode*', required: true },
+    { key: 'minimumQuantity', header: 'MinimumQuantity*', required: true },
+    { key: 'maximumQuantity', header: 'MaximumQuantity*', required: true },
+    { key: 'price', header: 'Price*', required: true }
+];
+
+const escapeRegex = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const parseBoolean = (val) => {
+    if (typeof val === 'boolean') return val;
+    if (val === null || val === undefined || val === '') return undefined;
+    const s = String(val).trim().toLowerCase();
+    if (s === 'true') return true;
+    if (s === 'false') return false;
+    return undefined;
+};
+
+const parseCsv = (val) => {
+    if (!val) return [];
+    return String(val).split(',').map(s => s.trim()).filter(Boolean);
+};
+
+const bulkUploadProducts = async (vendorId, userId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, companyMasterData, websiteMasterData, companySettingsData) => {
+    try {
+        const { rows: productRows } = await parseExcelBuffer(excelBuffer, PRODUCT_SHEET_COLUMNS, { sheetName: 'Products' });
+        const { rows: variantRows } = await parseExcelBuffer(excelBuffer, VARIANT_SHEET_COLUMNS, { sheetName: 'Variants' });
+        const { rows: sizeRows } = await parseExcelBuffer(excelBuffer, SIZE_SHEET_COLUMNS, { sheetName: 'Sizes' });
+        const { rows: measurementValueRows } = await parseExcelBuffer(excelBuffer, MEASUREMENT_VALUE_SHEET_COLUMNS, { sheetName: 'MeasurementValues' });
+        const { rows: descriptionRows } = await parseExcelBuffer(excelBuffer, DESCRIPTION_SHEET_COLUMNS, { sheetName: 'Descriptions' });
+        const { rows: bulkPricingRows } = await parseExcelBuffer(excelBuffer, BULK_PRICING_SHEET_COLUMNS, { sheetName: 'BulkPricing' });
+
+        if (productRows.length === 0) {
+            return common.returnResult(false, 400, 'Products sheet contains no data rows');
+        }
+
+        let mainImageEntries, additionalImageEntries;
+        try {
+            mainImageEntries = mainImagesZipBuffer ? extractZipEntries(mainImagesZipBuffer) : new Map();
+            additionalImageEntries = additionalImagesZipBuffer ? extractZipEntries(additionalImagesZipBuffer) : new Map();
+        } catch (err) {
+            return common.returnResult(false, 400, `Could not read image zip file(s): ${err.message}`);
+        }
+
+        const variantsByProduct = new Map();
+        for (const v of variantRows) {
+            const key = (v.productTempCode || '').trim();
+            if (!variantsByProduct.has(key)) variantsByProduct.set(key, []);
+            variantsByProduct.get(key).push(v);
+        }
+
+        const sizesByVariant = new Map();
+        for (const s of sizeRows) {
+            const key = (s.variantTempCode || '').trim();
+            if (!sizesByVariant.has(key)) sizesByVariant.set(key, []);
+            sizesByVariant.get(key).push(s);
+        }
+
+        const measurementValuesBySize = new Map();
+        for (const mv of measurementValueRows) {
+            const key = (mv.sizeTempCode || '').trim();
+            if (!measurementValuesBySize.has(key)) measurementValuesBySize.set(key, []);
+            measurementValuesBySize.get(key).push(mv);
+        }
+
+        const descriptionsByRef = new Map();
+        for (const d of descriptionRows) {
+            const key = `${(d.level || '').trim().toLowerCase()}::${(d.refTempCode || '').trim()}`;
+            if (!descriptionsByRef.has(key)) descriptionsByRef.set(key, []);
+            descriptionsByRef.get(key).push(d);
+        }
+
+        const bulkPricingByRef = new Map();
+        for (const bp of bulkPricingRows) {
+            const key = `${(bp.level || '').trim().toLowerCase()}::${(bp.refTempCode || '').trim()}`;
+            if (!bulkPricingByRef.has(key)) bulkPricingByRef.set(key, []);
+            bulkPricingByRef.get(key).push(bp);
+        }
+
+        const sizeMasterCache = new Map();
+        const unitCache = new Map();
+        const countryCache = new Map();
+        const stateCache = new Map();
+        const cityCache = new Map();
+
+        const resolveSizeMasterByName = async (name) => {
+            const key = name.trim().toLowerCase();
+            if (sizeMasterCache.has(key)) return sizeMasterCache.get(key);
+            const doc = await SizeMaster.findOne({ status: 'A', name: { $regex: `^${escapeRegex(name.trim())}$`, $options: 'i' } });
+            sizeMasterCache.set(key, doc || null);
+            return doc || null;
+        };
+
+        const resolveUnitByName = async (name) => {
+            const key = name.trim().toLowerCase();
+            if (unitCache.has(key)) return unitCache.get(key);
+            const doc = await UnitMaster.findOne({ status: 'A', name: { $regex: `^${escapeRegex(name.trim())}$`, $options: 'i' } });
+            unitCache.set(key, doc ? doc._id : null);
+            return doc ? doc._id : null;
+        };
+
+        const resolveCountryByName = async (name) => {
+            const key = name.trim().toLowerCase();
+            if (countryCache.has(key)) return countryCache.get(key);
+            const doc = await CountryMaster.findOne({ status: 'A', country_name: { $regex: `^${escapeRegex(name.trim())}$`, $options: 'i' } });
+            countryCache.set(key, doc ? doc._id : null);
+            return doc ? doc._id : null;
+        };
+
+        const resolveStateByName = async (name) => {
+            const key = name.trim().toLowerCase();
+            if (stateCache.has(key)) return stateCache.get(key);
+            const doc = await StateMaster.findOne({ status: 'A', state_name: { $regex: `^${escapeRegex(name.trim())}$`, $options: 'i' } });
+            stateCache.set(key, doc ? doc._id : null);
+            return doc ? doc._id : null;
+        };
+
+        const resolveCityByName = async (name) => {
+            const key = name.trim().toLowerCase();
+            if (cityCache.has(key)) return cityCache.get(key);
+            const doc = await CityMaster.findOne({ status: 'A', city_name: { $regex: `^${escapeRegex(name.trim())}$`, $options: 'i' } });
+            cityCache.set(key, doc ? doc._id : null);
+            return doc ? doc._id : null;
+        };
+
+        // Path must fully pre-exist in DB (per your decision) - first segment
+        // = mainCategory (root), last segment = subCategory (exact target).
+        const resolveCategoryPath = async (pathStr) => {
+            const segments = pathStr.split('>').map(s => s.trim()).filter(Boolean);
+            if (segments.length === 0) return { error: 'CategoryPath is empty or invalid' };
+
+            let currentParentId = null;
+            let currentDoc = null;
+            for (const segment of segments) {
+                currentDoc = await Category.findOne({
+                    vendorId, parent_category_id: currentParentId, status: 'A',
+                    categoryName: { $regex: `^${escapeRegex(segment)}$`, $options: 'i' }
+                });
+                if (!currentDoc) return { error: `Category "${segment}" not found under the given CategoryPath` };
+                currentParentId = currentDoc._id;
+            }
+
+            const mainCategoryDoc = await Category.findOne({
+                vendorId, status: 'A', parent_category_id: null,
+                categoryName: { $regex: `^${escapeRegex(segments[0])}$`, $options: 'i' }
+            });
+            if (!mainCategoryDoc) return { error: `Top-level category "${segments[0]}" not found` };
+
+            return { mainCategory: mainCategoryDoc._id.toString(), subCategory: currentDoc._id.toString() };
+        };
+
+        const result = await processExcelRows(
+            productRows,
+            async (productRow) => {
+                const productTempCode = (productRow.productTempCode || '').trim();
+                if (!productTempCode) {
+                    return { success: false, errors: ['ProductTempCode is required'] };
+                }
+
+                const variantRowsForProduct = variantsByProduct.get(productTempCode) || [];
+                if (variantRowsForProduct.length === 0) {
+                    return { success: false, errors: [`No variants found on the Variants sheet for ProductTempCode "${productTempCode}"`] };
+                }
+
+                const assembledVariants = [];
+                const imagePlan = [];
+
+                for (let v = 0; v < variantRowsForProduct.length; v++) {
+                    const variantRow = variantRowsForProduct[v];
+                    const variantTempCode = (variantRow.variantTempCode || '').trim();
+                    if (!variantTempCode) {
+                        return { success: false, errors: [`VariantTempCode missing for a variant under ProductTempCode "${productTempCode}"`] };
+                    }
+
+                    const sizeRowsForVariant = sizesByVariant.get(variantTempCode) || [];
+                    if (sizeRowsForVariant.length === 0) {
+                        return { success: false, errors: [`No sizes found on the Sizes sheet for VariantTempCode "${variantTempCode}"`] };
+                    }
+
+                    const assembledSizes = [];
+
+                    for (let s = 0; s < sizeRowsForVariant.length; s++) {
+                        const sizeRow = sizeRowsForVariant[s];
+                        const sizeTempCode = (sizeRow.sizeTempCode || '').trim();
+                        if (!sizeTempCode) {
+                            return { success: false, errors: [`SizeTempCode missing under VariantTempCode "${variantTempCode}"`] };
+                        }
+
+                        if (!sizeRow.sizeMasterName) {
+                            return { success: false, errors: [`SizeMasterName missing for SizeTempCode "${sizeTempCode}"`] };
+                        }
+                        const sizeMasterDoc = await resolveSizeMasterByName(sizeRow.sizeMasterName);
+                        if (!sizeMasterDoc) {
+                            return { success: false, errors: [`Size "${sizeRow.sizeMasterName}" not found for SizeTempCode "${sizeTempCode}"`] };
+                        }
+
+                        const sizeType = (sizeRow.sizeType || '').trim().toUpperCase();
+
+                        let values;
+                        if (sizeType === 'MEASURABLE') {
+                            const mvRows = measurementValuesBySize.get(sizeTempCode) || [];
+                            if (mvRows.length === 0) {
+                                return { success: false, errors: [`No MeasurementValues rows found for SizeTempCode "${sizeTempCode}" (required for MEASURABLE sizes)`] };
+                            }
+                            values = [];
+                            for (const mv of mvRows) {
+                                const measurementDef = (sizeMasterDoc.measurements || []).find(
+                                    m => m.label.trim().toLowerCase() === String(mv.measurementLabel || '').trim().toLowerCase()
+                                );
+                                if (!measurementDef) {
+                                    return { success: false, errors: [`Measurement "${mv.measurementLabel}" not found on size "${sizeRow.sizeMasterName}" (SizeTempCode "${sizeTempCode}")`] };
+                                }
+                                const unitId = await resolveUnitByName(String(mv.unitName || ''));
+                                if (!unitId) {
+                                    return { success: false, errors: [`Unit "${mv.unitName}" not found for SizeTempCode "${sizeTempCode}"`] };
+                                }
+                                values.push({
+                                    measurementId: measurementDef._id.toString(),
+                                    unit: unitId.toString(),
+                                    value: Number(mv.value)
+                                });
+                            }
+                        }
+
+                        let weight;
+                        if (sizeRow.weightValue !== null && sizeRow.weightValue !== undefined && sizeRow.weightValue !== '') {
+                            if (!sizeRow.weightUnitName) {
+                                return { success: false, errors: [`WeightUnitName is required when WeightValue is provided (SizeTempCode "${sizeTempCode}")`] };
+                            }
+                            const weightUnitId = await resolveUnitByName(String(sizeRow.weightUnitName));
+                            if (!weightUnitId) {
+                                return { success: false, errors: [`Weight unit "${sizeRow.weightUnitName}" not found for SizeTempCode "${sizeTempCode}"`] };
+                            }
+                            weight = { value: Number(sizeRow.weightValue), unit: weightUnitId.toString() };
+                        }
+
+                        const excludeCountries = [];
+                        for (const name of parseCsv(sizeRow.excludeCountries)) {
+                            const id = await resolveCountryByName(name);
+                            if (!id) return { success: false, errors: [`Excluded country "${name}" not found (SizeTempCode "${sizeTempCode}")`] };
+                            excludeCountries.push(id.toString());
+                        }
+                        const excludeStates = [];
+                        for (const name of parseCsv(sizeRow.excludeStates)) {
+                            const id = await resolveStateByName(name);
+                            if (!id) return { success: false, errors: [`Excluded state "${name}" not found (SizeTempCode "${sizeTempCode}")`] };
+                            excludeStates.push(id.toString());
+                        }
+                        const excludeCities = [];
+                        for (const name of parseCsv(sizeRow.excludeCities)) {
+                            const id = await resolveCityByName(name);
+                            if (!id) return { success: false, errors: [`Excluded city "${name}" not found (SizeTempCode "${sizeTempCode}")`] };
+                            excludeCities.push(id.toString());
+                        }
+                        const excludeZipCodes = parseCsv(sizeRow.excludeZipCodes);
+
+                        const additionalImagePaths = parseCsv(sizeRow.additionalImageFileNames);
+                        const additionalLimit = companyMasterData.numberOfAdditionalImagesAllowedInVariant;
+                        if (additionalLimit !== undefined && additionalLimit !== null && additionalImagePaths.length > additionalLimit) {
+                            return { success: false, errors: [`SizeTempCode "${sizeTempCode}" has ${additionalImagePaths.length} additional images, exceeding the allowed limit of ${additionalLimit}`] };
+                        }
+
+                        assembledSizes.push({
+                            isDefaultSize: parseBoolean(sizeRow.isDefaultSize),
+                            sizeType,
+                            sizeName: sizeRow.sizeName,
+                            sizeAdditionalDisclaimer: sizeRow.sizeAdditionalDisclaimer || undefined,
+                            sizeAdditionalDescription: (descriptionsByRef.get(`size::${sizeTempCode}`) || []).map(d => ({ key: d.key, value: d.value })),
+                            sizeAdditionalBulkPricing: (bulkPricingByRef.get(`size::${sizeTempCode}`) || []).map(bp => ({
+                                minimumQuantity: Number(bp.minimumQuantity), maximumQuantity: Number(bp.maximumQuantity), price: Number(bp.price)
+                            })),
+                            warranty: {
+                                isAvailable: parseBoolean(sizeRow.warrantyAvailable),
+                                duration: sizeRow.warrantyDuration != null && sizeRow.warrantyDuration !== '' ? Number(sizeRow.warrantyDuration) : undefined,
+                                durationType: sizeRow.warrantyDurationType || undefined
+                            },
+                            return: {
+                                isAvailable: parseBoolean(sizeRow.returnAvailable),
+                                duration: sizeRow.returnDuration != null && sizeRow.returnDuration !== '' ? Number(sizeRow.returnDuration) : undefined,
+                                durationType: sizeRow.returnDurationType || undefined
+                            },
+                            exchange: {
+                                isAvailable: parseBoolean(sizeRow.exchangeAvailable),
+                                duration: sizeRow.exchangeDuration != null && sizeRow.exchangeDuration !== '' ? Number(sizeRow.exchangeDuration) : undefined,
+                                durationType: sizeRow.exchangeDurationType || undefined
+                            },
+                            shipping: sizeRow.shippingType ? {
+                                type: String(sizeRow.shippingType).trim().toUpperCase(),
+                                value: sizeRow.shippingValue != null && sizeRow.shippingValue !== '' ? Number(sizeRow.shippingValue) : undefined
+                            } : null,
+                            isDescriptionSameFromVariantsDetails: parseBoolean(sizeRow.isDescriptionSameFromVariantsDetails),
+                            isDisclaimerSameFromVariantsDetails: parseBoolean(sizeRow.isDisclaimerSameFromVariantsDetails),
+                            isBulkPricingSameFromVariantsDetails: parseBoolean(sizeRow.isBulkPricingSameFromVariantsDetails),
+                            precedence: sizeRow.precedence != null && sizeRow.precedence !== '' ? Number(sizeRow.precedence) : undefined,
+                            excludeCountries, excludeStates, excludeCities, excludeZipCodes,
+                            brand: sizeRow.brand || undefined,
+                            sizeId: sizeMasterDoc._id.toString(),
+                            values,
+                            labelValue: sizeType === 'LABEL' ? sizeRow.labelValue : undefined,
+                            price: Number(sizeRow.price),
+                            cancelledPrice: sizeRow.cancelledPrice != null && sizeRow.cancelledPrice !== '' ? Number(sizeRow.cancelledPrice) : undefined,
+                            stock: sizeRow.stock != null && sizeRow.stock !== '' ? Number(sizeRow.stock) : undefined,
+                            weight,
+                            sku: sizeRow.sku,
+                            barcode: sizeRow.barcode || undefined,
+                            sizeCode: sizeRow.sizeCode || undefined
+                        });
+
+                        imagePlan.push({
+                            v, s, sizeTempCode,
+                            mainImagePath: sizeRow.mainImageFileName ? String(sizeRow.mainImageFileName).trim() : null,
+                            additionalImagePaths
+                        });
+                    }
+
+                    assembledVariants.push({
+                        isDefaultVariant: parseBoolean(variantRow.isDefaultVariant),
+                        color: variantRow.color || undefined,
+                        displayName: variantRow.displayName || undefined,
+                        sizes: assembledSizes,
+                        variantAdditionalDisclaimer: variantRow.variantAdditionalDisclaimer || undefined,
+                        variantAdditionalDescription: (descriptionsByRef.get(`variant::${variantTempCode}`) || []).map(d => ({ key: d.key, value: d.value })),
+                        variantAdditionalBulkPricing: (bulkPricingByRef.get(`variant::${variantTempCode}`) || []).map(bp => ({
+                            minimumQuantity: Number(bp.minimumQuantity), maximumQuantity: Number(bp.maximumQuantity), price: Number(bp.price)
+                        })),
+                        isDescriptionSameFromProductBasicDetails: parseBoolean(variantRow.isDescriptionSameFromProductBasicDetails),
+                        isDisclaimerSameFromProductBasicDetails: parseBoolean(variantRow.isDisclaimerSameFromProductBasicDetails),
+                        isBulkPricingSameFromProductBasicDetails: parseBoolean(variantRow.isBulkPricingSameFromProductBasicDetails),
+                        variantCode: variantRow.variantCode || undefined
+                    });
+                }
+
+                if (!productRow.categoryPath) {
+                    return { success: false, errors: [`CategoryPath is required (ProductTempCode "${productTempCode}")`] };
+                }
+                const categoryResult = await resolveCategoryPath(productRow.categoryPath);
+                if (categoryResult.error) {
+                    return { success: false, errors: [categoryResult.error] };
+                }
+
+                const recommendedProductCodes = parseCsv(productRow.recommendedProductCodes);
+                let recommendedProducts = [];
+                if (recommendedProductCodes.length > 0) {
+                    const docs = await Product.find({
+                        vendorId, status: 'A',
+                        productCode: { $in: recommendedProductCodes.map(c => c.toUpperCase()) }
+                    }, { _id: 1, productCode: 1 }).lean();
+                    const foundCodes = new Set(docs.map(d => d.productCode));
+                    const missing = recommendedProductCodes.filter(c => !foundCodes.has(c.toUpperCase()));
+                    if (missing.length > 0) {
+                        return { success: false, errors: [`Recommended product code(s) not found: ${missing.join(', ')}`] };
+                    }
+                    recommendedProducts = docs.map(d => d._id.toString());
+                }
+
+                const taxCodes = parseCsv(productRow.taxCodes);
+                let taxIds = [];
+                if (taxCodes.length > 0) {
+                    const docs = await TaxMaster.find({ status: 'A', code: { $in: taxCodes.map(c => c.toUpperCase()) } }, { _id: 1, code: 1 }).lean();
+                    const foundCodes = new Set(docs.map(d => d.code));
+                    const missing = taxCodes.filter(c => !foundCodes.has(c.toUpperCase()));
+                    if (missing.length > 0) {
+                        return { success: false, errors: [`Tax code(s) not found: ${missing.join(', ')}`] };
+                    }
+                    taxIds = docs.map(d => d._id.toString());
+                }
+
+                const assembledBody = {
+                    name: productRow.name,
+                    description: (descriptionsByRef.get(`product::${productTempCode}`) || []).map(d => ({ key: d.key, value: d.value })),
+                    disclaimer: productRow.disclaimer || undefined,
+                    colors: parseCsv(productRow.colors),
+                    mainCategory: categoryResult.mainCategory,
+                    subCategory: categoryResult.subCategory,
+                    searchKeywords: parseCsv(productRow.searchKeywords),
+                    recommendedProducts,
+                    taxIds,
+                    precedence: productRow.precedence != null && productRow.precedence !== '' ? Number(productRow.precedence) : undefined,
+                    productCode: productRow.productCode || undefined,
+                    bulkPricing: (bulkPricingByRef.get(`product::${productTempCode}`) || []).map(bp => ({
+                        minimumQuantity: Number(bp.minimumQuantity), maximumQuantity: Number(bp.maximumQuantity), price: Number(bp.price)
+                    })),
+                    variants: assembledVariants
+                };
+
+                const { error, value } = createProductSchema.validate(assembledBody, { abortEarly: false });
+                if (error) {
+                    return { success: false, errors: error.details.map(d => d.message.replace(/"/g, '')) };
+                }
+
+                const pseudoFiles = [];
+                for (const plan of imagePlan) {
+                    if (plan.mainImagePath) {
+                        const imgBuffer = mainImageEntries.get(plan.mainImagePath.toLowerCase());
+                        if (!imgBuffer) {
+                            return { success: false, errors: [`Main image "${plan.mainImagePath}" not found in main images zip (SizeTempCode "${plan.sizeTempCode}")`] };
+                        }
+                        pseudoFiles.push({
+                            fieldname: `sizeImage_${plan.v}_${plan.s}`,
+                            originalname: path.basename(plan.mainImagePath),
+                            mimetype: 'application/octet-stream',
+                            buffer: imgBuffer,
+                            size: imgBuffer.length
+                        });
+                    }
+
+                    if (plan.additionalImagePaths.length > 0) {
+                        const zipEntriesForSize = [];
+                        for (const imgPath of plan.additionalImagePaths) {
+                            const imgBuffer = additionalImageEntries.get(imgPath.toLowerCase());
+                            if (!imgBuffer) {
+                                return { success: false, errors: [`Additional image "${imgPath}" not found in additional images zip (SizeTempCode "${plan.sizeTempCode}")`] };
+                            }
+                            zipEntriesForSize.push({ name: path.basename(imgPath), buffer: imgBuffer });
+                        }
+                        const miniZipBuffer = createZipBuffer(zipEntriesForSize);
+                        pseudoFiles.push({
+                            fieldname: `sizeAdditionalImages_${plan.v}_${plan.s}`,
+                            originalname: `${plan.sizeTempCode}-additional.zip`,
+                            mimetype: 'application/zip',
+                            buffer: miniZipBuffer,
+                            size: miniZipBuffer.length
+                        });
+                    }
+                }
+
+                const createResult = await createProduct(
+                    vendorId, userId, companyMasterData, websiteMasterData, companySettingsData, value, pseudoFiles
+                );
+
+                if (!createResult.isSuccess) {
+                    return { success: false, errors: [createResult.message] };
+                }
+
+                return { success: true };
+            },
+            { allowPartialSuccess: true, useTransaction: false }
+        );
+
+        logger.logInfo(1, 0, 'Bulk product upload processed', {
+            vendorId, total: result.totalRows, success: result.successCount, failed: result.failedCount
+        });
+
+        return common.returnResult(true, 200, 'Bulk product upload processed', result);
+    } catch (err) {
+        throw err;
+    }
+};
+
 module.exports = {
     createProduct,
     fetchAllProductsForAdmin,
     fetchAllProductsForClient,
     fetchProductByIdForAdmin,
-    fetchProductByIdForClient
+    fetchProductByIdForClient,
+    bulkUploadProducts
     // TODO: updateProduct, deleteProduct - add incrementally.
 };

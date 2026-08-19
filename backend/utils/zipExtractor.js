@@ -26,4 +26,19 @@ const extractZipEntries = (zipBuffer) => {
     return fileMap;
 };
 
-module.exports = { extractZipEntries };
+// Packs a set of in-memory buffers into a NEW zip buffer. Used when we need
+// to hand a group of buffers to something that only accepts "one zip file"
+// (e.g. createProduct's per-size additional-images upload path).
+// entries: [{ name: string, buffer: Buffer }]
+const createZipBuffer = (entries) => {
+    const zip = new AdmZip();
+    for (const entry of entries) {
+        zip.addFile(entry.name, entry.buffer);
+    }
+    return zip.toBuffer();
+};
+
+module.exports = { 
+    extractZipEntries,
+    createZipBuffer 
+};

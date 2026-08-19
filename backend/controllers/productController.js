@@ -101,11 +101,65 @@ const getProductByIdClient = async (req, res) => {
     }
 };
 
+const bulkUploadProducts = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        const websiteMasterData = req.websiteMasterData;
+        const companyMasterData = req.companyMasterData;
+        const companySettingsData = req.companySettingsData;
+
+        const bulkFeatureCheck = await common.checkFeatureOnOrOff(vendorId, websiteMasterData, companyMasterData, 'isBulkUploadForProductsFeatureOn', 'isBulkUploadForProductsFeatureOn');
+        if (!bulkFeatureCheck.isSuccess) {
+            return common.sendError(res, bulkFeatureCheck.statusCode, `Bulk upload is not enabled for your plan. Therefore you can't add the product through Excel file.`);
+        }
+
+        const excelFile = req.files?.excelFile?.[0];
+        const mainImagesZipFile = req.files?.mainImagesZip?.[0];
+        const additionalImagesZipFile = req.files?.additionalImagesZip?.[0];
+
+        if (!excelFile) {
+            return common.sendError(res, 400, 'Excel file (excelFile) is required');
+        }
+
+        const excelMaxSizeMB = websiteMasterData?.bulkUploadExcelMaxSizeMB;
+        if (excelMaxSizeMB != null && excelFile.size > excelMaxSizeMB * 1024 * 1024) {
+            return common.sendError(res, 400, `Excel file exceeds the allowed limit of ${excelMaxSizeMB}MB`);
+        }
+
+        const zipMaxSizeMB = websiteMasterData?.bulkUploadZipMaxSizeMB;
+        if (mainImagesZipFile && zipMaxSizeMB != null && mainImagesZipFile.size > zipMaxSizeMB * 1024 * 1024) {
+            return common.sendError(res, 400, `Main images zip exceeds the allowed limit of ${zipMaxSizeMB}MB`);
+        }
+        if (additionalImagesZipFile && zipMaxSizeMB != null && additionalImagesZipFile.size > zipMaxSizeMB * 1024 * 1024) {
+            return common.sendError(res, 400, `Additional images zip exceeds the allowed limit of ${zipMaxSizeMB}MB`);
+        }
+
+        // NOTE: same placeholder as createProduct above - swap once authenticate/authorize('admin') are wired in.
+        const userId = "6a6ed077b8ad83c8d068dda3";
+
+        const result = await productService.bulkUploadProducts(
+            vendorId, userId, excelFile.buffer,
+            mainImagesZipFile ? mainImagesZipFile.buffer : null,
+            additionalImagesZipFile ? additionalImagesZipFile.buffer : null,
+            companyMasterData, websiteMasterData, companySettingsData
+        );
+
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('Error in bulk product upload', { vendorId, error });
+        return common.sendError(res, 500, 'Failed to process bulk product upload');
+    }
+};
+
 module.exports = {
     createProduct,
     getAllProductsAdmin,
     getProductByIdAdmin,
     getAllProductsClient,
-    getProductByIdClient
+    getProductByIdClient,
+    bulkUploadProducts
     // TODO: updateProduct, deleteProduct - add incrementally.
 };

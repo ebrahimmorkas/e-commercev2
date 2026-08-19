@@ -29,15 +29,18 @@ const parseExcelBuffer = async (fileBuffer, columnsConfig, options = {}) => {
       throw new Error('columnsConfig must be a non-empty array describing expected columns');
     }
 
-    const headerRowNumber = options.headerRowNumber || 1;
+        const headerRowNumber = options.headerRowNumber || 1;
     const sheetIndex = options.sheetIndex || 0;
 
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(fileBuffer);
 
-    const worksheet = workbook.worksheets[sheetIndex];
+    const worksheet = options.sheetName
+      ? workbook.getWorksheet(options.sheetName)
+      : workbook.worksheets[sheetIndex];
     if (!worksheet) {
-      throw new Error(`Worksheet at index ${sheetIndex} was not found in the uploaded excel file`);
+      const identifier = options.sheetName ? `named "${options.sheetName}"` : `at index ${sheetIndex}`;
+      throw new Error(`Worksheet ${identifier} was not found in the uploaded excel file`);
     }
 
     const headerRow = worksheet.getRow(headerRowNumber);

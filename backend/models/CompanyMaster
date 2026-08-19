@@ -156,6 +156,10 @@ const companyMasterSchema = mongoose.Schema({
         type: Boolean,
         default: true
     },
+    isBulkUploadForProductsFeatureOn: {
+        type: Boolean,
+        default: true
+    },
 
     // Groups
     isGroupFeatureOn: {
