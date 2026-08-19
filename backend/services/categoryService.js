@@ -263,6 +263,13 @@ const updateCategory = async (vendorId, userId, categoryId, data, file, websiteM
             const descendantIds = await getDescendantIds(vendorId, categoryId);
 
             if (status === 'A') {
+                if (targetParentId) {
+                    const parentCategory = await Category.findOne({ _id: targetParentId, vendorId }, 'status');
+                    if (!parentCategory || parentCategory.status !== 'A') {
+                        return common.returnResult(false, 400, `Parent is inactive Hence can't mark child as active`);
+                    }
+                }
+
                 category.status = 'A';
                 category.activeMarkedBy = userId;
                 category.activeMarkedDate = now;
