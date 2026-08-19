@@ -418,7 +418,7 @@ const resolveSizeCode = async ({ vendorId, sizeCode, companySettingsData, usedMa
     }
 };
 
-const resolveSizeSku = async ({ vendorId, sku, usedManualSkusInPayload }) => {
+const resolveSizeSku = async ({ vendorId, sku, usedManualSkusInPayload, excludeProductId = null }) => {
     try {
         const normalizedSku = sku.trim().toUpperCase();
 
@@ -428,11 +428,16 @@ const resolveSizeSku = async ({ vendorId, sku, usedManualSkusInPayload }) => {
         usedManualSkusInPayload.add(normalizedSku);
 
         // Vendor-wide uniqueness - across ALL of this vendor's products.
-        const existing = await Product.findOne({
+        // excludeProductId (update only) keeps a size's own unchanged sku
+        // from colliding with itself.
+        const query = {
             vendorId,
             status: { $ne: 'D' },
             'variants.sizes.sku': normalizedSku
-        });
+        };
+        if (excludeProductId) query._id = { $ne: excludeProductId };
+
+        const existing = await Product.findOne(query);
         if (existing) {
             return common.returnResult(false, 409, `SKU "${normalizedSku}" already exists.`);
         }
@@ -443,7 +448,7 @@ const resolveSizeSku = async ({ vendorId, sku, usedManualSkusInPayload }) => {
     }
 };
 
-const resolveSizeBarcode = async ({ barcode, usedManualBarcodesInPayload }) => {
+const resolveSizeBarcode = async ({ barcode, usedManualBarcodesInPayload, excludeProductId = null }) => {
     try {
         if (!barcode) {
             return common.returnResult(true, 200, 'All Good', { barcode: null });
@@ -457,10 +462,15 @@ const resolveSizeBarcode = async ({ barcode, usedManualBarcodesInPayload }) => {
         usedManualBarcodesInPayload.add(normalizedBarcode);
 
         // Globally unique across ALL vendors - deliberately not vendorId-scoped.
-        const existing = await Product.findOne({
+        // excludeProductId (update only) keeps a size's own unchanged
+        // barcode from colliding with itself.
+        const query = {
             status: { $ne: 'D' },
             'variants.sizes.barcode': normalizedBarcode
-        });
+        };
+        if (excludeProductId) query._id = { $ne: excludeProductId };
+
+        const existing = await Product.findOne(query);
         if (existing) {
             return common.returnResult(false, 409, `Barcode "${normalizedBarcode}" already exists.`);
         }
@@ -478,7 +488,8 @@ const resolveSizeBarcode = async ({ barcode, usedManualBarcodesInPayload }) => {
 // the same sizeId repeats across sibling sizes/variants in one request.
 const resolveSize = async ({
     vendorId, size, companyMasterData, companySettingsData,
-    sizeMasterCache, usedManualSkusInPayload, usedManualBarcodesInPayload, usedManualSizeCodesInPayload
+    sizeMasterCache, usedManualSkusInPayload, usedManualBarcodesInPayload, usedManualSizeCodesInPayload,
+    existingSize = null, excludeProductId = null
 }) => {
     try {
         // --- SizeMaster cross-reference + plan gate ---------------------------
@@ -555,28 +566,42 @@ const resolveSize = async ({
             return common.returnResult(false, geoResult.statusCode, geoResult.message);
         }
 
-        // --- sku / barcode / sizeCode --------------------------------------------
-        const skuResult = await resolveSizeSku({ vendorId, sku: size.sku, usedManualSkusInPayload });
+        // --- sku / barcode ----------------------------------------------------------
+        // Editable even on an existing size, so uniqueness always runs -
+        // excludeProductId (update only) prevents a size's own unchanged
+        // value from colliding with itself.
+        const skuResult = await resolveSizeSku({ vendorId, sku: size.sku, usedManualSkusInPayload, excludeProductId });
         if (!skuResult.isSuccess) {
             return common.returnResult(false, skuResult.statusCode, skuResult.message);
         }
 
-        const barcodeResult = await resolveSizeBarcode({ barcode: size.barcode, usedManualBarcodesInPayload });
+        const barcodeResult = await resolveSizeBarcode({ barcode: size.barcode, usedManualBarcodesInPayload, excludeProductId });
         if (!barcodeResult.isSuccess) {
             return common.returnResult(false, barcodeResult.statusCode, barcodeResult.message);
         }
 
-        const sizeCodeResult = await resolveSizeCode({
-            vendorId, sizeCode: size.sizeCode, companySettingsData, usedManualCodesInPayload: usedManualSizeCodesInPayload
-        });
-        if (!sizeCodeResult.isSuccess) {
-            return common.returnResult(false, sizeCodeResult.statusCode, sizeCodeResult.message);
+        // --- sizeCode -----------------------------------------------------------------
+        // Immutable once set. For an existing size, always keep whatever is
+        // already stored - silently ignore anything resubmitted in the
+        // payload. Only genuinely NEW sizes (no existingSize match) go
+        // through auto/manual code resolution.
+        let resolvedSizeCode;
+        if (existingSize) {
+            resolvedSizeCode = existingSize.sizeCode;
+        } else {
+            const sizeCodeResult = await resolveSizeCode({
+                vendorId, sizeCode: size.sizeCode, companySettingsData, usedManualCodesInPayload: usedManualSizeCodesInPayload
+            });
+            if (!sizeCodeResult.isSuccess) {
+                return common.returnResult(false, sizeCodeResult.statusCode, sizeCodeResult.message);
+            }
+            resolvedSizeCode = sizeCodeResult.meta.sizeCode;
         }
 
         return common.returnResult(true, 200, 'All Good', {
             sku: skuResult.meta.sku,
             barcode: barcodeResult.meta.barcode,
-            sizeCode: sizeCodeResult.meta.sizeCode,
+            sizeCode: resolvedSizeCode,
             labelValue: size.labelValue
         });
     } catch (err) {
@@ -622,14 +647,18 @@ const validateAdditionalBulkPricingChain = (additionalArray, parentBounds, level
     return common.returnResult(true, 200, 'All Good');
 };
 
-const generateUniqueSlug = async (vendorId, name) => {
+const generateUniqueSlug = async (vendorId, name, excludeProductId = null) => {
     try {
         const base = slugify(name);
         let candidate = base;
         let attempts = 0;
 
-        while (await Product.findOne({ vendorId, slug: candidate, status: { $ne: 'D' } })) {
+        const query = { vendorId, slug: candidate, status: { $ne: 'D' } };
+        if (excludeProductId) query._id = { $ne: excludeProductId };
+
+        while (await Product.findOne(query)) {
             candidate = `${base}-${crypto.randomBytes(3).toString('hex')}`;
+            query.slug = candidate;
             attempts++;
             if (attempts > 5) {
                 throw new Error('Unable to generate a unique slug after multiple attempts.');
@@ -639,6 +668,20 @@ const generateUniqueSlug = async (vendorId, name) => {
         return candidate;
     } catch (err) {
         throw err;
+    }
+};
+
+// Deletes every uploaded image (main + additional) belonging to one size
+// doc - used when a size/variant is removed entirely during an update, so
+// its Cloudinary assets don't become orphaned.
+const deleteAllImagesForSize = async (sizeDoc, userId) => {
+    if (sizeDoc.image?.imageAssetId) {
+        await imageUploadService.deleteImage({ imageId: sizeDoc.image.imageAssetId, userId });
+    }
+    for (const additional of (sizeDoc.additionalImages || [])) {
+        if (additional.imageAssetId) {
+            await imageUploadService.deleteImage({ imageId: additional.imageAssetId, userId });
+        }
     }
 };
 
@@ -1685,12 +1728,300 @@ const bulkUploadProducts = async (vendorId, userId, excelBuffer, mainImagesZipBu
     }
 };
 
+// Full-replace update: the incoming payload is the complete desired state
+// of the product (identical shape/validation to createProduct). Variants/
+// sizes are matched to existing subdocuments by _id - present + matched =
+// update in place, present with no _id = new insert, existing-but-absent-
+// from-the-payload = removed (with its images cleaned up).
+// productCode/variantCode/sizeCode are immutable and always carried
+// forward from the existing document for matched entities, regardless of
+// what the payload contains for them.
+const updateProduct = async (vendorId, userId, companyMasterData, websiteMasterData, companySettingsData, body, files) => {
+    try {
+        const {
+            productId,
+            productCode: _submittedProductCode, // immutable - intentionally discarded
+            variants: submittedVariants,
+            ...rest
+        } = body;
+
+        const existingProduct = await Product.findOne({ _id: productId, vendorId, status: { $ne: 'D' } });
+        if (!existingProduct) {
+            return common.returnResult(false, 404, 'Product not found.');
+        }
+
+        // --- category hierarchy -------------------------------------------------
+        const categoryResult = await validateCategories({
+            vendorId, mainCategory: body.mainCategory, subCategory: body.subCategory, companyMasterData
+        });
+        if (!categoryResult.isSuccess) {
+            return common.returnResult(false, categoryResult.statusCode, categoryResult.message);
+        }
+
+        // --- tax ids vs allowed countries + validity window ---------------------
+        const taxResult = await validateTaxIds({ taxIds: rest.taxIds, companyMasterData });
+        if (!taxResult.isSuccess) {
+            return common.returnResult(false, taxResult.statusCode, taxResult.message);
+        }
+
+        // --- recommended products -------------------------------------------------
+        const recommendedResult = await validateRecommendedProducts({ recommendedProducts: rest.recommendedProducts, vendorId });
+        if (!recommendedResult.isSuccess) {
+            return common.returnResult(false, recommendedResult.statusCode, recommendedResult.message);
+        }
+
+        // --- bulk pricing feature gate (product-level, variant-level, AND size-level) -
+        const hasBulkPricing = (rest.bulkPricing && rest.bulkPricing.length > 0) ||
+            (submittedVariants || []).some(v =>
+                (v.variantAdditionalBulkPricing && v.variantAdditionalBulkPricing.length > 0) ||
+                (v.sizes || []).some(s => s.sizeAdditionalBulkPricing && s.sizeAdditionalBulkPricing.length > 0)
+            );
+
+        if (hasBulkPricing) {
+            const featureCheck = await common.checkFeatureOnOrOff(
+                vendorId, websiteMasterData, companyMasterData,
+                'isBulkPricingFeatureOn', 'isBulkPricingFeatureOn'
+            );
+            if (!featureCheck.isSuccess) {
+                return common.returnResult(false, featureCheck.statusCode, `Bulk Pricing is not enabled for your plan. Therefore you can't add the product with bulk pricing.`);
+            }
+        }
+
+        // --- plan limit: variants per product ---------------------------------------
+        // (numberOfProductsAllowed - total product count cap - intentionally
+        // NOT re-checked here; update doesn't create a new product.)
+        if (companyMasterData.numberOfProductsVaiantsAllowed !== undefined && companyMasterData.numberOfProductsVaiantsAllowed !== null) {
+            if ((submittedVariants || []).length > companyMasterData.numberOfProductsVaiantsAllowed) {
+                return common.returnResult(false, 403, `You can add a maximum of ${companyMasterData.numberOfProductsVaiantsAllowed} variant(s) per product.`);
+            }
+        }
+
+        // --- slug: only regenerate if the name actually changed ---------------------
+        let slug = existingProduct.slug;
+        if (rest.name && rest.name !== existingProduct.name) {
+            slug = await generateUniqueSlug(vendorId, rest.name, productId);
+        }
+
+        const existingVariantsMap = new Map(existingProduct.variants.map(v => [v._id.toString(), v]));
+        const incomingVariantIds = new Set();
+
+        const productBulkBounds = getBulkPricingBounds(rest.bulkPricing);
+        const productMaxBulkPrice = (rest.bulkPricing && rest.bulkPricing.length > 0)
+            ? Math.max(...rest.bulkPricing.map(b => b.price))
+            : null;
+
+        const usedManualVariantCodesInPayload = new Set();
+        const usedManualSizeCodesInPayload = new Set();
+        const usedManualSkusInPayload = new Set();
+        const usedManualBarcodesInPayload = new Set();
+        const sizeMasterCache = new Map();
+
+        const variants = [];
+
+        for (const variant of (submittedVariants || [])) {
+            const isExistingVariant = variant._id && existingVariantsMap.has(variant._id.toString());
+            const existingVariantDoc = isExistingVariant ? existingVariantsMap.get(variant._id.toString()) : null;
+            if (isExistingVariant) incomingVariantIds.add(variant._id.toString());
+
+            // variantCode is immutable - carry forward for existing
+            // variants, resolve (auto/manual) only for brand-new ones.
+            let resolvedVariantCode;
+            if (isExistingVariant) {
+                resolvedVariantCode = existingVariantDoc.variantCode;
+            } else {
+                const variantCodeResult = await resolveVariantCode({
+                    vendorId, variantCode: variant.variantCode, companySettingsData,
+                    usedManualCodesInPayload: usedManualVariantCodesInPayload
+                });
+                if (!variantCodeResult.isSuccess) {
+                    return common.returnResult(false, variantCodeResult.statusCode, variantCodeResult.message);
+                }
+                resolvedVariantCode = variantCodeResult.meta.variantCode;
+            }
+
+            // --- variant-level bulk pricing chain (identical rule to create) ---------
+            let variantBulkBounds = null;
+            if (variant.isBulkPricingSameFromProductBasicDetails) {
+                const variantChainResult = validateAdditionalBulkPricingChain(
+                    variant.variantAdditionalBulkPricing, productBulkBounds, 'Variant additional'
+                );
+                if (!variantChainResult.isSuccess) {
+                    return common.returnResult(false, variantChainResult.statusCode, variantChainResult.message);
+                }
+                const effectiveVariantArray = [
+                    ...(rest.bulkPricing || []),
+                    ...(variant.variantAdditionalBulkPricing || [])
+                ];
+                variantBulkBounds = getBulkPricingBounds(effectiveVariantArray);
+            }
+
+            const existingSizesMap = existingVariantDoc ? new Map(existingVariantDoc.sizes.map(s => [s._id.toString(), s])) : new Map();
+            const incomingSizeIds = new Set();
+            const resolvedSizes = [];
+
+            for (const size of (variant.sizes || [])) {
+                const isExistingSize = size._id && existingSizesMap.has(size._id.toString());
+                const existingSizeDoc = isExistingSize ? existingSizesMap.get(size._id.toString()) : null;
+                if (isExistingSize) incomingSizeIds.add(size._id.toString());
+
+                const sizeResult = await resolveSize({
+                    vendorId, size, companyMasterData, companySettingsData,
+                    sizeMasterCache, usedManualSkusInPayload, usedManualBarcodesInPayload, usedManualSizeCodesInPayload,
+                    existingSize: existingSizeDoc, excludeProductId: productId
+                });
+                if (!sizeResult.isSuccess) {
+                    return common.returnResult(false, sizeResult.statusCode, sizeResult.message);
+                }
+
+                if (variant.isBulkPricingSameFromProductBasicDetails && size.isBulkPricingSameFromVariantsDetails) {
+                    const sizeChainResult = validateAdditionalBulkPricingChain(
+                        size.sizeAdditionalBulkPricing, variantBulkBounds, 'Size additional'
+                    );
+                    if (!sizeChainResult.isSuccess) {
+                        return common.returnResult(false, sizeChainResult.statusCode, sizeChainResult.message);
+                    }
+                }
+
+                if (variant.isBulkPricingSameFromProductBasicDetails && productMaxBulkPrice !== null) {
+                    if (size.price <= productMaxBulkPrice) {
+                        return common.returnResult(false, 400, `Size price (${size.price}) must be greater than the product's bulk pricing price (${productMaxBulkPrice}).`);
+                    }
+                }
+
+                resolvedSizes.push({
+                    ...size,
+                    _id: existingSizeDoc ? existingSizeDoc._id : undefined,
+                    sku: sizeResult.meta.sku,
+                    barcode: sizeResult.meta.barcode,
+                    sizeCode: sizeResult.meta.sizeCode,
+                    labelValue: sizeResult.meta.labelValue,
+                    // Carried forward here as a placeholder - the image
+                    // attachment loop below overwrites these ONLY if new
+                    // files were actually uploaded for this position.
+                    image: existingSizeDoc ? existingSizeDoc.image : undefined,
+                    additionalImages: existingSizeDoc ? existingSizeDoc.additionalImages : [],
+                    createdBy: existingSizeDoc ? existingSizeDoc.createdBy : userId,
+                    updatedBy: userId,
+                    status: 'A',
+                    remarks: existingSizeDoc ? existingSizeDoc.remarks : 'MANUAL'
+                });
+            }
+
+            // --- sizes removed from this variant: clean up their images ------------
+            for (const [existingSizeId, existingSizeDoc] of existingSizesMap) {
+                if (!incomingSizeIds.has(existingSizeId)) {
+                    await deleteAllImagesForSize(existingSizeDoc, userId);
+                }
+            }
+
+            variants.push({
+                ...variant,
+                _id: existingVariantDoc ? existingVariantDoc._id : undefined,
+                variantCode: resolvedVariantCode,
+                createdBy: existingVariantDoc ? existingVariantDoc.createdBy : userId,
+                updatedBy: userId,
+                status: 'A',
+                remarks: existingVariantDoc ? existingVariantDoc.remarks : 'MANUAL',
+                sizes: resolvedSizes
+            });
+        }
+
+        // --- variants removed entirely: clean up every size's images ------------------
+        for (const [existingVariantId, existingVariantDoc] of existingVariantsMap) {
+            if (!incomingVariantIds.has(existingVariantId)) {
+                for (const existingSizeDoc of existingVariantDoc.sizes) {
+                    await deleteAllImagesForSize(existingSizeDoc, userId);
+                }
+            }
+        }
+
+        // --- attach new images, matched by variant+size array position ------------
+        // Positions with no new files keep whatever was carried forward
+        // above untouched.
+        const groupedFiles = groupSizeFiles(files);
+        for (let v = 0; v < variants.length; v++) {
+            for (let s = 0; s < variants[v].sizes.length; s++) {
+                const sizeFiles = groupedFiles[v]?.[s];
+                if (!sizeFiles) continue;
+
+                const imagesResult = await applySizeImages({
+                    vendorId, userId, sizeFiles,
+                    existingImage: variants[v].sizes[s].image || null,
+                    existingAdditionalImages: variants[v].sizes[s].additionalImages || [],
+                    companyMasterData, websiteMasterData
+                });
+                if (!imagesResult.isSuccess) {
+                    return common.returnResult(false, imagesResult.statusCode, imagesResult.message);
+                }
+                if (imagesResult.meta.image) variants[v].sizes[s].image = imagesResult.meta.image;
+                if (imagesResult.meta.additionalImages) variants[v].sizes[s].additionalImages = imagesResult.meta.additionalImages;
+            }
+        }
+
+        existingProduct.set({
+            ...rest,
+            mainCategory: categoryResult.meta.mainCategory,
+            subCategory: categoryResult.meta.subCategory,
+            slug,
+            updatedBy: userId
+            // vendorId, productCode, createdBy, remarks intentionally untouched
+        });
+        existingProduct.variants = variants;
+
+        await existingProduct.save();
+
+        logger.logInfo(1, 0, 'Product updated successfully', { vendorId, productId });
+
+        return common.returnResult(true, 200, 'Product updated successfully', { product: existingProduct });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Shared active/inactive toggle - status is 'A' or 'I' only (Joi-enforced);
+// soft delete ('D') is a separate dedicated function below.
+const toggleProductStatus = async (vendorId, userId, productId, status) => {
+    try {
+        const result = status === 'A'
+            ? await common.setActiveStatusToTrue(Product, productId, userId, vendorId)
+            : await common.setActiveStatusToFalse(Product, productId, userId, vendorId);
+
+        if (!result.success) {
+            return common.returnResult(false, 404, result.message);
+        }
+
+        logger.logInfo(1, 0, 'Product status updated', { vendorId, productId, status });
+
+        return common.returnResult(true, 200, 'Product status updated successfully', { product: result.document });
+    } catch (err) {
+        throw err;
+    }
+};
+
+const deleteProduct = async (vendorId, userId, productId) => {
+    try {
+        const result = await common.softDelete(Product, productId, userId, vendorId);
+
+        if (!result.success) {
+            return common.returnResult(false, 404, result.message);
+        }
+
+        logger.logInfo(1, 0, 'Product deleted', { vendorId, productId });
+
+        return common.returnResult(true, 200, 'Product deleted successfully');
+    } catch (err) {
+        throw err;
+    }
+};
+
 module.exports = {
     createProduct,
+    updateProduct,
+    toggleProductStatus,
+    deleteProduct,
     fetchAllProductsForAdmin,
     fetchAllProductsForClient,
     fetchProductByIdForAdmin,
     fetchProductByIdForClient,
     bulkUploadProducts
-    // TODO: updateProduct, deleteProduct - add incrementally.
 };

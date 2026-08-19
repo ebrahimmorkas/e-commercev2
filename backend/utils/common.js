@@ -235,8 +235,7 @@ const validateModelExists = (Model) => {
   return { valid: true };
 };
 
-// Sets isActive to true
-const setActiveStatusToTrue = async (Model, id, userId) => {
+const setActiveStatusToTrue = async (Model, id, userId, vendorId = null) => {
   const idCheck = validateObjectId(id);
   if (!idCheck.valid) return { success: false, message: idCheck.message };
  
@@ -245,6 +244,13 @@ const setActiveStatusToTrue = async (Model, id, userId) => {
  
   const doc = await Model.findById(id);
   if (!doc) return { success: false, message: "Document not found." };
+
+  // Optional ownership check - only applied when the caller passes a
+  // vendorId (models with no vendor scope, e.g. admin-managed masters,
+  // simply omit it and this check is skipped entirely).
+  if (vendorId !== null && (!doc.vendorId || doc.vendorId.toString() !== vendorId.toString())) {
+    return { success: false, message: "Document not found." };
+  }
  
   doc.status = 'A';
   doc.activeMarkedBy = userId;
@@ -255,7 +261,7 @@ const setActiveStatusToTrue = async (Model, id, userId) => {
 };
  
 // Sets status to 'I' (inactive)
-const setActiveStatusToFalse = async (Model, id, userId) => {
+const setActiveStatusToFalse = async (Model, id, userId, vendorId = null) => {
   const idCheck = validateObjectId(id);
   if (!idCheck.valid) return { success: false, message: idCheck.message };
  
@@ -264,6 +270,10 @@ const setActiveStatusToFalse = async (Model, id, userId) => {
  
   const doc = await Model.findById(id);
   if (!doc) return { success: false, message: "Document not found." };
+
+  if (vendorId !== null && (!doc.vendorId || doc.vendorId.toString() !== vendorId.toString())) {
+    return { success: false, message: "Document not found." };
+  }
  
   doc.status = 'I';
   doc.inActiveMarkedBy = userId;
@@ -274,7 +284,7 @@ const setActiveStatusToFalse = async (Model, id, userId) => {
 };
  
 // Soft delete - sets status to 'D'
-const softDelete = async (Model, id, userId) => {
+const softDelete = async (Model, id, userId, vendorId = null) => {
   const idCheck = validateObjectId(id);
   if (!idCheck.valid) return { success: false, message: idCheck.message };
  
@@ -283,6 +293,10 @@ const softDelete = async (Model, id, userId) => {
  
   const doc = await Model.findById(id);
   if (!doc) return { success: false, message: "Document not found." };
+
+  if (vendorId !== null && (!doc.vendorId || doc.vendorId.toString() !== vendorId.toString())) {
+    return { success: false, message: "Document not found." };
+  }
  
   doc.status = 'D';
   doc.deletedBy = userId;

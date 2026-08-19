@@ -154,12 +154,75 @@ const bulkUploadProducts = async (req, res) => {
     }
 };
 
+const updateProduct = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        // Same placeholder as createProduct - swap once authenticate/
+        // authorize('admin') are wired onto this route.
+        const userId = "6a6ed077b8ad83c8d068dda3";
+
+        const result = await productService.updateProduct(
+            vendorId,
+            userId,
+            req.companyMasterData,
+            req.websiteMasterData,
+            req.companySettingsData,
+            req.body,
+            req.files
+        );
+
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('Error updating product', { vendorId, error });
+        return common.sendError(res, 500, 'Failed to update product');
+    }
+};
+
+const toggleProductStatus = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { productId, status } = req.body;
+    try {
+        const userId = "6a6ed077b8ad83c8d068dda3";
+
+        const result = await productService.toggleProductStatus(vendorId, userId, productId, status);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('Error toggling product status', { vendorId, productId, error });
+        return common.sendError(res, 500, 'Failed to update product status');
+    }
+};
+
+const deleteProduct = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { productId } = req.body;
+    try {
+        const userId = "6a6ed077b8ad83c8d068dda3";
+
+        const result = await productService.deleteProduct(vendorId, userId, productId);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('Error deleting product', { vendorId, productId, error });
+        return common.sendError(res, 500, 'Failed to delete product');
+    }
+};
+
 module.exports = {
     createProduct,
+    updateProduct,
+    toggleProductStatus,
+    deleteProduct,
     getAllProductsAdmin,
     getProductByIdAdmin,
     getAllProductsClient,
     getProductByIdClient,
     bulkUploadProducts
-    // TODO: updateProduct, deleteProduct - add incrementally.
 };

@@ -260,7 +260,51 @@ const idParamSchema = Joi.object({
     id: objectId().required().label('Product ID')
 });
 
+// --- Update (full replace, same shape/rules as create) -----------------------
+// _id is added to size/variant items so incoming rows can be matched back
+// to existing subdocuments - present + matching _id = update in place,
+// no _id = new insert, existing-but-missing-from-the-array = removed.
+// Everything else (required fields, cross-item rules, custom validators)
+// is identical to createProductSchema - update uses the exact same rules.
+const updateSizeSchema = sizeSchema.keys({
+    _id: objectId().label('Size ID')
+});
+
+const updateVariantSchema = variantSchema.keys({
+    _id: objectId().label('Variant ID'),
+    sizes: Joi.array().items(updateSizeSchema).min(1).required().custom(validateSizesArray)
+        .messages({
+            'sizes.duplicate': 'Duplicate size detected within this variant - the same size and value combination was added more than once.',
+            'sizes.multipleDefaults': 'Only one size can be marked as the default size within a variant.'
+        })
+        .label('Sizes')
+});
+
+const updateProductSchema = createProductSchema.keys({
+    productId: objectId().required().label('Product ID'),
+    variants: Joi.array().items(updateVariantSchema).min(1).required().custom(validateVariantsArray)
+        .messages({
+            'variants.duplicateColor': 'Color "{{#color}}" is used in more than one variant - colors must be distinct across variants.',
+            'variants.multipleDefaults': 'Only one variant can be marked as the default variant.'
+        })
+        .label('Variants')
+});
+
+// --- Status toggle (active/inactive - one shared endpoint) --------------------
+const toggleProductStatusSchema = Joi.object({
+    productId: objectId().required().label('Product ID'),
+    status: Joi.string().valid('A', 'I').required().label('Status')
+});
+
+// --- Delete (soft delete) -----------------------------------------------------
+const deleteProductSchema = Joi.object({
+    productId: objectId().required().label('Product ID')
+});
+
 module.exports = {
     createProductSchema,
+    updateProductSchema,
+    toggleProductStatusSchema,
+    deleteProductSchema,
     idParamSchema
 };

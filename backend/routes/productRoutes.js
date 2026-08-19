@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const productController = require('../controllers/productController');
 const validate = require('../middlewares/validate');
-const { createProductSchema, idParamSchema  } = require('../middlewares/validations/productValidations');
+const { createProductSchema, updateProductSchema, toggleProductStatusSchema, deleteProductSchema, idParamSchema } = require('../middlewares/validations/productValidations');
 const vendorDetection = require('../middlewares/vendorDetection');
 const ensureVendorDataCached = require('../middlewares/ensureVendorDataCached');
 const imageUpload = require('../middlewares/imageUpload');
@@ -33,5 +33,11 @@ router.get( '/get-products', vendorDetection, ensureVendorDataCached, productCon
 router.get( '/get-product/:id', vendorDetection, ensureVendorDataCached, validate(idParamSchema, 'params'), productController.getProductByIdClient );
 
 router.post( '/bulk-upload-products', vendorDetection, ensureVendorDataCached, productBulkUpload, productController.bulkUploadProducts );
+
+router.put( '/update-product', vendorDetection, ensureVendorDataCached, imageUpload.any(), parseProductData, validate(updateProductSchema, 'body'), productController.updateProduct );
+
+router.patch( '/toggle-product-status', vendorDetection, ensureVendorDataCached, validate(toggleProductStatusSchema, 'body'), productController.toggleProductStatus );
+
+router.delete( '/delete-product', vendorDetection, ensureVendorDataCached, validate(deleteProductSchema, 'body'), productController.deleteProduct );
 
 module.exports = router;
