@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import AnnouncementsPage from './admin/features/anoucements/pages/AnnouncementsPage';
 import CategoriesPage from './admin/masters/category/pages/CategoriesPage';
+import ProductsPage from './admin/features/products/pages/ProductsPage';
 import LoginPage from './admin/features/login/pages/LoginPage';
 import { useAuth } from './admin/features/login/hooks/useAuth';
 import Spinner from './components/common/Spinner';
@@ -37,6 +38,8 @@ function App() {
           <AnnouncementsPage />
         ) : activePage === 'categories' ? (
           <CategoriesPage />
+        ) : activePage === 'products' ? (
+          <ProductsPage />
         ) : (
           <EmptyState
             title={`${PAGE_LABELS[activePage] || 'This page'} is coming soon`}

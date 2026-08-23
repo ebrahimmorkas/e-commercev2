@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -67,8 +68,9 @@ const getMonthGrid = (year, month) => {
  * @param {string} props.id - Input id attribute
  * @param {string} props.className - Additional CSS classes for the outer wrapper
  *
- * Note: the calendar popover is positioned with CSS relative to the input (not portaled),
- * so — like Dropdown/Tooltip/Menu — it can be clipped by an ancestor with `overflow: hidden`.
+ * The calendar popover is portaled to document.body and positioned via
+ * getBoundingClientRect, so it isn't clipped by a scrollable/overflow-hidden
+ * ancestor (e.g. a Modal body) - same approach as Dropdown.
  */
 const DatePicker = ({
   value,
@@ -91,14 +93,42 @@ const DatePicker = ({
   const [internalValue, setInternalValue] = useState(() => parseDateValue(defaultValue));
   const [isOpen, setIsOpen] = useState(false);
   const [viewDate, setViewDate] = useState(() => parseDateValue(value ?? defaultValue) || startOfDay(new Date()));
+  const [popoverStyle, setPopoverStyle] = useState(null);
   const containerRef = useRef(null);
+  const triggerRef = useRef(null);
+  const calendarRef = useRef(null);
 
   const isControlled = value !== undefined;
   const selectedDate = isControlled ? parseDateValue(value) : internalValue;
 
+  const updatePopoverPosition = useCallback(() => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const popoverWidth = 288; // w-72
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - popoverWidth - 8));
+    setPopoverStyle({ position: 'fixed', top: rect.bottom + 4, left });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      setPopoverStyle(null);
+      return;
+    }
+    updatePopoverPosition();
+    const handleReposition = () => updatePopoverPosition();
+    window.addEventListener('scroll', handleReposition, true);
+    window.addEventListener('resize', handleReposition);
+    return () => {
+      window.removeEventListener('scroll', handleReposition, true);
+      window.removeEventListener('resize', handleReposition);
+    };
+  }, [isOpen, updatePopoverPosition]);
+
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) setIsOpen(false);
+      const clickedTrigger = containerRef.current && containerRef.current.contains(e.target);
+      const clickedCalendar = calendarRef.current && calendarRef.current.contains(e.target);
+      if (!clickedTrigger && !clickedCalendar) setIsOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -151,7 +181,7 @@ const DatePicker = ({
         </label>
       )}
 
-      <div className="relative">
+      <div className="relative" ref={triggerRef}>
         <button
           type="button"
           id={id || name}
@@ -186,11 +216,13 @@ const DatePicker = ({
           </span>
         </button>
 
-        {isOpen && (
+        {isOpen && popoverStyle && createPortal(
           <div
+            ref={calendarRef}
             role="dialog"
             aria-label="Choose a date"
-            className="absolute z-50 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg p-3"
+            style={popoverStyle}
+            className="z-[9999] w-72 bg-white border border-gray-200 rounded-lg shadow-lg p-3"
           >
             <div className="flex items-center justify-between mb-2">
               <button
@@ -262,7 +294,8 @@ const DatePicker = ({
             >
               Today
             </button>
-          </div>
+          </div>,
+          document.body
         )}
       </div>
 

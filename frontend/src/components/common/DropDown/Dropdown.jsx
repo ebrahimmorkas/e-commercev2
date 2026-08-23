@@ -1,8 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 
 /**
  * A highly reusable Dropdown Component
- * 
+ *
  * @param {Object} props - Component properties
  * @param {Array} props.options - Array of options [{value: string, label: string, disabled?: boolean}]
  * @param {string} props.value - Selected value (for controlled component)
@@ -59,9 +60,18 @@ const Dropdown = ({
   const [internalValue, setInternalValue] = useState(multiple ? [] : defaultValue);
   const [searchTerm, setSearchTerm] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  
+  // Menu is rendered via a portal (see note above the menu JSX below) so it
+  // always escapes any ancestor's `overflow: hidden` - e.g. the Accordion
+  // component's collapse-animation wrapper, which otherwise silently clips
+  // any dropdown opened inside it (options render, but sit outside the
+  // clipped box and never become visible). Position is measured from the
+  // trigger on open/scroll/resize since a portaled element can't rely on
+  // CSS `absolute` positioning against its original DOM parent anymore.
+  const [menuStyle, setMenuStyle] = useState(null);
+
   // Refs
   const dropdownRef = useRef(null);
+  const menuRef = useRef(null);
   const searchInputRef = useRef(null);
 
   // Determine if component is controlled
@@ -85,10 +95,12 @@ const Dropdown = ({
 
   const selectedOption = getSelectedOption();
 
-  // Close dropdown when clicking outside
+  // Close dropdown when clicking outside (the trigger OR the portaled menu)
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+      const clickedTrigger = dropdownRef.current && dropdownRef.current.contains(event.target);
+      const clickedMenu = menuRef.current && menuRef.current.contains(event.target);
+      if (!clickedTrigger && !clickedMenu) {
         setIsOpen(false);
         setSearchTerm('');
       }
@@ -97,6 +109,37 @@ const Dropdown = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Measure the trigger and place the portaled menu against it. Re-runs on
+  // open, and while open on scroll/resize so the menu tracks the trigger
+  // instead of drifting away from it.
+  const updateMenuPosition = useCallback(() => {
+    if (!dropdownRef.current) return;
+    const rect = dropdownRef.current.getBoundingClientRect();
+    const openUpward = position === 'top';
+    setMenuStyle({
+      position: 'fixed',
+      left: rect.left,
+      width: rect.width,
+      ...(openUpward ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
+    });
+  }, [position]);
+
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      setMenuStyle(null);
+      return;
+    }
+    updateMenuPosition();
+
+    const handleReposition = () => updateMenuPosition();
+    window.addEventListener('scroll', handleReposition, true);
+    window.addEventListener('resize', handleReposition);
+    return () => {
+      window.removeEventListener('scroll', handleReposition, true);
+      window.removeEventListener('resize', handleReposition);
+    };
+  }, [isOpen, updateMenuPosition]);
 
   // Focus search input when dropdown opens
   useEffect(() => {
@@ -113,7 +156,7 @@ const Dropdown = ({
       switch (e.key) {
         case 'ArrowDown':
           e.preventDefault();
-          setHighlightedIndex(prev => 
+          setHighlightedIndex(prev =>
             prev < filteredOptions.length - 1 ? prev + 1 : prev
           );
           break;
@@ -138,6 +181,7 @@ const Dropdown = ({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, highlightedIndex, filteredOptions]);
 
   /**
@@ -147,7 +191,7 @@ const Dropdown = ({
     if (option.disabled) return;
 
     let newValue;
-    
+
     if (multiple) {
       // Toggle option in array
       newValue = currentValue.includes(option.value)
@@ -178,7 +222,7 @@ const Dropdown = ({
   const handleClear = (e) => {
     e.stopPropagation();
     const newValue = multiple ? [] : '';
-    
+
     if (!isControlled) {
       setInternalValue(newValue);
     }
@@ -225,10 +269,11 @@ const Dropdown = ({
     ${className}
   `.trim().replace(/\s+/g, ' ');
 
-  // Dropdown menu classes
+  // Dropdown menu classes - no more `absolute`/`top-full`/`bottom-full`,
+  // positioning now comes entirely from menuStyle (see updateMenuPosition)
+  // since the menu is portaled out of this DOM subtree.
   const menuClasses = `
-    absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg
-    ${position === 'top' ? 'bottom-full mb-1' : 'top-full'}
+    z-[9999] bg-white border border-gray-300 rounded-lg shadow-lg
     ${dropdownClassName}
   `.trim().replace(/\s+/g, ' ');
 
@@ -251,7 +296,7 @@ const Dropdown = ({
     }
 
     if (selectedOption) {
-      return <span className="truncate">{selectedOption.label}</span>;
+      return <span className="block truncate">{selectedOption.label}</span>;
     }
 
     return <span className="text-gray-400">{placeholder}</span>;
@@ -279,6 +324,74 @@ const Dropdown = ({
     <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
     </svg>
+  );
+
+  const menu = isOpen && menuStyle && (
+    <div ref={menuRef} className={menuClasses} style={{ ...menuStyle, maxHeight: `${maxHeight}px` }}>
+      {/* Search Input */}
+      {searchable && (
+        <div className="p-2 border-b border-gray-200">
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <SearchIcon />
+            </div>
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search..."
+              className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Options List */}
+      <div className="overflow-y-auto" style={{ maxHeight: searchable ? `${maxHeight - 60}px` : `${maxHeight}px` }}>
+        {filteredOptions.length > 0 ? (
+          filteredOptions.map((option, index) => {
+            const isSelected = multiple
+              ? currentValue.includes(option.value)
+              : currentValue === option.value;
+            const isHighlighted = index === highlightedIndex;
+
+            return (
+              <div
+                key={option.value}
+                onClick={() => handleOptionClick(option)}
+                className={`
+                  px-4 py-2 cursor-pointer transition-colors
+                  ${isSelected ? 'bg-blue-50 text-blue-700' : 'text-gray-900'}
+                  ${isHighlighted ? 'bg-gray-100' : 'hover:bg-gray-50'}
+                  ${option.disabled ? 'opacity-50 cursor-not-allowed' : ''}
+                `}
+                role="option"
+                aria-selected={isSelected}
+              >
+                <div className="flex items-center justify-between">
+                  {renderOption ? renderOption(option, isSelected) : (
+                    <>
+                      <span>{option.label}</span>
+                      {isSelected && multiple && (
+                        <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <div className="px-4 py-8 text-center text-gray-500">
+            No options found
+          </div>
+        )}
+      </div>
+    </div>
   );
 
   return (
@@ -325,74 +438,9 @@ const Dropdown = ({
           </div>
         </div>
 
-        {/* Dropdown Menu */}
-        {isOpen && (
-          <div className={menuClasses} style={{ maxHeight: `${maxHeight}px` }}>
-            {/* Search Input */}
-            {searchable && (
-              <div className="p-2 border-b border-gray-200">
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <SearchIcon />
-                  </div>
-                  <input
-                    ref={searchInputRef}
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search..."
-                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Options List */}
-            <div className="overflow-y-auto" style={{ maxHeight: searchable ? `${maxHeight - 60}px` : `${maxHeight}px` }}>
-              {filteredOptions.length > 0 ? (
-                filteredOptions.map((option, index) => {
-                  const isSelected = multiple
-                    ? currentValue.includes(option.value)
-                    : currentValue === option.value;
-                  const isHighlighted = index === highlightedIndex;
-
-                  return (
-                    <div
-                      key={option.value}
-                      onClick={() => handleOptionClick(option)}
-                      className={`
-                        px-4 py-2 cursor-pointer transition-colors
-                        ${isSelected ? 'bg-blue-50 text-blue-700' : 'text-gray-900'}
-                        ${isHighlighted ? 'bg-gray-100' : 'hover:bg-gray-50'}
-                        ${option.disabled ? 'opacity-50 cursor-not-allowed' : ''}
-                      `}
-                      role="option"
-                      aria-selected={isSelected}
-                    >
-                      <div className="flex items-center justify-between">
-                        {renderOption ? renderOption(option, isSelected) : (
-                          <>
-                            <span>{option.label}</span>
-                            {isSelected && multiple && (
-                              <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                              </svg>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="px-4 py-8 text-center text-gray-500">
-                  No options found
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {/* Dropdown Menu - portaled to <body> so it always escapes any
+            ancestor's overflow:hidden (e.g. Accordion's collapse wrapper) */}
+        {menu && createPortal(menu, document.body)}
       </div>
 
       {/* Helper Text or Error Message */}
