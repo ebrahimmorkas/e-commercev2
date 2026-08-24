@@ -10,7 +10,12 @@ const User = require('../models/User');
 const logger = require('../utils/logger');
 const common = require('../utils/common');
 const { parseExcelBuffer } = require('../utils/excelParser');
-const { resolveEntitiesByField } = require('../utils/entityResolver');
+const { processExcelRows } = require('../utils/excelRowProcessor');
+const {
+  bulkProductNameRowSchema,
+  bulkCategoryNameRowSchema,
+  bulkUserEmailRowSchema
+} = require('../middlewares/validations/discountValidations');
 const {
   GIVE_DISCOUNT_TO_CONFIG,
   PRODUCTS_EXCEL_COLUMNS,
@@ -19,6 +24,8 @@ const {
   VALID_DISCOUNT_TYPES,
   VALID_DAYS
 } = require('../constants/discountConstants');
+
+const escapeRegex = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /*
 |--------------------------------------------------------------------------
@@ -206,42 +213,122 @@ const resolveGiveDiscountToTargets = async (vendorId, payload, files = {}) => {
       userGroupIds: []
     };
 
-    const notFoundSummary = {};
+    const excelReports = {};
+    const excelFile = files.excelFile && files.excelFile[0];
+
+    const needsExcel = config.needsProductsFile || config.needsCategoriesFile || config.needsUsersFile;
+    if (needsExcel && !excelFile) {
+      return { valid: false, message: 'excelFile is required for this giveDiscountTo option.' };
+    }
 
     if (config.needsProductsFile) {
-      const file = files.productsFile && files.productsFile[0];
-      if (!file) {
-        return { valid: false, message: 'productsFile (excel) is required for this giveDiscountTo option.' };
+      let rows;
+      try {
+        ({ rows } = await parseExcelBuffer(excelFile.buffer, PRODUCTS_EXCEL_COLUMNS, { sheetName: 'Products' }));
+      } catch (err) {
+        if (String(err.message).includes('was not found')) {
+          return { valid: false, message: '"Products" sheet is required in the excel file for this giveDiscountTo option.' };
+        }
+        throw err;
       }
-      const { rows } = await parseExcelBuffer(file.buffer, PRODUCTS_EXCEL_COLUMNS);
-      const productNames = rows.map((r) => r.productName);
-      const { resolvedIds, notFound } = await resolveEntitiesByField(Product, 'productName', productNames, { vendorId });
-      resolved.productIds = resolvedIds;
-      if (notFound.length > 0) notFoundSummary.products = notFound;
+
+      const report = await processExcelRows(
+        rows,
+        async (row) => {
+          const { error, value } = bulkProductNameRowSchema.validate(row, { abortEarly: false });
+          if (error) {
+            return { success: false, errors: error.details.map((d) => d.message.replace(/"/g, '')) };
+          }
+          const doc = await Product.findOne({
+            vendorId, status: 'A',
+            name: { $regex: `^${escapeRegex(value.productName.trim())}$`, $options: 'i' }
+          });
+          if (!doc) {
+            return { success: false, errors: [`Product "${value.productName}" not found`] };
+          }
+          resolved.productIds.push(doc._id.toString());
+          return { success: true };
+        },
+        { allowPartialSuccess: true, useTransaction: false }
+      );
+      excelReports.products = report;
+
+      if (report.totalRows > 0 && report.successCount === 0) {
+        return { valid: false, message: 'None of the products in the uploaded excel file could be matched.', excelReports };
+      }
     }
 
     if (config.needsCategoriesFile) {
-      const file = files.categoriesFile && files.categoriesFile[0];
-      if (!file) {
-        return { valid: false, message: 'categoriesFile (excel) is required for this giveDiscountTo option.' };
+      let rows;
+      try {
+        ({ rows } = await parseExcelBuffer(excelFile.buffer, CATEGORIES_EXCEL_COLUMNS, { sheetName: 'Categories' }));
+      } catch (err) {
+        if (String(err.message).includes('was not found')) {
+          return { valid: false, message: '"Categories" sheet is required in the excel file for this giveDiscountTo option.' };
+        }
+        throw err;
       }
-      const { rows } = await parseExcelBuffer(file.buffer, CATEGORIES_EXCEL_COLUMNS);
-      const categoryNames = rows.map((r) => r.categoryName);
-      const { resolvedIds, notFound } = await resolveEntitiesByField(Category, 'categoryName', categoryNames, { vendorId });
-      resolved.categoryIds = resolvedIds;
-      if (notFound.length > 0) notFoundSummary.categories = notFound;
+
+      const report = await processExcelRows(
+        rows,
+        async (row) => {
+          const { error, value } = bulkCategoryNameRowSchema.validate(row, { abortEarly: false });
+          if (error) {
+            return { success: false, errors: error.details.map((d) => d.message.replace(/"/g, '')) };
+          }
+          const doc = await Category.findOne({
+            vendorId, status: 'A',
+            categoryName: { $regex: `^${escapeRegex(value.categoryName.trim())}$`, $options: 'i' }
+          });
+          if (!doc) {
+            return { success: false, errors: [`Category "${value.categoryName}" not found`] };
+          }
+          resolved.categoryIds.push(doc._id.toString());
+          return { success: true };
+        },
+        { allowPartialSuccess: true, useTransaction: false }
+      );
+      excelReports.categories = report;
+
+      if (report.totalRows > 0 && report.successCount === 0) {
+        return { valid: false, message: 'None of the categories in the uploaded excel file could be matched.', excelReports };
+      }
     }
 
     if (config.needsUsersFile) {
-      const file = files.usersFile && files.usersFile[0];
-      if (!file) {
-        return { valid: false, message: 'usersFile (excel) is required for this giveDiscountTo option.' };
+      let rows;
+      try {
+        ({ rows } = await parseExcelBuffer(excelFile.buffer, USERS_EXCEL_COLUMNS, { sheetName: 'Users' }));
+      } catch (err) {
+        if (String(err.message).includes('was not found')) {
+          return { valid: false, message: '"Users" sheet is required in the excel file for this giveDiscountTo option.' };
+        }
+        throw err;
       }
-      const { rows } = await parseExcelBuffer(file.buffer, USERS_EXCEL_COLUMNS);
-      const emails = rows.map((r) => r.email);
-      const { resolvedIds, notFound } = await resolveEntitiesByField(User, 'email', emails, { vendorId });
-      resolved.userIds = resolvedIds;
-      if (notFound.length > 0) notFoundSummary.users = notFound;
+
+      const report = await processExcelRows(
+        rows,
+        async (row) => {
+          const { error, value } = bulkUserEmailRowSchema.validate(row, { abortEarly: false });
+          if (error) {
+            return { success: false, errors: error.details.map((d) => d.message.replace(/"/g, '')) };
+          }
+          const doc = await User.findOne({
+            email: { $regex: `^${escapeRegex(value.email.trim())}$`, $options: 'i' }
+          });
+          if (!doc) {
+            return { success: false, errors: [`User with email "${value.email}" not found`] };
+          }
+          resolved.userIds.push(doc._id.toString());
+          return { success: true };
+        },
+        { allowPartialSuccess: true, useTransaction: false }
+      );
+      excelReports.users = report;
+
+      if (report.totalRows > 0 && report.successCount === 0) {
+        return { valid: false, message: 'None of the users in the uploaded excel file could be matched.', excelReports };
+      }
     }
 
     if (config.needsProductGroupIds) {
@@ -262,15 +349,7 @@ const resolveGiveDiscountToTargets = async (vendorId, payload, files = {}) => {
       resolved.userGroupIds = payload.userGroupIds;
     }
 
-    if (Object.keys(notFoundSummary).length > 0) {
-      return {
-        valid: false,
-        message: 'Some values in the uploaded excel file(s) could not be matched.',
-        notFoundSummary
-      };
-    }
-
-    return { valid: true, resolved };
+    return { valid: true, resolved, excelReports };
   } catch (err) {
     throw err;
   }
@@ -322,7 +401,7 @@ const createDiscount = async (vendorId, userId, payload, files) => {
       return common.returnResult(false, 400, daysHoursCheck.message);
     }
 
-    const resolution = await resolveGiveDiscountToTargets(vendorId, payload, files);
+        const resolution = await resolveGiveDiscountToTargets(vendorId, payload, files);
     if (!resolution.valid) {
       return common.returnResult(false, 400, resolution.message, { notFoundSummary: resolution.notFoundSummary });
     }
@@ -387,7 +466,7 @@ const createDiscount = async (vendorId, userId, payload, files) => {
 
     logger.logInfo(1, 0, 'Discount created successfully', { vendorId, discountId: discountDoc._id });
 
-    return common.returnResult(true, 201, 'Discount created successfully', { data: discountDoc });
+    return common.returnResult(true, 201, 'Discount created successfully', { data: discountDoc, excelReports: resolution.excelReports });
   } catch (err) {
     throw err;
   }
@@ -422,7 +501,7 @@ const updateDiscount = async (vendorId, discountId, userId, payload, files) => {
 
     const resolution = await resolveGiveDiscountToTargets(vendorId, payload, files);
     if (!resolution.valid) {
-      return common.returnResult(false, 400, resolution.message, { notFoundSummary: resolution.notFoundSummary });
+      return common.returnResult(false, 400, resolution.message, { excelReports: resolution.excelReports });
     }
 
     const isOngoing = payload.isOngoingDiscount === true;
@@ -493,7 +572,7 @@ const updateDiscount = async (vendorId, discountId, userId, payload, files) => {
 
     logger.logInfo(1, 0, 'Discount updated successfully', { vendorId, discountId });
 
-    return common.returnResult(true, 200, 'Discount updated successfully', { data: existingDiscount });
+        return common.returnResult(true, 200, 'Discount updated successfully', { data: existingDiscount, excelReports: resolution.excelReports });
   } catch (err) {
     throw err;
   }
