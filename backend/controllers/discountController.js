@@ -10,23 +10,31 @@ const common = require('../utils/common.js');
  *
  * Returns null if the feature is enabled, or an { statusCode, message } object if blocked.
  */
-const getDiscountFeatureBlockReason = (req) => {
+const getDiscountFeatureBlockReason = async (req) => {
   const websiteMasterData = req.websiteMasterData;
   const companyMasterData = req.companyMasterData;
 
-  if (!websiteMasterData || websiteMasterData.isDiscountFeatureOn !== true) {
-    return {
-      statusCode: 403,
-      message: (websiteMasterData && websiteMasterData.temporaryFeatureOffMessage)
-        || 'This feature is temporarily unavailable. Please check back later.'
-    };
-  }
+  // if (!websiteMasterData || websiteMasterData.isDiscountFeatureOn !== true) {
+  //   return {
+  //     statusCode: 403,
+  //     message: (websiteMasterData && websiteMasterData.temporaryFeatureOffMessage)
+  //       || 'This feature is temporarily unavailable. Please check back later.'
+  //   };
+  // }
 
-  if (!companyMasterData || companyMasterData.isDiscountFeatureOn !== true) {
+  // if (!companyMasterData || companyMasterData.isDiscountFeatureOn !== true) {
+  //   return {
+  //     statusCode: 403,
+  //     message: (websiteMasterData && websiteMasterData.featureDisabledForVendorMessage)
+  //       || 'This feature is not enabled for your account. Please contact support.'
+  //   };
+  // }
+
+  const isDiscountFeatureOn = await common.checkFeatureOnOrOff(req.vendorId, req.websiteMasterData, req.companyMasterData, `isDiscountFeatureOn`, `isDiscountFeatureOn`);
+  if(!isDiscountFeatureOn.isSuccess) {
     return {
       statusCode: 403,
-      message: (websiteMasterData && websiteMasterData.featureDisabledForVendorMessage)
-        || 'This feature is not enabled for your account. Please contact support.'
+      message: isDiscountFeatureOn.message || `This feature is temporarily unavailable`
     };
   }
 
@@ -35,9 +43,11 @@ const getDiscountFeatureBlockReason = (req) => {
 
 const createDiscount = async (req, res) => {
   const vendorId = req.vendorId;
-  const userId = req.user && req.user._id;
+  // const userId = req.user._id;
+  const userId = '6a63443e263b29b8e59374eb';
   try {
-    const blockReason = getDiscountFeatureBlockReason(req);
+    const blockReason = await getDiscountFeatureBlockReason(req);
+    console.log(`Block reason is ${blockReason}`);
     if (blockReason) {
       return common.sendError(res, blockReason.statusCode, blockReason.message);
     }
@@ -62,7 +72,7 @@ const createDiscount = async (req, res) => {
       return common.sendError(res, result.statusCode, result.message, result.meta);
     }
 
-    return common.sendSuccess(res, result.statusCode, result.message, result.meta.data);
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
   } catch (error) {
     logger.logException('Error creating discount', { vendorId, error });
     return common.sendError(res, 500, 'Failed to create discount');
@@ -86,7 +96,7 @@ const updateDiscount = async (req, res) => {
       return common.sendError(res, result.statusCode, result.message, result.meta);
     }
 
-    return common.sendSuccess(res, result.statusCode, result.message, result.meta.data);
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
   } catch (error) {
     logger.logException('Error updating discount', { vendorId, discountId, error });
     return common.sendError(res, 500, 'Failed to update discount');
