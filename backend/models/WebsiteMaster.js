@@ -114,6 +114,11 @@ const websiteMasterSchema = mongoose.Schema({
         type: Number,
         default: 50
     },
+    // Cart
+    isCartFeaturOn: {
+        type: Boolean,
+        default: true
+    }
 }, {
   timestamps: true
 });

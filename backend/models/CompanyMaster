@@ -183,6 +183,16 @@ const companyMasterSchema = mongoose.Schema({
         type: Number,
         default: null
     },
+
+    // Cart
+    isCartFeaturOn: {
+        type: Boolean,
+        default: true
+    },
+    numberOfProductsAllowedInCartAtOnce: {
+        type: Number,
+        default: 1000
+    }
 }, {
   timestamps: true
 });

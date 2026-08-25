@@ -116,8 +116,15 @@ const companySettingsSchema = new mongoose.Schema({
   shouldProductsBeHiddenWhenLocationsAreExcluded: {
     type: Boolean,
     default: true
-  }
+  },
   // End of product
+
+  // Stat of Cart
+  allowOutOfStockProductsAdding: {
+    type: Boolean,
+    default: false
+  }
+  // End of Cart
 }, {
   timestamps: true
 });
