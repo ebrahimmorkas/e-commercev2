@@ -32,7 +32,16 @@ const refreshTokenCookieOptions = {
     path: '/api/auth' // only sent to auth routes, reduces exposure
 };
 
+const guestCartCookieOptions = {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
+    maxAge: 365 * 24 * 60 * 60 * 1000, // 1 year - guest cart must survive long absences
+    path: '/'
+};
+
 module.exports = {
     accessTokenCookieOptions,
-    refreshTokenCookieOptions
+    refreshTokenCookieOptions,
+    guestCartCookieOptions
 };

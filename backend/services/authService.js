@@ -3,6 +3,8 @@ const User = require('../models/User');
 const RefreshToken = require('../models/RefreshToken');
 const { generateAccessToken, generateRefreshToken, verifyRefreshToken, hashToken } = require('../utils/token');
 const common = require('../utils/common');
+const cartService = require('./cartService');
+const logger = require('../utils/logger');
 require('dotenv').config();
 
 const SALT_ROUNDS = Number(process.env.SALT_ROUNDS);
@@ -52,7 +54,7 @@ const registerUser = async ({ vendorId, name, username, email, phone_no, whatsap
     }
 };
 
-const loginUser = async ({ identifier, password }, deviceMeta, vendorId) => {
+const loginUser = async ({ identifier, password }, deviceMeta, vendorId, guestCartId, locationContext, companyMasterData) => {
     try {
         if (!vendorId) {
             // Vendor detection fails
@@ -95,8 +97,24 @@ const loginUser = async ({ identifier, password }, deviceMeta, vendorId) => {
             expiresAt: new Date(decodedRefresh.exp * 1000)
         });
 
-        return common.returnResult(true, 200, `Login Success`, { accessToken, refreshToken, 
-            user: { _id: user._id, name: user.name, username: user.username, email: user.email, role: user.role }
+                // Merge the guest cart (if any) into this user's cart now, inside
+        // the same login flow, so it's atomic with login and can't be
+        // skipped by the frontend forgetting to call a separate endpoint.
+        // A merge failure must NOT fail the login itself - the user should
+        // still get logged in even if, say, a product referenced in the
+        // guest cart was deleted mid-merge. Log and move on.
+        let cartMergeResult = null;
+        if (guestCartId) {
+            try {
+                cartMergeResult = await cartService.mergeGuestCartIntoUserCart(vendorId, user._id, guestCartId, locationContext, companyMasterData);
+            } catch (mergeErr) {
+                logger.logException('Guest cart merge failed during login', { userId: user._id, guestCartId, mergeErr });
+            }
+        }
+
+        return common.returnResult(true, 200, `Login Success`, { accessToken, refreshToken,
+            user: { _id: user._id, name: user.name, username: user.username, email: user.email, role: user.role },
+            cartMerged: !!(cartMergeResult && cartMergeResult.isSuccess)
         });
     } catch (err) {
         throw err;

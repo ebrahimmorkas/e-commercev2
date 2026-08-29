@@ -14,6 +14,7 @@ const redisKeys = {
   cities: (vendorId) => `cities:${vendorId}`,
   taxes: (vendorId) => `taxes:${vendorId}`,
   locationTaxBundle: (vendorId) => `location-tax-bundle:${vendorId}`,
+  cartTotal: (vendorId, ownerKey) => `cart-total:${vendorId}:${ownerKey}`,
 };
 
 module.exports = redisKeys;

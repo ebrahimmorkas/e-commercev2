@@ -1,7 +1,7 @@
 const authService = require('../services/authService');
 const { sendSuccess, sendError } = require('../utils/common');
 const { logInfo, logException } = require('../utils/logger');
-const { accessTokenCookieOptions, refreshTokenCookieOptions } = require('../utils/cookieOptions');
+const { accessTokenCookieOptions, refreshTokenCookieOptions, guestCartCookieOptions } = require('../utils/cookieOptions');
 
 const getDeviceMeta = (req) => ({
     userAgent: req.headers['user-agent'] || 'unknown',
@@ -67,8 +67,23 @@ const login = async (req, res) => {
             return sendError(res, 400, 'identifier and password are required');
         }
 
-        const deviceMeta = getDeviceMeta(req);
-        const loginUser = await authService.loginUser({ identifier, password }, deviceMeta, vendorId);
+                const deviceMeta = getDeviceMeta(req);
+        const guestCartId = req.cookies?.guestCartId || null;
+        const locationContext = {
+            countryId: req.cookies?.Country || null,
+            stateId: req.cookies?.State || null,
+            cityId: req.cookies?.City || null,
+            zipCode: req.cookies?.zip_code || null
+        };
+
+        const loginUser = await authService.loginUser(
+            { identifier, password },
+            deviceMeta,
+            vendorId,
+            guestCartId,
+            locationContext,
+            req.companyMasterData
+        );
 
         if(!loginUser.isSuccess) {
             logInfo(0, 1, loginUser.message);
@@ -77,7 +92,11 @@ const login = async (req, res) => {
 
         const { accessToken, user } = loginUser.meta;
 
-        res.cookie('refreshToken', loginUser.meta.refreshToken, refreshTokenCookieOptions);
+                res.cookie('refreshToken', loginUser.meta.refreshToken, refreshTokenCookieOptions);
+
+        if (guestCartId && loginUser.meta.cartMerged) {
+            res.clearCookie('guestCartId', guestCartCookieOptions);
+        }
 
         logInfo(1, 0, 'User logged in successfully', { userId: user._id });
         return sendSuccess(res, loginUser.statusCode, loginUser.message, { user, accessToken });

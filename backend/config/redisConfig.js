@@ -13,7 +13,7 @@ const connectRedis = async () => {
       socket: {
         reconnectStrategy: (retries) => {
           if (retries > 10) {
-            logger.error("Redis max reconnection attempts reached");
+            logger.logInfo("Redis max reconnection attempts reached");
             return new Error('Max reconnection attempts reached');
           }
           return Math.min(retries * 100, 2000);

@@ -27,6 +27,7 @@ const stateMasterRoutes = require('./routes/stateMasterRoutes.js');
 const cityMasterRoutes = require('./routes/cityMasterRoutes.js');
 const taxMasterRoutes = require('./routes/taxMasterRoutes.js');
 const locationTaxBundleRoutes = require('./routes/locationTaxBundleRoutes.js');
+const cartRoutes = require('./routes/cartRoutes.js');
 const redisService = require('./services/redisService');
 
 const app = express();
@@ -64,6 +65,7 @@ app.use('/api/states', stateMasterRoutes);
 app.use('/api/cities', cityMasterRoutes);
 app.use('/api/taxes', taxMasterRoutes);
 app.use('/api/location-tax-bundle', locationTaxBundleRoutes);
+app.use('/api/cart', cartRoutes);
 
 // Private Routes
 app.use('/api/announcements', announcementRoutes);
