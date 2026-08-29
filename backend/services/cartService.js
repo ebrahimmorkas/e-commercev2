@@ -134,6 +134,9 @@ const addProductToCart = async (vendorId, cartOwner, locationContext, companyMas
 
         const allowOutOfStock = companySettingsData?.allowOutOfStockProductsAdding === true;
         if (!allowOutOfStock && size.stock < requestedTotalQty) {
+            if (size.stock == 0) {
+                return common.returnResult(false, 400, `Size ${size.sizeName} of variant ${variant.displayName} is out of stock.`);    
+            }
             return common.returnResult(false, 400, `Only ${size.stock} unit(s) of this size are in stock.`);
         }
 
@@ -213,6 +216,15 @@ const updateCartItemQuantity = async (vendorId, cartOwner, companySettingsData, 
 
         const allowOutOfStock = companySettingsData?.allowOutOfStockProductsAdding === true;
         if (!allowOutOfStock && resolved.size.stock < quantity) {
+            const variantName = resolved.variant.displayName || resolved.variant.color || 'Default';
+
+        if (resolved.size.stock === 0) {
+            return common.returnResult(
+                false,
+                400,
+                `${variantName} - ${resolved.size.sizeName} is out of stock.`
+            );
+        }
             return common.returnResult(false, 400, `Only ${resolved.size.stock} unit(s) of this size are in stock.`);
         }
 
