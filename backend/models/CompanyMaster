@@ -114,7 +114,7 @@ const companyMasterSchema = mongoose.Schema({
         default: 'cloudinary'
     },
 
-    // Discount
+        // Discount
     isDiscountFeatureOn: {
         type: Boolean,
         default: false
@@ -123,6 +123,51 @@ const companyMasterSchema = mongoose.Schema({
         type: Number,
         default: 3
     },
+    // Restricts which giveDiscountTo options (GIVE_DISCOUNT_TO_CONFIG keys in
+    // discountConstants.js) this vendor may use. Empty array = all allowed.
+    allowedConstantsOfGiveDiscountTo: {
+        type: [String],
+        enum: [
+            'ALL_PRODUCTS_ALL_USERS',
+            'SPECIFIC_PRODUCTS_ALL_USERS',
+            'SPECIFIC_CATEGORIES_ALL_USERS',
+            'PRODUCT_GROUP_ALL_USERS',
+            'CATEGORY_GROUP_ALL_USERS',
+            'USER_GROUP',
+            'ALL_PRODUCTS_SPECIFIC_USERS',
+            'SPECIFIC_PRODUCTS_SPECIFIC_USERS',
+            'SPECIFIC_CATEGORIES_SPECIFIC_USERS',
+            'CATEGORY_GROUP_SPECIFIC_USERS',
+            'PRODUCT_GROUP_SPECIFIC_USERS',
+            'PRODUCT_VARIANTS_SPECIFIC_USERS',
+            'PRODUCT_VARIANTS_ALL_USERS'
+        ],
+        default: []
+    },
+    // Restricts which discount "types" (Ongoing, Minimum Quantity, Coupon
+    // Code, Scheduled, Specific Days, Specific Days + Hours, Payment Method)
+    // this vendor may use. Empty array = all allowed.
+    allowedDiscountFeatureTypes: {
+        type: [String],
+        enum: [
+            'ONGOING_DISCOUNT',
+            'MINIMUM_QUANTITY_DISCOUNT',
+            'COUPON_CODE_DISCOUNT',
+            'SCHEDULED_DISCOUNT',
+            'SPECIFIC_DAYS_DISCOUNT',
+            'SPECIFIC_DAYS_HOURS_DISCOUNT',
+            'PAYMENT_METHOD_DISCOUNT'
+        ],
+        default: []
+    },
+    // Restricts which discountType values (FIXED_PRICE / PERCENTAGE) this
+    // vendor may use. Empty array = all allowed.
+    allowedDiscountTypes: {
+        type: [String],
+        enum: ['FIXED_PRICE', 'PERCENTAGE'],
+        default: []
+    },
+    // End of Discount 
 
     // Product
     numberOfProductsAllowed: {

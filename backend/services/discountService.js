@@ -22,7 +22,8 @@ const {
   CATEGORIES_EXCEL_COLUMNS,
   USERS_EXCEL_COLUMNS,
   VALID_DISCOUNT_TYPES,
-  VALID_DAYS
+  VALID_DAYS,
+  DISCOUNT_FEATURE_TYPES
 } = require('../constants/discountConstants');
 
 const escapeRegex = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -81,11 +82,34 @@ const validateBasicFields = (payload) => {
   }
 };
 
-const validateDiscountTimingFlow = (payload) => {
+const isStartDateInThePast = (startDate) => {
+  const start = new Date(startDate);
+  start.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return start < today;
+};
+
+const validateDiscountTimingFlow = (payload, options = {}) => {
   try {
+    const { isUpdate = false, existingStartDate = null } = options;
+
     const isOngoing = payload.isOngoingDiscount === true;
     const isMinQty = payload.isMinimumDiscountQuantityDiscount === true;
     const isCoupon = payload.isCouponCodeDiscount === true;
+
+    // On update, only re-check "not in the past" if startDate is actually changing.
+    const startDateChanged = !isUpdate
+      || !existingStartDate
+      || new Date(payload.startDate).getTime() !== new Date(existingStartDate).getTime();
+
+    const checkStartDateNotInPast = () => {
+      if (!startDateChanged) return { valid: true };
+      if (isStartDateInThePast(payload.startDate)) {
+        return { valid: false, message: 'startDate cannot be before today.' };
+      }
+      return { valid: true };
+    };
 
     if (isOngoing) {
       // No start/end date required, no minQty/coupon fields required.
@@ -99,6 +123,8 @@ const validateDiscountTimingFlow = (payload) => {
       if (!payload.startDate || !payload.endDate) {
         return { valid: false, message: 'startDate and endDate are required for a minimum-quantity discount.' };
       }
+      const startDateCheck = checkStartDateNotInPast();
+      if (!startDateCheck.valid) return startDateCheck;
       return { valid: true };
     }
 
@@ -109,6 +135,8 @@ const validateDiscountTimingFlow = (payload) => {
       if (!payload.startDate || !payload.endDate) {
         return { valid: false, message: 'startDate and endDate are required for a coupon-code discount.' };
       }
+      const startDateCheck = checkStartDateNotInPast();
+      if (!startDateCheck.valid) return startDateCheck;
       return { valid: true };
     }
 
@@ -116,6 +144,8 @@ const validateDiscountTimingFlow = (payload) => {
     if (!payload.startDate || !payload.endDate) {
       return { valid: false, message: 'startDate and endDate are required for this discount.' };
     }
+    const startDateCheck = checkStartDateNotInPast();
+    if (!startDateCheck.valid) return startDateCheck;
 
     return { valid: true };
   } catch (err) {
@@ -163,8 +193,157 @@ const validateSpecificDaysAndHours = (payload) => {
 
 /*
 |--------------------------------------------------------------------------
-| GIVE-DISCOUNT-TO RESOLUTION
+| COMPANY-MASTER PERMISSION CHECKS
 |--------------------------------------------------------------------------
+| Empty/unset restriction arrays on companyMaster mean "everything allowed" -
+| this is the backward-compatible default for vendors who haven't been
+| configured yet.
+*/
+
+const validateGiveDiscountToAllowed = (payload, companyMasterData) => {
+  try {
+    const allowed = (companyMasterData && Array.isArray(companyMasterData.allowedConstantsOfGiveDiscountTo))
+      ? companyMasterData.allowedConstantsOfGiveDiscountTo
+      : [];
+
+    if (allowed.length === 0) {
+      return { valid: true };
+    }
+
+    if (!allowed.includes(payload.giveDiscountTo)) {
+      return { valid: false, message: `giveDiscountTo "${payload.giveDiscountTo}" is not enabled for this vendor.` };
+    }
+
+    return { valid: true };
+  } catch (err) {
+    throw err;
+  }
+};
+
+const validateDiscountTypeAllowed = (payload, companyMasterData) => {
+  try {
+    const allowed = (companyMasterData && Array.isArray(companyMasterData.allowedDiscountTypes))
+      ? companyMasterData.allowedDiscountTypes
+      : [];
+
+    if (allowed.length === 0) {
+      return { valid: true };
+    }
+
+    if (!allowed.includes(payload.discountType)) {
+      return { valid: false, message: `discountType "${payload.discountType}" is not enabled for this vendor.` };
+    }
+
+    return { valid: true };
+  } catch (err) {
+    throw err;
+  }
+};
+
+// Derives which DISCOUNT_FEATURE_TYPES the payload is actually requesting.
+// The primary type (Ongoing / MinQty / Coupon / Scheduled) is mutually
+// exclusive; Specific-Days(+Hours) and Payment-Method are additive on top.
+const resolveRequestedDiscountFeatureTypes = (payload) => {
+  try {
+    const requested = [];
+
+    if (payload.isOngoingDiscount === true) {
+      requested.push(DISCOUNT_FEATURE_TYPES.ONGOING_DISCOUNT);
+    } else if (payload.isMinimumDiscountQuantityDiscount === true) {
+      requested.push(DISCOUNT_FEATURE_TYPES.MINIMUM_QUANTITY_DISCOUNT);
+    } else if (payload.isCouponCodeDiscount === true) {
+      requested.push(DISCOUNT_FEATURE_TYPES.COUPON_CODE_DISCOUNT);
+    } else {
+      requested.push(DISCOUNT_FEATURE_TYPES.SCHEDULED_DISCOUNT);
+    }
+
+    if (payload.isDiscountOpenForSpecificDays === true) {
+      requested.push(
+        payload.isDiscountOpenForSpecificHours === true
+          ? DISCOUNT_FEATURE_TYPES.SPECIFIC_DAYS_HOURS_DISCOUNT
+          : DISCOUNT_FEATURE_TYPES.SPECIFIC_DAYS_DISCOUNT
+      );
+    }
+
+    if (payload.isDiscountBasedOnPaymentMethods === true) {
+      requested.push(DISCOUNT_FEATURE_TYPES.PAYMENT_METHOD_DISCOUNT);
+    }
+
+    return requested;
+  } catch (err) {
+    throw err;
+  }
+};
+
+const validateDiscountFeatureTypesAllowed = (payload, companyMasterData) => {
+  try {
+    const allowed = (companyMasterData && Array.isArray(companyMasterData.allowedDiscountFeatureTypes))
+      ? companyMasterData.allowedDiscountFeatureTypes
+      : [];
+
+    if (allowed.length === 0) {
+      return { valid: true };
+    }
+
+    const requested = resolveRequestedDiscountFeatureTypes(payload);
+    const notAllowed = requested.filter((type) => !allowed.includes(type));
+
+    if (notAllowed.length > 0) {
+      return { valid: false, message: `The following discount type(s) are not enabled for this vendor: ${notAllowed.join(', ')}.` };
+    }
+
+    return { valid: true };
+  } catch (err) {
+    throw err;
+  }
+};
+
+/*
+|--------------------------------------------------------------------------
+| COUPON CODE AVAILABILITY
+|--------------------------------------------------------------------------
+| Uniqueness is enforced here, NOT via a DB unique index, so that a coupon
+| code freed up by an expired/inactive discount can be reused. "Conflicting"
+| means: same vendor, same code, status 'A', and not yet expired
+| (endDate null OR endDate >= now). Excludes the discount being updated so
+| a discount doesn't collide with itself.
+*/
+
+const checkCouponCodeAvailability = async (vendorId, couponCode, excludeDiscountId = null) => {
+  try {
+    const now = new Date();
+    const normalizedCode = String(couponCode).trim().toUpperCase();
+
+    const query = {
+      vendorId,
+      couponCode: normalizedCode,
+      status: 'A',
+      $or: [
+        { endDate: null },
+        { endDate: { $gte: now } }
+      ]
+    };
+
+    if (excludeDiscountId) {
+      query._id = { $ne: excludeDiscountId };
+    }
+
+    const conflict = await Discount.findOne(query);
+
+    if (conflict) {
+      return { valid: false, message: `Coupon code "${normalizedCode}" is already in use by an active discount.` };
+    }
+
+    return { valid: true };
+  } catch (err) {
+    throw err;
+  }
+};
+
+/*
+|--------------------------------------------------------------------------
+| GIVE-DISCOUNT-TO RESOLUTION
+|--------------------------------------------------------------------------   
 | Resolves excel uploads / dropdown-selected group ids into the actual
 | productIds / categoryIds / userIds / *GroupIds arrays stored on Discount.
 */
@@ -384,7 +563,7 @@ const countDiscountsCreatedThisMonth = async (vendorId) => {
 |--------------------------------------------------------------------------
 */
 
-const createDiscount = async (vendorId, userId, payload, files) => {
+const createDiscount = async (vendorId, userId, payload, files, companyMasterData) => {
   try {
     const basicCheck = validateBasicFields(payload);
     if (!basicCheck.valid) {
@@ -399,6 +578,28 @@ const createDiscount = async (vendorId, userId, payload, files) => {
     const daysHoursCheck = validateSpecificDaysAndHours(payload);
     if (!daysHoursCheck.valid) {
       return common.returnResult(false, 400, daysHoursCheck.message);
+    }
+
+    const giveDiscountToPermissionCheck = validateGiveDiscountToAllowed(payload, companyMasterData);
+    if (!giveDiscountToPermissionCheck.valid) {
+      return common.returnResult(false, 403, giveDiscountToPermissionCheck.message);
+    }
+
+    const discountTypePermissionCheck = validateDiscountTypeAllowed(payload, companyMasterData);
+    if (!discountTypePermissionCheck.valid) {
+      return common.returnResult(false, 403, discountTypePermissionCheck.message);
+    }
+
+    const featureTypePermissionCheck = validateDiscountFeatureTypesAllowed(payload, companyMasterData);
+    if (!featureTypePermissionCheck.valid) {
+      return common.returnResult(false, 403, featureTypePermissionCheck.message);
+    }
+
+    if (payload.isCouponCodeDiscount === true) {
+      const couponAvailabilityCheck = await checkCouponCodeAvailability(vendorId, payload.couponCode);
+      if (!couponAvailabilityCheck.valid) {
+        return common.returnResult(false, 409, couponAvailabilityCheck.message);
+      }
     }
 
         const resolution = await resolveGiveDiscountToTargets(vendorId, payload, files);
@@ -472,7 +673,7 @@ const createDiscount = async (vendorId, userId, payload, files) => {
   }
 };
 
-const updateDiscount = async (vendorId, discountId, userId, payload, files) => {
+const updateDiscount = async (vendorId, discountId, userId, payload, files, companyMasterData) => {
   try {
     const idCheck = common.validateObjectId(discountId);
     if (!idCheck.valid) {
@@ -489,7 +690,10 @@ const updateDiscount = async (vendorId, discountId, userId, payload, files) => {
       return common.returnResult(false, 400, basicCheck.message);
     }
 
-    const timingCheck = validateDiscountTimingFlow(payload);
+    const timingCheck = validateDiscountTimingFlow(payload, {
+      isUpdate: true,
+      existingStartDate: existingDiscount.startDate
+    });
     if (!timingCheck.valid) {
       return common.returnResult(false, 400, timingCheck.message);
     }
@@ -497,6 +701,28 @@ const updateDiscount = async (vendorId, discountId, userId, payload, files) => {
     const daysHoursCheck = validateSpecificDaysAndHours(payload);
     if (!daysHoursCheck.valid) {
       return common.returnResult(false, 400, daysHoursCheck.message);
+    }
+
+    const giveDiscountToPermissionCheck = validateGiveDiscountToAllowed(payload, companyMasterData);
+    if (!giveDiscountToPermissionCheck.valid) {
+      return common.returnResult(false, 403, giveDiscountToPermissionCheck.message);
+    }
+
+    const discountTypePermissionCheck = validateDiscountTypeAllowed(payload, companyMasterData);
+    if (!discountTypePermissionCheck.valid) {
+      return common.returnResult(false, 403, discountTypePermissionCheck.message);
+    }
+
+    const featureTypePermissionCheck = validateDiscountFeatureTypesAllowed(payload, companyMasterData);
+    if (!featureTypePermissionCheck.valid) {
+      return common.returnResult(false, 403, featureTypePermissionCheck.message);
+    }
+
+    if (payload.isCouponCodeDiscount === true) {
+      const couponAvailabilityCheck = await checkCouponCodeAvailability(vendorId, payload.couponCode, discountId);
+      if (!couponAvailabilityCheck.valid) {
+        return common.returnResult(false, 409, couponAvailabilityCheck.message);
+      }
     }
 
     const resolution = await resolveGiveDiscountToTargets(vendorId, payload, files);
@@ -572,7 +798,7 @@ const updateDiscount = async (vendorId, discountId, userId, payload, files) => {
 
     logger.logInfo(1, 0, 'Discount updated successfully', { vendorId, discountId });
 
-        return common.returnResult(true, 200, 'Discount updated successfully', { data: existingDiscount, excelReports: resolution.excelReports });
+    return common.returnResult(true, 200, 'Discount updated successfully', { data: existingDiscount, excelReports: resolution.excelReports });
   } catch (err) {
     throw err;
   }

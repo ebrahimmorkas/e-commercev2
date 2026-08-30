@@ -65,8 +65,8 @@ const createDiscount = async (req, res) => {
       }
     }
 
-    const files = req.files || {};
-    const result = await discountService.createDiscount(vendorId, userId, req.body, files);
+        const files = req.files || {};
+    const result = await discountService.createDiscount(vendorId, userId, req.body, files, req.companyMasterData);
 
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message, result.meta);
@@ -83,14 +83,14 @@ const updateDiscount = async (req, res) => {
   const vendorId = req.vendorId;
   const userId = req.user && req.user._id;
   const discountId = req.params.id;
-  try {
-    const blockReason = getDiscountFeatureBlockReason(req);
+    try {
+    const blockReason = await getDiscountFeatureBlockReason(req);
     if (blockReason) {
       return common.sendError(res, blockReason.statusCode, blockReason.message);
     }
 
     const files = req.files || {};
-    const result = await discountService.updateDiscount(vendorId, discountId, userId, req.body, files);
+    const result = await discountService.updateDiscount(vendorId, discountId, userId, req.body, files, req.companyMasterData);
 
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message, result.meta);
@@ -106,8 +106,8 @@ const updateDiscount = async (req, res) => {
 const getDiscountById = async (req, res) => {
   const vendorId = req.vendorId;
   const discountId = req.params.id;
-  try {
-    const blockReason = getDiscountFeatureBlockReason(req);
+    try {
+    const blockReason = await getDiscountFeatureBlockReason(req);
     if (blockReason) {
       return common.sendError(res, blockReason.statusCode, blockReason.message);
     }
@@ -127,8 +127,8 @@ const getDiscountById = async (req, res) => {
 
 const getAllDiscountsAdmin = async (req, res) => {
   const vendorId = req.vendorId;
-  try {
-    const blockReason = getDiscountFeatureBlockReason(req);
+    try {
+    const blockReason = await getDiscountFeatureBlockReason(req);
     if (blockReason) {
       return common.sendError(res, blockReason.statusCode, blockReason.message);
     }
@@ -148,8 +148,8 @@ const getAllDiscountsAdmin = async (req, res) => {
 
 const getActiveDiscounts = async (req, res) => {
   const vendorId = req.vendorId;
-  try {
-    const blockReason = getDiscountFeatureBlockReason(req);
+    try {
+    const blockReason = await getDiscountFeatureBlockReason(req);
     if (blockReason) {
       return common.sendError(res, blockReason.statusCode, blockReason.message);
     }
@@ -171,8 +171,8 @@ const deleteDiscount = async (req, res) => {
   const vendorId = req.vendorId;
   const userId = req.user && req.user._id;
   const discountId = req.params.id;
-  try {
-    const blockReason = getDiscountFeatureBlockReason(req);
+    try {
+    const blockReason = await getDiscountFeatureBlockReason(req);
     if (blockReason) {
       return common.sendError(res, blockReason.statusCode, blockReason.message);
     }

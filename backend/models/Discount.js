@@ -346,10 +346,13 @@ const discountSchema = new mongoose.Schema(
 
 discountSchema.index({ vendorId: 1, status: 1 });
 
+// NOTE: intentionally NOT unique. Coupon-code uniqueness (scoped to active,
+// non-expired discounts only) is enforced in discountService.js
+// (checkCouponCodeAvailability) instead of at the DB level, so an expired
+// discount's coupon code can be reused. This index exists for query speed only.
 discountSchema.index(
   { vendorId: 1, couponCode: 1 },
   {
-    unique: true,
     partialFilterExpression: {
       couponCode: { $type: "string" },
     },
