@@ -53,8 +53,9 @@ app.use(vendorDetection);
 if (process.env.IS_REDIS_SERVER_ON == 1) {
     logger.logInfo(1, 0, "Redis is enabled");
     connectRedis();
-    app.use(ensureVendorDataCached);
 }
+
+app.use(ensureVendorDataCached);
 
 // Routes
 // Public Routes

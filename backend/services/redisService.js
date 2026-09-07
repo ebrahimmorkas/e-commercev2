@@ -12,7 +12,7 @@ class RedisService {
     const client = getRedisClient();
 
     if (!client) {
-      logger.warn("Redis not available");
+      logger.logInfo(0, 1, "Redis not available");
       return null;
     }
 
