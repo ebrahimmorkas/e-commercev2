@@ -1,7 +1,7 @@
 {
   "name": "e-commercev2",
   "version": "1.0.0",
-  "description": "",
+  "description": "This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.",
   "homepage": "https://github.com/ebrahimmorkas/e-commercev2#readme",
   "bugs": {
     "url": "https://github.com/ebrahimmorkas/e-commercev2/issues"

@@ -28,6 +28,9 @@ const cityMasterRoutes = require('./routes/cityMasterRoutes.js');
 const taxMasterRoutes = require('./routes/taxMasterRoutes.js');
 const locationTaxBundleRoutes = require('./routes/locationTaxBundleRoutes.js');
 const cartRoutes = require('./routes/cartRoutes.js');
+const orderRoutes = require('./routes/orderRoutes.js');
+const orderReturnRoutes = require('./routes/orderReturnRoutes.js');
+const orderExchangeRoutes = require('./routes/orderExchangeRoutes.js');
 const redisService = require('./services/redisService');
 
 const app = express();
@@ -76,6 +79,9 @@ app.use('/api/products', productRoutes);
 app.use('/api/reviewRoutes', reviewRoutes);
 app.use('/api/discount', discountRoutes);
 app.use('/api/groups', groupRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/order-returns', orderReturnRoutes);
+app.use('/api/order-exchanges', orderExchangeRoutes);
 
 // Start of dummy to be removed
 app.get("/", (req, res) => {

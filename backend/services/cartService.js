@@ -152,6 +152,7 @@ const addProductToCart = async (vendorId, cartOwner, locationContext, companyMas
             const sizeLine = {
                 sizeId: size._id,
                 sizeName: size.sizeName,
+                labelValue: size.labelValue || null,
                 unitPrice: size.price,
                 sku: size.sku,
                 quantity
@@ -362,6 +363,7 @@ const revalidateCartItems = async (cart, locationContext) => {
                     // Keep price/name fresh even when nothing was dropped.
                     sizeEntry.unitPrice = liveSize.price;
                     sizeEntry.sizeName = liveSize.sizeName;
+                    sizeEntry.labelValue = liveSize.labelValue || null;
                 }
             }
         }

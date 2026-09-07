@@ -167,7 +167,18 @@ const companyMasterSchema = mongoose.Schema({
         enum: ['FIXED_PRICE', 'PERCENTAGE'],
         default: []
     },
-    // End of Discount 
+    // End of Discount
+
+    // Return / Exchange
+    isReturnFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    isExchangeFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    // End of Return / Exchange
 
     // Product
     numberOfProductsAllowed: {
@@ -230,13 +241,41 @@ const companyMasterSchema = mongoose.Schema({
     },
 
     // Cart
-    isCartFeaturOn: {
+    isCartFeatureOn: {
         type: Boolean,
         default: true
     },
     numberOfProductsAllowedInCartAtOnce: {
         type: Number,
         default: 1000
+    },
+
+    // Order
+    numberOfOrdersAllowed: {
+        type: Number,
+        default: 10000
+    },
+    orderSteps: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "OrderStepMaster",
+        default: null,
+        index: true
+    },
+    isOrderTrakingAllowed: {
+        type: Boolean,
+        default: false
+    },
+    isOrderStatusUpdationAllowedByDeliveryAgents: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnAfterOrderStatusChanges: {
+        type: Boolean,
+        default: false
+    },
+    numberOfOrdersAllowedPerMonth: {
+        type: Number,
+        default: 1000000
     }
 }, {
   timestamps: true
