@@ -451,7 +451,7 @@ const resolveSizeSku = async ({ vendorId, sku, usedManualSkusInPayload, excludeP
 const resolveSizeBarcode = async ({ barcode, usedManualBarcodesInPayload, excludeProductId = null }) => {
     try {
         if (!barcode) {
-            return common.returnResult(true, 200, 'All Good', { barcode: null });
+            return common.returnResult(true, 200, 'All Good', { barcode: undefined });
         }
 
         const normalizedBarcode = barcode.trim();
@@ -487,7 +487,7 @@ const resolveSizeBarcode = async ({ barcode, usedManualBarcodesInPayload, exclud
 // sizeCode. sizeMasterCache avoids refetching the same SizeMaster doc when
 // the same sizeId repeats across sibling sizes/variants in one request.
 const resolveSize = async ({
-    vendorId, size, companyMasterData, companySettingsData,
+    vendorId, size, companyMasterData, websiteMasterData, companySettingsData,
     sizeMasterCache, usedManualSkusInPayload, usedManualBarcodesInPayload, usedManualSizeCodesInPayload,
     existingSize = null, excludeProductId = null
 }) => {
@@ -508,6 +508,28 @@ const resolveSize = async ({
         const allowedSizeIds = new Set((companyMasterData.allowedSizes || []).map(id => id.toString()));
         if (!allowedSizeIds.has(size.sizeId.toString())) {
             return common.returnResult(false, 403, `Size "${sizeMasterDoc.name}" is not available on your plan.`);
+        }
+
+        // --- return / exchange feature gate -------------------------------------
+        // A vendor can only turn return/exchange on for a size when both the
+        // global (WebsiteMaster) and their own plan (CompanyMaster) switches
+        // are on - same gate cartService/orderService check before honoring
+        // a return/exchange request against an order.
+        if (size.return?.isAvailable) {
+            const returnFeatureCheck = await common.checkFeatureOnOrOff(
+                vendorId, websiteMasterData, companyMasterData, 'isReturnFeatureOn', 'isReturnFeatureOn'
+            );
+            if (!returnFeatureCheck.isSuccess) {
+                return common.returnResult(false, 403, `Return is not enabled for your account, so it can't be turned on for size "${sizeMasterDoc.name}".`);
+            }
+        }
+        if (size.exchange?.isAvailable) {
+            const exchangeFeatureCheck = await common.checkFeatureOnOrOff(
+                vendorId, websiteMasterData, companyMasterData, 'isExchangeFeatureOn', 'isExchangeFeatureOn'
+            );
+            if (!exchangeFeatureCheck.isSuccess) {
+                return common.returnResult(false, 403, `Exchange is not enabled for your account, so it can't be turned on for size "${sizeMasterDoc.name}".`);
+            }
         }
 
         // --- MEASURABLE: validate each submitted measurement + unit -----------
@@ -806,7 +828,7 @@ const createProduct = async (vendorId, userId, companyMasterData, websiteMasterD
             const resolvedSizes = [];
             for (const size of (variant.sizes || [])) {
                 const sizeResult = await resolveSize({
-                    vendorId, size, companyMasterData, companySettingsData,
+                    vendorId, size, companyMasterData, websiteMasterData, companySettingsData,
                     sizeMasterCache, usedManualSkusInPayload, usedManualBarcodesInPayload, usedManualSizeCodesInPayload
                 });
                 if (!sizeResult.isSuccess) {
@@ -1865,7 +1887,7 @@ const updateProduct = async (vendorId, userId, companyMasterData, websiteMasterD
                 if (isExistingSize) incomingSizeIds.add(size._id.toString());
 
                 const sizeResult = await resolveSize({
-                    vendorId, size, companyMasterData, companySettingsData,
+                    vendorId, size, companyMasterData, websiteMasterData, companySettingsData,
                     sizeMasterCache, usedManualSkusInPayload, usedManualBarcodesInPayload, usedManualSizeCodesInPayload,
                     existingSize: existingSizeDoc, excludeProductId: productId
                 });

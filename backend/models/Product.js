@@ -290,7 +290,6 @@ const sizeSchema = new mongoose.Schema(
         },
         barcode: {
             type: String,
-            default: null
         },
         sizeCode: {
             type: String,

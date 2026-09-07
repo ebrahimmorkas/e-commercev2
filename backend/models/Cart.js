@@ -29,6 +29,13 @@ const cartSizeSchema = new mongoose.Schema(
             min: 0
         },
 
+        labelValue: {
+            type: String,
+            default: null,
+            trim: true,
+            maxlength: 100
+        },
+
         // Exact inventory/SKU reference
         sku: {
             type: String,

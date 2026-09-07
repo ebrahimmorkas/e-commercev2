@@ -106,6 +106,14 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: true
     },
+    isReturnFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    isExchangeFeatureOn: {
+        type: Boolean,
+        default: true
+    },
     bulkUploadExcelMaxSizeMB: {
         type: Number,
         default: 5
@@ -115,10 +123,20 @@ const websiteMasterSchema = mongoose.Schema({
         default: 50
     },
     // Cart
-    isCartFeaturOn: {
+    isCartFeatureOn: {
         type: Boolean,
         default: true
-    }
+    },
+    // Order
+    isOrderTrakingAllowed: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnAfterOrderStatusChanges: {
+        type: Boolean,
+        default: false
+    },
+    
 }, {
   timestamps: true
 });

@@ -124,6 +124,27 @@ const checkFeatureOnOrOff = async (vendorId, websiteMasterData, companyMasterDat
           }
 }
 
+// Whether "now" is still within a return/exchange policy's window, measured
+// from referenceDate (typically Order.deliveredAt). `policy` is a Product
+// size's `return` or `exchange` sub-document: { isAvailable, duration,
+// durationType }. No duration/durationType set = unlimited window while
+// isAvailable stays true.
+const isWithinPolicyWindow = (policy, referenceDate) => {
+    if (!policy || !policy.isAvailable) return false;
+    if (!referenceDate) return false;
+    if (policy.duration === null || policy.duration === undefined || !policy.durationType) {
+        return true;
+    }
+
+    const cutoff = new Date(referenceDate);
+    if (policy.durationType === 'DAYS') cutoff.setDate(cutoff.getDate() + policy.duration);
+    else if (policy.durationType === 'MONTHS') cutoff.setMonth(cutoff.getMonth() + policy.duration);
+    else if (policy.durationType === 'YEARS') cutoff.setFullYear(cutoff.getFullYear() + policy.duration);
+    else return true;
+
+    return new Date() <= cutoff;
+};
+
 const ID_ENCRYPTION_ALGORITHM = 'aes-256-cbc';
 
 // IMPORTANT: set these in .env before deploying.
@@ -403,6 +424,7 @@ module.exports = {
   checkFeatureOnOrOff,
   validateGeographyExclusions,
   resolveLocationNames,
+  isWithinPolicyWindow,
   validateObjectId,
   validateModelExists,
   setActiveStatusToFalse,
