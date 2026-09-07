@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const productController = require('../controllers/productController');
 const validate = require('../middlewares/validate');
-const { createProductSchema, updateProductSchema, toggleProductStatusSchema, deleteProductSchema, idParamSchema } = require('../middlewares/validations/productValidations');
+const { createProductSchema, updateProductSchema, toggleProductStatusSchema, deleteProductSchema, idParamSchema, brandIdParamSchema } = require('../middlewares/validations/productValidations');
 const vendorDetection = require('../middlewares/vendorDetection');
 const ensureVendorDataCached = require('../middlewares/ensureVendorDataCached');
 const imageUpload = require('../middlewares/imageUpload');
@@ -31,6 +31,8 @@ router.get( '/get-product-admin/:id', vendorDetection, ensureVendorDataCached, v
 router.get( '/get-products', vendorDetection, ensureVendorDataCached, productController.getAllProductsClient );
 
 router.get( '/get-product/:id', vendorDetection, ensureVendorDataCached, validate(idParamSchema, 'params'), productController.getProductByIdClient );
+
+router.get( '/get-products-by-brand/:brandId', vendorDetection, ensureVendorDataCached, validate(brandIdParamSchema, 'params'), productController.getProductsByBrand );
 
 router.post( '/bulk-upload-products', vendorDetection, ensureVendorDataCached, productBulkUpload, productController.bulkUploadProducts );
 

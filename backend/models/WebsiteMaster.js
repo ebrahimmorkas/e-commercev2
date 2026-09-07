@@ -106,6 +106,10 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: true
     },
+    isBrandFeatureOn: {
+        type: Boolean,
+        default: true
+    },
     isReturnFeatureOn: {
         type: Boolean,
         default: true

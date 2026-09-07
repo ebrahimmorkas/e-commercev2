@@ -3,6 +3,8 @@ const Category = require('../models/Category');
 const TaxMaster = require('../models/TaxMaster');
 const SizeMaster = require('../models/SizeMaster');
 const UnitMaster = require('../models/UnitMaster');
+const BrandMaster = require('../models/BrandMaster');
+const brandMasterService = require('./brandMasterService');
 const CountryMaster = require('../models/CountryMaster');
 const StateMaster = require('../models/StateMaster');
 const CityMaster = require('../models/CityMaster');
@@ -620,6 +622,25 @@ const resolveSize = async ({
             resolvedSizeCode = sizeCodeResult.meta.sizeCode;
         }
 
+        // --- brand ---------------------------------------------------------------
+        // Optional - only gated/validated when the vendor actually picked one.
+        // brandId must belong to THIS vendor's own BrandMaster list (each
+        // vendor manages their own brands - there's no shared/allowed-list
+        // gate the way SizeMaster has).
+        if (size.brandId) {
+            const brandFeatureCheck = await common.checkFeatureOnOrOff(
+                vendorId, websiteMasterData, companyMasterData, 'isBrandFeatureOn', 'isBrandFeatureOn'
+            );
+            if (!brandFeatureCheck.isSuccess) {
+                return common.returnResult(false, 403, `Brand selection is not enabled for your account.`);
+            }
+
+            const brandDoc = await BrandMaster.findOne({ _id: size.brandId, vendorId, status: 'A' });
+            if (!brandDoc) {
+                return common.returnResult(false, 400, `Selected brand not found or inactive.`);
+            }
+        }
+
         return common.returnResult(true, 200, 'All Good', {
             sku: skuResult.meta.sku,
             barcode: barcodeResult.meta.barcode,
@@ -1013,7 +1034,7 @@ const resolveSizeVisibility = (size, locationContext, shouldHide) => {
     return { hide: false, excludeText: `This size is not present in ${match.label}.` };
 };
 
-const shapeSizeForResponse = (size, variantCombined, isAdmin, locationContext, shouldHide) => {
+const shapeSizeForResponse = (size, variantCombined, isAdmin, locationContext, shouldHide, brandMap, useShortNameForBrand) => {
     const description = combineArrays(variantCombined.description, size.sizeAdditionalDescription, size.isDescriptionSameFromVariantsDetails);
     const disclaimer = combineDisclaimerArray(variantCombined.disclaimer, size.sizeAdditionalDisclaimer, size.isDisclaimerSameFromVariantsDetails);
     const bulkPricing = combineArrays(variantCombined.bulkPricing, size.sizeAdditionalBulkPricing, size.isBulkPricingSameFromVariantsDetails);
@@ -1039,7 +1060,15 @@ const shapeSizeForResponse = (size, variantCombined, isAdmin, locationContext, s
         exchange: size.exchange,
         shipping: size.shipping,
         precedence: size.precedence,
-        brand: size.brand,
+        // Admin gets the raw reference back (needed to pre-select the brand
+        // dropdown when editing); a customer gets the already-resolved
+        // display string (short name if the vendor opted into that and the
+        // brand actually has one, else the full brand name - never null
+        // when a brand is set).
+        ...(isAdmin
+            ? { brandId: size.brandId || null }
+            : { brand: size.brandId ? brandMasterService.resolveBrandDisplayName(brandMap.get(size.brandId.toString()), useShortNameForBrand) : null }
+        ),
         sizeId: size.sizeId,
         values: size.values,
         labelValue: size.labelValue,
@@ -1064,7 +1093,7 @@ const shapeSizeForResponse = (size, variantCombined, isAdmin, locationContext, s
     };
 };
 
-const shapeVariantForResponse = (variant, productCombined, isAdmin, locationContext, shouldHide) => {
+const shapeVariantForResponse = (variant, productCombined, isAdmin, locationContext, shouldHide, brandMap, useShortNameForBrand) => {
     const description = combineArrays(productCombined.description, variant.variantAdditionalDescription, variant.isDescriptionSameFromProductBasicDetails);
     const disclaimer = combineDisclaimerArray(productCombined.disclaimer, variant.variantAdditionalDisclaimer, variant.isDisclaimerSameFromProductBasicDetails);
     const bulkPricing = combineArrays(productCombined.bulkPricing, variant.variantAdditionalBulkPricing, variant.isBulkPricingSameFromProductBasicDetails);
@@ -1072,7 +1101,7 @@ const shapeVariantForResponse = (variant, productCombined, isAdmin, locationCont
     const variantCombined = { description, disclaimer, bulkPricing };
 
     const shapedSizes = (variant.sizes || [])
-        .map(size => shapeSizeForResponse(size, variantCombined, isAdmin, locationContext, shouldHide))
+        .map(size => shapeSizeForResponse(size, variantCombined, isAdmin, locationContext, shouldHide, brandMap, useShortNameForBrand))
         .filter(Boolean);
 
     // A variant with zero visible sizes has nothing purchasable left under
@@ -1096,7 +1125,7 @@ const shapeVariantForResponse = (variant, productCombined, isAdmin, locationCont
     };
 };
 
-const shapeProductForResponse = (product, isAdmin, locationContext, shouldHide) => {
+const shapeProductForResponse = (product, isAdmin, locationContext, shouldHide, brandMap = null, useShortNameForBrand = false) => {
     const productCombined = {
         description: product.description || [],
         disclaimer: product.disclaimer ? [product.disclaimer] : [],
@@ -1104,7 +1133,7 @@ const shapeProductForResponse = (product, isAdmin, locationContext, shouldHide) 
     };
 
     const shapedVariants = (product.variants || [])
-        .map(variant => shapeVariantForResponse(variant, productCombined, isAdmin, locationContext, shouldHide))
+        .map(variant => shapeVariantForResponse(variant, productCombined, isAdmin, locationContext, shouldHide, brandMap, useShortNameForBrand))
         .filter(Boolean);
 
     // Whole product has nothing purchasable left after exclusions - hide it
@@ -1151,14 +1180,66 @@ const fetchAllProductsForAdmin = async (vendorId) => {
     }
 };
 
+// Collects every distinct brandId referenced across a product's sizes and
+// resolves them in ONE query, so shapeSizeForResponse can stay synchronous
+// and just look the doc up from this map instead of hitting the DB per size.
+const buildBrandMapForProducts = async (products) => {
+    const brandIds = new Set();
+    for (const product of products) {
+        for (const variant of (product.variants || [])) {
+            for (const size of (variant.sizes || [])) {
+                if (size.brandId) brandIds.add(size.brandId.toString());
+            }
+        }
+    }
+
+    if (brandIds.size === 0) return new Map();
+
+    const brandDocs = await BrandMaster.find({ _id: { $in: [...brandIds] } });
+    return new Map(brandDocs.map(doc => [doc._id.toString(), doc]));
+};
+
 const fetchAllProductsForClient = async (vendorId, companySettingsData, locationCookies) => {
     try {
         const shouldHide = companySettingsData.shouldProductsBeHiddenWhenLocationsAreExcluded;
         const locationContext = await buildLocationContext(locationCookies);
 
         const products = await common.getAll(Product, { status: 'A' }, vendorId);
-        const shaped = products
-            .map(p => shapeProductForResponse(p.toObject(), false, locationContext, shouldHide))
+        const rawProducts = products.map(p => p.toObject());
+        const brandMap = await buildBrandMapForProducts(rawProducts);
+        const useShortNameForBrand = !!companySettingsData.useShortNameForBrand;
+
+        const shaped = rawProducts
+            .map(p => shapeProductForResponse(p, false, locationContext, shouldHide, brandMap, useShortNameForBrand))
+            .filter(Boolean);
+
+        return common.returnResult(true, 200, 'Products fetched successfully', { products: shaped });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// All ACTIVE products for this vendor that have at least one size tagged
+// with the given brand. Matched products are returned in full (every
+// variant/size, not just the ones carrying that brand) - same "whole
+// product" behavior as browsing by category.
+const fetchProductsByBrandForClient = async (vendorId, brandId, companySettingsData, locationCookies) => {
+    try {
+        const brandDoc = await BrandMaster.findOne({ _id: brandId, vendorId, status: 'A' });
+        if (!brandDoc) {
+            return common.returnResult(false, 404, 'Brand not found.');
+        }
+
+        const shouldHide = companySettingsData.shouldProductsBeHiddenWhenLocationsAreExcluded;
+        const locationContext = await buildLocationContext(locationCookies);
+
+        const products = await common.getAll(Product, { status: 'A', 'variants.sizes.brandId': brandId }, vendorId);
+        const rawProducts = products.map(p => p.toObject());
+        const brandMap = await buildBrandMapForProducts(rawProducts);
+        const useShortNameForBrand = !!companySettingsData.useShortNameForBrand;
+
+        const shaped = rawProducts
+            .map(p => shapeProductForResponse(p, false, locationContext, shouldHide, brandMap, useShortNameForBrand))
             .filter(Boolean);
 
         return common.returnResult(true, 200, 'Products fetched successfully', { products: shaped });
@@ -1201,7 +1282,11 @@ const fetchProductByIdForClient = async (vendorId, productId, companySettingsDat
         const shouldHide = companySettingsData.shouldProductsBeHiddenWhenLocationsAreExcluded;
         const locationContext = await buildLocationContext(locationCookies);
 
-        const shaped = shapeProductForResponse(product.toObject(), false, locationContext, shouldHide);
+        const rawProduct = product.toObject();
+        const brandMap = await buildBrandMapForProducts([rawProduct]);
+        const useShortNameForBrand = !!companySettingsData.useShortNameForBrand;
+
+        const shaped = shapeProductForResponse(rawProduct, false, locationContext, shouldHide, brandMap, useShortNameForBrand);
         if (!shaped) {
             return common.returnResult(false, 404, 'Product not found.');
         }
@@ -1385,12 +1470,23 @@ const bulkUploadProducts = async (vendorId, userId, excelBuffer, mainImagesZipBu
         const countryCache = new Map();
         const stateCache = new Map();
         const cityCache = new Map();
+        const brandCache = new Map();
 
         const resolveSizeMasterByName = async (name) => {
             const key = name.trim().toLowerCase();
             if (sizeMasterCache.has(key)) return sizeMasterCache.get(key);
             const doc = await SizeMaster.findOne({ status: 'A', name: { $regex: `^${escapeRegex(name.trim())}$`, $options: 'i' } });
             sizeMasterCache.set(key, doc || null);
+            return doc || null;
+        };
+
+        // Brand is vendor-scoped (unlike SizeMaster/UnitMaster/etc.) - the
+        // same brand name may exist for a different vendor without matching.
+        const resolveBrandByName = async (name) => {
+            const key = name.trim().toLowerCase();
+            if (brandCache.has(key)) return brandCache.get(key);
+            const doc = await BrandMaster.findOne({ vendorId, status: 'A', brandName: { $regex: `^${escapeRegex(name.trim())}$`, $options: 'i' } });
+            brandCache.set(key, doc || null);
             return doc || null;
         };
 
@@ -1563,6 +1659,15 @@ const bulkUploadProducts = async (vendorId, userId, excelBuffer, mainImagesZipBu
                             return { success: false, errors: [`SizeTempCode "${sizeTempCode}" has ${additionalImagePaths.length} additional images, exceeding the allowed limit of ${additionalLimit}`] };
                         }
 
+                        let brandId;
+                        if (sizeRow.brand) {
+                            const brandDoc = await resolveBrandByName(String(sizeRow.brand));
+                            if (!brandDoc) {
+                                return { success: false, errors: [`Brand "${sizeRow.brand}" not found for SizeTempCode "${sizeTempCode}"`] };
+                            }
+                            brandId = brandDoc._id.toString();
+                        }
+
                         assembledSizes.push({
                             isDefaultSize: parseBoolean(sizeRow.isDefaultSize),
                             sizeType,
@@ -1596,7 +1701,7 @@ const bulkUploadProducts = async (vendorId, userId, excelBuffer, mainImagesZipBu
                             isBulkPricingSameFromVariantsDetails: parseBoolean(sizeRow.isBulkPricingSameFromVariantsDetails),
                             precedence: sizeRow.precedence != null && sizeRow.precedence !== '' ? Number(sizeRow.precedence) : undefined,
                             excludeCountries, excludeStates, excludeCities, excludeZipCodes,
-                            brand: sizeRow.brand || undefined,
+                            brandId,
                             sizeId: sizeMasterDoc._id.toString(),
                             values,
                             labelValue: sizeType === 'LABEL' ? sizeRow.labelValue : undefined,
@@ -2045,5 +2150,6 @@ module.exports = {
     fetchAllProductsForClient,
     fetchProductByIdForAdmin,
     fetchProductByIdForClient,
+    fetchProductsByBrandForClient,
     bulkUploadProducts
 };

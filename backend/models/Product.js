@@ -233,10 +233,12 @@ const sizeSchema = new mongoose.Schema(
         excludeZipCodes: [{
             type: String
         }],
-        // Free-text, vendor-entered - NOT a reference to any master collection.
-        brand: {
-            type: String,
-            trim: true,
+        // Reference into the vendor's own BrandMaster collection (each
+        // vendor manages their own brand list - see brandMasterService.js).
+        // Optional, same as the free-text field it replaced.
+        brandId: {
+            type: mongoose.Types.ObjectId,
+            ref: 'BrandMaster',
             default: null
         },
         // Required reference into the (dev-managed, not vendor-facing)

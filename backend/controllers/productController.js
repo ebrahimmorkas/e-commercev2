@@ -101,6 +101,21 @@ const getProductByIdClient = async (req, res) => {
     }
 };
 
+const getProductsByBrand = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { brandId } = req.params;
+    try {
+        const locationCookies = readLocationCookies(req);
+        const result = await productService.fetchProductsByBrandForClient(vendorId, brandId, req.companySettingsData, locationCookies);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('Error fetching products by brand', { vendorId, brandId, error });
+    }
+};
+
 const bulkUploadProducts = async (req, res) => {
     const vendorId = req.vendorId;
     try {
@@ -224,5 +239,6 @@ module.exports = {
     getProductByIdAdmin,
     getAllProductsClient,
     getProductByIdClient,
+    getProductsByBrand,
     bulkUploadProducts
 };

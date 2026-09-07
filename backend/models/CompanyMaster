@@ -217,6 +217,17 @@ const companyMasterSchema = mongoose.Schema({
         default: true
     },
 
+    // Brand
+    isBrandFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    numberOfBrandsAllowed: {
+        type: Number,
+        default: 10
+    },
+    // End of Brand
+
     // Groups
     isGroupFeatureOn: {
         type: Boolean,

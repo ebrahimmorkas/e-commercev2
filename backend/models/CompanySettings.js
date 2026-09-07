@@ -129,6 +129,17 @@ const companySettingsSchema = new mongoose.Schema({
   },
   // End of product
 
+  // Start of Brand
+  // When true, a size's resolved brand display is its brandShortName -
+  // falling back to brandName whenever the selected brand has no short
+  // name set (never surfaced as null/empty). When false, brandName is
+  // always shown. See resolveBrandDisplayName in brandMasterService.js.
+  useShortNameForBrand: {
+    type: Boolean,
+    default: false
+  },
+  // End of Brand
+
   // Stat of Cart
   allowOutOfStockProductsAdding: {
     type: Boolean,

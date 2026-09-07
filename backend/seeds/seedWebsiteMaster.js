@@ -25,6 +25,8 @@ async function seedWebsiteMaster() {
                 isBannerFeatureOn: true,
                 numberOfBannersAllowed: 100,
 
+                isBrandFeatureOn: true,
+
                 isWebsiteBuilderFeatureOn: true,
 
                 status: "A",

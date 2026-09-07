@@ -94,7 +94,7 @@ const sizeSchema = Joi.object({
     excludeStates: Joi.array().items(objectId()).label('Exclude states'),
     excludeCities: Joi.array().items(objectId()).label('Exclude cities'),
     excludeZipCodes: Joi.array().items(Joi.string().trim()).label('Exclude zip codes'),
-    brand: Joi.string().trim().allow('', null).label('Brand'),
+    brandId: objectId().allow(null).label('Brand'),
     sizeId: objectId().required().label('Size master reference'),
     values: Joi.array().items(measurementValueSchema)
         .unique((a, b) => a.measurementId === b.measurementId)
@@ -260,6 +260,10 @@ const idParamSchema = Joi.object({
     id: objectId().required().label('Product ID')
 });
 
+const brandIdParamSchema = Joi.object({
+    brandId: objectId().required().label('Brand ID')
+});
+
 // --- Update (full replace, same shape/rules as create) -----------------------
 // _id is added to size/variant items so incoming rows can be matched back
 // to existing subdocuments - present + matching _id = update in place,
@@ -306,5 +310,6 @@ module.exports = {
     updateProductSchema,
     toggleProductStatusSchema,
     deleteProductSchema,
-    idParamSchema
+    idParamSchema,
+    brandIdParamSchema
 };

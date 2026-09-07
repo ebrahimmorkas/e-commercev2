@@ -31,6 +31,7 @@ const cartRoutes = require('./routes/cartRoutes.js');
 const orderRoutes = require('./routes/orderRoutes.js');
 const orderReturnRoutes = require('./routes/orderReturnRoutes.js');
 const orderExchangeRoutes = require('./routes/orderExchangeRoutes.js');
+const brandMasterRoutes = require('./routes/brandMasterRoutes.js');
 const redisService = require('./services/redisService');
 
 const app = express();
@@ -83,6 +84,7 @@ app.use('/api/groups', groupRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/order-returns', orderReturnRoutes);
 app.use('/api/order-exchanges', orderExchangeRoutes);
+app.use('/api/brands', brandMasterRoutes);
 
 // Start of dummy to be removed
 app.get("/", (req, res) => {
