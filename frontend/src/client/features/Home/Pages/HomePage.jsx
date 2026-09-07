@@ -1,39 +1,9 @@
 import theme from '../theme/theme';
 import { GemIcon } from '../icons';
-
-const PRODUCTS = [
-  { id: 1, name: 'Preciosa Crystal Chatons — SS20 Crystal AB', category: 'Crystals', unit: '/ gross (144 pcs)', price: 380 },
-  { id: 2, name: 'Sew-On Rhinestones — Crystal Clear SS16', category: 'Rhinestones', unit: '/ 100 pcs', price: 220 },
-  { id: 3, name: 'Crystal Shank Buttons — Assorted Colors', category: 'Buttons', unit: '/ dozen', price: 340 },
-  { id: 4, name: 'Czech Glass Pearls — Ivory 8mm', category: 'Pearls', unit: '/ 100 pcs', price: 180 },
-  { id: 5, name: 'Fire Polished Beads — Pressed Glass 6mm', category: 'Pressed Glass Beads', unit: '/ 100 pcs', price: 210 },
-  { id: 6, name: 'Seed Bead Mix — Metallic Gold 11/0', category: 'Seed Beads', unit: '/ 50g', price: 150 },
-];
-
-const ProductCard = ({ product, onAddToCart }) => (
-  <div
-    className={`rounded-xl border overflow-hidden transition-shadow duration-150 ${theme.card.background} ${theme.card.border} ${theme.card.shadow}`}
-  >
-    <div className={`h-40 flex items-center justify-center ${theme.card.imageBackground}`}>
-      <span className={`text-xs font-bold tracking-widest uppercase ${theme.card.imageText}`}>{product.category}</span>
-    </div>
-    <div className="p-4">
-      <p className={`text-[11px] font-semibold tracking-wide uppercase ${theme.card.category}`}>{product.category}</p>
-      <h3 className={`mt-0.5 text-sm font-semibold ${theme.card.name}`}>{product.name}</h3>
-      <p className={`mt-1 text-base font-bold ${theme.card.price}`}>
-        ₹{product.price}
-        <span className="text-xs font-normal text-slate-400"> {product.unit}</span>
-      </p>
-      <button
-        type="button"
-        onClick={() => onAddToCart?.(product)}
-        className={`mt-3 w-full py-2 rounded-lg text-sm font-medium transition-colors duration-150 cursor-pointer ${theme.card.button}`}
-      >
-        Add to Cart
-      </button>
-    </div>
-  </div>
-);
+import { useStorefrontProducts } from '../../products/hooks/useStorefrontProducts';
+import ProductCard from '../../products/components/ProductCard';
+import Spinner from '../../../../components/common/Spinner/Spinner';
+import EmptyState from '../../../../components/common/EmptyState/EmptyState';
 
 const PartnerBadge = () => (
   <div
@@ -49,8 +19,14 @@ const PartnerBadge = () => (
  *
  * @param {Object} props
  * @param {Function} [props.onAddToCart] - Called with the selected product when "Add to Cart" is clicked.
+ * @param {Function} [props.onProductClick] - Called with the selected product when its card is opened.
+ * @param {Object} [props.cartItems] - Map of cart-item id -> quantity, keyed by each product's default size id.
+ * @param {Function} [props.onIncrementItem] - Called with a cart-item id to increase its quantity.
+ * @param {Function} [props.onDecrementItem] - Called with a cart-item id to decrease (or remove) its quantity.
  */
-const HomePage = ({ onAddToCart }) => {
+const HomePage = ({ onAddToCart, onProductClick, cartItems = {}, onIncrementItem, onDecrementItem }) => {
+  const { products, loading, error, reload } = useStorefrontProducts();
+
   return (
     <div className={theme.page.background}>
       <section className={`${theme.hero.background} px-4 sm:px-6 py-20`}>
@@ -82,11 +58,50 @@ const HomePage = ({ onAddToCart }) => {
           <h2 className={`text-2xl font-bold ${theme.section.heading}`}>Featured Products</h2>
           <p className={`mt-2 text-sm ${theme.section.subheading}`}>A few of our customer favorites</p>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 sm:gap-6">
-          {PRODUCTS.map((product) => (
-            <ProductCard key={product.id} product={product} onAddToCart={onAddToCart} />
-          ))}
-        </div>
+        {loading && (
+          <div className="flex justify-center py-16">
+            <Spinner size="lg" label="Loading products" />
+          </div>
+        )}
+
+        {!loading && error && (
+          <EmptyState
+            title="Couldn't load products"
+            description={error}
+            action={
+              <button
+                type="button"
+                onClick={reload}
+                className={`px-4 py-2 rounded-full text-sm font-semibold cursor-pointer ${theme.hero.cta}`}
+              >
+                Try Again
+              </button>
+            }
+          />
+        )}
+
+        {!loading && !error && products.length === 0 && (
+          <EmptyState title="No products yet" description="Check back soon - new stock is added regularly." />
+        )}
+
+        {!loading && !error && products.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 sm:gap-6">
+            {products.map((product) => {
+              const itemId = product.sizeId || product.id;
+              return (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  quantity={cartItems[itemId] || 0}
+                  onAddToCart={onAddToCart}
+                  onOpen={onProductClick}
+                  onIncrement={() => onIncrementItem?.(itemId)}
+                  onDecrement={() => onDecrementItem?.(itemId)}
+                />
+              );
+            })}
+          </div>
+        )}
       </section>
     </div>
   );

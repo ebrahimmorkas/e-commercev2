@@ -35,6 +35,9 @@ const theme = {
     name: 'text-slate-900',
     price: 'text-amber-700',
     button: 'bg-slate-900 hover:bg-amber-600 text-white',
+    bulkBackground: 'bg-amber-50 border border-amber-200',
+    bulkLabel: 'text-amber-600/80',
+    bulkText: 'text-slate-700',
   },
 };
 

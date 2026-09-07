@@ -1,43 +1,8 @@
 /**
- * "Shop by Category" and brand-partner data, modeled on the category
- * taxonomy and authorized-partner badges shown on harmanbeads.com.
+ * Brand-partner and other static Navbar panel data, modeled on the
+ * authorized-partner badges shown on harmanbeads.com. "Shop" (categories) is
+ * dynamic - see features/categories - and isn't listed here.
  */
-export const CATEGORY_GROUPS = [
-  {
-    title: 'Crystals & Rhinestones',
-    items: [
-      'Preciosa Crystals',
-      'Swarovski Crystals',
-      'STAR BRIGHT Crystals',
-      'AURORA Crystals',
-      'SB Standard Crystals',
-      'Rhinestones',
-      'Sew-On Rhinestones',
-      'Rhinestone Components',
-    ],
-  },
-  {
-    title: 'Beads & Pearls',
-    items: [
-      'Pearls',
-      'Pressed Glass Beads',
-      'Pressed Glass Pendants',
-      'Fire Polished Beads',
-      'Seed Beads',
-      'Handmade Beads',
-      'Natural & Wood Beads',
-    ],
-  },
-  {
-    title: 'Buttons & Findings',
-    items: ['Buttons', 'Jewelry Clasps', 'Jewelry & Stone Settings', 'Metal Components', 'Linked Chain'],
-  },
-  {
-    title: 'Trim & More',
-    items: ['Appliques & Trim', 'Accessories', 'Mixes', 'Vintage', 'New Arrivals', 'Clearance'],
-  },
-];
-
 export const BRANDS = [
   { name: 'Preciosa', tag: 'Authorized Partner' },
   { name: 'Swarovski', tag: 'Authorized Distribution Partner' },

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import theme from './theme/theme';
 import { ChevronDownIcon, MenuIcon, CloseIcon } from './icons';
-import { CATEGORY_GROUPS, BRANDS, COLORS, SUPPORT_LINKS } from './data';
+import { BRANDS, COLORS, SUPPORT_LINKS } from './data';
+import { useStorefrontCategories } from '../../../features/categories/hooks/useStorefrontCategories';
 
 const NAV_ITEMS = [
   { key: 'home', label: 'Home' },
@@ -11,24 +12,99 @@ const NAV_ITEMS = [
   { key: 'support', label: 'Support' },
 ];
 
-const CategoryPanel = () => (
-  <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
-    {CATEGORY_GROUPS.map((group) => (
-      <div key={group.title}>
-        <h3 className={`text-xs font-bold tracking-wide uppercase ${theme.panel.heading}`}>{group.title}</h3>
-        <ul className="mt-3 space-y-2">
-          {group.items.map((item) => (
-            <li key={item}>
-              <a href="#" className={`text-sm transition-colors duration-150 ${theme.panel.item}`}>
-                {item}
-              </a>
-            </li>
+// One category row. If it has its own children, it gets a single toggle
+// arrow rather than dumping them inline - clicking it reveals that node's
+// children (each of which follows the same rule), so deep taxonomies stay
+// collapsed by default instead of piling into one long indented column.
+const CategoryItem = ({ node }) => {
+  const [expanded, setExpanded] = useState(false);
+  const hasChildren = node.children.length > 0;
+
+  return (
+    <li>
+      <div className="flex items-center gap-1">
+        {hasChildren ? (
+          <button
+            type="button"
+            onClick={() => setExpanded((prev) => !prev)}
+            className={`inline-flex items-center justify-center p-0.5 rounded cursor-pointer ${theme.panel.item}`}
+            aria-label={expanded ? `Hide ${node.categoryName} sub-categories` : `Show ${node.categoryName} sub-categories`}
+            aria-expanded={expanded}
+          >
+            <ChevronDownIcon
+              className={`w-3 h-3 transition-transform duration-150 ${expanded ? 'rotate-180' : '-rotate-90'}`}
+            />
+          </button>
+        ) : (
+          <span className="w-3 h-3 shrink-0" aria-hidden="true" />
+        )}
+        <a
+          href="#"
+          onClick={(e) => e.preventDefault()}
+          className={`text-sm transition-colors duration-150 ${theme.panel.item}`}
+        >
+          {node.categoryName}
+        </a>
+      </div>
+      {hasChildren && expanded && (
+        <ul className="mt-2 space-y-2 pl-3 border-l border-slate-100">
+          {node.children.map((child) => (
+            <CategoryItem key={child._id} node={child} />
           ))}
         </ul>
+      )}
+    </li>
+  );
+};
+
+const CategorySubtree = ({ nodes }) => (
+  <ul className="mt-3 space-y-2">
+    {nodes.map((node) => (
+      <CategoryItem key={node._id} node={node} />
+    ))}
+  </ul>
+);
+
+const CategoryPanelSkeleton = () => (
+  <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 animate-pulse" aria-hidden="true">
+    {Array.from({ length: 4 }).map((_, i) => (
+      <div key={i} className="space-y-3">
+        <div className="h-3 w-2/3 rounded bg-slate-200" />
+        <div className="h-2.5 w-full rounded bg-slate-100" />
+        <div className="h-2.5 w-5/6 rounded bg-slate-100" />
+        <div className="h-2.5 w-1/2 rounded bg-slate-100" />
       </div>
     ))}
   </div>
 );
+
+// Top-level categories become the panel's columns, with each one's
+// sub-categories nested underneath - built from the live Category tree
+// (see features/categories) rather than any hardcoded taxonomy.
+const CategoryPanel = ({ categoryTree = [], loading }) => {
+  if (loading) return <CategoryPanelSkeleton />;
+
+  if (categoryTree.length === 0) {
+    return <p className={`text-sm ${theme.panel.item}`}>No categories available yet.</p>;
+  }
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
+      {categoryTree.map((category) => (
+        <div key={category._id}>
+          <a
+            href="#"
+            onClick={(e) => e.preventDefault()}
+            className={`text-xs font-bold tracking-wide uppercase transition-colors duration-150 hover:text-amber-600 ${theme.panel.heading}`}
+          >
+            {category.categoryName}
+          </a>
+          {category.children.length > 0 && <CategorySubtree nodes={category.children} />}
+        </div>
+      ))}
+    </div>
+  );
+};
 
 const BrandsPanel = () => (
   <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
@@ -87,6 +163,9 @@ const CLOSE_DELAY_MS = 150;
  * items as a tap-to-expand accordion.
  */
 const Navbar = () => {
+  const { categoryTree, loading: categoriesLoading } = useStorefrontCategories();
+  const categoryPanelProps = { categoryTree, loading: categoriesLoading };
+
   const [openKey, setOpenKey] = useState(null);
   const closeTimer = useRef(null);
 
@@ -201,7 +280,7 @@ const Navbar = () => {
           onMouseLeave={scheduleClose}
         >
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-            <Panel />
+            <Panel {...(openKey === 'category' ? categoryPanelProps : {})} />
           </div>
         </div>
       )}
@@ -260,7 +339,7 @@ const Navbar = () => {
                   </button>
                   {isExpanded && (
                     <div className="px-3 pb-4">
-                      <Content />
+                      <Content {...(item.key === 'category' ? categoryPanelProps : {})} />
                     </div>
                   )}
                 </div>
