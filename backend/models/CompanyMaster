@@ -23,10 +23,6 @@ const companyMasterSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
-    isSendingEmailFeatureOn: {
-        type: Boolean,
-        default: false
-    },
     fileUploadSize: {
         type: Number,
         default: 5
@@ -113,6 +109,90 @@ const companyMasterSchema = mongoose.Schema({
         enum: ['cloudinary', 'aws', 'r2', 'local'],
         default: 'cloudinary'
     },
+
+    // Email
+    // Which provider this vendor was assigned (based on what they paid for).
+    // Overridden site-wide whenever WebsiteMaster.mainEmailService is set -
+    // see resolveEmailProvider in emailService.js.
+    emailService: {
+        type: String,
+        enum: ['nodemailer', 'sendgrid', 'ses'],
+        default: null
+    },
+    // Lifetime cap - never resets, always enforced once set. null = no
+    // lifetime cap.
+    numberOfEmailsAllowed: {
+        type: Number,
+        default: null
+    },
+    // Optional extra throttle within the lifetime budget above, resets every
+    // calendar month. null = no monthly throttle (only the lifetime cap
+    // applies).
+    numberOfEmailsAllowedPerMonth: {
+        type: Number,
+        default: null
+    },
+    // End of Email
+
+    // Email Template
+    // Gates the EmailTemplateMaster CRUD specifically. The rest of the
+    // fields in this section are NOT tied to templates - see the matching
+    // comment in WebsiteMaster.js.
+    isEmailTemplateFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    numberOfTemplatesAllowed: {
+        type: Number,
+        default: 5
+    },
+    numberOfAttachmentsAllowed: {
+        type: Number,
+        default: 3
+    },
+    numberOfImageAllowed: {
+        type: Number,
+        default: 3
+    },
+    // MB, per attachment
+    attachmentSizeAllowed: {
+        type: Number,
+        default: 5
+    },
+    // MB, per image
+    imageSizeAllowed: {
+        type: Number,
+        default: 2
+    },
+    isAddingOfAttachmentAllowed: {
+        type: Boolean,
+        default: true
+    },
+    isAddingOfImageAllowed: {
+        type: Boolean,
+        default: true
+    },
+    allowedAttachmentExtensions: {
+        type: [String],
+        default: ['pdf', 'doc', 'docx', 'xlsx', 'png', 'jpg', 'jpeg']
+    },
+    allowedImageExtensions: {
+        type: [String],
+        default: ['jpg', 'jpeg', 'png']
+    },
+    isCcAndBccFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    isControlSelectionFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    isEmbeddingLinksAllowed: {
+        type: Boolean,
+        default: true
+    },
+    // End of Email Template
 
         // Discount
     isDiscountFeatureOn: {

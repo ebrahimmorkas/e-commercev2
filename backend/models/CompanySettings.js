@@ -190,6 +190,44 @@ const companySettingsSchema = new mongoose.Schema({
     default: true
   },
   // End of Order
+
+  // Start of Email
+  // "From" address used when sending email through emailService.js. Falls
+  // back to adminEmail when unset - see sendEmail in emailService.js.
+  senderEmail: {
+    type: String,
+    trim: true,
+    lowercase: true,
+    default: null
+  },
+  // Always cc'd/bcc'd in addition to whatever the calling module passes -
+  // see sendEmail in emailService.js.
+  ccList: {
+    type: [String],
+    default: []
+  },
+  bccList: {
+    type: [String],
+    default: []
+  },
+  // End of Email
+
+  // Start of Email Template
+  // One EmailTemplateMaster tagged per module - e.g. { module: 'order',
+  // templateId: <the vendor's own template> }. At most one entry per module
+  // (enforced in companySettingsService.assignEmailTemplate, not at the
+  // schema level). See resolveTemplateForModule in
+  // emailTemplateMasterService.js for how this is actually consumed - a
+  // missing/removed entry, or the referenced template being deleted, falls
+  // back to the platform's DefaultEmailTemplateMaster for that module.
+  emailTemplateAssignments: {
+    type: [{
+      module: { type: String, required: true, trim: true },
+      templateId: { type: mongoose.Types.ObjectId, ref: 'EmailTemplateMaster', required: true }
+    }],
+    default: []
+  },
+  // End of Email Template
 }, {
   timestamps: true
 });

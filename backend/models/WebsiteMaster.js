@@ -21,10 +21,6 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
-    isSendingEmailFeatureOn: {
-        type: Boolean,
-        default: false
-    },
     fileUploadSize: {
         type: Number,
         default: 5
@@ -140,7 +136,56 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
-    
+
+    // Email
+    // Non-null forces EVERY vendor onto this provider regardless of what
+    // CompanyMaster.emailService assigns them - used to fail over off a
+    // provider that's down. null = each vendor keeps using their own
+    // assigned CompanyMaster.emailService. See resolveEmailProvider in
+    // emailService.js.
+    mainEmailService: {
+        type: String,
+        enum: ['nodemailer', 'sendgrid', 'ses'],
+        default: null
+    },
+    // End of Email
+
+    // Email Template
+    // Gates the EmailTemplateMaster CRUD (creating/editing/deleting templates)
+    // specifically. The 5 fields below are NOT tied to templates - they gate
+    // attachments/images/cc-bcc/formatting/links for EVERY email-sending
+    // module (the generic emailService.sendEmail, template-rendered emails,
+    // anything else), same two-layer (website AND company) enforcement as
+    // isSendingEmailFeatureOn. See emailService.js.
+    isEmailTemplateFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    isAddingOfAttachmentAllowed: {
+        type: Boolean,
+        default: true
+    },
+    isAddingOfImageAllowed: {
+        type: Boolean,
+        default: true
+    },
+    isCcAndBccFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    // Whether rich-text formatting controls (bold/italic/underline/lists/
+    // headings/etc.) are allowed in an email body - see
+    // containsFormattingControls in emailService.js for what's scanned for.
+    isControlSelectionFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    isEmbeddingLinksAllowed: {
+        type: Boolean,
+        default: true
+    },
+    // End of Email Template
+
 }, {
   timestamps: true
 });

@@ -79,7 +79,9 @@ const cancelOrder = async (req, res) => {
     const vendorId = req.vendorId;
     const { id } = req.params;
     try {
-        const result = await orderService.cancelOrder(vendorId, req.user._id, id, req.body.cancellationReason, req.companySettingsData);
+        const result = await orderService.cancelOrder(
+            vendorId, req.user._id, id, req.body.cancellationReason, req.companySettingsData, req.companyMasterData, req.websiteMasterData
+        );
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
@@ -122,7 +124,7 @@ const advanceOrderStep = async (req, res) => {
     try {
         const { targetStepCode, remarks } = req.body;
         const result = await orderService.advanceOrderStep(
-            vendorId, req.user._id, id, targetStepCode, remarks, req.companyMasterData, req.websiteMasterData
+            vendorId, req.user._id, id, targetStepCode, remarks, req.companyMasterData, req.websiteMasterData, req.companySettingsData
         );
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
@@ -154,7 +156,7 @@ const deliveryAgentMarkDelivered = async (req, res) => {
     const { id } = req.params;
     try {
         const result = await orderService.deliveryAgentMarkDelivered(
-            vendorId, req.user._id, id, req.companyMasterData, req.websiteMasterData
+            vendorId, req.user._id, id, req.companyMasterData, req.websiteMasterData, req.companySettingsData
         );
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);

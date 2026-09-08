@@ -49,7 +49,25 @@ async function seedCompanyMaster() {
                 allowedCategoryImagesFormat: "jpg",
 
                 isCategoryFeatureOn: true,
-                isBulkUploadForCategoriesFeatureOn: true
+                isBulkUploadForCategoriesFeatureOn: true,
+
+                emailService: "nodemailer",
+                numberOfEmailsAllowed: 100000,
+                numberOfEmailsAllowedPerMonth: null,
+
+                isEmailTemplateFeatureOn: true,
+                numberOfTemplatesAllowed: 20,
+                numberOfAttachmentsAllowed: 3,
+                numberOfImageAllowed: 3,
+                attachmentSizeAllowed: 5,
+                imageSizeAllowed: 2,
+                isAddingOfAttachmentAllowed: true,
+                isAddingOfImageAllowed: true,
+                allowedAttachmentExtensions: ["pdf", "doc", "docx", "xlsx", "png", "jpg", "jpeg"],
+                allowedImageExtensions: ["jpg", "jpeg", "png"],
+                isCcAndBccFeatureOn: true,
+                isControlSelectionFeatureOn: true,
+                isEmbeddingLinksAllowed: true
             },
             {
                 upsert: true,

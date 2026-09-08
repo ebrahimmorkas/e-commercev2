@@ -41,7 +41,16 @@ async function seedWebsiteMaster() {
                 featureDisabledForVendorMessage:
                     "This feature is not enabled for your account. Please contact support.",
 
-                isBulkUploadForCategoriesFeatureOn: true
+                isBulkUploadForCategoriesFeatureOn: true,
+
+                mainEmailService: null,
+
+                isEmailTemplateFeatureOn: true,
+                isAddingOfAttachmentAllowed: true,
+                isAddingOfImageAllowed: true,
+                isCcAndBccFeatureOn: true,
+                isControlSelectionFeatureOn: true,
+                isEmbeddingLinksAllowed: true
             },
             {
                 upsert: true,

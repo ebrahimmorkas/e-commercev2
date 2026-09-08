@@ -16,6 +16,43 @@ const getCompanySettings = async (req, res) => {
   }
 };
 
+const assignEmailTemplate = async (req, res) => {
+  const vendorId = req.vendorId;
+  try {
+    const websiteMasterData = req.websiteMasterData;
+    const companyMasterData = req.companyMasterData;
+    const validityResult = await common.checkFeatureOnOrOff(vendorId, websiteMasterData, companyMasterData, 'isEmailTemplateFeatureOn', 'isEmailTemplateFeatureOn');
+    if (!validityResult.isSuccess) {
+      return common.sendError(res, validityResult.statusCode, validityResult.message);
+    }
+
+    const { module, templateId } = req.body;
+    const result = await companySettingsService.assignEmailTemplate(vendorId, module, templateId, req.user._id);
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+    return common.sendSuccess(res, result.statusCode, result.message, result.meta.settings);
+  } catch (error) {
+    logger.logException('companySettingsController: assignEmailTemplate - Exception while assigning email template', { vendorId, error });
+  }
+};
+
+const unassignEmailTemplate = async (req, res) => {
+  const vendorId = req.vendorId;
+  try {
+    const { module } = req.body;
+    const result = await companySettingsService.unassignEmailTemplate(vendorId, module, req.user._id);
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+    return common.sendSuccess(res, result.statusCode, result.message, result.meta.settings);
+  } catch (error) {
+    logger.logException('companySettingsController: unassignEmailTemplate - Exception while unassigning email template', { vendorId, error });
+  }
+};
+
 module.exports = {
-  getCompanySettings
+  getCompanySettings,
+  assignEmailTemplate,
+  unassignEmailTemplate
 };

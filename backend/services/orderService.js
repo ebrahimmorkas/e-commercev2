@@ -6,6 +6,8 @@ const CurrencyMaster = require('../models/CurrencyMaster');
 const OrderStepMaster = require('../models/OrderStepMaster');
 const cartService = require('./cartService');
 const counterService = require('./counterService');
+const emailService = require('./emailService');
+const emailTemplateMasterService = require('./emailTemplateMasterService');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
 const {
@@ -14,6 +16,7 @@ const {
     DELIVERY_AGENT_FROM_STEP_CODE,
     DELIVERY_AGENT_TO_STEP_CODE
 } = require('../constants/orderStepConstants');
+const { EMAIL_MODULES } = require('../constants/emailModuleConstants');
 
 /*
 |--------------------------------------------------------------------------
@@ -314,11 +317,18 @@ const closeCurrentHistoryEntryAndPushNext = (order, targetStep, changedByUserId,
     order.currentStepSequence = targetStep.sequence;
 };
 
-// No email-sending service exists yet in the codebase (same posture as
-// payment method) - this is a placeholder hook, gated the same way every
-// other paid feature is, so the call site is already wired up once a real
-// email service is built.
-const notifyOrderStatusChange = async (order, companyMasterData, websiteMasterData) => {
+// Resolves the vendor's tagged 'order' template (or the platform default -
+// see resolveTemplateForModule) and sends it to the customer, with
+// {{stepName}}/{{orderNumber}}/etc. tokens filled in for the step that was
+// just reached. A missing template, missing customer email, or a failed send
+// is logged and swallowed rather than thrown - the order status change
+// itself already succeeded and was already saved before this is called, so a
+// notification hiccup must never fail the whole request back to the caller.
+// (The `.catch()` below is a promise-level catch, not a try/catch block, so
+// it doesn't run afoul of the house rule that a service catch block may only
+// `throw err;` - that rule still holds for this function's own try/catch,
+// which only guards genuinely unexpected errors, e.g. a DB query blowing up.)
+const notifyOrderStatusChange = async (order, companyMasterData, websiteMasterData, companySettingsData, changedByUserId) => {
     try {
         const featureCheck = await common.checkFeatureOnOrOff(
             order.vendorId, websiteMasterData, companyMasterData,
@@ -328,9 +338,56 @@ const notifyOrderStatusChange = async (order, companyMasterData, websiteMasterDa
             return;
         }
 
-        logger.logInfo(1, 0, 'Order status change email notification would be sent here (email service not yet implemented)', {
-            orderId: order._id, orderNumber: order.orderNumber, newStepCode: order.currentStepCode
+        const templateResult = await emailTemplateMasterService.resolveTemplateForModule(order.vendorId, EMAIL_MODULES.ORDER, companyMasterData, companySettingsData);
+        if (!templateResult.isSuccess) {
+            logger.logInfo(0, 1, 'No email template (vendor or default) available for the order module - skipping notification', {
+                orderId: order._id, orderNumber: order.orderNumber, stepCode: order.currentStepCode
+            });
+            return;
+        }
+        const template = templateResult.meta.template;
+        const isDefaultTemplate = templateResult.meta.isDefault;
+
+        const customer = await User.findById(order.userId);
+        if (!customer || !customer.email) {
+            logger.logInfo(0, 1, 'Order customer has no email on file - skipping notification', { orderId: order._id });
+            return;
+        }
+
+        const tokens = {
+            customerName: customer.name || '',
+            orderNumber: order.orderNumber,
+            stepName: order.currentStepName,
+            trackingNumber: order.trackingNumber || '',
+            courierName: order.courierName || '',
+            estimatedDeliveryDate: order.estimatedDeliveryDate ? order.estimatedDeliveryDate.toDateString() : '',
+            remarks: order.remarks || ''
+        };
+
+        const subject = emailService.renderTemplateString(template.subject, tokens);
+        const html = emailService.renderTemplateString(template.htmlBody, tokens);
+        const text = template.textBody ? emailService.renderTemplateString(template.textBody, tokens) : undefined;
+
+        const sendResult = await emailService.sendEmail({
+            vendorId: order.vendorId,
+            module: EMAIL_MODULES.ORDER,
+            to: customer.email,
+            subject,
+            html,
+            text,
+            userId: changedByUserId,
+            companyMasterData,
+            websiteMasterData,
+            companySettingsData,
+            isDefaultTemplate
+        }).catch((err) => {
+            logger.logException('Order status change email threw while sending', { orderId: order._id, stepCode: order.currentStepCode, err });
+            return null;
         });
+
+        if (sendResult && !sendResult.isSuccess) {
+            logger.logInfo(0, 1, 'Order status change email was not sent', { orderId: order._id, reason: sendResult.message });
+        }
     } catch (err) {
         throw err;
     }
@@ -345,7 +402,7 @@ const notifyOrderStatusChange = async (order, companyMasterData, websiteMasterDa
 | order's current step is COMPLETED or DELIVERED, which are absolute
 | terminal states with no further transitions at all.
 */
-const advanceOrderStep = async (vendorId, adminUserId, orderId, targetStepCode, remarks, companyMasterData, websiteMasterData) => {
+const advanceOrderStep = async (vendorId, adminUserId, orderId, targetStepCode, remarks, companyMasterData, websiteMasterData, companySettingsData) => {
     try {
         const order = await Order.findOne({ _id: orderId, vendorId, status: { $ne: 'D' } });
         if (!order) {
@@ -386,7 +443,7 @@ const advanceOrderStep = async (vendorId, adminUserId, orderId, targetStepCode, 
         order.updatedBy = adminUserId;
         await order.save();
 
-        await notifyOrderStatusChange(order, companyMasterData, websiteMasterData);
+        await notifyOrderStatusChange(order, companyMasterData, websiteMasterData, companySettingsData, adminUserId);
 
         logger.logInfo(1, 0, 'Order step advanced', { vendorId, orderId, targetStepCode });
         return common.returnResult(true, 200, 'Order status updated successfully', { order });
@@ -433,7 +490,7 @@ const assignDeliveryAgent = async (vendorId, adminUserId, orderId, deliveryAgent
 
 // A delivery agent may only move an order from DISPATCHED to DELIVERED,
 // and only when it is assigned to them.
-const deliveryAgentMarkDelivered = async (vendorId, deliveryAgentUserId, orderId, companyMasterData, websiteMasterData) => {
+const deliveryAgentMarkDelivered = async (vendorId, deliveryAgentUserId, orderId, companyMasterData, websiteMasterData, companySettingsData) => {
     try {
         if (companyMasterData?.isOrderStatusUpdationAllowedByDeliveryAgents !== true) {
             return common.returnResult(false, 403, 'Delivery agent order updates are not enabled for this store.');
@@ -467,7 +524,7 @@ const deliveryAgentMarkDelivered = async (vendorId, deliveryAgentUserId, orderId
         order.updatedBy = deliveryAgentUserId;
         await order.save();
 
-        await notifyOrderStatusChange(order, companyMasterData, websiteMasterData);
+        await notifyOrderStatusChange(order, companyMasterData, websiteMasterData, companySettingsData, deliveryAgentUserId);
 
         logger.logInfo(1, 0, 'Order marked delivered by delivery agent', { vendorId, orderId, deliveryAgentUserId });
         return common.returnResult(true, 200, 'Order marked as delivered', { order });
@@ -484,7 +541,7 @@ const deliveryAgentMarkDelivered = async (vendorId, deliveryAgentUserId, orderId
 | order's own cancelledBy field is what distinguishes "customer cancelled"
 | from "admin rejected" after the fact.
 */
-const cancelOrder = async (vendorId, userId, orderId, cancellationReason, companySettingsData) => {
+const cancelOrder = async (vendorId, userId, orderId, cancellationReason, companySettingsData, companyMasterData, websiteMasterData) => {
     try {
         const order = await Order.findOne({ _id: orderId, vendorId, userId, status: { $ne: 'D' } });
         if (!order) {
@@ -527,6 +584,8 @@ const cancelOrder = async (vendorId, userId, orderId, cancellationReason, compan
         order.cancellationReason = cancellationReason;
         order.updatedBy = userId;
         await order.save();
+
+        await notifyOrderStatusChange(order, companyMasterData, websiteMasterData, companySettingsData, userId);
 
         logger.logInfo(1, 0, 'Order cancelled by customer', { vendorId, orderId, userId });
         return common.returnResult(true, 200, 'Order cancelled successfully', { order });
