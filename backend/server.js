@@ -33,6 +33,7 @@ const orderReturnRoutes = require('./routes/orderReturnRoutes.js');
 const orderExchangeRoutes = require('./routes/orderExchangeRoutes.js');
 const brandMasterRoutes = require('./routes/brandMasterRoutes.js');
 const emailTemplateMasterRoutes = require('./routes/emailTemplateMasterRoutes.js');
+const favoriteRoutes = require('./routes/favoriteRoutes.js');
 const redisService = require('./services/redisService');
 
 const app = express();
@@ -87,6 +88,7 @@ app.use('/api/order-returns', orderReturnRoutes);
 app.use('/api/order-exchanges', orderExchangeRoutes);
 app.use('/api/brands', brandMasterRoutes);
 app.use('/api/email-templates', emailTemplateMasterRoutes);
+app.use('/api/favorites', favoriteRoutes);
 
 // Start of dummy to be removed
 app.get("/", (req, res) => {

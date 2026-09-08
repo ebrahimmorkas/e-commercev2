@@ -186,6 +186,13 @@ const websiteMasterSchema = mongoose.Schema({
     },
     // End of Email Template
 
+    // Favorites
+    isFavoritesFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    // End of Favorites
+
 }, {
   timestamps: true
 });

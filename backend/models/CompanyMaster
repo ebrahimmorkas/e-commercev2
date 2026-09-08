@@ -367,7 +367,21 @@ const companyMasterSchema = mongoose.Schema({
     numberOfOrdersAllowedPerMonth: {
         type: Number,
         default: 1000000
+    },
+
+    // Favorites
+    isFavoritesFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    // Total ACTIVE favorites this vendor's users may each hold at once.
+    // null = no cap, 0 = feature effectively unusable even though the flag
+    // above is on. Same convention as numberOfReviewsAllowedOnProduct.
+    numberOfItemsAllowedInFavorites: {
+        type: Number,
+        default: null
     }
+    // End of Favorites
 }, {
   timestamps: true
 });
