@@ -4,19 +4,24 @@ import './index.css'
 import App from './App.jsx'
 import ClientApp from './client/App.jsx'
 import { ToastProvider } from './components/common/Toast'
-import AuthProvider from './admin/features/login/context/AuthProvider'
+import AdminAuthProvider from './admin/features/login/context/AuthProvider'
+import ClientAuthProvider from './client/features/auth/context/AuthProvider'
 
 // No router yet - the admin panel lives behind /admin, everything else is
-// the client-facing storefront demo.
+// the client-facing storefront demo. Each side owns its own AuthProvider
+// (separate customer vs admin sessions) - see
+// client/features/auth/context/AuthProvider.jsx.
 const isAdminRoute = window.location.pathname.startsWith('/admin')
 
 const Root = () =>
   isAdminRoute ? (
-    <AuthProvider>
+    <AdminAuthProvider>
       <App />
-    </AuthProvider>
+    </AdminAuthProvider>
   ) : (
-    <ClientApp />
+    <ClientAuthProvider>
+      <ClientApp />
+    </ClientAuthProvider>
   )
 
 createRoot(document.getElementById('root')).render(

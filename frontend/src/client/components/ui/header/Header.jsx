@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import theme from './theme/theme';
-import { SearchIcon, CartIcon, UserIcon, LogoutIcon, ChevronDownIcon } from './icons';
+import { SearchIcon, CartIcon, UserIcon, LogoutIcon, ChevronDownIcon, OrdersIcon } from './icons';
 
 const getInitials = (label) => {
   if (!label) return 'U';
@@ -55,7 +55,7 @@ const CartButton = ({ count = 0, onClick }) => (
   </button>
 );
 
-const ProfileMenu = ({ user, onLogout }) => {
+const ProfileMenu = ({ user, onLogout, onOrdersClick }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
 
@@ -107,6 +107,18 @@ const ProfileMenu = ({ user, onLogout }) => {
             type="button"
             onClick={() => {
               setIsOpen(false);
+              onOrdersClick?.();
+            }}
+            className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium transition-colors duration-150 cursor-pointer ${theme.profile.trigger}`}
+            role="menuitem"
+          >
+            <OrdersIcon className="w-4.5 h-4.5" />
+            My Orders
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIsOpen(false);
               onLogout?.();
             }}
             className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium transition-colors duration-150 cursor-pointer ${theme.profile.menu.logout}`}
@@ -126,22 +138,28 @@ const ProfileMenu = ({ user, onLogout }) => {
  *
  * @param {Object} props
  * @param {boolean} [props.isAuthenticated] - Whether a user is currently logged in.
+ * @param {boolean} [props.authLoading] - True during the initial silent-refresh check on mount -
+ *   renders a neutral placeholder instead of the Login button so a logged-in visitor never sees
+ *   a flash of "Login" before their session is confirmed restored.
  * @param {Object} [props.user] - Current user ({ name, username, email }), shown when authenticated.
  * @param {number} [props.cartCount] - Number of items in the cart, shown as a badge.
  * @param {Function} [props.onSearch] - Called with the trimmed query string on search submit.
  * @param {Function} [props.onCartClick] - Called when the cart icon is clicked.
  * @param {Function} [props.onLoginClick] - Called when the login button is clicked (shown when logged out).
  * @param {Function} [props.onLogout] - Called when logout is selected from the profile menu.
+ * @param {Function} [props.onOrdersClick] - Called when "My Orders" is selected from the profile menu.
  * @param {string} [props.homeHref] - href for the logo link.
  */
 const Header = ({
   isAuthenticated = false,
+  authLoading = false,
   user,
   cartCount = 0,
   onSearch,
   onCartClick,
   onLoginClick,
   onLogout,
+  onOrdersClick,
   homeHref = '/',
 }) => {
   return (
@@ -156,8 +174,10 @@ const Header = ({
 
           <div className="flex items-center gap-2 ml-auto sm:ml-0">
             <CartButton count={cartCount} onClick={onCartClick} />
-            {isAuthenticated ? (
-              <ProfileMenu user={user} onLogout={onLogout} />
+            {authLoading ? (
+              <div className="w-9 h-9 rounded-full bg-slate-100 animate-pulse" aria-hidden="true" />
+            ) : isAuthenticated ? (
+              <ProfileMenu user={user} onLogout={onLogout} onOrdersClick={onOrdersClick} />
             ) : (
               <button
                 type="button"

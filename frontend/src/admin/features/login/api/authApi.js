@@ -18,7 +18,7 @@ export const login = (identifier, password) =>
 
 /**
  * Exchanges the httpOnly refresh-token cookie for a new access token.
- * @returns {Promise<{ accessToken: string }>}
+ * @returns {Promise<{ accessToken: string, user: Object }>}
  */
 export const refreshToken = () => apiRequest(`${BASE}/refresh-token`, { method: 'POST', auth: false });
 

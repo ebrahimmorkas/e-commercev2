@@ -5,9 +5,12 @@ import { setAccessToken, clearAccessToken, onSessionExpired } from '../../../../
 import { useToast } from '../../../../components/common/Toast';
 
 /**
- * Owns the admin session: current user, login/logout, and a silent refresh on
- * mount so a page reload stays logged in as long as the refresh-token cookie
- * is still valid.
+ * Owns the storefront customer session: current user, login/register/logout,
+ * and a silent refresh on mount so a page reload stays logged in as long as
+ * the refresh-token cookie is still valid. Mirrors
+ * admin/features/login/context/AuthProvider.jsx - kept separate because the
+ * admin and client apps never mount at the same time (see main.jsx), so
+ * there's no shared session to coordinate.
  */
 const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -58,6 +61,15 @@ const AuthProvider = ({ children }) => {
     }
   }, []);
 
+  const register = useCallback(async (payload) => {
+    try {
+      await authApi.register(payload);
+      return { success: true };
+    } catch (err) {
+      return { success: false, message: err.message || 'Registration failed' };
+    }
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await authApi.logout();
@@ -65,12 +77,12 @@ const AuthProvider = ({ children }) => {
       // Best-effort - clear the local session regardless of whether the server call succeeded
     }
     clearSession();
-    toast.success('Logged out successfully');
+    toast.info('You have been logged out.');
   }, [clearSession, toast]);
 
   const value = useMemo(
-    () => ({ user, isAuthenticated: !!user, isLoading, login, logout }),
-    [user, isLoading, login, logout]
+    () => ({ user, isAuthenticated: !!user, isLoading, login, register, logout }),
+    [user, isLoading, login, register, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
