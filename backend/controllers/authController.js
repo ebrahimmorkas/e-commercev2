@@ -14,11 +14,11 @@ const register = async (req, res) => {
         if(!vendorId) {
             return sendError(res, 400, `Vendor Identification failed`);
         }
-        const { name, username, email, phone_no, whatsapp_no, password } = req.body;
+        const { name, username, email, phone_no, whatsapp_no, password, country, state, city } = req.body;
 
-        if (!name || !username || !email || !phone_no || !password) {
+        if (!name || !username || !email || !phone_no || !password || !country || !state || !city) {
             logInfo(0, 1, 'Register failed - missing required fields', { username, email });
-            return sendError(res, 400, 'name, username, email, phone_no and password are required');
+            return sendError(res, 400, 'name, username, email, phone_no, password, country, state and city are required');
         }
 
         const companyMasterData = req.companyMasterData;
@@ -38,7 +38,10 @@ const register = async (req, res) => {
             email,
             phone_no,
             whatsapp_no,
-            password
+            password,
+            country,
+            state,
+            city
         });
 
         if(!newUser.isSuccess) {
@@ -117,12 +120,12 @@ const refreshToken = async (req, res) => {
             return sendError(res, result.statusCode, result.message);
         }
 
-        const { accessToken, refreshToken: newRefreshToken } = result.meta;
+        const { accessToken, refreshToken: newRefreshToken, user } = result.meta;
 
         res.cookie('refreshToken', newRefreshToken, refreshTokenCookieOptions);
 
         logInfo(1, 0, result.message, {});
-        return sendSuccess(res, result.statusCode, result.message, { accessToken });
+        return sendSuccess(res, result.statusCode, result.message, { accessToken, user });
     } catch (err) {
         res.clearCookie('refreshToken', refreshTokenCookieOptions);
         logException('Error while refreshing access token', err);

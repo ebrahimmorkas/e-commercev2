@@ -40,9 +40,17 @@ const authenticate = async (req, res, next) => {
 // Guest-tolerant variant, for routes that must serve BOTH logged-in users
 // and anonymous visitors (e.g. cart). If a valid token is present, behaves
 // identically to authenticate() above and sets req.user. If there's no
-// token, or it's invalid/expired, or the user is deleted/inactive, it does
-// NOT reject the request - it just calls next() with req.user left unset,
-// so the request is treated as a guest instead of being blocked.
+// token at all, or it's malformed/invalid, or the user is deleted/inactive,
+// it does NOT reject the request - it just calls next() with req.user left
+// unset, so the request is treated as a guest instead of being blocked.
+//
+// An EXPIRED token is deliberately NOT treated as "no token" here: it means
+// a previously logged-in user's session merely went stale mid-visit, not
+// that they're actually a guest. Silently falling back to guest in that
+// case would fork their in-progress cart into a brand new guest-owned cart
+// the moment their access token expires - so this returns 401 instead,
+// which apiClient.js's refresh-and-retry already knows how to recover from
+// transparently (refresh the token, retry the same request once).
 authenticate.optional = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -57,6 +65,9 @@ authenticate.optional = async (req, res, next) => {
     try {
       decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
     } catch (err) {
+      if (err.name === "TokenExpiredError") {
+        return sendError(res, 401, "Please Login Again");
+      }
       return next();
     }
 

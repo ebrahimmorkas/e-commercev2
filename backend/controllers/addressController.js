@@ -15,8 +15,8 @@ const createAddress = async (req, res) => {
       return sendError(res, result.statusCode, result.message);
     }
 
-    logInfo(1, 0, "Address created successfully", { userId, addressId: result.data._id });
-    return sendSuccess(res, 201, result.message);;
+    logInfo(1, 0, "Address created successfully", { userId, addressId: result.meta.address._id });
+    return sendSuccess(res, 201, result.message, result.meta);
   } catch (err) {
     logException("Error while creating address", err);
   }
@@ -34,7 +34,7 @@ const listAddresses = async (req, res) => {
       return sendError(res, result.statusCode, result.message);
     }
 
-    logInfo(1, 0, "Addresses fetched successfully", { userId, count: result.data.length });
+    logInfo(1, 0, "Addresses fetched successfully", { userId, count: result.meta.addresses.length });
     return sendSuccess(res, 200, result.message, result.meta);
   } catch (err) {
     logException("Error while fetching addresses", err);
@@ -66,7 +66,7 @@ const updateAddress = async (req, res) => {
     const userId = req.user._id;
     const vendorId = req.vendorId;
     const allowedCountries = req.companyMasterData?.allowedCountries || [];
-    const { address_Id } = req.body;
+    const { id } = req.params;
 
     const result = await addressService.updateAddress(id, req.body, { userId, vendorId, allowedCountries });
 
@@ -86,7 +86,7 @@ const deleteAddress = async (req, res) => {
   try {
     const userId = req.user._id;
     const vendorId = req.vendorId;
-    const { address_id } = req.body;
+    const { id } = req.params;
 
     const result = await addressService.deleteAddress(id, { userId, vendorId });
 

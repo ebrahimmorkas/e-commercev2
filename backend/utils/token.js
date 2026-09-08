@@ -7,8 +7,13 @@ const generateAccessToken = (payload) => {
     });
 };
 
+// jti makes every issuance unique even when minted for the same user within
+// the same second (iat has only second-granularity) - without it, two
+// tokens signed in the same second are byte-identical, which silently
+// defeats rotation (the "new" token after a refresh can equal the token
+// just rotated away from) and can hash-collide with an unrelated session.
 const generateRefreshToken = (payload) => {
-    return jwt.sign(payload, process.env.REFRESH_TOKEN_SECRET, {
+    return jwt.sign({ ...payload, jti: crypto.randomUUID() }, process.env.REFRESH_TOKEN_SECRET, {
         expiresIn: process.env.REFRESH_TOKEN_EXPIRY || '30d'
     });
 };

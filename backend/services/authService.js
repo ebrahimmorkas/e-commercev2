@@ -18,7 +18,7 @@ const getUserCount = async (vendorId) => {
     }
 };
 
-const registerUser = async ({ vendorId, name, username, email, phone_no, whatsapp_no, password }) => {
+const registerUser = async ({ vendorId, name, username, email, phone_no, whatsapp_no, password, country, state, city }) => {
     try {
         const existingUser = await User.findOne({
             vendorId,
@@ -39,7 +39,10 @@ const registerUser = async ({ vendorId, name, username, email, phone_no, whatsap
             phone_no,
             whatsapp_no,
             password: hashedPassword,
-            authProvider: 'local'
+            authProvider: 'local',
+            country,
+            state,
+            city
         });
 
         return common.returnResult(true, 201, `User registered successfully`, {
@@ -121,13 +124,23 @@ const loginUser = async ({ identifier, password }, deviceMeta, vendorId, guestCa
     }
 };
 
+// How long a just-rotated-away refresh token still works. Covers two
+// near-simultaneous refresh calls from the same browser sharing the same
+// (about-to-be-rotated) cookie - e.g. two rapid page reloads - without
+// meaningfully weakening replay protection for a genuinely stolen token.
+const REFRESH_REUSE_GRACE_MS = 10 * 1000;
+
 /**
  * Refresh token rotation:
  * - Verify JWT signature/expiry of the incoming refresh token.
  * - Match its hash against the session stored in DB for that user.
  * - If matched -> rotate: issue new access + refresh tokens, update the SAME session doc
  *   (so it stays tied to that one device, and the old token becomes unusable immediately).
- * - If not matched (token reused/invalid/unknown) -> expected failure, force re-login.
+ * - If it instead matches the token this session most recently rotated away from, AND that
+ *   happened within REFRESH_REUSE_GRACE_MS -> treat it as a same-browser race (see above) and
+ *   rotate again rather than failing.
+ * - If not matched at all (token reused outside the grace window/invalid/unknown) -> expected
+ *   failure, force re-login.
  */
 const refreshAccessToken = async (incomingRefreshToken, deviceMeta) => {
     let session = null;
@@ -154,6 +167,15 @@ const refreshAccessToken = async (incomingRefreshToken, deviceMeta) => {
         });
 
         if (!session) {
+            session = await RefreshToken.findOne({
+                userId: decoded.userId,
+                previousTokenHash: incomingHash,
+                previousTokenExpiresAt: { $gt: new Date() },
+                isValid: true
+            });
+        }
+
+        if (!session) {
             return common.returnResult(false, 401, 'Session not found. Please login again');
         }
 
@@ -171,6 +193,8 @@ const refreshAccessToken = async (incomingRefreshToken, deviceMeta) => {
         const newRefreshToken = generateRefreshToken({ userId: user._id });
         const newDecoded = verifyRefreshToken(newRefreshToken);
 
+        session.previousTokenHash = session.tokenHash;
+        session.previousTokenExpiresAt = new Date(Date.now() + REFRESH_REUSE_GRACE_MS);
         session.tokenHash = hashToken(newRefreshToken);
         session.expiresAt = new Date(newDecoded.exp * 1000);
         session.lastUsedAt = new Date();
@@ -184,7 +208,11 @@ const refreshAccessToken = async (incomingRefreshToken, deviceMeta) => {
             vendorId: user.vendorId
         });
 
-        return common.returnResult(true, 200, 'Session renewed successfully', { accessToken: newAccessToken, refreshToken: newRefreshToken });
+        return common.returnResult(true, 200, 'Session renewed successfully', {
+            accessToken: newAccessToken,
+            refreshToken: newRefreshToken,
+            user: { _id: user._id, name: user.name, username: user.username, email: user.email, role: user.role }
+        });
     } catch (err) {
         // Genuine exception (e.g. session.save() failed mid-rotation). We already trusted
         // this session, so invalidate it defensively rather than leaving it in a half-rotated

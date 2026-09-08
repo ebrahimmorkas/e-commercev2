@@ -60,7 +60,7 @@ const createAddress = async (payload, context) => {
       createdBy: userId,
     });
 
-    return common.returnResult(true, 200, `Address Created Successfully`);
+    return common.returnResult(true, 200, `Address Created Successfully`, { address });
   } catch (err) {
     throw err;
   }
@@ -81,11 +81,7 @@ const listAddresses = async ({ userId, vendorId }) => {
       .populate("city_id", "city_name")
       .sort({ createdAt: -1 });
 
-    if (!addresses.length > 0) {
-      return common.returnResult(false, 400, `No address to show`);
-    }
-
-    return common.returnResult(true, 200, `${addresses.length} addresses found`, meta = { addresses });
+    return common.returnResult(true, 200, `${addresses.length} addresses found`, { addresses });
   } catch (err) {
     throw err;
   }
@@ -111,7 +107,7 @@ const getAddressById = async (addressId, { userId, vendorId }) => {
       return common.returnResult(false, 404, "Address not found");
     }
 
-    return common.returnResult(true, 200, " Address Found", meta = { address });
+    return common.returnResult(true, 200, "Address Found", { address });
   } catch (err) {
     throw err;
   }

@@ -12,7 +12,7 @@ const resolveCartOwner = require('../middlewares/resolveCartOwner');
 // req.user) replace the usual authenticate + authorize('user') pairing.
 // checkoutCart itself still enforces "must be logged in" inside the
 // service, since only a logged-in user's cart can be checked out.
-const cartAccess = [vendorDetection, ensureVendorDataCached, resolveCartOwner];
+const cartAccess = [vendorDetection, ensureVendorDataCached, authenticate.optional, resolveCartOwner];
 
 router.get('/get-cart', ...cartAccess, cartController.getCart);
 
