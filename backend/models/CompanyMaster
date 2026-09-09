@@ -275,6 +275,15 @@ const companyMasterSchema = mongoose.Schema({
         ref: "SizeMaster",
         default: []
     },
+    // Which WeightMaster entries this vendor may use for a product size's
+    // weight AND for ShippingSettings.weightUnit (WEIGHT method). Assigned
+    // directly by the platform admin (WeightMaster has no vendor-facing
+    // endpoint) - empty = none allowed, same convention as allowedSizes.
+    allowedWeights: {
+        type: [mongoose.Schema.Types.ObjectId],
+        ref: "WeightMaster",
+        default: []
+    },
     allowedProductImageMB: {
         type: Number,
         default: 2
@@ -380,8 +389,23 @@ const companyMasterSchema = mongoose.Schema({
     numberOfItemsAllowedInFavorites: {
         type: Number,
         default: null
-    }
+    },
     // End of Favorites
+
+    // Shipping Price
+    isShippingPriceFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    // Restricts which SHIPPING_PRICE_METHODS (shippingPriceConstants.js) this
+    // vendor may pick as their active ShippingPriceSettings.method. Empty
+    // array = all methods allowed (same convention as allowedDiscountFeatureTypes).
+    allowedShippingPriceMethods: {
+        type: [String],
+        enum: ['FREE', 'FIXED', 'CATEGORY', 'COUNTRY', 'STATE', 'CITY', 'ZIP', 'WEIGHT', 'FREE_ABOVE'],
+        default: []
+    }
+    // End of Shipping Price
 }, {
   timestamps: true
 });

@@ -193,6 +193,7 @@ const createOrderFromFavorites = async (
     companyMasterData,
     websiteMasterData,
     companySettingsData,
+    shippingPriceSettingsData,
     items,
     orderPayload
 ) => {
@@ -246,10 +247,10 @@ const createOrderFromFavorites = async (
             vendorId,
             userId,
             userCountryId,
-            locationContext,
             companyMasterData,
             websiteMasterData,
             companySettingsData,
+            shippingPriceSettingsData,
             orderPayload
         );
     } catch (err) {

@@ -59,8 +59,15 @@ const companySettingsSchema = new mongoose.Schema({
     default: ''
   },
   companyLogo: {
-  type: String,
-  default: ''
+    url: {
+      type: String,
+      default: null
+    },
+    imageAssetId: {
+      type: mongoose.Types.ObjectId,
+      ref: 'ImageAsset',
+      default: null
+    }
   },
   instagramId: {
     type: String,
@@ -71,7 +78,15 @@ const companySettingsSchema = new mongoose.Schema({
     trim: true
   },
   paymentScanner: {
-    type: String,
+    url: {
+      type: String,
+      default: null
+    },
+    imageAssetId: {
+      type: mongoose.Types.ObjectId,
+      ref: 'ImageAsset',
+      default: null
+    }
   },
   
   // Policies (stored as HTML from React Quill)
@@ -99,13 +114,29 @@ const companySettingsSchema = new mongoose.Schema({
     userID: mongoose.Types.ObjectId,
     vendorID: mongoose.Types.ObjectId,
   },
-  isAnnouncementFeatureOn: {
+
+  // Start of Announcements
+  showAnnouncements: {
     type: Boolean,
+    default: true
   },
   isAnnouncementRotationOn: {
     type: Boolean,
     default: false
   },
+  // End of Announcements
+
+  // Start of Banner
+  showBanners: {
+    type: Boolean,
+    default: false
+  },
+  isBannerRotationOn: {
+    type: Boolean,
+    default: false
+  },
+  // End of Banner
+
   // Start of product
   showReviewsToCustomers: {
       type: Boolean,
@@ -162,13 +193,6 @@ const companySettingsSchema = new mongoose.Schema({
     default: false
   },
   // End of Return/Exchange
-
-  // Start of Announcements
-  showAnnouncements: {
-    type: Boolean,
-    defaullt: true
-  },
-  // End of Announcements
 
   // Start of Order
   isOrderCancellationAllowed: {

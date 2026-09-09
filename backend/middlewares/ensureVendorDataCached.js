@@ -3,6 +3,7 @@ const redisKeys = require('../utils/redisKeys');
 const companySettingsService = require('../services/companySettingsService');
 const companyMasterService = require('../services/companyMasterService');
 const websiteMasterService = require('../services/websiteMasterService');
+const shippingPriceSettingsService = require('../services/shippingPriceSettingsService');
 const logger = require('../utils/logger');
 const common = require('../utils/common');
 
@@ -41,9 +42,16 @@ const ensureVendorDataCached = async (req, res, next) => {
             return common.sendError(res, 500, `Failed to load vendor configuration`);
         }
 
+        const shippingPriceSettingsData = await redisService.getOrSet(
+            redisKeys.shippingPriceSettings(vendorId),
+            async () => await shippingPriceSettingsService.fetchShippingPriceSettingsByVendorId(vendorId),
+            3600
+        );
+
         req.companySettingsData = companySettingsData;
         req.websiteMasterData = websiteMasterData;
         req.companyMasterData = companyMasterData;
+        req.shippingPriceSettingsData = shippingPriceSettingsData;
         next();
 
     } catch (error) {

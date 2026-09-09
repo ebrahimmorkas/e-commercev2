@@ -123,7 +123,7 @@ const buildAddressSnapshot = async (addressDoc) => {
 | ORDER CREATION (cart -> order)
 |--------------------------------------------------------------------------
 */
-const createOrderFromCart = async (vendorId, userId, userCountryId, locationContext, companyMasterData, websiteMasterData, companySettingsData, payload) => {
+const createOrderFromCart = async (vendorId, userId, userCountryId, companyMasterData, websiteMasterData, companySettingsData, shippingPriceSettingsData, payload) => {
     try {
         const { shippingAddressId, billingAddressId, orderNumber } = payload;
 
@@ -206,20 +206,32 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, locationCont
         }
 
         // --- Re-validate + price the cart one final time at the moment of commit ---
+        // Priced against the ACTUAL chosen shipping address (not the user's
+        // profile/cookie location) so both tax and shipping are exact at the
+        // moment the order is placed - the cart/checkout-summary views only
+        // ever show an estimate off the browsing location.
+        const orderLocationContext = {
+            countryId: shippingAddress.country_id,
+            stateId: shippingAddress.state_id,
+            cityId: shippingAddress.city_id,
+            zipCode: shippingAddress.pincode
+        };
+
         const checkoutResult = await cartService.checkoutCart(
             vendorId,
             { type: 'user', id: userId },
             userId,
-            locationContext,
+            orderLocationContext,
             companyMasterData,
             websiteMasterData,
-            companySettingsData
+            companySettingsData,
+            shippingPriceSettingsData
         );
         if (!checkoutResult.isSuccess) {
             return common.returnResult(false, checkoutResult.statusCode, checkoutResult.message);
         }
 
-        const { cart, eligibleSubtotal, grandTotal, ineligibleItems } = checkoutResult.meta;
+        const { cart, eligibleSubtotal, shippingAmount, grandTotal, ineligibleItems } = checkoutResult.meta;
 
         // Narrows (but per the double-submit race, cannot fully close - the
         // unique {vendorId, cartId} index on Order is the hard backstop)
@@ -251,9 +263,7 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, locationCont
             totalDiscountAmount: cart.totalDiscountAmount,
             totalTaxAmount: cart.totalTaxAmount,
             totalFreeCashAmount: cart.totalFreeCashAmount,
-            // No shipping-fee-calculation service exists yet - defaults to 0
-            // until one is built (same posture as payment method).
-            shippingAmount: 0,
+            shippingAmount,
             additionalCharges: 0,
             grandTotal,
             currencyId: currency._id,

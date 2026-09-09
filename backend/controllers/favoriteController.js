@@ -87,6 +87,7 @@ const createOrderFromFavorites = async (req, res) => {
       req.companyMasterData,
       req.websiteMasterData,
       req.companySettingsData,
+      req.shippingPriceSettingsData,
       items,
       { shippingAddressId, billingAddressId, orderNumber }
     );

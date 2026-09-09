@@ -132,7 +132,8 @@ const checkoutCart = async (req, res) => {
             locationContext,
             req.companyMasterData,
             req.websiteMasterData,
-            req.companySettingsData
+            req.companySettingsData,
+            req.shippingPriceSettingsData
         );
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);

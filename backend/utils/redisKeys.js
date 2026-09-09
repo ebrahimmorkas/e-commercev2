@@ -1,6 +1,7 @@
 const redisKeys = {
   companySettings: (vendorId) => `company-settings:${vendorId}`,
   companyMaster: (vendorId) => `company-master-configuration:${vendorId}`,
+  shippingPriceSettings: (vendorId) => `shipping-price-settings:${vendorId}`,
   websiteMaster: () => `website-master`,
   announcement: (vendorID) => `announcement:${vendorID}`,
   banner: (vendorId) => `banner:${vendorId}`,
@@ -9,6 +10,7 @@ const redisKeys = {
   reviews: (vendorId, productId) => `reviews:${vendorId} - ${productId}`,
   sizes: (vendorId) => `sizes:${vendorId}`,  
   units: () => `units`,
+  weights: () => `weights`,
   countries: (vendorId) => `countries:${vendorId}`,
   states: (vendorId) => `states:${vendorId}`,
   cities: (vendorId) => `cities:${vendorId}`,

@@ -3,6 +3,7 @@ const Category = require('../models/Category');
 const TaxMaster = require('../models/TaxMaster');
 const SizeMaster = require('../models/SizeMaster');
 const UnitMaster = require('../models/UnitMaster');
+const WeightMaster = require('../models/WeightMaster');
 const BrandMaster = require('../models/BrandMaster');
 const brandMasterService = require('./brandMasterService');
 const CountryMaster = require('../models/CountryMaster');
@@ -573,9 +574,13 @@ const resolveSize = async ({
 
         // --- weight unit -------------------------------------------------------
         if (size.weight) {
-            const unitDoc = await UnitMaster.findOne({ _id: size.weight.unit, status: 'A' });
-            if (!unitDoc) {
+            const weightDoc = await WeightMaster.findOne({ _id: size.weight.unit, status: 'A' });
+            if (!weightDoc) {
                 return common.returnResult(false, 400, 'Weight unit not found or inactive.');
+            }
+            const allowedWeightIds = new Set((companyMasterData.allowedWeights || []).map(id => id.toString()));
+            if (!allowedWeightIds.has(size.weight.unit.toString())) {
+                return common.returnResult(false, 403, `Weight unit "${weightDoc.weightName}" is not available on your plan.`);
             }
         }
 
@@ -1467,6 +1472,7 @@ const bulkUploadProducts = async (vendorId, userId, excelBuffer, mainImagesZipBu
 
         const sizeMasterCache = new Map();
         const unitCache = new Map();
+        const weightCache = new Map();
         const countryCache = new Map();
         const stateCache = new Map();
         const cityCache = new Map();
@@ -1495,6 +1501,16 @@ const bulkUploadProducts = async (vendorId, userId, excelBuffer, mainImagesZipBu
             if (unitCache.has(key)) return unitCache.get(key);
             const doc = await UnitMaster.findOne({ status: 'A', name: { $regex: `^${escapeRegex(name.trim())}$`, $options: 'i' } });
             unitCache.set(key, doc ? doc._id : null);
+            return doc ? doc._id : null;
+        };
+
+        // Separate from resolveUnitByName - weight now resolves against
+        // WeightMaster (weightName), not UnitMaster.
+        const resolveWeightByName = async (name) => {
+            const key = name.trim().toLowerCase();
+            if (weightCache.has(key)) return weightCache.get(key);
+            const doc = await WeightMaster.findOne({ status: 'A', weightName: { $regex: `^${escapeRegex(name.trim())}$`, $options: 'i' } });
+            weightCache.set(key, doc ? doc._id : null);
             return doc ? doc._id : null;
         };
 
@@ -1626,7 +1642,7 @@ const bulkUploadProducts = async (vendorId, userId, excelBuffer, mainImagesZipBu
                             if (!sizeRow.weightUnitName) {
                                 return { success: false, errors: [`WeightUnitName is required when WeightValue is provided (SizeTempCode "${sizeTempCode}")`] };
                             }
-                            const weightUnitId = await resolveUnitByName(String(sizeRow.weightUnitName));
+                            const weightUnitId = await resolveWeightByName(String(sizeRow.weightUnitName));
                             if (!weightUnitId) {
                                 return { success: false, errors: [`Weight unit "${sizeRow.weightUnitName}" not found for SizeTempCode "${sizeTempCode}"`] };
                             }

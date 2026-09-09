@@ -6,6 +6,7 @@ const redisService = require('./redisService');
 const redisKeys = require('../utils/redisKeys');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
+const shippingPriceCalculationService = require('./shippingPriceCalculationService');
 
 /*
 |--------------------------------------------------------------------------
@@ -722,7 +723,7 @@ const removeDiscountsFromCart = async (vendorId, cartOwner) => {
 | the cart or create an order.
 */
 
-const checkoutCart = async (vendorId, cartOwner, userId, locationContext, companyMasterData, websiteMasterData, companySettingsData) => {
+const checkoutCart = async (vendorId, cartOwner, userId, locationContext, companyMasterData, websiteMasterData, companySettingsData, shippingPriceSettingsData) => {
     try {
         if (cartOwner.type !== 'user') {
             return common.returnResult(false, 401, 'Please log in to checkout.');
@@ -777,7 +778,13 @@ const checkoutCart = async (vendorId, cartOwner, userId, locationContext, compan
                         variantId: variantEntry.variantId,
                         sizeId: sizeEntry.sizeId,
                         taxIds: liveProduct.taxIds || [],
-                        amount: sizeEntry.unitPrice * sizeEntry.quantity
+                        amount: sizeEntry.unitPrice * sizeEntry.quantity,
+                        quantity: sizeEntry.quantity,
+                        shippingType: liveSize.shipping?.type || null,
+                        shippingValue: liveSize.shipping?.type === 'CUSTOM' ? liveSize.shipping.value : null,
+                        mainCategoryId: liveProduct.mainCategory,
+                        subCategoryId: liveProduct.subCategory,
+                        weight: liveSize.weight || null
                     });
                 }
             }
@@ -850,13 +857,25 @@ const checkoutCart = async (vendorId, cartOwner, userId, locationContext, compan
         await cart.save();
         await invalidateCartTotalCache(vendorId, cartOwner);
 
-        const grandTotal = eligibleSubtotal - cart.totalDiscountAmount + cart.totalTaxAmount;
+        const shippingResult = await shippingPriceCalculationService.calculateShippingPriceAmount({
+            lineItems: eligibleLineItems,
+            subtotal: eligibleSubtotal,
+            shippingPriceSettings: shippingPriceSettingsData,
+            locationContext,
+            companyMasterData,
+            websiteMasterData
+        });
+        const shippingAmount = shippingResult.meta.shippingAmount;
+
+        const grandTotal = eligibleSubtotal - cart.totalDiscountAmount + cart.totalTaxAmount + shippingAmount;
 
         logger.logInfo(1, 0, 'Cart checkout summary generated', { vendorId, userId });
 
         return common.returnResult(true, 200, 'Checkout summary generated successfully', {
             cart,
             eligibleSubtotal,
+            shippingAmount,
+            shippingBreakdown: shippingResult.meta.breakdown,
             grandTotal: Math.round(grandTotal * 100) / 100,
             ineligibleItems,
             droppedDiscounts

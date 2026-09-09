@@ -136,7 +136,7 @@ const weightSchema = new mongoose.Schema({
     },
     unit: {
         type: mongoose.Types.ObjectId,
-        ref: 'UnitMaster',
+        ref: 'WeightMaster',
         required: true
     }
 }, { _id: false });

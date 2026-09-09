@@ -193,6 +193,13 @@ const websiteMasterSchema = mongoose.Schema({
     },
     // End of Favorites
 
+    // Shipping Price
+    isShippingPriceFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    // End of Shipping Price
+
 }, {
   timestamps: true
 });

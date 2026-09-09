@@ -2,30 +2,19 @@ const orderService = require('../services/orderService');
 const logger = require('../utils/logger.js');
 const common = require('../utils/common');
 
-// Same shape as cartController.js's buildLocationContext - order creation
-// is login-only, but the tax/exclusion revalidation inside checkoutCart
-// still needs a full location context.
-const buildLocationContext = (req) => ({
-    countryId: req.user.country || null,
-    stateId: req.user.state || null,
-    cityId: req.user.city || null,
-    zipCode: null
-});
-
 const createOrder = async (req, res) => {
     const vendorId = req.vendorId;
     try {
         const userId = req.user._id;
-        const locationContext = buildLocationContext(req);
 
         const result = await orderService.createOrderFromCart(
             vendorId,
             userId,
             req.user.country || null,
-            locationContext,
             req.companyMasterData,
             req.websiteMasterData,
             req.companySettingsData,
+            req.shippingPriceSettingsData,
             req.body
         );
 
