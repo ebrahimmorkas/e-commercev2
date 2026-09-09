@@ -27,7 +27,6 @@ const createProduct = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('Error creating product', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to create product');
     }
 };
 
@@ -41,7 +40,6 @@ const getAllProductsAdmin = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('Error fetching products for admin', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to fetch products');
     }
 };
 
@@ -56,7 +54,6 @@ const getProductByIdAdmin = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('Error fetching product by id for admin', { vendorId, id, error });
-        return common.sendError(res, 500, 'Failed to fetch product');
     }
 };
 
@@ -81,7 +78,6 @@ const getAllProductsClient = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('Error fetching products for client', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to fetch products');
     }
 };
 
@@ -97,7 +93,6 @@ const getProductByIdClient = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('Error fetching product by id for client', { vendorId, id, error });
-        return common.sendError(res, 500, 'Failed to fetch product');
     }
 };
 
@@ -113,6 +108,35 @@ const getProductsByBrand = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('Error fetching products by brand', { vendorId, brandId, error });
+    }
+};
+
+const getProductsByCategory = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { categoryId } = req.params;
+    try {
+        const locationCookies = readLocationCookies(req);
+        const result = await productService.fetchProductsByCategoryForClient(vendorId, categoryId, req.companySettingsData, locationCookies);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('Error fetching products by category', { vendorId, categoryId, error });
+    }
+};
+
+const getProductsByCategoryAdmin = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { categoryId } = req.params;
+    try {
+        const result = await productService.fetchProductsByCategoryForAdmin(vendorId, categoryId);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('Error fetching products by category for admin', { vendorId, categoryId, error });
     }
 };
 
@@ -165,7 +189,6 @@ const bulkUploadProducts = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('Error in bulk product upload', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to process bulk product upload');
     }
 };
 
@@ -192,7 +215,6 @@ const updateProduct = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('Error updating product', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to update product');
     }
 };
 
@@ -209,7 +231,6 @@ const toggleProductStatus = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('Error toggling product status', { vendorId, productId, error });
-        return common.sendError(res, 500, 'Failed to update product status');
     }
 };
 
@@ -226,7 +247,6 @@ const deleteProduct = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('Error deleting product', { vendorId, productId, error });
-        return common.sendError(res, 500, 'Failed to delete product');
     }
 };
 
@@ -240,5 +260,7 @@ module.exports = {
     getAllProductsClient,
     getProductByIdClient,
     getProductsByBrand,
+    getProductsByCategory,
+    getProductsByCategoryAdmin,
     bulkUploadProducts
 };

@@ -264,6 +264,10 @@ const brandIdParamSchema = Joi.object({
     brandId: objectId().required().label('Brand ID')
 });
 
+const categoryIdParamSchema = Joi.object({
+    categoryId: objectId().required().label('Category ID')
+});
+
 // --- Update (full replace, same shape/rules as create) -----------------------
 // _id is added to size/variant items so incoming rows can be matched back
 // to existing subdocuments - present + matching _id = update in place,
@@ -311,5 +315,6 @@ module.exports = {
     toggleProductStatusSchema,
     deleteProductSchema,
     idParamSchema,
-    brandIdParamSchema
+    brandIdParamSchema,
+    categoryIdParamSchema
 };

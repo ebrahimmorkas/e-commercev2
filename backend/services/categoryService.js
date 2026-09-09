@@ -66,6 +66,58 @@ const getDescendantIds = async (vendorId, rootId) => {
     }
 };
 
+/**
+ * BFS collection of all descendant _ids of a category (not including the category itself),
+ * only descending through ACTIVE ('A') categories - an inactive category's own subtree is
+ * not traversed further. Used for client-facing "browse by category" product lookups.
+ */
+const getActiveDescendantIds = async (vendorId, rootId) => {
+    try {
+        const allIds = [];
+        let currentLevel = [rootId];
+
+        while (currentLevel.length > 0) {
+            const children = await Category.find(
+                { vendorId, parent_category_id: { $in: currentLevel }, status: 'A' },
+                '_id'
+            );
+            const childIds = children.map((c) => c._id);
+            allIds.push(...childIds);
+            currentLevel = childIds;
+        }
+
+        return allIds;
+    } catch (err) {
+        throw err;
+    }
+};
+
+/**
+ * Same BFS as getDescendantIds, but excludes soft-deleted ('D') categories from the walk -
+ * used for admin-facing "browse by category" product lookups (which see both Active and
+ * Inactive categories/products, just never Deleted ones).
+ */
+const getDescendantIdsForAdmin = async (vendorId, rootId) => {
+    try {
+        const allIds = [];
+        let currentLevel = [rootId];
+
+        while (currentLevel.length > 0) {
+            const children = await Category.find(
+                { vendorId, parent_category_id: { $in: currentLevel }, status: { $ne: 'D' } },
+                '_id'
+            );
+            const childIds = children.map((c) => c._id);
+            allIds.push(...childIds);
+            currentLevel = childIds;
+        }
+
+        return allIds;
+    } catch (err) {
+        throw err;
+    }
+};
+
 const validateParentForAttachment = async (vendorId, parentCategoryId, session = null) => {
     try {
         const parent = await Category.findOne({ _id: parentCategoryId, vendorId }).session(session);
@@ -609,5 +661,7 @@ module.exports = {
     softDeleteCategory,
     fetchActiveCategories,
     fetchAdminCategories,
-    bulkUploadCategories
+    bulkUploadCategories,
+    getActiveDescendantIds,
+    getDescendantIdsForAdmin
 };

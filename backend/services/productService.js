@@ -1,5 +1,6 @@
 const Product = require('../models/Product');
 const Category = require('../models/Category');
+const categoryService = require('./categoryService');
 const TaxMaster = require('../models/TaxMaster');
 const SizeMaster = require('../models/SizeMaster');
 const UnitMaster = require('../models/UnitMaster');
@@ -1253,6 +1254,75 @@ const fetchProductsByBrandForClient = async (vendorId, brandId, companySettingsD
     }
 };
 
+// All ACTIVE products for this vendor that belong to the given category, or to any of
+// its n-level nested subcategories (traversal only descends through ACTIVE
+// subcategories - see categoryService.getActiveDescendantIds). A product's mainCategory
+// is always a top-level (root) category and its subCategory (if any) can sit at any
+// depth under that root, so matching on EITHER field against [category, ...descendants]
+// correctly covers both root-level categories (caught via mainCategory) and nested
+// subcategories (caught via subCategory) without needing to special-case either.
+const fetchProductsByCategoryForClient = async (vendorId, categoryId, companySettingsData, locationCookies) => {
+    try {
+        const categoryDoc = await Category.findOne({ _id: categoryId, vendorId, status: 'A' });
+        if (!categoryDoc) {
+            return common.returnResult(false, 404, 'Category not found.');
+        }
+
+        const descendantIds = await categoryService.getActiveDescendantIds(vendorId, categoryDoc._id);
+        const categoryIds = [categoryDoc._id, ...descendantIds];
+
+        const shouldHide = companySettingsData.shouldProductsBeHiddenWhenLocationsAreExcluded;
+        const locationContext = await buildLocationContext(locationCookies);
+
+        const products = await common.getAll(Product, {
+            status: 'A',
+            $or: [
+                { mainCategory: { $in: categoryIds } },
+                { subCategory: { $in: categoryIds } }
+            ]
+        }, vendorId);
+
+        const rawProducts = products.map(p => p.toObject());
+        const brandMap = await buildBrandMapForProducts(rawProducts);
+        const useShortNameForBrand = !!companySettingsData.useShortNameForBrand;
+
+        const shaped = rawProducts
+            .map(p => shapeProductForResponse(p, false, locationContext, shouldHide, brandMap, useShortNameForBrand))
+            .filter(Boolean);
+
+        return common.returnResult(true, 200, 'Products fetched successfully', { products: shaped });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Admin equivalent of fetchProductsByCategoryForClient - sees Active + Inactive
+// categories/products (never Deleted), no location-based hiding/shaping.
+const fetchProductsByCategoryForAdmin = async (vendorId, categoryId) => {
+    try {
+        const categoryDoc = await Category.findOne({ _id: categoryId, vendorId, status: { $ne: 'D' } });
+        if (!categoryDoc) {
+            return common.returnResult(false, 404, 'Category not found.');
+        }
+
+        const descendantIds = await categoryService.getDescendantIdsForAdmin(vendorId, categoryDoc._id);
+        const categoryIds = [categoryDoc._id, ...descendantIds];
+
+        const products = await common.getAll(Product, {
+            status: { $in: ['I', 'A'] },
+            $or: [
+                { mainCategory: { $in: categoryIds } },
+                { subCategory: { $in: categoryIds } }
+            ]
+        }, vendorId);
+
+        const shaped = products.map(p => shapeProductForResponse(p.toObject(), true, null, false));
+        return common.returnResult(true, 200, 'Products fetched successfully', { products: shaped });
+    } catch (err) {
+        throw err;
+    }
+};
+
 const fetchProductByIdForAdmin = async (vendorId, productId) => {
     try {
         const result = await common.getByID(Product, productId);
@@ -2167,5 +2237,7 @@ module.exports = {
     fetchProductByIdForAdmin,
     fetchProductByIdForClient,
     fetchProductsByBrandForClient,
+    fetchProductsByCategoryForClient,
+    fetchProductsByCategoryForAdmin,
     bulkUploadProducts
 };
