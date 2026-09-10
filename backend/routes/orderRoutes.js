@@ -56,6 +56,14 @@ router.get(
     orderController.getOrderByIdAdmin
 );
 
+router.get(
+    '/admin/:id/steps',
+    ...vendorContext,
+    authorize('admin'),
+    validate(orderIdParamSchema, 'params'),
+    orderController.getOrderStepOptions
+);
+
 router.patch(
     '/admin/:id/advance-step',
     ...vendorContext,

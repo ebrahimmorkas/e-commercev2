@@ -643,6 +643,28 @@ const fetchAllOrdersAdmin = async (vendorId) => {
     }
 };
 
+const fetchOrderStepOptions = async (vendorId, orderId) => {
+    try {
+        const order = await Order.findOne({ _id: orderId, vendorId, status: { $ne: 'D' } });
+        if (!order) {
+            return common.returnResult(false, 404, 'Order not found.');
+        }
+
+        const stepMaster = await OrderStepMaster.findById(order.orderStepMasterId);
+        if (!stepMaster) {
+            return common.returnResult(false, 500, 'Order workflow is misconfigured for this order. Please contact support.');
+        }
+
+        const steps = [...stepMaster.steps]
+            .sort((a, b) => a.sequence - b.sequence)
+            .map((step) => ({ code: step.code, name: step.name, sequence: step.sequence }));
+
+        return common.returnResult(true, 200, 'Order steps fetched successfully', { steps });
+    } catch (err) {
+        throw err;
+    }
+};
+
 module.exports = {
     createOrderFromCart,
     advanceOrderStep,
@@ -651,5 +673,6 @@ module.exports = {
     cancelOrder,
     fetchMyOrders,
     fetchOrderById,
-    fetchAllOrdersAdmin
+    fetchAllOrdersAdmin,
+    fetchOrderStepOptions
 };

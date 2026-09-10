@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import Header from './components/ui/header';
 import Navbar from './components/ui/navbar';
+import AnnouncementBar from './components/ui/announcementBar';
 import Footer from './components/ui/footer';
 import HomePage from './features/Home/Pages/HomePage';
 import ProductDetailPage from './features/products/pages/ProductDetailPage';
@@ -200,6 +201,7 @@ const ClientApp = () => {
         onCartClick={openCart}
       />
       <Navbar />
+      <AnnouncementBar />
       <main className="flex-1">
         {route.type === 'product' && (
           <ProductDetailPage

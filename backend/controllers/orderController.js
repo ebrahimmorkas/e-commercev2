@@ -107,6 +107,20 @@ const getOrderByIdAdmin = async (req, res) => {
     }
 };
 
+const getOrderStepOptions = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { id } = req.params;
+    try {
+        const result = await orderService.fetchOrderStepOptions(vendorId, id);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('orderController: getOrderStepOptions - Exception while fetching order steps', { vendorId, id, error });
+    }
+};
+
 const advanceOrderStep = async (req, res) => {
     const vendorId = req.vendorId;
     const { id } = req.params;
@@ -163,6 +177,7 @@ module.exports = {
     cancelOrder,
     getAllOrdersAdmin,
     getOrderByIdAdmin,
+    getOrderStepOptions,
     advanceOrderStep,
     assignDeliveryAgent,
     deliveryAgentMarkDelivered

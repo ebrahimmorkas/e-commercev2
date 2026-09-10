@@ -3,6 +3,7 @@ import AnnouncementsPage from './admin/features/anoucements/pages/AnnouncementsP
 import CategoriesPage from './admin/masters/category/pages/CategoriesPage';
 import ProductsPage from './admin/features/products/pages/ProductsPage';
 import DiscountsPage from './admin/features/discounts/pages/DiscountsPage';
+import OrdersPage from './admin/features/orders/pages/OrdersPage';
 import LoginPage from './admin/features/login/pages/LoginPage';
 import { useAuth } from './admin/features/login/hooks/useAuth';
 import Spinner from './components/common/Spinner';
@@ -43,6 +44,8 @@ function App() {
           <ProductsPage />
         ) : activePage === 'discounts' ? (
           <DiscountsPage />
+        ) : activePage === 'orders' ? (
+          <OrdersPage />
         ) : (
           <EmptyState
             title={`${PAGE_LABELS[activePage] || 'This page'} is coming soon`}

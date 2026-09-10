@@ -96,10 +96,6 @@ const getAllBanners = async (req, res) => {
             return common.sendError(res, validiyResult.statusCode, validiyResult.message)
         }
 
-        const companySettingsData = req.companySettingsData;
-        if (!companySettingsData?.showAnnouncements) {
-            return common.sendError(res, 403, websiteMasterData.featureDisabledMessageForClient);
-        }
         const result = await redisService.getOrSet(
             redisKeys.banner(vendorId),
             async () => await bannerService.fetchAllActiveBanners(vendorId),
