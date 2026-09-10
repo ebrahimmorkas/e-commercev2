@@ -185,6 +185,49 @@ const decodeId = (encodedId) => {
   }
 };
 
+const SECRET_ENCRYPTION_ALGORITHM = 'aes-256-gcm';
+
+// IMPORTANT: set CREDENTIALS_ENCRYPTION_KEY in .env before deploying (64 hex
+// chars / 32 bytes). If unset, a random key is generated per process start,
+// which means every previously-encrypted secret (e.g. a vendor's payment
+// gateway server key) becomes undecryptable on restart/redeploy.
+const SECRET_ENCRYPTION_KEY = process.env.CREDENTIALS_ENCRYPTION_KEY
+  ? Buffer.from(process.env.CREDENTIALS_ENCRYPTION_KEY, 'hex')
+  : crypto.randomBytes(32);
+
+// Encrypts a real secret (a vendor's own payment gateway server key, not an
+// internal ID) for storage at rest. Unlike encodeId/decodeId above - which
+// deliberately reuse a fixed IV so the same input always encodes the same
+// way, for a reversible URL-safe ID - this uses a fresh random IV per call
+// plus a GCM auth tag, which is what you actually want for a secret that
+// never leaves the server and must not be deterministically encrypted.
+const encryptSecret = (plainText) => {
+  try {
+    if (!plainText) return null;
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv(SECRET_ENCRYPTION_ALGORITHM, SECRET_ENCRYPTION_KEY, iv);
+    const encrypted = Buffer.concat([cipher.update(plainText, 'utf8'), cipher.final()]);
+    const authTag = cipher.getAuthTag();
+    return [iv.toString('hex'), authTag.toString('hex'), encrypted.toString('hex')].join(':');
+  } catch (err) {
+    throw err;
+  }
+};
+
+// Reverse of encryptSecret.
+const decryptSecret = (encryptedText) => {
+  try {
+    if (!encryptedText) return null;
+    const [ivHex, authTagHex, dataHex] = encryptedText.split(':');
+    const decipher = crypto.createDecipheriv(SECRET_ENCRYPTION_ALGORITHM, SECRET_ENCRYPTION_KEY, Buffer.from(ivHex, 'hex'));
+    decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
+    const decrypted = Buffer.concat([decipher.update(Buffer.from(dataHex, 'hex')), decipher.final()]);
+    return decrypted.toString('utf8');
+  } catch (err) {
+    throw err;
+  }
+};
+
 // Validates the ID of documents
 // const validateObjectId = (id) => {
 //   if (!id) {
@@ -436,6 +479,8 @@ module.exports = {
   getDefault,
   encodeId,
   decodeId,
+  encryptSecret,
+  decryptSecret,
   checkWhetherDocumentExists
 };
 

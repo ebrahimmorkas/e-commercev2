@@ -8,6 +8,7 @@ const cartService = require('./cartService');
 const counterService = require('./counterService');
 const emailService = require('./emailService');
 const emailTemplateMasterService = require('./emailTemplateMasterService');
+const commissionService = require('./commissionService');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
 const {
@@ -281,6 +282,8 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
 
         await order.save();
 
+        await commissionService.recordCommissionForOrder(order, companyMasterData);
+
         // Locks the cart out of every existing cart route (all of which
         // filter on status:'A') so it can never be mutated or re-checked-out
         // again, and the user's next add-to-cart starts a fresh active cart.
@@ -453,6 +456,10 @@ const advanceOrderStep = async (vendorId, adminUserId, orderId, targetStepCode, 
         order.updatedBy = adminUserId;
         await order.save();
 
+        if (targetStep.code === RESERVED_STEP_CODES.REJECTED) {
+            await commissionService.voidCommissionForOrder(vendorId, order._id, order.cancellationReason);
+        }
+
         await notifyOrderStatusChange(order, companyMasterData, websiteMasterData, companySettingsData, adminUserId);
 
         logger.logInfo(1, 0, 'Order step advanced', { vendorId, orderId, targetStepCode });
@@ -594,6 +601,8 @@ const cancelOrder = async (vendorId, userId, orderId, cancellationReason, compan
         order.cancellationReason = cancellationReason;
         order.updatedBy = userId;
         await order.save();
+
+        await commissionService.voidCommissionForOrder(vendorId, order._id, cancellationReason);
 
         await notifyOrderStatusChange(order, companyMasterData, websiteMasterData, companySettingsData, userId);
 

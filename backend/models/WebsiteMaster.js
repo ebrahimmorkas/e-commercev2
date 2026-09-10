@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { VALID_PAYMENT_GATEWAYS } = require('../constants/paymentGatewayConstants');
 
 const websiteMasterSchema = mongoose.Schema({
     numberOfUsersAllowed: {
@@ -199,6 +200,27 @@ const websiteMasterSchema = mongoose.Schema({
         default: true
     },
     // End of Shipping Price
+
+    // Payment
+    isPaymentGatewayFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    isCODFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    // Non-null forces EVERY vendor onto this gateway regardless of what
+    // CompanyMaster.paymentGateway assigns them - same override convention
+    // as mainEmailService above. null = each vendor keeps using its own
+    // admin-assigned CompanyMaster.paymentGateway. See resolvePaymentGateway
+    // in paymentService.js.
+    mainPaymentGateway: {
+        type: String,
+        enum: VALID_PAYMENT_GATEWAYS,
+        default: null
+    },
+    // End of Payment
 
 }, {
   timestamps: true

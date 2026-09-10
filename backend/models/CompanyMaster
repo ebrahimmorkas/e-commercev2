@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { VALID_PAYMENT_GATEWAYS } = require('../constants/paymentGatewayConstants');
 
 const companyMasterSchema = mongoose.Schema({
     vendorId: {
@@ -404,8 +405,49 @@ const companyMasterSchema = mongoose.Schema({
         type: [String],
         enum: ['FREE', 'FIXED', 'CATEGORY', 'COUNTRY', 'STATE', 'CITY', 'ZIP', 'WEIGHT', 'FREE_ABOVE'],
         default: []
-    }
+    },
     // End of Shipping Price
+
+    // Payment
+    isPaymentGatewayFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    isCODFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    // Which gateway this vendor is assigned - set directly by the platform
+    // admin (this vendor paid for/was onboarded onto this gateway), same
+    // convention as emailService above. Overridden site-wide whenever
+    // WebsiteMaster.mainPaymentGateway is set - see resolvePaymentGateway in
+    // paymentService.js.
+    paymentGateway: {
+        type: String,
+        enum: VALID_PAYMENT_GATEWAYS,
+        default: null
+    },
+    // End of Payment
+
+    // Commission
+    // Platform's cut of this vendor's sales. Tracked, not collected through
+    // the gateway - the vendor's own PayTabs account still receives 100% of
+    // every payment; commissionService.js records what's owed per order and
+    // the platform owner collects it separately. See CommissionLedgerEntry.
+    isCommissionFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    // Percentage of each order's net product revenue (subtotal minus
+    // discounts - see recordCommissionForOrder in commissionService.js).
+    // Negotiated per vendor, not a site-wide rate.
+    commissionPercentage: {
+        type: Number,
+        default: 0,
+        min: 0,
+        max: 100
+    }
+    // End of Commission
 }, {
   timestamps: true
 });

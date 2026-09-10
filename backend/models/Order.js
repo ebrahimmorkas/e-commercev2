@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { VALID_PAYMENT_GATEWAYS, VALID_PAYMENT_METHODS } = require('../constants/paymentGatewayConstants');
 
 const orderStatusHistorySchema = new mongoose.Schema(
     {
@@ -85,6 +86,7 @@ const orderPaymentSchema = new mongoose.Schema(
     {
         method: {
             type: String,
+            enum: VALID_PAYMENT_METHODS,
             trim: true,
             default: null
         },
@@ -111,6 +113,7 @@ const orderPaymentSchema = new mongoose.Schema(
 
         gateway: {
             type: String,
+            enum: VALID_PAYMENT_GATEWAYS,
             trim: true,
             default: null
         },
