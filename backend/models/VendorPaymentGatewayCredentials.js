@@ -19,32 +19,38 @@ const vendorPaymentGatewayCredentialsSchema = new mongoose.Schema({
         enum: VALID_PAYMENT_GATEWAYS,
         required: true
     },
-    // PayTabs profile_id - identifies the vendor's merchant profile. Not
-    // treated as a secret the way serverKey/clientKey are (PayTabs itself
-    // sends it back in webhook payloads), so stored in plain text.
+    // PayTabs: profile_id, identifies the vendor's merchant profile -
+    // required for PayTabs. Stripe: no equivalent is needed for API calls
+    // (the secret key alone identifies the account), so this is left null
+    // for Stripe - vendorPaymentGatewayCredentialsService.js enforces the
+    // gateway-specific requiredness, not the schema. Not treated as a
+    // secret the way serverKey/clientKey are, so stored in plain text.
     profileId: {
         type: String,
-        required: true,
-        trim: true
+        trim: true,
+        default: null
     },
     // Encrypted with common.js's encryptSecret/decryptSecret (AES-256-GCM,
     // random IV per value) - this is the actual API secret used as the
     // Authorization header on every gateway call, capable of moving real
-    // money. Never returned as-is outside paymentService.
+    // money (PayTabs server_key / Stripe secret key). Never returned as-is
+    // outside paymentService.
     encryptedServerKey: {
         type: String,
         required: true
     },
-    // Used for client-side tokenization by some gateways - less sensitive
-    // than serverKey but still encrypted for consistency, and optional
-    // since not every gateway/integration style needs it.
+    // Used for client-side tokenization/rendering by some gateways
+    // (PayTabs client_key / Stripe publishable key) - less sensitive than
+    // serverKey but still encrypted for consistency, and optional since not
+    // every gateway/integration style needs it.
     encryptedClientKey: {
         type: String,
         default: null
     },
-    // Regional API host for this vendor's account (PayTabs' API base URL
-    // differs by region, e.g. UAE vs Saudi vs Egypt profiles). Falls back to
-    // config/paymentGatewayConfig.js's default when unset.
+    // Regional API host for this vendor's account - PayTabs' API base URL
+    // differs by region (e.g. UAE vs Saudi vs Egypt profiles), so falls
+    // back to config/paymentGatewayConfig.js's default when unset. Stripe
+    // has a single fixed API host and ignores this field entirely.
     baseUrl: {
         type: String,
         trim: true,

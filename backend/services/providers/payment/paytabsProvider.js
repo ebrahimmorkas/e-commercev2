@@ -79,7 +79,10 @@ const createSession = async ({ order, transaction, returnUrl, callbackUrl, crede
 // Server-to-server confirmation of what actually happened for a transaction,
 // under the given vendor's own PayTabs account - PayTabs' recommended
 // practice is to never trust the IPN/return payload alone, always re-query
-// using the server key before marking an order paid.
+// using the server key before marking an order paid. `order` is accepted
+// for interface parity with other providers (e.g. Stripe needs it to
+// convert a smallest-currency-unit amount back to decimal) but unused here -
+// PayTabs already returns cart_amount as a plain decimal.
 const verifyTransaction = async ({ tranRef, cartId, credentials }) => {
     try {
         const body = {

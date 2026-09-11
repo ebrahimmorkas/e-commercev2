@@ -7,7 +7,8 @@
 // CompanyMaster.paymentGateway and Order.payment.gateway all enum off
 // VALID_PAYMENT_GATEWAYS below.
 const PAYMENT_GATEWAYS = {
-    PAYTABS: 'paytabs'
+    PAYTABS: 'paytabs',
+    STRIPE: 'stripe'
 };
 
 const VALID_PAYMENT_GATEWAYS = Object.values(PAYMENT_GATEWAYS);

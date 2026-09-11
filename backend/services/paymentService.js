@@ -23,7 +23,7 @@ const resolvePaymentGateway = (websiteMasterData, companyMasterData) => {
     }
 };
 
-const initiateOnlinePayment = async (vendorId, userId, orderId, vendorDomain, websiteMasterData, companyMasterData) => {
+const initiateOnlinePayment = async (vendorId, userId, orderId, vendorDomain, websiteMasterData, companyMasterData, companySettingsData) => {
     try {
         const order = await Order.findOne({ _id: orderId, vendorId, userId, status: { $ne: 'D' } });
         if (!order) {
@@ -32,6 +32,16 @@ const initiateOnlinePayment = async (vendorId, userId, orderId, vendorDomain, we
 
         if (order.payment.status === 'PAID') {
             return common.returnResult(false, 409, 'This order has already been paid.');
+        }
+
+        // Sits below the WebsiteMaster/CompanyMaster admin-level entitlement
+        // gate (already checked in paymentController before this is called)
+        // - this is the vendor's OWN on/off switch for online payment on
+        // their storefront (e.g. their gateway subscription lapsed), same
+        // "show" toggle convention as showAnnouncements/showBanners/
+        // showReviewsToCustomers in CompanySettings.
+        if (companySettingsData?.isPaymentGatewayFeatureOn === false) {
+            return common.returnResult(false, 403, 'Online payment is currently unavailable for this store.');
         }
 
         const gatewayKey = resolvePaymentGateway(websiteMasterData, companyMasterData);
@@ -153,7 +163,19 @@ const handleGatewayCallback = async (vendorId, gatewayKey, rawPayload) => {
             return common.returnResult(false, 500, 'No active gateway credentials found for this vendor.');
         }
 
-        const verifyResult = await provider.verifyTransaction({ tranRef: transaction.gatewayTransactionRef || tranRef, cartId, credentials });
+        const order = await Order.findOne({ _id: transaction.orderId, vendorId });
+        if (!order) {
+            transaction.transactionStatus = PAYMENT_TRANSACTION_STATUSES.FAILED;
+            transaction.failureReason = 'Order not found for this transaction.';
+            await transaction.save();
+            return common.returnResult(false, 404, 'Order not found for this transaction.');
+        }
+
+        // order is passed through so a provider whose amounts come back in
+        // the smallest currency unit (e.g. Stripe's cents) can convert using
+        // this exact order's own currencyDecimalPlaces snapshot - PayTabs
+        // ignores it, since its amounts are already plain decimals.
+        const verifyResult = await provider.verifyTransaction({ tranRef: transaction.gatewayTransactionRef || tranRef, cartId, credentials, order });
         transaction.rawCallbackResponse = rawPayload;
 
         if (!verifyResult.isSuccess) {
@@ -161,14 +183,6 @@ const handleGatewayCallback = async (vendorId, gatewayKey, rawPayload) => {
             transaction.failureReason = verifyResult.message || 'Gateway verification failed.';
             await transaction.save();
             return common.returnResult(false, 502, 'Unable to verify payment with the gateway.');
-        }
-
-        const order = await Order.findOne({ _id: transaction.orderId, vendorId });
-        if (!order) {
-            transaction.transactionStatus = PAYMENT_TRANSACTION_STATUSES.FAILED;
-            transaction.failureReason = 'Order not found for this transaction.';
-            await transaction.save();
-            return common.returnResult(false, 404, 'Order not found for this transaction.');
         }
 
         // Guard against a gateway returning a paid result for the wrong

@@ -1,20 +1,29 @@
 // Manual entry point for vendorPaymentGatewayCredentialsService - each
 // vendor runs their own storefront on their own domain and signs up for
-// their own PayTabs account directly with PayTabs (linking their own bank
-// account on PayTabs' side). This is the platform owner's own tool for
-// recording that vendor's profile_id/server_key/client_key so the app can
-// call PayTabs "as" the correct vendor. There is no HTTP endpoint for this
-// (same convention as WebsiteMaster/CompanyMaster having no write API).
+// their own gateway account directly with the gateway (linking their own
+// bank account on the gateway's side - PayTabs or Stripe, for now). This is
+// the platform owner's own tool for recording that vendor's credentials so
+// the app can call the gateway "as" the correct vendor. There is no HTTP
+// endpoint for this (same convention as WebsiteMaster/CompanyMaster having
+// no write API).
 //
 // Usage:
-//   node scripts/manageVendorPaymentGatewayCredentials.js set <vendorId> [gateway] --profileId=... --serverKey=... [--clientKey=...] [--baseUrl=...] [--notes="..."] [--adminUserId=...]
+//   node scripts/manageVendorPaymentGatewayCredentials.js set <vendorId> [gateway] --serverKey=... [--profileId=...] [--clientKey=...] [--baseUrl=...] [--notes="..."] [--adminUserId=...]
 //   node scripts/manageVendorPaymentGatewayCredentials.js activate <vendorId> [gateway] [--adminUserId=...]
 //   node scripts/manageVendorPaymentGatewayCredentials.js deactivate <vendorId> [gateway] [--adminUserId=...]
 //   node scripts/manageVendorPaymentGatewayCredentials.js view <vendorId> [gateway]
 //
-// gateway defaults to "paytabs" if omitted. `activate` only after you've
-// actually confirmed a real test payment works for that vendor - until then
-// paymentService refuses to initiate online payments for them.
+// gateway defaults to "paytabs" if omitted - pass "stripe" explicitly for a
+// Stripe vendor. PayTabs needs --profileId (their profile_id) alongside
+// --serverKey (their server_key); Stripe only needs --serverKey (their
+// secret key, sk_... or a restricted rk_...) - --profileId is ignored for
+// Stripe. `activate` only after you've actually confirmed a real test
+// payment works for that vendor - until then paymentService refuses to
+// initiate online payments for them.
+//
+// Examples:
+//   node scripts/manageVendorPaymentGatewayCredentials.js set 64f... paytabs --profileId=PT123 --serverKey=xxxx
+//   node scripts/manageVendorPaymentGatewayCredentials.js set 64f... stripe --serverKey=sk_live_xxx --clientKey=pk_live_xxx
 require('dotenv').config();
 const mongoose = require('mongoose');
 const vendorPaymentGatewayCredentialsService = require('../services/vendorPaymentGatewayCredentialsService');

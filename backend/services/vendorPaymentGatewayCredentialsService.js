@@ -1,14 +1,23 @@
 const VendorPaymentGatewayCredentials = require('../models/VendorPaymentGatewayCredentials');
+const { PAYMENT_GATEWAYS } = require('../constants/paymentGatewayConstants');
 const logger = require('../utils/logger');
 const common = require('../utils/common');
+
+// Which gateways require a profileId alongside the secret key. PayTabs'
+// server_key alone doesn't identify the merchant profile - Stripe's secret
+// key does, so it has no equivalent requirement.
+const GATEWAYS_REQUIRING_PROFILE_ID = [PAYMENT_GATEWAYS.PAYTABS];
 
 // Admin-entered - see scripts/manageVendorPaymentGatewayCredentials.js.
 // Re-saving resets isActive back to false, since credentials changing means
 // they haven't been reconfirmed working yet.
 const saveOrUpdateCredentials = async (vendorId, adminUserId, gateway, data) => {
     try {
-        if (!data.profileId || !data.serverKey) {
-            return common.returnResult(false, 400, 'profileId and serverKey are required.');
+        if (!data.serverKey) {
+            return common.returnResult(false, 400, 'serverKey is required.');
+        }
+        if (GATEWAYS_REQUIRING_PROFILE_ID.includes(gateway) && !data.profileId) {
+            return common.returnResult(false, 400, `profileId is required for ${gateway}.`);
         }
 
         let credentials = await VendorPaymentGatewayCredentials.findOne({ vendorId, gateway });
@@ -16,7 +25,7 @@ const saveOrUpdateCredentials = async (vendorId, adminUserId, gateway, data) => 
             credentials = new VendorPaymentGatewayCredentials({ vendorId, gateway, createdBy: adminUserId });
         }
 
-        credentials.profileId = data.profileId;
+        credentials.profileId = data.profileId || null;
         credentials.encryptedServerKey = common.encryptSecret(data.serverKey);
         credentials.encryptedClientKey = data.clientKey ? common.encryptSecret(data.clientKey) : null;
         credentials.baseUrl = data.baseUrl || null;

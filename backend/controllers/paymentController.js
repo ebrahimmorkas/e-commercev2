@@ -14,7 +14,7 @@ const initiateOnlinePayment = async (req, res) => {
 
         const result = await paymentService.initiateOnlinePayment(
             vendorId, req.user._id, req.params.orderId, req.vendorData?.domain,
-            websiteMasterData, companyMasterData
+            websiteMasterData, companyMasterData, req.companySettingsData
         );
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);

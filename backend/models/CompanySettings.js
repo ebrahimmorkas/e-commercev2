@@ -252,6 +252,22 @@ const companySettingsSchema = new mongoose.Schema({
     default: []
   },
   // End of Email Template
+
+  // Start of Payment
+  // The vendor's own on/off switch for online payment at checkout - sits
+  // BELOW WebsiteMaster.isPaymentGatewayFeatureOn + CompanyMaster.
+  // isPaymentGatewayFeatureOn (the admin-level "has this vendor paid for/
+  // been granted this feature" gate, checked in paymentController). This one
+  // is the vendor's own choice - e.g. their gateway subscription lapsed and
+  // they want to hide online payment and fall back to COD without waiting
+  // on the platform admin. Same "show" toggle convention as
+  // showAnnouncements/showBanners/showReviewsToCustomers above - checked in
+  // paymentService.initiateOnlinePayment, not at the schema level.
+  isPaymentGatewayFeatureOn: {
+    type: Boolean,
+    default: true
+  },
+  // End of Payment
 }, {
   timestamps: true
 });
