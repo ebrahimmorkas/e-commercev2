@@ -222,6 +222,50 @@ const websiteMasterSchema = mongoose.Schema({
     },
     // End of Payment
 
+    // Free Cash
+    isFreeCashFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    isFreeCashGivingToSpecificUsersAllowed: {
+        type: Boolean,
+        default: true
+    },
+    isFreeCashGivingToGroupsAllowed: {
+        type: Boolean,
+        default: true
+    },
+    isFreeCashGivingToSpecificCategoryAllowed: {
+        type: Boolean,
+        default: true
+    },
+    isFreeCashGivingToNestedSubCategoryAllowed: {
+        type: Boolean,
+        default: true
+    },
+    isRevokingFreeCashFunctionalityAllowed: {
+        type: Boolean,
+        default: true
+    },
+    isRevokingAllUsersFreeCashFunctionalityAllowed: {
+        type: Boolean,
+        default: true
+    },
+    isFreeCashGivingToAllUsersFunctionalityAllowed: {
+        type: Boolean,
+        default: true
+    },
+    // Gates the Free-Cash-refund-on-order-return behavior specifically -
+    // separate from the base isFreeCashFeatureOn, same two-layer
+    // (websiteMaster AND companyMaster) convention as every other Free Cash
+    // flag here. companySettings.returnFreeCashOnOrderReturn is the vendor's
+    // own on/off choice underneath this admin-level gate.
+    isFreeCashRefundFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    // End of Free Cash
+
 }, {
   timestamps: true
 });

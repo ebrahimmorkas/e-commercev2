@@ -90,7 +90,9 @@ const markReturnRefunded = async (req, res) => {
     const vendorId = req.vendorId;
     const { id } = req.params;
     try {
-        const result = await orderReturnService.markReturnRefunded(vendorId, req.user._id, id);
+        const result = await orderReturnService.markReturnRefunded(
+            vendorId, req.user._id, id, req.companyMasterData, req.websiteMasterData, req.companySettingsData
+        );
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }

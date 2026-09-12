@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const cartController = require('../controllers/cartController');
 const validate = require('../middlewares/validate');
-const { addToCartSchema, updateCartItemSchema, removeCartItemSchema, applyDiscountsSchema } = require('../middlewares/validations/cartValidations');
+const { addToCartSchema, updateCartItemSchema, removeCartItemSchema, applyDiscountsSchema, applyFreeCashSchema } = require('../middlewares/validations/cartValidations');
 const vendorDetection = require('../middlewares/vendorDetection');
 const ensureVendorDataCached = require('../middlewares/ensureVendorDataCached');
 const authenticate = require('../middlewares/authenticate');
@@ -25,6 +25,12 @@ router.delete('/remove-cart-item', ...cartAccess, validate(removeCartItemSchema,
 router.post('/apply-discounts', ...cartAccess, validate(applyDiscountsSchema, 'body'), cartController.applyDiscounts);
 
 router.delete('/remove-discounts', ...cartAccess, cartController.removeDiscounts);
+
+router.get('/eligible-free-cash', ...cartAccess, cartController.getEligibleFreeCash);
+
+router.post('/apply-free-cash', ...cartAccess, validate(applyFreeCashSchema, 'body'), cartController.applyFreeCash);
+
+router.delete('/remove-free-cash', ...cartAccess, cartController.removeFreeCash);
 
 router.post('/checkout-cart', ...cartAccess, cartController.checkoutCart);
 

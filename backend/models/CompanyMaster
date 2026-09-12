@@ -446,8 +446,71 @@ const companyMasterSchema = mongoose.Schema({
         default: 0,
         min: 0,
         max: 100
-    }
+    },
     // End of Commission
+
+    // Free Cash
+    isFreeCashFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    // Lifetime cap on how many FreeCash campaigns this vendor may create.
+    // null = no limit. Counts FreeCash documents created, same convention as
+    // numberOfDiscountsPerMonth below (which counts Discount documents).
+    numberOfFreeCashToGiveAllowed: {
+        type: Number,
+        default: null,
+        min: 0
+    },
+    // Same as above but resets every calendar month. null = no monthly cap.
+    numberOfFreeCashToGiveAllowedPerMonth: {
+        type: Number,
+        default: null,
+        min: 0
+    },
+    isFreeCashGivingToSpecificUsersAllowed: {
+        type: Boolean,
+        default: false
+    },
+    isFreeCashGivingToGroupsAllowed: {
+        type: Boolean,
+        default: false
+    },
+    isFreeCashGivingToSpecificCategoryAllowed: {
+        type: Boolean,
+        default: false
+    },
+    isFreeCashGivingToNestedSubCategoryAllowed: {
+        type: Boolean,
+        default: false
+    },
+    isRevokingFreeCashFunctionalityAllowed: {
+        type: Boolean,
+        default: false
+    },
+    isRevokingAllUsersFreeCashFunctionalityAllowed: {
+        type: Boolean,
+        default: false
+    },
+    isFreeCashGivingToAllUsersFunctionalityAllowed: {
+        type: Boolean,
+        default: false
+    },
+    // Gates the Free-Cash-refund-on-order-return behavior specifically -
+    // see the matching field in WebsiteMaster.js.
+    isFreeCashRefundFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    // Restricts which giveFreeCashTo options (GIVE_FREE_CASH_TO_CONFIG keys in
+    // freeCashConstants.js) this vendor may use. Empty array = all allowed,
+    // same convention as allowedConstantsOfGiveDiscountTo above.
+    freeCashOptions: {
+        type: [String],
+        enum: ['ALL_USERS', 'SPECIFIC_USERS', 'ONLY_MAIN_CATEGORY', 'MAIN_CATEGORY_AND_SUB_CATEGORY', 'GROUPS'],
+        default: []
+    }
+    // End of Free Cash
 }, {
   timestamps: true
 });

@@ -57,7 +57,24 @@ const companySettingsFieldsSchema = {
     senderEmail: Joi.string().trim().lowercase().email().allow('', null).label('Sender email'),
     ccList: Joi.array().items(Joi.string().trim().lowercase().email()).single().label('CC list'),
     bccList: Joi.array().items(Joi.string().trim().lowercase().email()).single().label('BCC list'),
-    isPaymentGatewayFeatureOn: Joi.boolean().label('Online payment enabled')
+    isPaymentGatewayFeatureOn: Joi.boolean().label('Online payment enabled'),
+    isFreeCashFeatureOn: Joi.boolean().label('Show Free Cash'),
+    isFreeCashStackingAllowed: Joi.boolean().label('Allow Free Cash stacking'),
+    isMultipleFreeCashUsageAllowed: Joi.boolean().label('Allow multiple Free Cash usage per order'),
+    isStoringRemainingFreeCashAmountAllowed: Joi.boolean().label('Store remaining Free Cash amount for reuse'),
+    returnFreeCashOnOrderReturn: Joi.boolean().label('Refund Free Cash on order return'),
+    refundWholeFreeCashAmount: Joi.boolean().label('Refund the whole Free Cash amount used'),
+    // Only meaningful (and only ever stored) when returnFreeCashOnOrderReturn
+    // is true and refundWholeFreeCashAmount is false - companySettingsService
+    // normalizes it back to null server-side whenever either condition
+    // doesn't hold. Rejected here only when it contradicts
+    // refundWholeFreeCashAmount within the SAME request.
+    amountToRefund: Joi.number().min(0).max(100).allow(null)
+        .when('refundWholeFreeCashAmount', {
+            is: true,
+            then: Joi.valid(null).messages({ 'any.only': 'amountToRefund is not applicable when refundWholeFreeCashAmount is true.' })
+        })
+        .label('Free Cash refund percentage')
 };
 
 const createCompanySettingsSchema = Joi.object({
