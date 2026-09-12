@@ -1,7 +1,7 @@
 const authService = require('../services/authService');
 const { sendSuccess, sendError } = require('../utils/common');
 const { logInfo, logException } = require('../utils/logger');
-const { accessTokenCookieOptions, refreshTokenCookieOptions, guestCartCookieOptions } = require('../utils/cookieOptions');
+const { accessTokenCookieOptions, refreshTokenCookieOptions, guestCartCookieOptions, knownUserIdCookieOptions } = require('../utils/cookieOptions');
 
 const getDeviceMeta = (req) => ({
     userAgent: req.headers['user-agent'] || 'unknown',
@@ -96,6 +96,15 @@ const login = async (req, res) => {
         const { accessToken, user } = loginUser.meta;
 
                 res.cookie('refreshToken', loginUser.meta.refreshToken, refreshTokenCookieOptions);
+
+        // Shoppers only - re-set on every login (never just once) so it
+        // stays valid indefinitely and always points at the current account,
+        // even across password changes/relogins. Admins never get this
+        // cookie - it exists only to tag a later not-logged-in visit as
+        // "possibly this known customer" for the abandoned-cart admin view.
+        if (user.role === 'user') {
+            res.cookie('knownUserId', user._id.toString(), knownUserIdCookieOptions);
+        }
 
         if (guestCartId && loginUser.meta.cartMerged) {
             res.clearCookie('guestCartId', guestCartCookieOptions);

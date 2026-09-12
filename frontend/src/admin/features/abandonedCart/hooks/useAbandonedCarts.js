@@ -48,10 +48,14 @@ export const useAbandonedCarts = () => {
       }
 
       if (type === NOTIFICATION_TYPE_RECOVERED) {
-        setCarts((prev) => prev.filter((cart) => cart._id !== data.cartId));
+        // A recovered cart might have been folded into a combined row
+        // (source: COMBINED) alongside another still-abandoned cart for the
+        // same customer - refetching (rather than patching in place) is the
+        // simplest way to keep that combined math correct in every case.
+        fetchCarts();
       }
     });
-  }, [subscribe]);
+  }, [subscribe, fetchCarts]);
 
   return { carts, loading, error, refetch: fetchCarts };
 };

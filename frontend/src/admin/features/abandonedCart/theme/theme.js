@@ -18,6 +18,11 @@ const theme = {
   },
   badge: {
     itemCount: 'blue',
+    source: {
+      LOGGED_IN: 'green',
+      GUEST_KNOWN: 'yellow',
+      COMBINED: 'purple',
+    },
   },
 };
 

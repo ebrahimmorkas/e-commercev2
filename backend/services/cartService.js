@@ -55,13 +55,15 @@ const isSizeExcludedForLocation = (size, locationContext = {}) => {
     return { excluded: false };
 };
 
-const findOrCreateActiveCart = async (vendorId, cartOwner) => {
+const findOrCreateActiveCart = async (vendorId, cartOwner, possibleUserId = null) => {
     const filter = { vendorId, status: 'A', ...ownerFilter(cartOwner) };
     let cart = await Cart.findOne(filter);
     if (!cart) {
         cart = await Cart.create({
             vendorId,
             ...ownerFilter(cartOwner),
+            // Only ever meaningful for a guest cart - see Cart.possibleUserId.
+            possibleUserId: cartOwner.type === 'guest' ? possibleUserId : null,
             products: []
         });
     }
@@ -110,7 +112,7 @@ const resolveActiveProductLine = async (vendorId, productId, variantId, sizeId) 
 |--------------------------------------------------------------------------
 */
 
-const addProductToCart = async (vendorId, cartOwner, locationContext, companyMasterData, websiteMasterData, companySettingsData, payload) => {
+const addProductToCart = async (vendorId, cartOwner, locationContext, companyMasterData, websiteMasterData, companySettingsData, payload, possibleUserId = null) => {
     try {
         const featureCheck = await common.checkFeatureOnOrOff(vendorId, websiteMasterData, companyMasterData, 'isCartFeatureOn', 'isCartFeatureOn');
         if (!featureCheck.isSuccess) {
@@ -132,7 +134,15 @@ const addProductToCart = async (vendorId, cartOwner, locationContext, companyMas
             return common.returnResult(false, 403, `This product is not available for delivery in ${place}.`);
         }
 
-        const cart = await findOrCreateActiveCart(vendorId, cartOwner);
+        const cart = await findOrCreateActiveCart(vendorId, cartOwner, possibleUserId);
+
+        // Refresh the hint on every add, not just at cart creation - covers
+        // a cart that already existed before this login (or before this
+        // feature shipped), and keeps it current if a different known user
+        // ever shares this browser.
+        if (cartOwner.type === 'guest' && possibleUserId) {
+            cart.possibleUserId = possibleUserId;
+        }
 
         const { sizeEntry: existingSizeEntry } = locateCartLineItem(cart, productId, variantId, sizeId);
         const requestedTotalQty = (existingSizeEntry ? existingSizeEntry.quantity : 0) + quantity;
@@ -188,9 +198,11 @@ const addProductToCart = async (vendorId, cartOwner, locationContext, companyMas
             }
         }
 
-        // Only logged-in users' carts are tracked for abandonment in Pass 1 -
-        // a guest cart never has cartOwner.type === 'user'.
-        const wasAbandoned = cartOwner.type === 'user' ? abandonedCartService.markCartActivity(cart) : false;
+        // Stamped for both owner types - Pass 2 also tracks abandonment for
+        // guest carts that carry a possibleUserId hint (see
+        // abandonedCartService.js's scanner for where that's actually
+        // decided; this just keeps the activity clock current either way).
+        const wasAbandoned = abandonedCartService.markCartActivity(cart);
 
         await cart.save();
         await invalidateCartTotalCache(vendorId, cartOwner);

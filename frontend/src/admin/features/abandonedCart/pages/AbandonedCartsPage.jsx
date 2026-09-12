@@ -29,6 +29,18 @@ const formatTimeAgo = (value) => {
   return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
 };
 
+const SOURCE_LABELS = {
+  LOGGED_IN: 'Confirmed',
+  GUEST_KNOWN: 'Possible',
+  COMBINED: 'Confirmed + guest',
+};
+
+const SOURCE_DESCRIPTIONS = {
+  LOGGED_IN: 'This customer was logged in on this cart.',
+  GUEST_KNOWN: "Not logged in on this cart - identified from a previous login on the same browser, so this contact info is a best guess, not certain.",
+  COMBINED: 'This customer has both a logged-in cart and a not-logged-in cart abandoned at once - shown here as one, with items from both.',
+};
+
 const AbandonedCartsPage = () => {
   const { carts, loading, error } = useAbandonedCarts();
 
@@ -45,6 +57,15 @@ const AbandonedCartsPage = () => {
         ),
       },
       { key: 'userPhone', label: 'Phone', render: (row) => row.userPhone || '—' },
+      {
+        key: 'source',
+        label: 'Confidence',
+        render: (row) => (
+          <Badge variant={theme.badge.source[row.source] || 'gray'} size="sm" title={SOURCE_DESCRIPTIONS[row.source]}>
+            {SOURCE_LABELS[row.source] || row.source}
+          </Badge>
+        ),
+      },
       {
         key: 'itemCount',
         label: 'Items',

@@ -36,7 +36,8 @@ const addToCart = async (req, res) => {
             req.companyMasterData,
             req.websiteMasterData,
             req.companySettingsData,
-            req.body
+            req.body,
+            req.possibleUserId || null
         );
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);

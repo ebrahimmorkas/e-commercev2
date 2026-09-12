@@ -299,6 +299,22 @@ const cartSchema = new mongoose.Schema(
             index: true
         },
 
+        // Only ever set on a GUEST cart (userId is null). A soft, best-effort
+        // hint - "the visitor on this browser previously logged in as this
+        // user" - read from the signed knownUserId cookie (see
+        // resolveCartOwner.js) and stamped here so the abandoned-cart admin
+        // view can show a name/email/phone for a not-currently-logged-in
+        // visitor instead of "Anonymous". NEVER used to authenticate, merge
+        // carts, or grant any access - purely a display hint, re-verified
+        // (still exists, still active, still this vendor) at read time in
+        // abandonedCartService.js rather than trusted blindly.
+        possibleUserId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null,
+            index: true
+        },
+
         products: {
             type: [cartProductSchema],
             default: []

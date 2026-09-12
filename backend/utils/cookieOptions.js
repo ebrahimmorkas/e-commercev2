@@ -40,8 +40,23 @@ const guestCartCookieOptions = {
     path: '/'
 };
 
+// Long-lived pointer (just a userId, signed so it can't be forged) set on
+// every login for a shopper. Lets a later NOT-logged-in visit on the same
+// browser be tagged with who they probably are, purely as an abandoned-cart
+// admin display hint - never used to authenticate or to merge/modify their
+// real account/cart. See resolveCartOwner.js / abandonedCartService.js.
+const knownUserIdCookieOptions = {
+    httpOnly: true,
+    signed: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
+    maxAge: 365 * 24 * 60 * 60 * 1000, // 1 year
+    path: '/'
+};
+
 module.exports = {
     accessTokenCookieOptions,
     refreshTokenCookieOptions,
-    guestCartCookieOptions
+    guestCartCookieOptions,
+    knownUserIdCookieOptions
 };
