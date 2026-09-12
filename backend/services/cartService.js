@@ -10,6 +10,7 @@ const common = require('../utils/common');
 const logger = require('../utils/logger');
 const shippingPriceCalculationService = require('./shippingPriceCalculationService');
 const freeCashService = require('./freeCashService');
+const abandonedCartService = require('./abandonedCartService');
 
 /*
 |--------------------------------------------------------------------------
@@ -187,8 +188,16 @@ const addProductToCart = async (vendorId, cartOwner, locationContext, companyMas
             }
         }
 
+        // Only logged-in users' carts are tracked for abandonment in Pass 1 -
+        // a guest cart never has cartOwner.type === 'user'.
+        const wasAbandoned = cartOwner.type === 'user' ? abandonedCartService.markCartActivity(cart) : false;
+
         await cart.save();
         await invalidateCartTotalCache(vendorId, cartOwner);
+
+        if (wasAbandoned) {
+            abandonedCartService.notifyCartRecovered(vendorId, cart);
+        }
 
         return common.returnResult(true, 200, 'Product added to cart successfully', { cart });
     } catch (err) {

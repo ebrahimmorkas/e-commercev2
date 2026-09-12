@@ -328,8 +328,26 @@ const companySettingsSchema = new mongoose.Schema({
     default: null,
     min: 0,
     max: 100
-  }
+  },
   // End of Free Cash
+
+  // Start of Abandoned Cart
+  // Minutes of inactivity (measured from the cart's lastProductAddedAt,
+  // reset every time a product is added) after which an active cart is
+  // flagged abandoned and reflected to the admin. See abandonedCartService.js.
+  timeForAbondonedCartReflection: {
+    type: Number,
+    default: 30,
+    min: 1
+  },
+  // When true, only logged-in users' abandoned carts are shown to the admin
+  // (Pass 2 will also track guest carts - this flag decides whether those
+  // are surfaced alongside, or excluded in favor of logged-in users only).
+  abondonedCartOnlyForLoggedInUsers: {
+    type: Boolean,
+    default: true
+  }
+  // End of Abandoned Cart
 }, {
   timestamps: true
 });

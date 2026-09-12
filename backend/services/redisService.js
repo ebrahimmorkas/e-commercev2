@@ -101,6 +101,43 @@ class RedisService {
     }
   }
 
+  // Generic distributed lock (SET NX PX) - used to make a periodic background
+  // job (e.g. abandonedCartService's scanner) safe to run even if the app is
+  // ever scaled to multiple instances, so only one instance's tick actually
+  // executes at a time. When Redis is disabled, there is by definition only
+  // one process coordinating anything, so the lock is trivially "acquired".
+  async acquireLock(key, ttlSeconds) {
+    try {
+      this.validateKey(key);
+
+      if (!this.isRedisEnabled()) return true;
+
+      const client = this.getClient();
+      if (!client) return true;
+
+      const result = await client.set(key, '1', { NX: true, PX: ttlSeconds * 1000 });
+      return result !== null;
+    } catch (err) {
+      logger.logException("Redis acquireLock error", { key, err });
+      return false;
+    }
+  }
+
+  async releaseLock(key) {
+    try {
+      this.validateKey(key);
+
+      if (!this.isRedisEnabled()) return;
+
+      const client = this.getClient();
+      if (!client) return;
+
+      await client.del(key);
+    } catch (err) {
+      logger.logException("Redis releaseLock error", { key, err });
+    }
+  }
+
   async getOrSet(key, fetchFunction, ttl = DEFAULT_TTL) {
     try {
       this.validateKey(key);

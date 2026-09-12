@@ -1,9 +1,12 @@
 const express = require('express');
+const http = require('http');
 const cors = require('cors')
 const cookieParser = require('cookie-parser')
 const connectDB = require('./config/dbConfig')
 const logger = require('./utils/logger.js')
 const {connectRedis} = require('./config/redisConfig');
+const realtimeService = require('./services/realtimeService');
+const abandonedCartService = require('./services/abandonedCartService');
 require('dotenv').config();
 // Middlewares
 const vendorDetection = require('./middlewares/vendorDetection');
@@ -37,9 +40,11 @@ const emailTemplateMasterRoutes = require('./routes/emailTemplateMasterRoutes.js
 const favoriteRoutes = require('./routes/favoriteRoutes.js');
 const paymentRoutes = require('./routes/paymentRoutes.js');
 const freeCashRoutes = require('./routes/freeCashRoutes.js');
+const abandonedCartRoutes = require('./routes/abandonedCartRoutes.js');
 const redisService = require('./services/redisService');
 
 const app = express();
+const httpServer = http.createServer(app);
 
 app.use(cors({
   origin: 'true',
@@ -95,6 +100,7 @@ app.use('/api/email-templates', emailTemplateMasterRoutes);
 app.use('/api/favorites', favoriteRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/free-cash', freeCashRoutes);
+app.use('/api/abandoned-cart', abandonedCartRoutes);
 
 // Start of dummy to be removed
 app.get("/", (req, res) => {
@@ -109,8 +115,11 @@ app.get('/flush-redis', async (req, res) => {
 });
 // End of dummy to be removed
 
+realtimeService.init(httpServer);
+abandonedCartService.startAbandonedCartScanner();
+
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+httpServer.listen(PORT, () => {
   // console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
 });
 

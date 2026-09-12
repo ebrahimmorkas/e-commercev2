@@ -342,6 +342,30 @@ const cartSchema = new mongoose.Schema(
             default: []
         },
 
+        // Stamped (and reset) every time a product is added to this cart -
+        // NOT touched by quantity/discount/free-cash updates. This is the
+        // clock the abandoned-cart scanner measures a vendor's configured
+        // timeForAbondonedCartReflection against. See addProductToCart in
+        // cartService.js and abandonedCartService.js.
+        lastProductAddedAt: {
+            type: Date,
+            default: null,
+            index: true
+        },
+        // True once abandonedCartService's scanner has flagged this cart as
+        // abandoned. Reset to false (and abandonedAt to null) the moment the
+        // owning user adds another product, at which point a RECOVERED
+        // notification is pushed to the admin.
+        isAbandoned: {
+            type: Boolean,
+            default: false,
+            index: true
+        },
+        abandonedAt: {
+            type: Date,
+            default: null
+        },
+
         createdBy: {
             type: mongoose.Schema.Types.ObjectId,
             index: true

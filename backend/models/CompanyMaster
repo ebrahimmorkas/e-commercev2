@@ -449,6 +449,13 @@ const companyMasterSchema = mongoose.Schema({
     },
     // End of Commission
 
+    // Abandoned Cart
+    isAbondonedCartFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    // End of Abandoned Cart
+
     // Free Cash
     isFreeCashFeatureOn: {
         type: Boolean,

@@ -222,6 +222,13 @@ const websiteMasterSchema = mongoose.Schema({
     },
     // End of Payment
 
+    // Abandoned Cart
+    isAbondonedCartFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    // End of Abandoned Cart
+
     // Free Cash
     isFreeCashFeatureOn: {
         type: Boolean,

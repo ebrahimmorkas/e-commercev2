@@ -17,6 +17,7 @@ const redisKeys = {
   taxes: (vendorId) => `taxes:${vendorId}`,
   locationTaxBundle: (vendorId) => `location-tax-bundle:${vendorId}`,
   cartTotal: (vendorId, ownerKey) => `cart-total:${vendorId}:${ownerKey}`,
+  abandonedCartScanLock: () => `abandoned-cart-scan-lock`,
 };
 
 module.exports = redisKeys;

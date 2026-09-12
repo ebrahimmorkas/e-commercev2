@@ -14,6 +14,13 @@ export default defineConfig({
         target: 'http://localhost:5000',
         changeOrigin: true,
       },
+      // socket.io's own path, proxied the same way as /api and with
+      // websocket upgrade support - see src/utils/socketClient.js.
+      '/socket.io': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+        ws: true,
+      },
     },
   },
 })

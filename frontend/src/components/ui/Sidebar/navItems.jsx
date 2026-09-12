@@ -9,6 +9,7 @@ import {
   BannerIcon,
   AnnouncementIcon,
   CompanySettingsIcon,
+  AbandonedCartIcon,
 } from './icons';
 
 export const DEFAULT_NAV_ITEMS = [
@@ -21,5 +22,6 @@ export const DEFAULT_NAV_ITEMS = [
   { key: 'discounts', label: 'Discount', icon: DiscountIcon },
   { key: 'banners', label: 'Banner', icon: BannerIcon },
   { key: 'announcements', label: 'Announcement', icon: AnnouncementIcon },
+  { key: 'abandonedCarts', label: 'Abandoned Carts', icon: AbandonedCartIcon },
   { key: 'companySettings', label: 'Company Settings', icon: CompanySettingsIcon },
 ];

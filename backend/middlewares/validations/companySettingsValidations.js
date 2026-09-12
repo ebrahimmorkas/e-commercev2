@@ -74,7 +74,9 @@ const companySettingsFieldsSchema = {
             is: true,
             then: Joi.valid(null).messages({ 'any.only': 'amountToRefund is not applicable when refundWholeFreeCashAmount is true.' })
         })
-        .label('Free Cash refund percentage')
+        .label('Free Cash refund percentage'),
+    timeForAbondonedCartReflection: Joi.number().integer().min(1).max(10080).label('Abandoned cart reflection time (minutes)'),
+    abondonedCartOnlyForLoggedInUsers: Joi.boolean().label('Show abandoned carts for logged-in users only')
 };
 
 const createCompanySettingsSchema = Joi.object({
