@@ -268,6 +268,68 @@ const companySettingsSchema = new mongoose.Schema({
     default: true
   },
   // End of Payment
+
+  // Start of Free Cash
+  // The vendor's own show/hide toggle for Free Cash on the storefront - sits
+  // BELOW WebsiteMaster.isFreeCashFeatureOn + CompanyMaster.isFreeCashFeatureOn
+  // (the admin-level entitlement gate). Same dual-meaning naming convention as
+  // isPaymentGatewayFeatureOn above.
+  isFreeCashFeatureOn: {
+    type: Boolean,
+    default: false
+  },
+  // When true, a new Free Cash issued to a user does NOT expire any
+  // still-active Free Cash already held by that user - all of them remain
+  // usable/visible together. When false, issuing a new one immediately
+  // expires every other active Free Cash that user already holds for this
+  // vendor (isCashExpired set true on those UserFreeCash records), regardless
+  // of which FreeCash campaign they came from.
+  isFreeCashStackingAllowed: {
+    type: Boolean,
+    default: false
+  },
+  // Only meaningful when isFreeCashStackingAllowed is true - whether a
+  // customer can apply more than one distinct UserFreeCash grant on the same
+  // order at once.
+  isMultipleFreeCashUsageAllowed: {
+    type: Boolean,
+    default: false
+  },
+  // When true, a UserFreeCash grant's leftover remainingAmount stays usable
+  // across multiple separate orders (tracked via cashUsageHistory). When
+  // false, the first time a grant is used at all, any leftover balance is
+  // forfeited (remainingAmount zeroed, isCashUsed set true) instead of being
+  // carried forward.
+  isStoringRemainingFreeCashAmountAllowed: {
+    type: Boolean,
+    default: false
+  },
+  // Whether returning an order gives the Free Cash that was used on it back
+  // to the user (as remainingAmount on the original UserFreeCash grant).
+  // refundWholeFreeCashAmount / amountToRefund are only meaningful when
+  // this is true.
+  returnFreeCashOnOrderReturn: {
+    type: Boolean,
+    default: false
+  },
+  // true = refund 100% of the Free Cash amount that was used on the
+  // returned order/items (amountToRefund is then not applicable). false =
+  // refund only a partial percentage, given by amountToRefund. Only
+  // meaningful when returnFreeCashOnOrderReturn is true.
+  refundWholeFreeCashAmount: {
+    type: Boolean,
+    default: false
+  },
+  // Percentage (0-100) of the used Free Cash amount to refund on a return.
+  // Only applicable when returnFreeCashOnOrderReturn is true AND
+  // refundWholeFreeCashAmount is false - null otherwise.
+  amountToRefund: {
+    type: Number,
+    default: null,
+    min: 0,
+    max: 100
+  }
+  // End of Free Cash
 }, {
   timestamps: true
 });

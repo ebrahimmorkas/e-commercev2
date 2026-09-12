@@ -282,6 +282,8 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
 
         await order.save();
 
+        await cartService.consumeFreeCashForOrder(vendorId, cart.freeCash, order._id, userId, companySettingsData);
+
         await commissionService.recordCommissionForOrder(order, companyMasterData);
 
         // Locks the cart out of every existing cart route (all of which

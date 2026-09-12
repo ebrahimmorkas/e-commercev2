@@ -276,6 +276,13 @@ const markExchangeReplacementShipped = async (vendorId, adminUserId, exchangeId)
     }
 };
 
+// NOTE: deliberately does NOT refund any Free Cash used on the original
+// order, even when priceDifference is negative (exchanged into a cheaper
+// item) - unlike orderReturnService.markReturnRefunded, which does. The
+// product never leaves the order on an exchange (it's swapped, not
+// returned), so the Free Cash already discounted a line item that's still
+// present. Confirmed decision - keep this simple, do not add proportional
+// Free Cash refund logic here.
 const markExchangeCompleted = async (vendorId, adminUserId, exchangeId) => {
     try {
         const orderExchange = await OrderExchange.findOne({ _id: exchangeId, vendorId });

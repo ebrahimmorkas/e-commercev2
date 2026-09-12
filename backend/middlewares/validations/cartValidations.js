@@ -41,9 +41,14 @@ const applyDiscountsSchema = Joi.object({
     })
     .messages({ 'discounts.empty': 'Select at least one discount or enter a coupon code.' });
 
+const applyFreeCashSchema = Joi.object({
+    freeCashIds: Joi.array().items(objectId()).min(1).required().label('Free Cash IDs')
+});
+
 module.exports = {
     addToCartSchema,
     updateCartItemSchema,
     removeCartItemSchema,
-    applyDiscountsSchema
+    applyDiscountsSchema,
+    applyFreeCashSchema
 };

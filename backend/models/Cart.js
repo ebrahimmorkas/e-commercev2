@@ -158,6 +158,52 @@ const cartDiscountSchema = new mongoose.Schema(
     }
 );
 
+const cartFreeCashSchema = new mongoose.Schema(
+    {
+        freeCashId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "FreeCash",
+            required: true
+        },
+
+        // The specific per-user grant this application is drawing down -
+        // needed at checkout/order time to re-validate balance and at order
+        // creation to record usage against the right UserFreeCash document.
+        userFreeCashId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "UserFreeCash",
+            required: true
+        },
+
+        // Snapshot of Free Cash name at the time it is applied
+        freeCashName: {
+            type: String,
+            required: true,
+            trim: true,
+            minlength: 1,
+            maxlength: 200
+        },
+
+        // Snapshot of FreeCash.canBeUsedWithOtherDiscounts at apply time -
+        // needed to gate discount application without re-querying FreeCash
+        // on every applyDiscountsToCart call.
+        canBeUsedWithOtherDiscounts: {
+            type: Boolean,
+            default: false
+        },
+
+        // Actual amount deducted from the cart by this grant
+        amountApplied: {
+            type: Number,
+            required: true,
+            min: 0
+        }
+    },
+    {
+        _id: false
+    }
+);
+
 const cartTaxSchema = new mongoose.Schema(
     {
         taxId: {
@@ -263,12 +309,10 @@ const cartSchema = new mongoose.Schema(
             default: []
         },
 
-        freeCashIds: [
-            {
-                type: mongoose.Schema.Types.ObjectId,
-                ref: "FreeCash"
-            }
-        ],
+        freeCash: {
+            type: [cartFreeCashSchema],
+            default: []
+        },
 
         taxes: {
             type: [cartTaxSchema],

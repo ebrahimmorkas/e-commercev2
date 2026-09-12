@@ -120,6 +120,52 @@ const removeDiscounts = async (req, res) => {
     }
 };
 
+const applyFreeCash = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        const userId = req.user ? req.user._id : null;
+        const result = await cartService.applyFreeCashToCart(
+            vendorId, req.cartOwner, userId, req.companyMasterData, req.websiteMasterData, req.companySettingsData, req.body
+        );
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message, result.meta);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('cartController: applyFreeCash - Exception while applying Free Cash to cart', { vendorId, error });
+    }
+};
+
+const removeFreeCash = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        const userId = req.user ? req.user._id : null;
+        const result = await cartService.removeFreeCashFromCart(vendorId, req.cartOwner, userId);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('cartController: removeFreeCash - Exception while removing Free Cash from cart', { vendorId, error });
+    }
+};
+
+const getEligibleFreeCash = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        const userId = req.user ? req.user._id : null;
+        const result = await cartService.listEligibleFreeCashForCart(
+            vendorId, req.cartOwner, userId, req.companyMasterData, req.websiteMasterData, req.companySettingsData
+        );
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta.data);
+    } catch (error) {
+        logger.logException('cartController: getEligibleFreeCash - Exception while fetching eligible Free Cash', { vendorId, error });
+    }
+};
+
 const checkoutCart = async (req, res) => {
     const vendorId = req.vendorId;
     try {
@@ -152,5 +198,8 @@ module.exports = {
     getCart,
     applyDiscounts,
     removeDiscounts,
+    applyFreeCash,
+    removeFreeCash,
+    getEligibleFreeCash,
     checkoutCart
 };
