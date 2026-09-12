@@ -1,16 +1,7 @@
 /**
- * Brand-partner and other static Navbar panel data, modeled on the
- * authorized-partner badges shown on harmanbeads.com. "Shop" (categories) is
- * dynamic - see features/categories - and isn't listed here.
+ * Static Navbar panel data. "Shop" (categories) and "Brands" are dynamic -
+ * see features/categories and features/brands - and aren't listed here.
  */
-export const BRANDS = [
-  { name: 'Preciosa', tag: 'Authorized Partner' },
-  { name: 'Swarovski', tag: 'Authorized Distribution Partner' },
-  { name: 'AURORA', tag: 'Certified Authorized Partner' },
-  { name: 'STAR BRIGHT Crystals', tag: 'Exclusive Distributor' },
-  { name: 'Traditional Czech Beads', tag: 'Authorized Distributor' },
-];
-
 export const COLORS = [
   { name: 'Crystal Clear', swatch: '#EAF6FB' },
   { name: 'Crystal AB', swatch: 'linear-gradient(135deg, #d8d0e8, #f3d9e8, #cfe8e0)' },

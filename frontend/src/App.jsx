@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import AnnouncementsPage from './admin/features/anoucements/pages/AnnouncementsPage';
 import CategoriesPage from './admin/masters/category/pages/CategoriesPage';
+import BrandsPage from './admin/masters/brand/pages/BrandsPage';
 import ProductsPage from './admin/features/products/pages/ProductsPage';
 import DiscountsPage from './admin/features/discounts/pages/DiscountsPage';
 import OrdersPage from './admin/features/orders/pages/OrdersPage';
@@ -40,6 +41,8 @@ function App() {
           <AnnouncementsPage />
         ) : activePage === 'categories' ? (
           <CategoriesPage />
+        ) : activePage === 'brands' ? (
+          <BrandsPage />
         ) : activePage === 'products' ? (
           <ProductsPage />
         ) : activePage === 'discounts' ? (

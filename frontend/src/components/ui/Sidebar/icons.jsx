@@ -72,6 +72,13 @@ export const CompanySettingsIcon = (props) => (
   </svg>
 );
 
+export const BrandIcon = (props) => (
+  <svg {...base} {...props}>
+    <path d="M20.25 7.5V6a2.25 2.25 0 00-2.25-2.25H6A2.25 2.25 0 003.75 6v1.5m16.5 0v10.5A2.25 2.25 0 0118 20.25H6a2.25 2.25 0 01-2.25-2.25V7.5m16.5 0H3.75" />
+    <path d="M8.25 12h7.5M8.25 15.75h4.5" />
+  </svg>
+);
+
 export const MenuIcon = (props) => (
   <svg {...base} {...props}>
     <path d="M4 6h16M4 12h16M4 18h16" />

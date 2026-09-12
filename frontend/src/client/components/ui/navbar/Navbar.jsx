@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import theme from './theme/theme';
 import { ChevronDownIcon, MenuIcon, CloseIcon } from './icons';
-import { BRANDS, COLORS, SUPPORT_LINKS } from './data';
+import { COLORS, SUPPORT_LINKS } from './data';
 import { useStorefrontCategories } from '../../../features/categories/hooks/useStorefrontCategories';
+import { useStorefrontBrands } from '../../../features/brands/hooks/useStorefrontBrands';
 
 const NAV_ITEMS = [
   { key: 'home', label: 'Home' },
@@ -106,19 +107,36 @@ const CategoryPanel = ({ categoryTree = [], loading }) => {
   );
 };
 
-const BrandsPanel = () => (
-  <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-    {BRANDS.map((brand) => (
-      <div
-        key={brand.name}
-        className={`rounded-lg border px-4 py-4 text-center ${theme.brandCard.background} ${theme.brandCard.border}`}
-      >
-        <p className={`text-sm font-bold ${theme.brandCard.name}`}>{brand.name}</p>
-        <p className={`mt-1 text-[11px] font-medium uppercase tracking-wide ${theme.brandCard.tag}`}>{brand.tag}</p>
-      </div>
+const BrandsPanelSkeleton = () => (
+  <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 animate-pulse" aria-hidden="true">
+    {Array.from({ length: 5 }).map((_, i) => (
+      <div key={i} className="h-16 rounded-lg bg-slate-100" />
     ))}
   </div>
 );
+
+// Columns are built from the live Brand Master list (see features/brands)
+// rather than a hardcoded partner roster.
+const BrandsPanel = ({ brands = [], loading }) => {
+  if (loading) return <BrandsPanelSkeleton />;
+
+  if (brands.length === 0) {
+    return <p className={`text-sm ${theme.panel.item}`}>No brands available yet.</p>;
+  }
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+      {brands.map((brand) => (
+        <div
+          key={brand._id}
+          className={`rounded-lg border px-4 py-4 text-center ${theme.brandCard.background} ${theme.brandCard.border}`}
+        >
+          <p className={`text-sm font-bold ${theme.brandCard.name}`}>{brand.brandName}</p>
+        </div>
+      ))}
+    </div>
+  );
+};
 
 const ColorsPanel = () => (
   <div className="grid grid-cols-3 sm:grid-cols-5 gap-x-4 gap-y-6">
@@ -165,6 +183,9 @@ const CLOSE_DELAY_MS = 150;
 const Navbar = () => {
   const { categoryTree, loading: categoriesLoading } = useStorefrontCategories();
   const categoryPanelProps = { categoryTree, loading: categoriesLoading };
+
+  const { brands, loading: brandsLoading } = useStorefrontBrands();
+  const brandPanelProps = { brands, loading: brandsLoading };
 
   const [openKey, setOpenKey] = useState(null);
   const closeTimer = useRef(null);
@@ -227,6 +248,12 @@ const Navbar = () => {
 
   const Panel = openKey ? PANELS[openKey] : null;
 
+  const getPanelProps = (key) => {
+    if (key === 'category') return categoryPanelProps;
+    if (key === 'brands') return brandPanelProps;
+    return {};
+  };
+
   return (
     <nav className={`relative border-b ${theme.bar.background} ${theme.bar.border}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
@@ -280,7 +307,7 @@ const Navbar = () => {
           onMouseLeave={scheduleClose}
         >
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-            <Panel {...(openKey === 'category' ? categoryPanelProps : {})} />
+            <Panel {...getPanelProps(openKey)} />
           </div>
         </div>
       )}
@@ -339,7 +366,7 @@ const Navbar = () => {
                   </button>
                   {isExpanded && (
                     <div className="px-3 pb-4">
-                      <Content {...(item.key === 'category' ? categoryPanelProps : {})} />
+                      <Content {...getPanelProps(item.key)} />
                     </div>
                   )}
                 </div>
