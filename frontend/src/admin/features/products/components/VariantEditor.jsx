@@ -37,6 +37,8 @@ const VariantEditor = ({
   sizeOptions,
   getSizeMasterById,
   unitOptions,
+  weightOptions,
+  brandOptions,
   countryOptions,
   stateOptions,
   cityOptions,
@@ -154,6 +156,8 @@ const VariantEditor = ({
                 sizeOptions={sizeOptions}
                 getSizeMasterById={getSizeMasterById}
                 unitOptions={unitOptions}
+                weightOptions={weightOptions}
+                brandOptions={brandOptions}
                 countryOptions={countryOptions}
                 stateOptions={stateOptions}
                 cityOptions={cityOptions}

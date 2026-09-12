@@ -12,6 +12,8 @@ export const useProductLookups = () => {
   const [categories, setCategories] = useState([]);
   const [sizes, setSizes] = useState([]);
   const [units, setUnits] = useState([]);
+  const [weights, setWeights] = useState([]);
+  const [brands, setBrands] = useState([]);
   const [taxBundle, setTaxBundle] = useState({ countries: [], states: [], cities: [], taxes: [] });
   const [companySettings, setCompanySettings] = useState(null);
   const [companyMaster, setCompanyMaster] = useState(null);
@@ -30,15 +32,19 @@ export const useProductLookups = () => {
       lookupApi.getAdminCategories(),
       lookupApi.getSizes(),
       lookupApi.getUnits(),
+      lookupApi.getWeights(),
+      lookupApi.getAdminBrands(),
       lookupApi.getLocationTaxBundle(),
       lookupApi.getCompanySettings(),
       lookupApi.getCompanyMasterData(),
     ]);
-    const [categoriesRes, sizesRes, unitsRes, bundleRes, settingsRes, masterRes] = results;
+    const [categoriesRes, sizesRes, unitsRes, weightsRes, brandsRes, bundleRes, settingsRes, masterRes] = results;
 
     setCategories(categoriesRes.status === 'fulfilled' && Array.isArray(categoriesRes.value) ? categoriesRes.value : []);
     setSizes(sizesRes.status === 'fulfilled' && Array.isArray(sizesRes.value) ? sizesRes.value : []);
     setUnits(unitsRes.status === 'fulfilled' && Array.isArray(unitsRes.value) ? unitsRes.value : []);
+    setWeights(weightsRes.status === 'fulfilled' && Array.isArray(weightsRes.value) ? weightsRes.value : []);
+    setBrands(brandsRes.status === 'fulfilled' && Array.isArray(brandsRes.value) ? brandsRes.value : []);
     setTaxBundle(bundleRes.status === 'fulfilled' && bundleRes.value ? bundleRes.value : { countries: [], states: [], cities: [], taxes: [] });
     setCompanySettings(settingsRes.status === 'fulfilled' ? settingsRes.value || null : null);
     setCompanyMaster(masterRes.status === 'fulfilled' ? masterRes.value || null : null);
@@ -76,6 +82,16 @@ export const useProductLookups = () => {
   const getSizeMasterById = useCallback((sizeId) => sizes.find((s) => String(s._id) === String(sizeId)) || null, [sizes]);
 
   const unitOptions = useMemo(() => units.map((u) => ({ value: String(u._id), label: u.name })), [units]);
+
+  const weightOptions = useMemo(
+    () => weights.map((w) => ({ value: String(w._id), label: `${w.weightName} (${w.symbol})` })),
+    [weights]
+  );
+
+  const brandOptions = useMemo(
+    () => brands.filter((b) => b.status === 'A').map((b) => ({ value: String(b._id), label: b.brandName })),
+    [brands]
+  );
 
   const taxOptions = useMemo(() => {
     const options = [];
@@ -130,6 +146,8 @@ export const useProductLookups = () => {
     sizeOptions,
     getSizeMasterById,
     unitOptions,
+    weightOptions,
+    brandOptions,
     taxOptions,
     countryOptions,
     stateOptions,

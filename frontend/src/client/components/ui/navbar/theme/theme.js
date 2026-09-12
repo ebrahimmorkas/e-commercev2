@@ -23,10 +23,6 @@ const theme = {
     name: 'text-slate-900',
     tag: 'text-amber-700',
   },
-  colorSwatch: {
-    ring: 'ring-slate-200',
-    label: 'text-slate-600',
-  },
   drawer: {
     overlay: 'bg-slate-900/60',
     background: 'bg-white',

@@ -22,6 +22,18 @@ const path = require('path');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
 
+// Normalizes a size's `image` for reuse in a freshly-built plain object
+// (e.g. carrying it forward across an update, see updateProduct below).
+// A live Mongoose document's `.image` getter, when the stored value is
+// absent (e.g. after a prior removal), returns an internal single-nested-
+// subdocument wrapper whose plain value is null - passing that wrapper (or
+// a literal null) into `new DocumentArray(...)` while reconstructing the
+// parent `sizes` array throws "Cast to Object failed for value null",
+// because subdocument construction (unlike a plain assignment on an
+// already-built document) doesn't accept null. Returning `undefined`
+// instead leaves the path genuinely unset, which construction handles fine.
+const toPlainImage = (image) => (image && image.url ? { url: image.url, imageAssetId: image.imageAssetId } : undefined);
+
 const isZipFile = (file) => {
     const ext = (file.originalname.split('.').pop() || '').toLowerCase();
     return ext === 'zip' || file.mimetype === 'application/zip' || file.mimetype === 'application/x-zip-compressed';
@@ -2111,7 +2123,7 @@ const updateProduct = async (vendorId, userId, companyMasterData, websiteMasterD
                     // Carried forward here as a placeholder - the image
                     // attachment loop below overwrites these ONLY if new
                     // files were actually uploaded for this position.
-                    image: existingSizeDoc ? existingSizeDoc.image : undefined,
+                    image: existingSizeDoc ? toPlainImage(existingSizeDoc.image) : undefined,
                     additionalImages: existingSizeDoc ? existingSizeDoc.additionalImages : [],
                     createdBy: existingSizeDoc ? existingSizeDoc.createdBy : userId,
                     updatedBy: userId,
@@ -2148,13 +2160,30 @@ const updateProduct = async (vendorId, userId, companyMasterData, websiteMasterD
             }
         }
 
-        // --- attach new images, matched by variant+size array position ------------
-        // Positions with no new files keep whatever was carried forward
-        // above untouched.
+        // --- attach new images / apply explicit removals, matched by variant+size array position ------------
+        // Positions with no new files and no removal flag keep whatever was
+        // carried forward above untouched. A removal flag only takes effect
+        // when no replacement file was uploaded for that same slot in this
+        // request - an uploaded file always wins over a stale removal flag.
         const groupedFiles = groupSizeFiles(files);
         for (let v = 0; v < variants.length; v++) {
             for (let s = 0; s < variants[v].sizes.length; s++) {
                 const sizeFiles = groupedFiles[v]?.[s];
+                const submittedSize = submittedVariants[v]?.sizes?.[s];
+
+                if (submittedSize?.removeImage && !sizeFiles?.image && variants[v].sizes[s].image?.imageAssetId) {
+                    await imageUploadService.deleteImage({ imageId: variants[v].sizes[s].image.imageAssetId, userId });
+                    variants[v].sizes[s].image = undefined;
+                }
+                if (submittedSize?.removeAdditionalImages && !sizeFiles?.additionalImages?.length && variants[v].sizes[s].additionalImages?.length) {
+                    for (const old of variants[v].sizes[s].additionalImages) {
+                        if (old.imageAssetId) {
+                            await imageUploadService.deleteImage({ imageId: old.imageAssetId, userId });
+                        }
+                    }
+                    variants[v].sizes[s].additionalImages = [];
+                }
+
                 if (!sizeFiles) continue;
 
                 const imagesResult = await applySizeImages({

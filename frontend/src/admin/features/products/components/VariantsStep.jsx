@@ -33,6 +33,8 @@ const VariantsStep = ({
   sizeOptions,
   getSizeMasterById,
   unitOptions,
+  weightOptions,
+  brandOptions,
   countryOptions,
   stateOptions,
   cityOptions,
@@ -105,6 +107,8 @@ const VariantsStep = ({
                 sizeOptions={sizeOptions}
                 getSizeMasterById={getSizeMasterById}
                 unitOptions={unitOptions}
+                weightOptions={weightOptions}
+                brandOptions={brandOptions}
                 countryOptions={countryOptions}
                 stateOptions={stateOptions}
                 cityOptions={cityOptions}

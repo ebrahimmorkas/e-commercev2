@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import theme from './theme/theme';
 import { ChevronDownIcon, MenuIcon, CloseIcon } from './icons';
-import { COLORS, SUPPORT_LINKS } from './data';
+import { SUPPORT_LINKS } from './data';
 import { useStorefrontCategories } from '../../../features/categories/hooks/useStorefrontCategories';
 import { useStorefrontBrands } from '../../../features/brands/hooks/useStorefrontBrands';
 
@@ -9,7 +9,6 @@ const NAV_ITEMS = [
   { key: 'home', label: 'Home' },
   { key: 'category', label: 'Shop' },
   { key: 'brands', label: 'Brands' },
-  { key: 'colors', label: 'Colors' },
   { key: 'support', label: 'Support' },
 ];
 
@@ -125,11 +124,11 @@ const BrandsPanel = ({ brands = [], loading }) => {
   }
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+    <div className="flex flex-wrap justify-center gap-4">
       {brands.map((brand) => (
         <div
           key={brand._id}
-          className={`rounded-lg border px-4 py-4 text-center ${theme.brandCard.background} ${theme.brandCard.border}`}
+          className={`w-[calc(50%-0.5rem)] sm:w-44 rounded-lg border px-4 py-4 text-center ${theme.brandCard.background} ${theme.brandCard.border}`}
         >
           <p className={`text-sm font-bold ${theme.brandCard.name}`}>{brand.brandName}</p>
         </div>
@@ -137,20 +136,6 @@ const BrandsPanel = ({ brands = [], loading }) => {
     </div>
   );
 };
-
-const ColorsPanel = () => (
-  <div className="grid grid-cols-3 sm:grid-cols-5 gap-x-4 gap-y-6">
-    {COLORS.map((color) => (
-      <a key={color.name} href="#" className="flex flex-col items-center gap-2 group">
-        <span
-          className={`w-10 h-10 rounded-full ring-2 ring-offset-2 transition-shadow duration-150 ${theme.colorSwatch.ring} group-hover:ring-amber-400`}
-          style={{ background: color.swatch }}
-        />
-        <span className={`text-xs text-center ${theme.colorSwatch.label}`}>{color.name}</span>
-      </a>
-    ))}
-  </div>
-);
 
 const SupportPanel = () => (
   <ul className="grid grid-cols-2 sm:grid-cols-3 gap-x-8 gap-y-3">
@@ -167,7 +152,6 @@ const SupportPanel = () => (
 const PANELS = {
   category: CategoryPanel,
   brands: BrandsPanel,
-  colors: ColorsPanel,
   support: SupportPanel,
 };
 

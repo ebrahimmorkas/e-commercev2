@@ -118,6 +118,8 @@ const ProductForm = ({ mode = 'add', initialDraft, lookups, products = [], onSub
           sizeOptions={lookups.sizeOptions}
           getSizeMasterById={lookups.getSizeMasterById}
           unitOptions={lookups.unitOptions}
+          weightOptions={lookups.weightOptions}
+          brandOptions={lookups.brandOptions}
           countryOptions={lookups.countryOptions}
           stateOptions={lookups.stateOptions}
           cityOptions={lookups.cityOptions}

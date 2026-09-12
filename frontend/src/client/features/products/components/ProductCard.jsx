@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import theme from '../../Home/theme/theme';
+import { useTilt3D } from '../../../components/hooks/useTilt3D';
 import QuantityStepper from './QuantityStepper';
 
 const formatPrice = (product) => {
@@ -24,7 +25,7 @@ const ProductImage = ({ src, alt }) => {
   const [broken, setBroken] = useState(false);
 
   return (
-    <div className={`aspect-square flex items-center justify-center overflow-hidden ${theme.card.imageBackground}`}>
+    <div className={`${theme.card.imageWrapperLayout} ${theme.card.imageBackground}`}>
       {src && !broken ? (
         <img
           src={src}
@@ -32,10 +33,10 @@ const ProductImage = ({ src, alt }) => {
           loading="lazy"
           decoding="async"
           onError={() => setBroken(true)}
-          className="w-full h-full object-contain"
+          className={theme.card.imageLayout}
         />
       ) : (
-        <span className={`text-xs font-bold tracking-widest uppercase ${theme.card.imageText}`}>{alt}</span>
+        <span className={`${theme.card.imageTextLayout} ${theme.card.imageText}`}>{alt}</span>
       )}
     </div>
   );
@@ -47,9 +48,9 @@ const BulkPricing = ({ bulkPricing }) => {
   const moreTiers = bulkPricing.length - 1;
 
   return (
-    <div className={`mt-2 rounded-lg px-2.5 py-1.5 ${theme.card.bulkBackground}`}>
-      <p className={`text-[10px] font-bold tracking-wide uppercase ${theme.card.bulkLabel}`}>Bulk Pricing</p>
-      <p className={`text-xs font-medium ${theme.card.bulkText}`}>
+    <div className={`${theme.card.bulkWrapperLayout} ${theme.card.bulkBackground}`}>
+      <p className={`${theme.card.bulkLabelLayout} ${theme.card.bulkLabel}`}>Bulk Pricing</p>
+      <p className={`${theme.card.bulkTextLayout} ${theme.card.bulkText}`}>
         Buy {deal.minimumQuantity}+ at ₹{deal.price}/unit
         {moreTiers > 0 && ` · ${moreTiers} more tier${moreTiers > 1 ? 's' : ''}`}
       </p>
@@ -66,37 +67,44 @@ const BulkPricing = ({ bulkPricing }) => {
  * @param {Function} [props.onDecrement]
  * @param {Function} [props.onOpen] - Called with the product when the card (outside the Add to Cart control) is clicked, to open its detail page.
  */
-const ProductCard = ({ product, quantity = 0, onAddToCart, onIncrement, onDecrement, onOpen }) => (
-  <div
-    role={onOpen ? 'button' : undefined}
-    tabIndex={onOpen ? 0 : undefined}
-    onClick={() => onOpen?.(product)}
-    onKeyDown={(e) => {
-      if (onOpen && (e.key === 'Enter' || e.key === ' ')) onOpen(product);
-    }}
-    className={`rounded-xl border overflow-hidden transition-shadow duration-150 ${onOpen ? 'cursor-pointer' : ''} ${theme.card.background} ${theme.card.border} ${theme.card.shadow}`}
-  >
-    <ProductImage src={product.image} alt={product.name || product.category} />
-    <div className="p-4">
-      <p className={`text-[11px] font-semibold tracking-wide uppercase ${theme.card.category}`}>{product.category}</p>
-      <h3 className={`mt-0.5 text-sm font-semibold ${theme.card.name}`}>{product.name}</h3>
-      <p className={`mt-1 text-base font-bold ${theme.card.price}`}>
-        {formatPrice(product)}
-        {product.unit && <span className="text-xs font-normal text-slate-400"> / {product.unit}</span>}
-      </p>
-      <BulkPricing bulkPricing={product.bulkPricing} />
-      <div className="mt-3">
-        <QuantityStepper
-          quantity={quantity}
-          inStock={product.inStock}
-          maxQuantity={product.stock}
-          onAdd={() => onAddToCart?.(product)}
-          onIncrement={onIncrement}
-          onDecrement={onDecrement}
-        />
+const ProductCard = ({ product, quantity = 0, onAddToCart, onIncrement, onDecrement, onOpen }) => {
+  const { ref, onMouseMove, onMouseLeave } = useTilt3D({ max: 6, scale: 1.02 });
+
+  return (
+    <div
+      ref={ref}
+      role={onOpen ? 'button' : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onClick={() => onOpen?.(product)}
+      onKeyDown={(e) => {
+        if (onOpen && (e.key === 'Enter' || e.key === ' ')) onOpen(product);
+      }}
+      onMouseMove={onMouseMove}
+      onMouseLeave={onMouseLeave}
+      className={`${theme.card.layout} ${onOpen ? theme.card.clickable : ''} ${theme.card.background} ${theme.card.border} ${theme.card.shadow}`}
+    >
+      <ProductImage src={product.image} alt={product.name || product.category} />
+      <div className={theme.card.body}>
+        <p className={`${theme.card.categoryLayout} ${theme.card.category}`}>{product.category}</p>
+        <h3 className={`${theme.card.nameLayout} ${theme.card.name}`}>{product.name}</h3>
+        <p className={`${theme.card.priceLayout} ${theme.card.price}`}>
+          {formatPrice(product)}
+          {product.unit && <span className={theme.card.unit}> / {product.unit}</span>}
+        </p>
+        <BulkPricing bulkPricing={product.bulkPricing} />
+        <div className={theme.card.actionsWrapper}>
+          <QuantityStepper
+            quantity={quantity}
+            inStock={product.inStock}
+            maxQuantity={product.stock}
+            onAdd={() => onAddToCart?.(product)}
+            onIncrement={onIncrement}
+            onDecrement={onDecrement}
+          />
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 export default ProductCard;

@@ -24,7 +24,7 @@ const QuantityStepper = ({
   onIncrement,
   onDecrement,
 }) => {
-  const heightClass = size === 'lg' ? 'py-2.5 px-8' : 'py-2';
+  const heightClass = theme.card.buttonHeight[size] ?? theme.card.buttonHeight.md;
   const stop = (fn) => (e) => {
     e.stopPropagation();
     fn?.();
@@ -32,11 +32,7 @@ const QuantityStepper = ({
 
   if (!inStock) {
     return (
-      <button
-        type="button"
-        disabled
-        className={`w-full ${heightClass} rounded-lg text-sm font-medium bg-slate-200 text-slate-400 cursor-not-allowed`}
-      >
+      <button type="button" disabled className={`w-full ${heightClass} ${theme.card.outOfStockLayout} ${theme.card.outOfStock}`}>
         Out of Stock
       </button>
     );
@@ -44,22 +40,22 @@ const QuantityStepper = ({
 
   if (quantity > 0) {
     return (
-      <div className={`flex items-center justify-between rounded-lg ${theme.card.button}`}>
+      <div className={`${theme.card.stepperLayout} ${theme.card.button}`}>
         <button
           type="button"
           onClick={stop(onDecrement)}
           aria-label="Decrease quantity"
-          className="px-4 py-2 text-base font-semibold cursor-pointer hover:bg-black/10 rounded-l-lg"
+          className={`${theme.card.stepperButtonLayout} ${theme.card.stepperButtonLeft}`}
         >
           −
         </button>
-        <span className="text-sm font-semibold min-w-6 text-center">{quantity}</span>
+        <span className={theme.card.stepperCountLayout}>{quantity}</span>
         <button
           type="button"
           onClick={stop(onIncrement)}
           disabled={quantity >= maxQuantity}
           aria-label="Increase quantity"
-          className="px-4 py-2 text-base font-semibold cursor-pointer hover:bg-black/10 rounded-r-lg disabled:opacity-40 disabled:cursor-not-allowed"
+          className={`${theme.card.stepperButtonLayout} ${theme.card.stepperButtonRight}`}
         >
           +
         </button>
@@ -71,8 +67,9 @@ const QuantityStepper = ({
     <button
       type="button"
       onClick={stop(onAdd)}
-      className={`w-full ${heightClass} rounded-lg text-sm font-medium cursor-pointer transition-colors duration-150 ${theme.card.button}`}
+      className={`w-full ${heightClass} ${theme.card.buttonLayout} ${theme.card.button}`}
     >
+      <span className={theme.card.buttonShine} />
       Add to Cart
     </button>
   );

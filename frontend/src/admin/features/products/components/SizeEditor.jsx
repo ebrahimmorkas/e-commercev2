@@ -42,6 +42,8 @@ const SizeEditor = ({
   sizeOptions,
   getSizeMasterById,
   unitOptions,
+  weightOptions,
+  brandOptions,
   countryOptions,
   stateOptions,
   cityOptions,
@@ -110,7 +112,7 @@ const SizeEditor = ({
         </div>
         <Switch label="Default size for this variant" checked={size.isDefaultSize} onChange={(e) => patch({ isDefaultSize: e.target.checked })} color={theme.switch.color} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <InputField label="Brand" placeholder="Optional, free text" value={size.brand} onChange={(e) => patch({ brand: e.target.value })} />
+          <Dropdown label="Brand" placeholder="Optional" options={brandOptions} value={size.brandId} onChange={(val) => patch({ brandId: val })} searchable clearable />
           <InputField label="Precedence" type="number" placeholder="Optional display order" value={size.precedence ?? ''} onChange={(e) => patch({ precedence: e.target.value })} />
         </div>
       </SectionCard>
@@ -188,7 +190,7 @@ const SizeEditor = ({
             />
             <Dropdown
               placeholder="Unit"
-              options={unitOptions}
+              options={weightOptions}
               value={size.weight?.unit || ''}
               onChange={(val) => patch({ weight: { value: size.weight?.value ?? '', unit: val } })}
             />
@@ -199,27 +201,56 @@ const SizeEditor = ({
       <SectionCard icon={<ImageIcon />} title="Images">
         <div>
           <span className="block text-sm font-medium text-gray-700 mb-2">Main Image</span>
-          {size.existingImage?.url && !size.imageFile && (
+          {size.existingImage?.url && !size.imageFile && !size.removeImage && (
             <div className="flex items-center gap-3 mb-2">
               <img src={size.existingImage.url} alt={size.sizeName} className="w-16 h-16 object-cover rounded-lg border border-gray-200" />
-              <p className={`text-sm ${theme.text.muted}`}>Current image - upload a new one to replace it.</p>
+              <p className={`text-sm flex-1 ${theme.text.muted}`}>Current image - upload a new one to replace it.</p>
+              <Button type="button" size="xs" variant={theme.button.danger} onClick={() => patch({ removeImage: true })}>
+                Remove
+              </Button>
             </div>
           )}
-          <FileUpload accept="image/*" maxSize={5 * 1024 * 1024} onFilesSelected={(files) => patch({ imageFile: files[0] || null })} helperText="JPG, PNG, up to 5MB." />
+          {size.existingImage?.url && !size.imageFile && size.removeImage && (
+            <div className={`flex items-center gap-3 mb-2 rounded-lg border px-3 py-2 ${theme.alert.error.border} ${theme.alert.error.background}`}>
+              <p className={`text-sm flex-1 ${theme.alert.error.text}`}>Image will be removed when you save.</p>
+              <Button type="button" size="xs" variant={theme.button.ghost} onClick={() => patch({ removeImage: false })}>
+                Undo
+              </Button>
+            </div>
+          )}
+          <FileUpload
+            accept="image/*"
+            maxSize={5 * 1024 * 1024}
+            onFilesSelected={(files) => patch({ imageFile: files[0] || null, removeImage: files[0] ? false : size.removeImage })}
+            helperText="JPG, PNG, up to 5MB."
+          />
         </div>
         <div>
           <span className="block text-sm font-medium text-gray-700 mb-2">Additional Images</span>
-          {size.existingAdditionalImages?.length > 0 && !size.additionalImageFile && (
-            <div className="flex flex-wrap gap-2 mb-2">
-              {size.existingAdditionalImages.map((img, i) => (
-                <img key={img.imageAssetId || i} src={img.url} alt="" className="w-12 h-12 object-cover rounded border border-gray-200" />
-              ))}
+          {size.existingAdditionalImages?.length > 0 && !size.additionalImageFile && !size.removeAdditionalImages && (
+            <div className="flex items-center gap-3 mb-2">
+              <div className="flex flex-wrap gap-2 flex-1">
+                {size.existingAdditionalImages.map((img, i) => (
+                  <img key={img.imageAssetId || i} src={img.url} alt="" className="w-12 h-12 object-cover rounded border border-gray-200" />
+                ))}
+              </div>
+              <Button type="button" size="xs" variant={theme.button.danger} onClick={() => patch({ removeAdditionalImages: true })}>
+                Remove All
+              </Button>
+            </div>
+          )}
+          {size.existingAdditionalImages?.length > 0 && !size.additionalImageFile && size.removeAdditionalImages && (
+            <div className={`flex items-center gap-3 mb-2 rounded-lg border px-3 py-2 ${theme.alert.error.border} ${theme.alert.error.background}`}>
+              <p className={`text-sm flex-1 ${theme.alert.error.text}`}>Additional images will be removed when you save.</p>
+              <Button type="button" size="xs" variant={theme.button.ghost} onClick={() => patch({ removeAdditionalImages: false })}>
+                Undo
+              </Button>
             </div>
           )}
           <FileUpload
             accept="image/*,.zip"
             maxSize={20 * 1024 * 1024}
-            onFilesSelected={(files) => patch({ additionalImageFile: files[0] || null })}
+            onFilesSelected={(files) => patch({ additionalImageFile: files[0] || null, removeAdditionalImages: files[0] ? false : size.removeAdditionalImages })}
             helperText="One image, or a single .zip containing multiple images."
           />
         </div>

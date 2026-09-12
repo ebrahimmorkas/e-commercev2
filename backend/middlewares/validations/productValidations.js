@@ -275,7 +275,13 @@ const categoryIdParamSchema = Joi.object({
 // Everything else (required fields, cross-item rules, custom validators)
 // is identical to createProductSchema - update uses the exact same rules.
 const updateSizeSchema = sizeSchema.keys({
-    _id: objectId().label('Size ID')
+    _id: objectId().label('Size ID'),
+    // Explicit "clear this image" signal - only meaningful on update, since
+    // a brand-new size has no existing image to remove. Ignored by
+    // productService whenever a replacement file is uploaded for the same
+    // slot in the same request (the new file always wins).
+    removeImage: Joi.boolean().default(false).label('Remove main image'),
+    removeAdditionalImages: Joi.boolean().default(false).label('Remove additional images')
 });
 
 const updateVariantSchema = variantSchema.keys({

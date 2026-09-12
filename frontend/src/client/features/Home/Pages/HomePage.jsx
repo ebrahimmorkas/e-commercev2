@@ -7,10 +7,22 @@ import EmptyState from '../../../../components/common/EmptyState/EmptyState';
 
 const PartnerBadge = () => (
   <div
-    className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full border text-xs font-semibold tracking-wide uppercase ${theme.partnerBadge.background} ${theme.partnerBadge.border} ${theme.partnerBadge.text}`}
+    className={`${theme.partnerBadge.layout} ${theme.partnerBadge.background} ${theme.partnerBadge.border} ${theme.partnerBadge.text}`}
   >
-    <GemIcon className={`w-4 h-4 shrink-0 ${theme.partnerBadge.icon}`} />
+    <GemIcon className={`${theme.partnerBadge.iconLayout} ${theme.partnerBadge.icon}`} />
     Preciosa&reg; Crystals Authorized Partner
+  </div>
+);
+
+/**
+ * Decorative, non-interactive gem shapes floating in 3D behind the hero copy.
+ * Purely visual - aria-hidden, and inert under prefers-reduced-motion via CSS.
+ */
+const FloatingGems = () => (
+  <div className={theme.floatingGems.wrapper} aria-hidden="true">
+    {theme.floatingGems.items.map((className, index) => (
+      <GemIcon key={index} className={className} />
+    ))}
   </div>
 );
 
@@ -29,37 +41,36 @@ const HomePage = ({ onAddToCart, onProductClick, cartItems = {}, onIncrementItem
 
   return (
     <div className={theme.page.background}>
-      <section className={`${theme.hero.background} px-4 sm:px-6 py-20`}>
-        <div className="max-w-7xl mx-auto flex flex-col items-center text-center">
-          <p className={`text-sm font-semibold tracking-wide uppercase ${theme.hero.eyebrow}`}>
-            Hutaib Tailoring Materials
-          </p>
-          <h1 className={`mt-3 text-3xl sm:text-5xl font-bold ${theme.hero.heading}`}>
+      <section className={`${theme.hero.section} ${theme.hero.background}`}>
+        <FloatingGems />
+        <div className={theme.hero.container}>
+          <p className={`${theme.hero.eyebrowLayout} ${theme.hero.eyebrow}`}>Hutaib Tailoring Materials</p>
+          <h1 className={`${theme.hero.headingLayout} ${theme.hero.heading}`}>
             Crystals, Pearls &amp; Beads for Every Creation
           </h1>
-          <p className={`mt-4 max-w-xl text-base ${theme.hero.subheading}`}>
+          <p className={`${theme.hero.subheadingLayout} ${theme.hero.subheading}`}>
             Genuine Preciosa crystals, rhinestones, buttons, pearls and pressed glass beads —
             sourced with care, delivered with pride.
           </p>
-          <button
-            type="button"
-            className={`mt-8 px-6 py-3 rounded-full text-sm font-semibold transition-colors duration-150 cursor-pointer ${theme.hero.cta}`}
-          >
-            Shop Now
+          <button type="button" className={`${theme.hero.ctaLayout} ${theme.hero.cta}`}>
+            <span className={theme.hero.ctaShine} />
+            <span className={theme.hero.ctaLabel}>Shop Now</span>
           </button>
-          <div className="mt-6">
+          <div className={theme.hero.ctaWrapper}>
             <PartnerBadge />
           </div>
         </div>
       </section>
 
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 py-14">
-        <div className="text-center mb-10">
-          <h2 className={`text-2xl font-bold ${theme.section.heading}`}>Featured Products</h2>
-          <p className={`mt-2 text-sm ${theme.section.subheading}`}>A few of our customer favorites</p>
+      <section className={theme.section.wrapper}>
+        <div className={theme.section.headerWrapper}>
+          <h2 className={`${theme.section.headingLayout} ${theme.section.heading}`}>Featured Products</h2>
+          <p className={`${theme.section.subheadingLayout} ${theme.section.subheading}`}>
+            A few of our customer favorites
+          </p>
         </div>
         {loading && (
-          <div className="flex justify-center py-16">
+          <div className={theme.section.loadingWrapper}>
             <Spinner size="lg" label="Loading products" />
           </div>
         )}
@@ -72,7 +83,7 @@ const HomePage = ({ onAddToCart, onProductClick, cartItems = {}, onIncrementItem
               <button
                 type="button"
                 onClick={reload}
-                className={`px-4 py-2 rounded-full text-sm font-semibold cursor-pointer ${theme.hero.cta}`}
+                className={`${theme.hero.ctaSecondaryLayout} ${theme.hero.cta}`}
               >
                 Try Again
               </button>
@@ -85,7 +96,7 @@ const HomePage = ({ onAddToCart, onProductClick, cartItems = {}, onIncrementItem
         )}
 
         {!loading && !error && products.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 sm:gap-6">
+          <div className={theme.section.grid}>
             {products.map((product) => {
               const itemId = product.sizeId || product.id;
               return (
