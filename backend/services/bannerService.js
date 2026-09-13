@@ -251,84 +251,44 @@ const updateBanner = async (vendorId, bannerId, updateData, newImageFile, newVid
             banner.status = status;
         }
 
-        if (newImageFile) {
-            // Switching from video to image: the old video asset is replaced entirely,
-            // not updated in place.
-            if (banner.videoAssetId) {
-                const videoDeleteResult = await videoUploadService.deleteVideo({ videoId: banner.videoAssetId, userId });
-                if (!videoDeleteResult.isSuccess) {
-                    return common.returnResult(false, videoDeleteResult.statusCode, videoDeleteResult.message);
-                }
-                banner.video = undefined;
-                banner.videoAssetId = undefined;
-            }
+        // Old asset ids are captured now and only cleaned up AFTER the new media
+        // has been uploaded and the banner successfully saved pointing at it -
+        // never before. Deleting (or in-place overwriting) the old asset first
+        // meant a failed/rejected new upload left the banner with no working
+        // media and destroyed the only record of the asset that used to be
+        // there, with no way to trace or recover it.
+        const oldImageAssetId = banner.imageAssetId;
+        const oldVideoAssetId = banner.videoAssetId;
 
+        if (newImageFile) {
             try {
                 const bufferedImage = await toBufferedImageFile(newImageFile);
-                if (banner.imageAssetId) {
-                    const imageUpdateResult = await imageUploadService.updateImage({
-                        imageId: banner.imageAssetId,
-                        file: bufferedImage,
-                        userId,
-                        maxSizeField: 'allowedBannerImagesMB',
-                        companyMasterData,
-                        websiteMasterData
-                    });
-                    if (!imageUpdateResult.isSuccess) {
-                        return common.returnResult(false, imageUpdateResult.statusCode, imageUpdateResult.message);
-                    }
-                    banner.image = imageUpdateResult.meta.image.url;
-                } else {
-                    // Legacy banner with no imageAssetId yet (or just switched from video) — start tracking it from now on
-                    const uploadResult = await imageUploadService.uploadImage({
-                        vendorId, module: 'banner', file: bufferedImage, userId,
-                        maxSizeField: 'allowedBannerImagesMB', companyMasterData, websiteMasterData
-                    });
-                    if (!uploadResult.isSuccess) {
-                        return common.returnResult(false, uploadResult.statusCode, uploadResult.message);
-                    }
-                    banner.image = uploadResult.meta.image.url;
-                    banner.imageAssetId = uploadResult.meta.image._id;
-                }
-            } finally {
-                await cleanupTempFile(newImageFile.path);
-            }
-        } else if (newVideoFile) {
-            // Switching from image to video: the old image asset is replaced entirely,
-            // not updated in place.
-            if (banner.imageAssetId) {
-                const imageDeleteResult = await imageUploadService.deleteImage({ imageId: banner.imageAssetId, userId });
-                if (!imageDeleteResult.isSuccess) {
-                    return common.returnResult(false, imageDeleteResult.statusCode, imageDeleteResult.message);
-                }
-                banner.image = undefined;
-                banner.imageAssetId = undefined;
-            }
-
-            if (banner.videoAssetId) {
-                const videoUpdateResult = await videoUploadService.updateVideo({
-                    videoId: banner.videoAssetId,
-                    file: newVideoFile,
-                    userId,
-                    maxSizeField: 'allowedBannerVideoMB',
-                    companyMasterData,
-                    websiteMasterData
-                });
-                if (!videoUpdateResult.isSuccess) {
-                    return common.returnResult(false, videoUpdateResult.statusCode, videoUpdateResult.message);
-                }
-                banner.video = videoUpdateResult.meta.video.url;
-            } else {
-                const uploadResult = await videoUploadService.uploadVideo({
-                    vendorId, module: 'banner', file: newVideoFile, userId,
-                    maxSizeField: 'allowedBannerVideoMB', companyMasterData, websiteMasterData
+                const uploadResult = await imageUploadService.uploadImage({
+                    vendorId, module: 'banner', file: bufferedImage, userId,
+                    maxSizeField: 'allowedBannerImagesMB', companyMasterData, websiteMasterData
                 });
                 if (!uploadResult.isSuccess) {
                     return common.returnResult(false, uploadResult.statusCode, uploadResult.message);
                 }
-                banner.video = uploadResult.meta.video.url;
-                banner.videoAssetId = uploadResult.meta.video._id;
+                banner.image = uploadResult.meta.image.url;
+                banner.imageAssetId = uploadResult.meta.image._id;
+                banner.video = undefined;
+                banner.videoAssetId = undefined;
+            } finally {
+                await cleanupTempFile(newImageFile.path);
             }
+        } else if (newVideoFile) {
+            const uploadResult = await videoUploadService.uploadVideo({
+                vendorId, module: 'banner', file: newVideoFile, userId,
+                maxSizeField: 'allowedBannerVideoMB', companyMasterData, websiteMasterData
+            });
+            if (!uploadResult.isSuccess) {
+                return common.returnResult(false, uploadResult.statusCode, uploadResult.message);
+            }
+            banner.video = uploadResult.meta.video.url;
+            banner.videoAssetId = uploadResult.meta.video._id;
+            banner.image = undefined;
+            banner.imageAssetId = undefined;
         }
 
         if (name !== undefined) banner.name = name;
@@ -338,6 +298,20 @@ const updateBanner = async (vendorId, bannerId, updateData, newImageFile, newVid
         banner.updatedBy = userId;
 
         const updated = await banner.save();
+
+        // Only now that the banner durably points at the new asset is it safe to
+        // remove whichever old one it used to have (soft-deletes it - see
+        // deleteImage/deleteVideo - so even if this step itself fails, the old
+        // asset's record, key and url are never lost).
+        if (newImageFile || newVideoFile) {
+            if (oldImageAssetId) {
+                await imageUploadService.deleteImage({ imageId: oldImageAssetId, userId });
+            }
+            if (oldVideoAssetId) {
+                await videoUploadService.deleteVideo({ videoId: oldVideoAssetId, userId });
+            }
+        }
+
         logger.logInfo(1,0,'Banner updated successfully', { vendorId, bannerId });
         await invalidateBannerCache(vendorId);
         return common.returnResult(true, 200, 'Banner updated successfully', { banner: updated });

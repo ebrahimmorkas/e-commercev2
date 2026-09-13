@@ -4,6 +4,7 @@ const os = require('os');
 const path = require('path');
 const { randomUUID } = require('crypto');
 const { resolveMaxVideoSizeMB, resolveAllowedVideoFormats, getFileExtension } = require('../services/videoUploadService');
+const common = require('../utils/common');
 
 // Disk storage, not memory: videos are far bigger than images, and buffering
 // one whole in RAM (like imageUpload.js does) doesn't scale. The file is
@@ -54,7 +55,16 @@ const videoUpload = (req, res, next) => {
         }
     }).single('video');
 
-    upload(req, res, next);
+    // See bannerMediaUpload.js - without this, a fileFilter/LIMIT_FILE_SIZE
+    // rejection falls through to Express's default error handler (a raw stack
+    // trace as a 500) instead of this app's normal JSON error contract.
+    upload(req, res, (err) => {
+        if (err) {
+            const statusCode = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+            return common.sendError(res, statusCode, err.message);
+        }
+        next();
+    });
 };
 
 module.exports = videoUpload;

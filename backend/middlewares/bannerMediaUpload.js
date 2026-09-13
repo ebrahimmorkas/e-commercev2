@@ -4,6 +4,7 @@ const os = require('os');
 const path = require('path');
 const { randomUUID } = require('crypto');
 const { resolveMaxVideoSizeMB, resolveAllowedVideoFormats, getFileExtension } = require('../services/videoUploadService');
+const common = require('../utils/common');
 
 // A banner request carries EITHER an 'image' field or a 'video' field, never both -
 // multer only supports one storage engine per instance, so both fields go to disk
@@ -54,7 +55,18 @@ const bannerMediaUpload = (req, res, next) => {
         { name: 'video', maxCount: 1 }
     ]);
 
-    upload(req, res, next);
+    // multer/busboy report every rejection (fileFilter's format error, LIMIT_FILE_SIZE,
+    // etc.) by calling next(err) - left alone, that falls through to Express's built-in
+    // default error handler, which returns a raw stack trace as a 500 instead of the
+    // app's normal { success:false, message } JSON contract. Intercepting it here keeps
+    // the same clean error shape every other validation failure in this app already has.
+    upload(req, res, (err) => {
+        if (err) {
+            const statusCode = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+            return common.sendError(res, statusCode, err.message);
+        }
+        next();
+    });
 };
 
 module.exports = bannerMediaUpload;
