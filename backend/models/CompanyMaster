@@ -111,6 +111,28 @@ const companyMasterSchema = mongoose.Schema({
         default: 'cloudinary'
     },
 
+    // Video
+    videoService: {
+        type: String,
+        enum: ['cloudinary', 'aws', 'r2', 'local'],
+        default: 'cloudinary'
+    },
+    // Vendor-specific hard cap (MB) for video uploads. Only takes effect when
+    // WebsiteMaster.maxVideoSize is null/0 - see resolveMaxVideoSizeMB in
+    // videoUploadService.js.
+    maxVideoSize: {
+        type: Number,
+        default: null
+    },
+    // Vendor-specific list of allowed video extensions. Only takes effect when
+    // WebsiteMaster.allowedVideoFormat is empty - see resolveAllowedVideoFormats
+    // in videoUploadService.js.
+    allowedVideoFormat: {
+        type: [String],
+        enum: ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi'],
+        default: []
+    },
+
     // Email
     // Which provider this vendor was assigned (based on what they paid for).
     // Overridden site-wide whenever WebsiteMaster.mainEmailService is set -

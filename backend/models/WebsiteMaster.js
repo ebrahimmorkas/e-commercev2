@@ -88,6 +88,32 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
+    mainVideoService: {
+        type: String,
+        enum: ['cloudinary', 'aws', 'r2', 'local'],
+        required: true
+    },
+    enforceMainVideoService: {
+        type: Boolean,
+        default: false
+    },
+    // Global hard cap (MB) for video uploads. null/0 = no site-wide override,
+    // so CompanyMaster.maxVideoSize (the vendor's own limit) applies instead.
+    // A real value here always wins over the vendor's setting - see
+    // resolveMaxVideoSizeMB in videoUploadService.js.
+    maxVideoSize: {
+        type: Number,
+        default: null
+    },
+    // Global override for allowed video extensions. Empty = no site-wide override,
+    // so CompanyMaster.allowedVideoFormat (the vendor's own list) applies instead.
+    // A non-empty list here always wins - see resolveAllowedVideoFormats in
+    // videoUploadService.js. Falls back to ['mp4'] if neither model sets one.
+    allowedVideoFormat: {
+        type: [String],
+        enum: ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi'],
+        default: []
+    },
     isDiscountFeatureOn: {
         type: Boolean,
         default: true,
