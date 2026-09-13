@@ -26,7 +26,10 @@ const addBanner = async (req, res) => {
             return common.sendError(res, 403, 'You have exceeded the number of banners allowed');
         }
 
-        const result = await bannerService.addBanner(vendorId, req.body, req.file, countResult.meta.count, req.user._id, companyMasterData, websiteMasterData);
+        const imageFile = req.files?.image?.[0] || null;
+        const videoFile = req.files?.video?.[0] || null;
+
+        const result = await bannerService.addBanner(vendorId, req.body, imageFile, videoFile, countResult.meta.count, req.user._id, companyMasterData, websiteMasterData);
         
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
@@ -74,8 +77,11 @@ const updateBanner = async (req, res) => {
             isDefault: req.body.isDefault !== undefined ? req.body.isDefault === 'true' || req.body.isDefault === true : undefined
         };
 
-        const result = await bannerService.updateBanner(vendorId, bannerId, updateData, req.file || null, req.user._id, companyMasterData, websiteMasterData);
-        
+        const imageFile = req.files?.image?.[0] || null;
+        const videoFile = req.files?.video?.[0] || null;
+
+        const result = await bannerService.updateBanner(vendorId, bannerId, updateData, imageFile, videoFile, req.user._id, companyMasterData, websiteMasterData);
+
 
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);

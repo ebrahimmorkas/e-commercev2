@@ -56,6 +56,23 @@ const companyMasterSchema = mongoose.Schema({
         type: String,
         enum: ['jpg', 'png', 'jpeg']
     },
+    // Vendor-specific hard cap (MB) for banner videos specifically, passed as
+    // maxSizeField into videoUploadService. Falls back to the module-wide
+    // maxVideoSize (see the Video section below) whenever this is unset -
+    // same fallback pattern allowedBannerImagesMB doesn't need, since images
+    // have no equivalent module-wide ceiling.
+    allowedBannerVideoMB: {
+        type: Number,
+        default: null
+    },
+    // Which media type(s) this vendor may attach to a banner. 'both' means the
+    // vendor can choose either per banner - image and video are still mutually
+    // exclusive on a single banner, never both at once (see bannerService.js).
+    mediaUploadAllowedInBanner: {
+        type: String,
+        enum: ['image', 'video', 'both'],
+        default: 'image'
+    },
     isBulkUploadForFeatureOn: {
         type: Boolean,
     },
@@ -112,6 +129,13 @@ const companyMasterSchema = mongoose.Schema({
     },
 
     // Video
+    // Per-vendor entitlement, off by default - an admin has to explicitly grant
+    // this to a vendor (same spirit as needing to assign videoService), unlike
+    // WebsiteMaster's copy of this flag which defaults to on.
+    isVideoUploadingFeatureOn: {
+        type: Boolean,
+        default: false
+    },
     videoService: {
         type: String,
         enum: ['cloudinary', 'aws', 'r2', 'local'],

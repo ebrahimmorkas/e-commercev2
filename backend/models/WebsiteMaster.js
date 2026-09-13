@@ -88,6 +88,13 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // Global kill switch, on by default like isBannerFeatureOn/isCategoryFeatureOn -
+    // CompanyMaster.isVideoUploadingFeatureOn (off by default, per-vendor entitlement)
+    // is the actual gate for whether a given vendor can use video.
+    isVideoUploadingFeatureOn: {
+        type: Boolean,
+        default: true
+    },
     mainVideoService: {
         type: String,
         enum: ['cloudinary', 'aws', 'r2', 'local'],

@@ -13,13 +13,23 @@ const bannerSchema = new mongoose.Schema({
         maxlength: 20,
         trim: true
     },
+    // Exactly one of image/video is set on a given banner, never both, never
+    // neither - enforced in the pre('validate') hook below (which media type is
+    // actually permitted for a vendor is a CompanyMaster.mediaUploadAllowedInBanner
+    // business rule, checked in bannerValidations.js before this ever runs).
     image: {
-        type: String,
-        required: true
+        type: String
     },
     imageAssetId: {
         type: mongoose.Types.ObjectId,
         ref: 'ImageAsset'
+    },
+    video: {
+        type: String
+    },
+    videoAssetId: {
+        type: mongoose.Types.ObjectId,
+        ref: 'VideoAsset'
     },
     status: {
         type: String,
@@ -79,6 +89,12 @@ const bannerSchema = new mongoose.Schema({
 bannerSchema.pre('validate', function() {
   if (this.endDate <= this.startDate) {
     throw new Error('End Date must be greater than Start Date');
+  }
+
+  const hasImage = !!this.image;
+  const hasVideo = !!this.video;
+  if (hasImage === hasVideo) {
+    throw new Error('A banner must have exactly one of image or video, not both or neither.');
   }
 });
 

@@ -4,6 +4,8 @@ const redisService = require('./redisService');
 const redisKeys = require('../utils/redisKeys');
 const common = require('../utils/common');
 const imageUploadService = require('./imageUploadService');
+const videoUploadService = require('./videoUploadService');
+const fs = require('fs/promises');
 
 const invalidateBannerCache = async (vendorId) => {
     try {
@@ -26,21 +28,75 @@ const getBannerCount = async (vendorId) => {
     }
 };
 
-const addBanner = async (vendorId, bannerData, file, existingCount, userId, companyMasterData, websiteMasterData) => {
+// bannerMediaUpload (multer) writes the image field to a temp file on disk (same as
+// the video field), but imageUploadService's contract expects file.buffer - this
+// bridges the two. Banners are the only image consumer with this adapter because
+// they're also the only one that needs a single multer instance shared with video.
+const cleanupTempFile = async (filePath) => {
+    if (!filePath) return;
     try {
-        const uploadResult = await imageUploadService.uploadImage({
+        await fs.unlink(filePath);
+    } catch (err) {
+        if (err.code !== 'ENOENT') logger.logException('bannerService - cleanupTempFile: Exception while deleting temp file', err);
+    }
+};
+
+const toBufferedImageFile = async (diskFile) => {
+    const buffer = await fs.readFile(diskFile.path);
+    return { ...diskFile, buffer };
+};
+
+// Uploads whichever media file was provided (exactly one of imageFile/videoFile -
+// enforced upstream in bannerValidations.js) and returns the Banner fields to set.
+const uploadBannerMedia = async ({ vendorId, imageFile, videoFile, userId, companyMasterData, websiteMasterData }) => {
+    if (imageFile) {
+        try {
+            const bufferedImage = await toBufferedImageFile(imageFile);
+            const uploadResult = await imageUploadService.uploadImage({
+                vendorId,
+                module: 'banner',
+                file: bufferedImage,
+                userId,
+                maxSizeField: 'allowedBannerImagesMB',
+                companyMasterData,
+                websiteMasterData
+            });
+            if (!uploadResult.isSuccess) {
+                return { result: common.returnResult(false, uploadResult.statusCode, uploadResult.message) };
+            }
+            const imageAsset = uploadResult.meta.image;
+            return { fields: { image: imageAsset.url, imageAssetId: imageAsset._id, video: undefined, videoAssetId: undefined } };
+        } finally {
+            await cleanupTempFile(imageFile.path);
+        }
+    }
+
+    if (videoFile) {
+        const uploadResult = await videoUploadService.uploadVideo({
             vendorId,
             module: 'banner',
-            file,
+            file: videoFile,
             userId,
-            maxSizeField: 'allowedBannerMB',
+            maxSizeField: 'allowedBannerVideoMB',
             companyMasterData,
             websiteMasterData
         });
         if (!uploadResult.isSuccess) {
-            return common.returnResult(false, uploadResult.statusCode, uploadResult.message);
+            return { result: common.returnResult(false, uploadResult.statusCode, uploadResult.message) };
         }
-        const imageAsset = uploadResult.meta.image;
+        const videoAsset = uploadResult.meta.video;
+        return { fields: { video: videoAsset.url, videoAssetId: videoAsset._id, image: undefined, imageAssetId: undefined } };
+    }
+
+    return { fields: {} };
+};
+
+const addBanner = async (vendorId, bannerData, imageFile, videoFile, existingCount, userId, companyMasterData, websiteMasterData) => {
+    try {
+        const mediaResult = await uploadBannerMedia({ vendorId, imageFile, videoFile, userId, companyMasterData, websiteMasterData });
+        if (mediaResult.result) {
+            return mediaResult.result;
+        }
 
         const isDefault = existingCount === 0;
 
@@ -67,8 +123,7 @@ const addBanner = async (vendorId, bannerData, file, existingCount, userId, comp
         const banner = new Banner({
             vendorId,
             name: bannerData.name,
-            image: imageAsset.url,
-            imageAssetId: imageAsset._id,
+            ...mediaResult.fields,
             startDate: bannerData.startDate,
             endDate: bannerData.endDate,
             isDefault,
@@ -95,11 +150,16 @@ const softDeleteBanner = async (vendorId, bannerId, userId) => {
 
         const wasDefault = banner.isDefault;
 
-        // Delete image from filesystem
+        // Delete the underlying media asset (whichever of the two this banner has)
         if (banner.imageAssetId) {
             const imageDeleteResult = await imageUploadService.deleteImage({ imageId: banner.imageAssetId, userId });
             if (!imageDeleteResult.isSuccess) {
                 return common.returnResult(false, imageDeleteResult.statusCode, imageDeleteResult.message);
+            }
+        } else if (banner.videoAssetId) {
+            const videoDeleteResult = await videoUploadService.deleteVideo({ videoId: banner.videoAssetId, userId });
+            if (!videoDeleteResult.isSuccess) {
+                return common.returnResult(false, videoDeleteResult.statusCode, videoDeleteResult.message);
             }
         }
 
@@ -146,7 +206,7 @@ const softDeleteBanner = async (vendorId, bannerId, userId) => {
     }
 };
 
-const updateBanner = async (vendorId, bannerId, updateData, newImageFile, userId, companyMasterData, websiteMasterData) => {
+const updateBanner = async (vendorId, bannerId, updateData, newImageFile, newVideoFile, userId, companyMasterData, websiteMasterData) => {
     try {
         const banner = await Banner.findOne({ _id: bannerId, vendorId, status: { $ne: 'D' } });
         if (!banner) {
@@ -192,30 +252,82 @@ const updateBanner = async (vendorId, bannerId, updateData, newImageFile, userId
         }
 
         if (newImageFile) {
+            // Switching from video to image: the old video asset is replaced entirely,
+            // not updated in place.
+            if (banner.videoAssetId) {
+                const videoDeleteResult = await videoUploadService.deleteVideo({ videoId: banner.videoAssetId, userId });
+                if (!videoDeleteResult.isSuccess) {
+                    return common.returnResult(false, videoDeleteResult.statusCode, videoDeleteResult.message);
+                }
+                banner.video = undefined;
+                banner.videoAssetId = undefined;
+            }
+
+            try {
+                const bufferedImage = await toBufferedImageFile(newImageFile);
+                if (banner.imageAssetId) {
+                    const imageUpdateResult = await imageUploadService.updateImage({
+                        imageId: banner.imageAssetId,
+                        file: bufferedImage,
+                        userId,
+                        maxSizeField: 'allowedBannerImagesMB',
+                        companyMasterData,
+                        websiteMasterData
+                    });
+                    if (!imageUpdateResult.isSuccess) {
+                        return common.returnResult(false, imageUpdateResult.statusCode, imageUpdateResult.message);
+                    }
+                    banner.image = imageUpdateResult.meta.image.url;
+                } else {
+                    // Legacy banner with no imageAssetId yet (or just switched from video) — start tracking it from now on
+                    const uploadResult = await imageUploadService.uploadImage({
+                        vendorId, module: 'banner', file: bufferedImage, userId,
+                        maxSizeField: 'allowedBannerImagesMB', companyMasterData, websiteMasterData
+                    });
+                    if (!uploadResult.isSuccess) {
+                        return common.returnResult(false, uploadResult.statusCode, uploadResult.message);
+                    }
+                    banner.image = uploadResult.meta.image.url;
+                    banner.imageAssetId = uploadResult.meta.image._id;
+                }
+            } finally {
+                await cleanupTempFile(newImageFile.path);
+            }
+        } else if (newVideoFile) {
+            // Switching from image to video: the old image asset is replaced entirely,
+            // not updated in place.
             if (banner.imageAssetId) {
-                const imageUpdateResult = await imageUploadService.updateImage({
-                    imageId: banner.imageAssetId,
-                    file: newImageFile,
+                const imageDeleteResult = await imageUploadService.deleteImage({ imageId: banner.imageAssetId, userId });
+                if (!imageDeleteResult.isSuccess) {
+                    return common.returnResult(false, imageDeleteResult.statusCode, imageDeleteResult.message);
+                }
+                banner.image = undefined;
+                banner.imageAssetId = undefined;
+            }
+
+            if (banner.videoAssetId) {
+                const videoUpdateResult = await videoUploadService.updateVideo({
+                    videoId: banner.videoAssetId,
+                    file: newVideoFile,
                     userId,
-                    maxSizeField: 'allowedBannerMB',
+                    maxSizeField: 'allowedBannerVideoMB',
                     companyMasterData,
                     websiteMasterData
                 });
-                if (!imageUpdateResult.isSuccess) {
-                    return common.returnResult(false, imageUpdateResult.statusCode, imageUpdateResult.message);
+                if (!videoUpdateResult.isSuccess) {
+                    return common.returnResult(false, videoUpdateResult.statusCode, videoUpdateResult.message);
                 }
-                banner.image = imageUpdateResult.meta.image.url;
+                banner.video = videoUpdateResult.meta.video.url;
             } else {
-                // Legacy banner with no imageAssetId yet — start tracking it from now on
-                const uploadResult = await imageUploadService.uploadImage({
-                    vendorId, module: 'banner', file: newImageFile, userId,
-                    maxSizeField: 'allowedBannerMB', companyMasterData, websiteMasterData
+                const uploadResult = await videoUploadService.uploadVideo({
+                    vendorId, module: 'banner', file: newVideoFile, userId,
+                    maxSizeField: 'allowedBannerVideoMB', companyMasterData, websiteMasterData
                 });
                 if (!uploadResult.isSuccess) {
                     return common.returnResult(false, uploadResult.statusCode, uploadResult.message);
                 }
-                banner.image = uploadResult.meta.image.url;
-                banner.imageAssetId = uploadResult.meta.image._id;
+                banner.video = uploadResult.meta.video.url;
+                banner.videoAssetId = uploadResult.meta.video._id;
             }
         }
 

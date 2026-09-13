@@ -2,6 +2,61 @@ const Banner = require('../../models/Banner');
 const common = require('../../utils/common');
 const logger = require('../../utils/logger');
 const mongoose = require('mongoose');
+const fs = require('fs/promises');
+
+// bannerMediaUpload (multer) already wrote any file(s) to a temp dir on disk by the
+// time this middleware runs - if validation rejects the request, those temp files
+// would otherwise never get cleaned up (bannerService only cleans up on the success
+// path), so every rejection branch below must call this first.
+const cleanupTempFiles = async (req) => {
+    const paths = [req.files?.image?.[0]?.path, req.files?.video?.[0]?.path].filter(Boolean);
+    await Promise.all(paths.map(async (p) => {
+        try {
+            await fs.unlink(p);
+        } catch (err) {
+            if (err.code !== 'ENOENT') logger.logException('bannerValidations: cleanupTempFiles - Exception while deleting temp file', err);
+        }
+    }));
+};
+
+// Checks the media file(s) on the request against the "exactly one" rule and the
+// vendor's isVideoUploadingFeatureOn / mediaUploadAllowedInBanner entitlements.
+// `required` = false lets update requests through when neither field is provided
+// (an update that doesn't touch the media at all).
+const validateBannerMedia = async (req, vendorId, { required }) => {
+    const imageFile = req.files?.image?.[0];
+    const videoFile = req.files?.video?.[0];
+    const websiteMasterData = req.websiteMasterData;
+    const companyMasterData = req.companyMasterData;
+
+    if (imageFile && videoFile) {
+        return ['Only one of image or video may be uploaded, not both'];
+    }
+
+    if (!imageFile && !videoFile) {
+        return required ? ['Either an image or a video is required'] : [];
+    }
+
+    const mediaUploadAllowedInBanner = companyMasterData?.mediaUploadAllowedInBanner || 'image';
+
+    if (videoFile) {
+        const featureCheck = await common.checkFeatureOnOrOff(vendorId, websiteMasterData, companyMasterData, 'isVideoUploadingFeatureOn', 'isVideoUploadingFeatureOn');
+        if (!featureCheck.isSuccess) {
+            return [featureCheck.message];
+        }
+        if (mediaUploadAllowedInBanner !== 'video' && mediaUploadAllowedInBanner !== 'both') {
+            return ['Video uploads are not enabled for banners on this account'];
+        }
+    }
+
+    if (imageFile) {
+        if (mediaUploadAllowedInBanner !== 'image' && mediaUploadAllowedInBanner !== 'both') {
+            return ['Image uploads are not enabled for banners on this account - please upload a video instead'];
+        }
+    }
+
+    return [];
+};
 
 const validateAddBanner = async (req, res, next) => {
     try {
@@ -9,10 +64,7 @@ const validateAddBanner = async (req, res, next) => {
         const { name, startDate, endDate, precedence } = req.body;
         const errors = [];
 
-        // image — multer puts file info on req.file
-        if (!req.file) {
-            errors.push('Image is required');
-        }
+        errors.push(...await validateBannerMedia(req, vendorId, { required: true }));
 
         // name
         if (!name) {
@@ -61,6 +113,7 @@ const validateAddBanner = async (req, res, next) => {
         }
 
         if (errors.length > 0) {
+            await cleanupTempFiles(req);
             return common.sendError(res, 400, 'Validation failed', errors);
         }
 
@@ -95,17 +148,24 @@ const validateUpdateBanner = async (req, res, next) => {
 
         // bannerId
         if (!bannerId) {
+            await cleanupTempFiles(req);
             return common.sendError(res, 400, 'Validation failed', ['Banner ID is required']);
         }
         if (!mongoose.Types.ObjectId.isValid(bannerId)) {
+            await cleanupTempFiles(req);
             return common.sendError(res, 400, 'Validation failed', ['Invalid banner ID']);
         }
 
+        const hasMediaFile = !!(req.files?.image?.[0] || req.files?.video?.[0]);
+
         // At least one field must be provided
         const bodyKeys = Object.keys(req.body).filter(k => k !== 'bannerId');
-        if (bodyKeys.length === 0 && !req.file) {
+        if (bodyKeys.length === 0 && !hasMediaFile) {
+            await cleanupTempFiles(req);
             return common.sendError(res, 400, 'Validation failed', ['At least one field must be provided for update']);
         }
+
+        errors.push(...await validateBannerMedia(req, vendorId, { required: false }));
 
         // name
         if (name !== undefined) {
@@ -143,6 +203,7 @@ const validateUpdateBanner = async (req, res, next) => {
         // Fetch existing doc for date cross-validation
         const existing = await Banner.findOne({ _id: bannerId, vendorId, status: { $ne: 'D' } });
         if (!existing) {
+            await cleanupTempFiles(req);
             return common.sendError(res, 404, 'Banner not found');
         }
 
@@ -172,6 +233,7 @@ const validateUpdateBanner = async (req, res, next) => {
         }
 
         if (errors.length > 0) {
+            await cleanupTempFiles(req);
             return common.sendError(res, 400, 'Validation failed', errors);
         }
 
