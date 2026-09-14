@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 
 const ModuleMaster = require('../models/ModuleMaster');
 const CompanyMaster = require('../models/CompanyMaster');
+const { MODULE_FEATURE_FLAG } = require('../services/moduleMasterService');
 
 // One-time (but safe to re-run - it never touches an existing assignedModules
 // entry, only adds missing ones) migration: run this after seedModuleMaster.js
@@ -11,14 +12,6 @@ const CompanyMaster = require('../models/CompanyMaster');
 // vendor unconditionally; a non-system module is granted only if the vendor
 // already has its corresponding CompanyMaster feature flag turned on, so no
 // one loses access to something they're already using.
-const NON_SYSTEM_MODULE_FEATURE_FLAG = {
-    CATEGORIES: 'isCategoryFeatureOn',
-    BRAND: 'isBrandFeatureOn',
-    DISCOUNT: 'isDiscountFeatureOn',
-    BANNER: 'isBannerFeatureOn',
-    ANNOUNCEMENT: 'isAnnouncementFeatureOn',
-    ABANDONED_CART: 'isAbondonedCartFeatureOn'
-};
 
 async function backfillAssignedModules() {
     try {
@@ -43,7 +36,7 @@ async function backfillAssignedModules() {
             for (const module of modules) {
                 if (existingModuleIds.has(module._id.toString())) continue;
 
-                const featureFlag = NON_SYSTEM_MODULE_FEATURE_FLAG[module.code];
+                const featureFlag = MODULE_FEATURE_FLAG[module.code];
                 const shouldAssign = module.isSystemModule || (featureFlag && company[featureFlag] === true);
 
                 if (!shouldAssign) continue;

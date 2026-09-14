@@ -20,7 +20,8 @@ const getMyAssignedModules = async (req, res) => {
     const vendorId = req.vendorId;
     try {
         const companyMasterData = req.companyMasterData;
-        const result = await moduleMasterService.fetchAssignedModulesForVendor(companyMasterData);
+        const websiteMasterData = req.websiteMasterData;
+        const result = await moduleMasterService.fetchAssignedModulesForVendor(companyMasterData, websiteMasterData);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }

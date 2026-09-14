@@ -63,10 +63,39 @@ const isAssignmentActive = (assignment, now = new Date()) => {
     return true;
 };
 
+// Maps a non-system module's code to the boolean flag (present on BOTH
+// WebsiteMaster and CompanyMaster) that actually turns that feature on. A
+// module with no entry here (the system modules - DASHBOARD, PRODUCTS,
+// ORDERS, CUSTOMERS, COMPANY_SETTINGS) has no such flag, so it's never
+// gated by isModuleFeatureEnabled. Single source of truth - also used by
+// seeds/backfillAssignedModules.js, so the two never drift apart.
+const MODULE_FEATURE_FLAG = {
+    CATEGORIES: 'isCategoryFeatureOn',
+    BRAND: 'isBrandFeatureOn',
+    DISCOUNT: 'isDiscountFeatureOn',
+    BANNER: 'isBannerFeatureOn',
+    ANNOUNCEMENT: 'isAnnouncementFeatureOn',
+    ABANDONED_CART: 'isAbondonedCartFeatureOn'
+};
+
+// A module can be actively assigned yet still be effectively off if whoever
+// assigned it forgot that isCategoryFeatureOn/isDiscountFeatureOn/etc. also
+// has to be true on BOTH masters (admin may have assigned the module without
+// realizing the feature itself is off) - this catches that mismatch for
+// sidebar display. Modules with no mapped flag (system modules) are always
+// considered enabled here.
+const isModuleFeatureEnabled = (moduleCode, websiteMasterData, companyMasterData) => {
+    const flag = MODULE_FEATURE_FLAG[moduleCode];
+    if (!flag) return true;
+    return !!(websiteMasterData?.[flag] && companyMasterData?.[flag]);
+};
+
 // Resolves companyMasterData.assignedModules (raw moduleId + dates) into the
 // currently-active modules' codes/names - what the admin frontend uses to
-// decide which sidebar sections to show for this vendor.
-const fetchAssignedModulesForVendor = async (companyMasterData) => {
+// decide which sidebar sections to show for this vendor. A module must be
+// both actively assigned AND (for non-system modules) have its feature flag
+// on in both WebsiteMaster and CompanyMaster to show up here.
+const fetchAssignedModulesForVendor = async (companyMasterData, websiteMasterData) => {
     try {
         const allModulesResult = await fetchAllActiveModules();
         if (!allModulesResult.isSuccess) {
@@ -81,6 +110,7 @@ const fetchAssignedModulesForVendor = async (companyMasterData) => {
             .filter((assignment) => isAssignmentActive(assignment, now))
             .map((assignment) => modulesById.get(assignment.moduleId.toString()))
             .filter(Boolean)
+            .filter((module) => isModuleFeatureEnabled(module.code, websiteMasterData, companyMasterData))
             .map((module) => ({ code: module.code, moduleName: module.moduleName, precedence: module.precedence }))
             .sort((a, b) => a.precedence - b.precedence);
 
@@ -95,5 +125,7 @@ module.exports = {
     fetchAllModulesAdmin,
     fetchModuleByCode,
     isAssignmentActive,
+    MODULE_FEATURE_FLAG,
+    isModuleFeatureEnabled,
     fetchAssignedModulesForVendor
 };
