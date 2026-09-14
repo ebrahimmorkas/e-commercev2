@@ -53,8 +53,47 @@ const fetchModuleByCode = async (code) => {
     }
 };
 
+// Single source of truth for "is this CompanyMaster.assignedModules entry
+// usable right now" - shared by checkModuleAssigned (per-route gate) and
+// fetchMyAssignedModules (sidebar listing) so the two never drift apart.
+const isAssignmentActive = (assignment, now = new Date()) => {
+    if (!assignment || assignment.revokedAt) return false;
+    if (assignment.startDate && now < new Date(assignment.startDate)) return false;
+    if (assignment.expiryDate && now > new Date(assignment.expiryDate)) return false;
+    return true;
+};
+
+// Resolves companyMasterData.assignedModules (raw moduleId + dates) into the
+// currently-active modules' codes/names - what the admin frontend uses to
+// decide which sidebar sections to show for this vendor.
+const fetchAssignedModulesForVendor = async (companyMasterData) => {
+    try {
+        const allModulesResult = await fetchAllActiveModules();
+        if (!allModulesResult.isSuccess) {
+            return allModulesResult;
+        }
+
+        const modulesById = new Map(allModulesResult.meta.modules.map((m) => [m._id.toString(), m]));
+        const assignedModules = companyMasterData?.assignedModules || [];
+        const now = new Date();
+
+        const activeModules = assignedModules
+            .filter((assignment) => isAssignmentActive(assignment, now))
+            .map((assignment) => modulesById.get(assignment.moduleId.toString()))
+            .filter(Boolean)
+            .map((module) => ({ code: module.code, moduleName: module.moduleName, precedence: module.precedence }))
+            .sort((a, b) => a.precedence - b.precedence);
+
+        return common.returnResult(true, 200, 'Assigned modules fetched successfully', { modules: activeModules });
+    } catch (err) {
+        throw err;
+    }
+};
+
 module.exports = {
     fetchAllActiveModules,
     fetchAllModulesAdmin,
-    fetchModuleByCode
+    fetchModuleByCode,
+    isAssignmentActive,
+    fetchAssignedModulesForVendor
 };

@@ -9,9 +9,10 @@ import AbandonedCartsPage from './admin/features/abandonedCart/pages/AbandonedCa
 import BannersPage from './admin/features/banners/pages/BannersPage';
 import LoginPage from './admin/features/login/pages/LoginPage';
 import { useAuth } from './admin/features/login/hooks/useAuth';
+import { useAssignedModules } from './admin/modules/hooks/useAssignedModules';
 import Spinner from './components/common/Spinner';
 import EmptyState from './components/common/EmptyState';
-import Sidebar, { DEFAULT_NAV_ITEMS } from './components/ui/Sidebar';
+import Sidebar, { DEFAULT_NAV_ITEMS, filterNavItemsByAssignedModules } from './components/ui/Sidebar';
 
 const PAGE_LABELS = DEFAULT_NAV_ITEMS.reduce((acc, item) => {
   acc[item.key] = item.label;
@@ -20,7 +21,16 @@ const PAGE_LABELS = DEFAULT_NAV_ITEMS.reduce((acc, item) => {
 
 function App() {
   const { isAuthenticated, isLoading, user, logout } = useAuth();
+  const { assignedCodes } = useAssignedModules(isAuthenticated);
+  const navItems = filterNavItemsByAssignedModules(DEFAULT_NAV_ITEMS, assignedCodes);
   const [activePage, setActivePage] = useState('announcements');
+
+  // The hardcoded initial 'announcements' page may not be assigned to this
+  // vendor - fall back to the first section that actually is, once
+  // assignedCodes has loaded (navItems is unfiltered, so this is a no-op,
+  // while it's still loading).
+  const isActivePageAllowed = navItems.some((item) => item.key === activePage);
+  const effectiveActivePage = isActivePageAllowed ? activePage : (navItems[0]?.key ?? activePage);
 
   if (isLoading) {
     return (
@@ -36,28 +46,28 @@ function App() {
 
   return (
     <div className="App md:flex min-h-screen bg-gray-50">
-      <Sidebar activeKey={activePage} onNavigate={setActivePage} user={user} onLogout={logout} />
+      <Sidebar items={navItems} activeKey={effectiveActivePage} onNavigate={setActivePage} user={user} onLogout={logout} />
 
       <div className="flex-1 min-w-0">
-        {activePage === 'announcements' ? (
+        {effectiveActivePage === 'announcements' ? (
           <AnnouncementsPage />
-        ) : activePage === 'categories' ? (
+        ) : effectiveActivePage === 'categories' ? (
           <CategoriesPage />
-        ) : activePage === 'brands' ? (
+        ) : effectiveActivePage === 'brands' ? (
           <BrandsPage />
-        ) : activePage === 'products' ? (
+        ) : effectiveActivePage === 'products' ? (
           <ProductsPage />
-        ) : activePage === 'discounts' ? (
+        ) : effectiveActivePage === 'discounts' ? (
           <DiscountsPage />
-        ) : activePage === 'orders' ? (
+        ) : effectiveActivePage === 'orders' ? (
           <OrdersPage />
-        ) : activePage === 'abandonedCarts' ? (
+        ) : effectiveActivePage === 'abandonedCarts' ? (
           <AbandonedCartsPage />
-        ) : activePage === 'banners' ? (
+        ) : effectiveActivePage === 'banners' ? (
           <BannersPage />
         ) : (
           <EmptyState
-            title={`${PAGE_LABELS[activePage] || 'This page'} is coming soon`}
+            title={`${PAGE_LABELS[effectiveActivePage] || 'This page'} is coming soon`}
             description="This section hasn't been built yet."
             className="max-w-6xl mx-auto p-6"
           />

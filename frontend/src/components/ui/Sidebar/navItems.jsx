@@ -12,16 +12,32 @@ import {
   AbandonedCartIcon,
 } from './icons';
 
+// moduleCode ties each nav item to its backend ModuleMaster.code (see
+// backend/seeds/seedModuleMaster.js) - filterNavItemsByAssignedModules uses
+// it to hide a section the vendor's admin isn't currently assigned.
 export const DEFAULT_NAV_ITEMS = [
-  { key: 'dashboard', label: 'Dashboard', icon: DashboardIcon },
-  { key: 'products', label: 'Products', icon: ProductsIcon },
-  { key: 'categories', label: 'Categories', icon: CategoriesIcon },
-  { key: 'brands', label: 'Brand Master', icon: BrandIcon },
-  { key: 'orders', label: 'Orders', icon: OrdersIcon },
-  { key: 'customers', label: 'Customers', icon: CustomersIcon },
-  { key: 'discounts', label: 'Discount', icon: DiscountIcon },
-  { key: 'banners', label: 'Banner', icon: BannerIcon },
-  { key: 'announcements', label: 'Announcement', icon: AnnouncementIcon },
-  { key: 'abandonedCarts', label: 'Abandoned Carts', icon: AbandonedCartIcon },
-  { key: 'companySettings', label: 'Company Settings', icon: CompanySettingsIcon },
+  { key: 'dashboard', label: 'Dashboard', icon: DashboardIcon, moduleCode: 'DASHBOARD' },
+  { key: 'products', label: 'Products', icon: ProductsIcon, moduleCode: 'PRODUCTS' },
+  { key: 'categories', label: 'Categories', icon: CategoriesIcon, moduleCode: 'CATEGORIES' },
+  { key: 'brands', label: 'Brand Master', icon: BrandIcon, moduleCode: 'BRAND' },
+  { key: 'orders', label: 'Orders', icon: OrdersIcon, moduleCode: 'ORDERS' },
+  { key: 'customers', label: 'Customers', icon: CustomersIcon, moduleCode: 'CUSTOMERS' },
+  { key: 'discounts', label: 'Discount', icon: DiscountIcon, moduleCode: 'DISCOUNT' },
+  { key: 'banners', label: 'Banner', icon: BannerIcon, moduleCode: 'BANNER' },
+  { key: 'announcements', label: 'Announcement', icon: AnnouncementIcon, moduleCode: 'ANNOUNCEMENT' },
+  { key: 'abandonedCarts', label: 'Abandoned Carts', icon: AbandonedCartIcon, moduleCode: 'ABANDONED_CART' },
+  { key: 'companySettings', label: 'Company Settings', icon: CompanySettingsIcon, moduleCode: 'COMPANY_SETTINGS' },
 ];
+
+/**
+ * Filters nav items down to ones whose moduleCode is currently assigned.
+ * `assignedCodes` null (still loading, or the lookup failed) means "unknown"
+ * - fail open and show every item rather than blanking the sidebar.
+ *
+ * @param {Array} items
+ * @param {Set<string>|null} assignedCodes
+ */
+export const filterNavItemsByAssignedModules = (items, assignedCodes) => {
+  if (!assignedCodes) return items;
+  return items.filter((item) => !item.moduleCode || assignedCodes.has(item.moduleCode));
+};
