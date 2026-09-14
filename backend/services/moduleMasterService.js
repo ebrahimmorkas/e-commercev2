@@ -75,7 +75,8 @@ const MODULE_FEATURE_FLAG = {
     DISCOUNT: 'isDiscountFeatureOn',
     BANNER: 'isBannerFeatureOn',
     ANNOUNCEMENT: 'isAnnouncementFeatureOn',
-    ABANDONED_CART: 'isAbondonedCartFeatureOn'
+    ABANDONED_CART: 'isAbondonedCartFeatureOn',
+    FREE_CASH: 'isFreeCashFeatureOn'
 };
 
 // A module can be actively assigned yet still be effectively off if whoever

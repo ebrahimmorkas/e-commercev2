@@ -7,6 +7,7 @@ const authorize = require('../middlewares/authorize');
 const vendorDetection = require('../middlewares/vendorDetection');
 const ensureVendorDataCached = require('../middlewares/ensureVendorDataCached');
 const validate = require('../middlewares/validate');
+const checkModuleAssigned = require('../middlewares/checkModuleAssigned');
 const createBulkUploader = require('../middlewares/multer/bulkFileUpload');
 
 const {
@@ -29,6 +30,7 @@ router.post(
   vendorDetection,
   ensureVendorDataCached,
   authorize('admin'),
+  checkModuleAssigned('FREE_CASH'),
   freeCashExcelFields,
   validate(createFreeCashSchema, 'body'),
   freeCashController.createFreeCash
@@ -40,6 +42,7 @@ router.put(
   vendorDetection,
   ensureVendorDataCached,
   authorize('admin'),
+  checkModuleAssigned('FREE_CASH'),
   freeCashExcelFields,
   validate(freeCashIdParamSchema, 'params'),
   validate(updateFreeCashSchema, 'body'),
@@ -52,6 +55,7 @@ router.get(
   vendorDetection,
   ensureVendorDataCached,
   authorize('admin'),
+  checkModuleAssigned('FREE_CASH'),
   validate(freeCashIdParamSchema, 'params'),
   freeCashController.getFreeCashById
 );
@@ -62,6 +66,7 @@ router.get(
   vendorDetection,
   ensureVendorDataCached,
   authorize('admin'),
+  checkModuleAssigned('FREE_CASH'),
   freeCashController.getAllFreeCashAdmin
 );
 
@@ -71,6 +76,7 @@ router.delete(
   vendorDetection,
   ensureVendorDataCached,
   authorize('admin'),
+  checkModuleAssigned('FREE_CASH'),
   validate(freeCashIdParamSchema, 'params'),
   freeCashController.deleteFreeCash
 );
@@ -81,6 +87,7 @@ router.post(
   vendorDetection,
   ensureVendorDataCached,
   authorize('admin'),
+  checkModuleAssigned('FREE_CASH'),
   validate(revokeFreeCashForUserSchema, 'body'),
   freeCashController.revokeFreeCashForUser
 );
@@ -91,6 +98,7 @@ router.post(
   vendorDetection,
   ensureVendorDataCached,
   authorize('admin'),
+  checkModuleAssigned('FREE_CASH'),
   validate(revokeFreeCashForAllUsersSchema, 'body'),
   freeCashController.revokeFreeCashForAllUsers
 );
