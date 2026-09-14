@@ -6,15 +6,16 @@ const categoryUpload = createMemoryUploader({ maxSizeMB: 5 });
 const validate = require('../middlewares/validate');
 const { addCategorySchema, updateCategorySchema, deleteCategorySchema } = require('../middlewares/validations/categoryValidations');
 const createBulkUploader = require('../middlewares/multer/bulkFileUpload');
-const categoryBulkUpload = createBulkUploader(); 
+const categoryBulkUpload = createBulkUploader();
+const checkModuleAssigned = require('../middlewares/checkModuleAssigned');
 // const authorize = require('../middlewares/authorize');
 // TODO: add authorize('admin') to add/update/delete/get-admin-categories once you wire it in.
 
-router.post('/add-category', categoryUpload.single('image'), validate(addCategorySchema, 'body'), addCategory);
-router.put('/update-category', categoryUpload.single('image'), validate(updateCategorySchema, 'body'), updateCategory);
-router.delete('/delete-category', validate(deleteCategorySchema, 'body'), deleteCategory);
-router.get('/get-categories', getCategories);
-router.get('/get-admin-categories', getAdminCategories);
-router.post('/bulk-upload-categories', categoryBulkUpload, bulkUploadCategories);
+router.post('/add-category', checkModuleAssigned('CATEGORIES'), categoryUpload.single('image'), validate(addCategorySchema, 'body'), addCategory);
+router.put('/update-category', checkModuleAssigned('CATEGORIES'), categoryUpload.single('image'), validate(updateCategorySchema, 'body'), updateCategory);
+router.delete('/delete-category', checkModuleAssigned('CATEGORIES'), validate(deleteCategorySchema, 'body'), deleteCategory);
+router.get('/get-categories', checkModuleAssigned('CATEGORIES'), getCategories);
+router.get('/get-admin-categories', checkModuleAssigned('CATEGORIES'), getAdminCategories);
+router.post('/bulk-upload-categories', checkModuleAssigned('CATEGORIES'), categoryBulkUpload, bulkUploadCategories);
 
 module.exports = router;

@@ -562,8 +562,52 @@ const companyMasterSchema = mongoose.Schema({
         type: [String],
         enum: ['ALL_USERS', 'SPECIFIC_USERS', 'ONLY_MAIN_CATEGORY', 'MAIN_CATEGORY_AND_SUB_CATEGORY', 'GROUPS'],
         default: []
-    }
+    },
     // End of Free Cash
+
+    // Modules
+    // At most one entry per moduleId - assigning/re-assigning a module
+    // overwrites startDate/expiryDate/assignedAt and clears revokedAt on its
+    // existing entry rather than appending a new one. See checkModuleAssigned
+    // middleware, which reads this array off the cached companyMasterData.
+    assignedModules: {
+        type: [
+            {
+                moduleId: {
+                    type: mongoose.Schema.Types.ObjectId,
+                    ref: 'ModuleMaster',
+                    required: true
+                },
+                // When this vendor's access to the module actually begins.
+                // May be in the future (e.g. access granted ahead of a
+                // billing cycle) - see checkModuleAssigned.
+                startDate: {
+                    type: Date,
+                    default: null
+                },
+                // null = no expiry.
+                expiryDate: {
+                    type: Date,
+                    default: null
+                },
+                // When the assignment action itself was performed (audit
+                // timestamp) - distinct from startDate, which is when access
+                // takes effect.
+                assignedAt: {
+                    type: Date,
+                    default: null
+                },
+                // null while the assignment is active; set when revoked.
+                revokedAt: {
+                    type: Date,
+                    default: null
+                }
+            }
+        ],
+        default: [],
+        _id: false
+    }
+    // End of Modules
 }, {
   timestamps: true
 });

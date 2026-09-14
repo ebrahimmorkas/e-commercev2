@@ -5,12 +5,13 @@ const { addBrandSchema, updateBrandSchema, deleteBrandSchema, idParamSchema } = 
 const validate = require('../middlewares/validate');
 const authenticate = require('../middlewares/authenticate');
 const authorize = require('../middlewares/authorize');
+const checkModuleAssigned = require('../middlewares/checkModuleAssigned');
 
-router.post('/add-brand', authenticate, authorize('admin'), validate(addBrandSchema, 'body'), addBrand);
-router.put('/update-brand', authenticate, authorize('admin'), validate(updateBrandSchema, 'body'), updateBrand);
-router.delete('/delete-brand', authenticate, authorize('admin'), validate(deleteBrandSchema, 'body'), deleteBrand);
-router.get('/get-all-brands-admin', authenticate, authorize('admin'), getAllBrandsAdmin);
-router.get('/get-all-brands', getAllBrandsClient);
-router.get('/get-brand/:id', authenticate, authorize('admin'), validate(idParamSchema, 'params'), getBrandById);
+router.post('/add-brand', authenticate, authorize('admin'), checkModuleAssigned('BRAND'), validate(addBrandSchema, 'body'), addBrand);
+router.put('/update-brand', authenticate, authorize('admin'), checkModuleAssigned('BRAND'), validate(updateBrandSchema, 'body'), updateBrand);
+router.delete('/delete-brand', authenticate, authorize('admin'), checkModuleAssigned('BRAND'), validate(deleteBrandSchema, 'body'), deleteBrand);
+router.get('/get-all-brands-admin', authenticate, authorize('admin'), checkModuleAssigned('BRAND'), getAllBrandsAdmin);
+router.get('/get-all-brands', checkModuleAssigned('BRAND'), getAllBrandsClient);
+router.get('/get-brand/:id', authenticate, authorize('admin'), checkModuleAssigned('BRAND'), validate(idParamSchema, 'params'), getBrandById);
 
 module.exports = router;

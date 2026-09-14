@@ -6,6 +6,7 @@ const authenticate = require('../middlewares/authenticate');
 const authorize = require('../middlewares/authorize');
 const vendorDetection = require('../middlewares/vendorDetection');
 const ensureVendorDataCached = require('../middlewares/ensureVendorDataCached');
+const checkModuleAssigned = require('../middlewares/checkModuleAssigned');
 const createBulkUploader = require('../middlewares/multer/bulkFileUpload');
 
 // ONE excel file, with sheets named "Products" / "Categories" / "Users" -
@@ -19,6 +20,7 @@ const discountExcelFields = createBulkUploader({
 // Admin-only management routes
 router.post(
   '/add-discount',
+  checkModuleAssigned('DISCOUNT'),
   discountExcelFields,
   discountController.createDiscount
 );
@@ -29,6 +31,7 @@ router.put(
   vendorDetection,
   ensureVendorDataCached,
   authorize('admin'),
+  checkModuleAssigned('DISCOUNT'),
   discountExcelFields,
   discountController.updateDiscount
 );
@@ -39,6 +42,7 @@ router.get(
   vendorDetection,
   ensureVendorDataCached,
   authorize('admin'),
+  checkModuleAssigned('DISCOUNT'),
   discountController.getDiscountById
 );
 
@@ -48,6 +52,7 @@ router.get(
   vendorDetection,
   ensureVendorDataCached,
   authorize('admin'),
+  checkModuleAssigned('DISCOUNT'),
   discountController.getAllDiscountsAdmin
 );
 
@@ -57,6 +62,7 @@ router.delete(
   vendorDetection,
   ensureVendorDataCached,
   authorize('admin'),
+  checkModuleAssigned('DISCOUNT'),
   discountController.deleteDiscount
 );
 
@@ -65,6 +71,7 @@ router.get(
   '/storefront/active',
   vendorDetection,
   ensureVendorDataCached,
+  checkModuleAssigned('DISCOUNT'),
   discountController.getActiveDiscounts
 );
 

@@ -5,6 +5,7 @@ const validate = require('../middlewares/validate');
 const { createProductSchema, updateProductSchema, toggleProductStatusSchema, deleteProductSchema, idParamSchema, brandIdParamSchema, categoryIdParamSchema } = require('../middlewares/validations/productValidations');
 const vendorDetection = require('../middlewares/vendorDetection');
 const ensureVendorDataCached = require('../middlewares/ensureVendorDataCached');
+const checkModuleAssigned = require('../middlewares/checkModuleAssigned');
 const imageUpload = require('../middlewares/imageUpload');
 const createBulkUploader = require('../middlewares/multer/bulkFileUpload');
 const productBulkUpload = createBulkUploader({ zipFieldNames: ['mainImagesZip', 'additionalImagesZip'] });
@@ -22,28 +23,28 @@ const parseProductData = (req, res, next) => {
     }
 };
 
-router.post( '/add-product', vendorDetection, ensureVendorDataCached, imageUpload.any(), parseProductData, validate(createProductSchema, 'body'), productController.createProduct );
+router.post( '/add-product', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), imageUpload.any(), parseProductData, validate(createProductSchema, 'body'), productController.createProduct );
 
-router.get( '/get-products-admin', vendorDetection, ensureVendorDataCached, productController.getAllProductsAdmin );
+router.get( '/get-products-admin', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), productController.getAllProductsAdmin );
 
-router.get( '/get-product-admin/:id', vendorDetection, ensureVendorDataCached, validate(idParamSchema, 'params'), productController.getProductByIdAdmin );
+router.get( '/get-product-admin/:id', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(idParamSchema, 'params'), productController.getProductByIdAdmin );
 
-router.get( '/get-products', vendorDetection, ensureVendorDataCached, productController.getAllProductsClient );
+router.get( '/get-products', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), productController.getAllProductsClient );
 
-router.get( '/get-product/:id', vendorDetection, ensureVendorDataCached, validate(idParamSchema, 'params'), productController.getProductByIdClient );
+router.get( '/get-product/:id', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(idParamSchema, 'params'), productController.getProductByIdClient );
 
-router.get( '/get-products-by-brand/:brandId', vendorDetection, ensureVendorDataCached, validate(brandIdParamSchema, 'params'), productController.getProductsByBrand );
+router.get( '/get-products-by-brand/:brandId', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(brandIdParamSchema, 'params'), productController.getProductsByBrand );
 
-router.get( '/get-products-by-category/:categoryId', vendorDetection, ensureVendorDataCached, validate(categoryIdParamSchema, 'params'), productController.getProductsByCategory );
+router.get( '/get-products-by-category/:categoryId', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(categoryIdParamSchema, 'params'), productController.getProductsByCategory );
 
-router.get( '/get-products-by-category-admin/:categoryId', vendorDetection, ensureVendorDataCached, validate(categoryIdParamSchema, 'params'), productController.getProductsByCategoryAdmin );
+router.get( '/get-products-by-category-admin/:categoryId', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(categoryIdParamSchema, 'params'), productController.getProductsByCategoryAdmin );
 
-router.post( '/bulk-upload-products', vendorDetection, ensureVendorDataCached, productBulkUpload, productController.bulkUploadProducts );
+router.post( '/bulk-upload-products', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), productBulkUpload, productController.bulkUploadProducts );
 
-router.put( '/update-product', vendorDetection, ensureVendorDataCached, imageUpload.any(), parseProductData, validate(updateProductSchema, 'body'), productController.updateProduct );
+router.put( '/update-product', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), imageUpload.any(), parseProductData, validate(updateProductSchema, 'body'), productController.updateProduct );
 
-router.patch( '/toggle-product-status', vendorDetection, ensureVendorDataCached, validate(toggleProductStatusSchema, 'body'), productController.toggleProductStatus );
+router.patch( '/toggle-product-status', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(toggleProductStatusSchema, 'body'), productController.toggleProductStatus );
 
-router.delete( '/delete-product', vendorDetection, ensureVendorDataCached, validate(deleteProductSchema, 'body'), productController.deleteProduct );
+router.delete( '/delete-product', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(deleteProductSchema, 'body'), productController.deleteProduct );
 
 module.exports = router;

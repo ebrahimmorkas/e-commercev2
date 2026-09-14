@@ -6,6 +6,7 @@ const authenticate = require('../middlewares/authenticate');
 const authorize = require('../middlewares/authorize');
 const vendorDetection = require('../middlewares/vendorDetection');
 const ensureVendorDataCached = require('../middlewares/ensureVendorDataCached');
+const checkModuleAssigned = require('../middlewares/checkModuleAssigned');
 const validate = require('../middlewares/validate');
 const {
     createOrderSchema,
@@ -15,7 +16,7 @@ const {
     cancelOrderSchema
 } = require('../middlewares/validations/orderValidations');
 
-const vendorContext = [authenticate, vendorDetection, ensureVendorDataCached];
+const vendorContext = [authenticate, vendorDetection, ensureVendorDataCached, checkModuleAssigned('ORDERS')];
 
 // --- Customer routes ---
 router.post(

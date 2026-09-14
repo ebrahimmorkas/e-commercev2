@@ -14,6 +14,7 @@ const ensureVendorDataCached = require('./middlewares/ensureVendorDataCached');
 // Routes
 const companySettingsRoutes = require('./routes/companySettingsRoutes');
 const companyMasterRoutes = require('./routes/companyMasterRoutes');
+const moduleMasterRoutes = require('./routes/moduleMasterRoutes');
 const shippingPriceSettingsRoutes = require('./routes/shippingPriceSettingsRoutes');
 const announcementRoutes = require('./routes/announcementRoutes');
 const bannerRoutes = require('./routes/bannerRoutes');
@@ -72,6 +73,7 @@ app.use(ensureVendorDataCached);
 // Routes
 // Public Routes
 app.use('/api/company-master', companyMasterRoutes);
+app.use('/api/modules', moduleMasterRoutes);
 app.use('/api/company-settings', companySettingsRoutes);
 app.use('/api/shipping-price-settings', shippingPriceSettingsRoutes);
 app.use('/api/category', categoryRoutes);
