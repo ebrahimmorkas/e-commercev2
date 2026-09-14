@@ -415,6 +415,7 @@ const Dropdown = ({
           className={containerClasses}
           aria-haspopup="listbox"
           aria-expanded={isOpen}
+          aria-invalid={error ? 'true' : 'false'}
           {...restProps}
         >
           <div className="flex items-center flex-1 min-w-0">

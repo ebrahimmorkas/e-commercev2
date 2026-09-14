@@ -29,8 +29,17 @@ const LoginForm = ({
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    // Read straight from the DOM instead of trusting React state alone -
+    // browser autofill sets the input's real value without always firing a
+    // change event React's controlled state picks up in time, which made the
+    // very first submit go out with stale (often empty) credentials.
+    const form = e.target;
+    const domEmail = form.elements.namedItem('email')?.value ?? email;
+    const domPassword = form.elements.namedItem('password')?.value ?? password;
+    setEmail(domEmail);
+    setPassword(domPassword);
     if (onSubmit) {
-      onSubmit({ email, password });
+      onSubmit({ email: domEmail, password: domPassword });
     }
   };
 

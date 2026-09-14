@@ -54,13 +54,26 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    // Read straight from the DOM instead of trusting React state alone -
+    // browser autofill sets the input's real value without always firing a
+    // change event React's controlled state picks up in time, which made the
+    // very first submit go out with stale (often empty) credentials.
+    const form = e.target;
+    const domIdentifier = form.elements.namedItem('identifier')?.value ?? loginForm.identifier;
+    const domPassword = form.elements.namedItem('password')?.value ?? loginForm.password;
+    setLoginForm({ identifier: domIdentifier, password: domPassword });
     setLoading(true);
-    const result = await login(loginForm.identifier.trim(), loginForm.password);
-    setLoading(false);
+    const result = await login(domIdentifier.trim(), domPassword);
     if (!result.success) {
+      setLoading(false);
       setError(result.message);
       return;
     }
+    // Admin accounts are redirected to /admin by the auth provider itself -
+    // the page is already navigating away, so just wait rather than closing
+    // the modal into a storefront view the user is about to leave.
+    if (result.redirected) return;
+    setLoading(false);
     toast.success('Welcome back!');
     resetAndClose();
   };
@@ -126,6 +139,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
         <form onSubmit={handleLoginSubmit} className="space-y-3">
           <input
             type="text"
+            name="identifier"
             placeholder="Username, email, or phone"
             value={loginForm.identifier}
             onChange={(e) => setLoginForm((f) => ({ ...f, identifier: e.target.value }))}
@@ -135,6 +149,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
           />
           <input
             type="password"
+            name="password"
             placeholder="Password"
             value={loginForm.password}
             onChange={(e) => setLoginForm((f) => ({ ...f, password: e.target.value }))}

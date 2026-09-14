@@ -16,6 +16,39 @@ export const getAccessToken = () => accessToken;
 export const setAccessToken = (token) => { accessToken = token; };
 export const clearAccessToken = () => { accessToken = null; };
 
+// A plain (non-httpOnly) localStorage flag mirroring "a refresh-token cookie
+// was issued at some point". The actual refresh token is httpOnly and can't
+// be read from JS, so this is only a hint - never trusted for security - that
+// lets AuthProvider skip the silent /auth/refresh-token call (and its 401)
+// for a browser that has never logged in, instead of firing it unconditionally
+// on every page load.
+const HAS_SESSION_KEY = 'ecom.hasSession';
+
+export const hasSessionHint = () => {
+  try {
+    return localStorage.getItem(HAS_SESSION_KEY) === '1';
+  } catch {
+    // Storage unavailable (private browsing, etc.) - fall back to always checking.
+    return true;
+  }
+};
+
+export const setSessionHint = () => {
+  try {
+    localStorage.setItem(HAS_SESSION_KEY, '1');
+  } catch {
+    // ignore - best effort only
+  }
+};
+
+export const clearSessionHint = () => {
+  try {
+    localStorage.removeItem(HAS_SESSION_KEY);
+  } catch {
+    // ignore - best effort only
+  }
+};
+
 /**
  * A normalized error thrown for any non-success API response.
  * Carries the HTTP status and any field-level `errors` array the backend sent.

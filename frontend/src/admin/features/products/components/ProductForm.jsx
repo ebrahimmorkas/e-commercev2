@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Stepper from '../../../../components/common/Stepper';
 import Button from '../../../../components/common/Buttons';
 import Card from '../../../../components/common/Card';
@@ -15,23 +15,37 @@ const STEPS = [
   { key: 'review', label: 'Review & Submit' },
 ];
 
+// Every validator below returns either null (no problem) or a structured
+// error - { field, message, variantIndex?, sizeIndex? } - instead of a bare
+// string, so the caller can both toast the message AND drive the UI to the
+// exact field (open its accordion, scroll to it, mark it red) rather than
+// leaving the user to hunt for what's wrong.
 const validateBasics = (draft) => {
-  if (!draft.name.trim()) return 'Product name is required.';
-  if (draft.colors.length === 0) return 'Add at least one color.';
+  if (!draft.name.trim()) return { field: 'name', message: 'Product name is required.' };
+  if (draft.colors.length === 0) return { field: 'colors', message: 'Add at least one color.' };
   return null;
 };
 
 const validateVariants = (draft) => {
-  if (draft.variants.length === 0) return 'Add at least one variant.';
-  for (const variant of draft.variants) {
-    if (variant.sizes.length === 0) return `Variant "${variant.color || variant.displayName || ''}" needs at least one size.`;
-    for (const size of variant.sizes) {
-      if (!size.sizeId) return 'Every size must reference a Size Master entry.';
-      if (!size.sizeName.trim()) return 'Every size needs a display name.';
-      if (size.sizeType === 'LABEL' && !size.labelValue) return `Size "${size.sizeName}" needs a label value.`;
-      if (size.sizeType === 'MEASURABLE' && size.values.length === 0) return `Size "${size.sizeName}" needs at least one measurement value.`;
-      if (size.price === '' || Number(size.price) < 0) return `Size "${size.sizeName}" needs a valid price.`;
-      if (!size.sku.trim()) return `Size "${size.sizeName}" needs a SKU.`;
+  if (draft.variants.length === 0) return { field: 'variants', message: 'Add at least one variant.' };
+  for (let variantIndex = 0; variantIndex < draft.variants.length; variantIndex++) {
+    const variant = draft.variants[variantIndex];
+    if (variant.sizes.length === 0) {
+      return {
+        field: 'variantSizes',
+        variantIndex,
+        message: `Variant "${variant.color || variant.displayName || ''}" needs at least one size.`,
+      };
+    }
+    for (let sizeIndex = 0; sizeIndex < variant.sizes.length; sizeIndex++) {
+      const size = variant.sizes[sizeIndex];
+      const base = { variantIndex, sizeIndex };
+      if (!size.sizeId) return { ...base, field: 'sizeId', message: 'Every size must reference a Size Master entry.' };
+      if (!size.sizeName.trim()) return { ...base, field: 'sizeName', message: 'Every size needs a display name.' };
+      if (size.sizeType === 'LABEL' && !size.labelValue) return { ...base, field: 'labelValue', message: `Size "${size.sizeName}" needs a label value.` };
+      if (size.sizeType === 'MEASURABLE' && size.values.length === 0) return { ...base, field: 'values', message: `Size "${size.sizeName}" needs at least one measurement value.` };
+      if (size.price === '' || Number(size.price) < 0) return { ...base, field: 'price', message: `Size "${size.sizeName}" needs a valid price.` };
+      if (!size.sku.trim()) return { ...base, field: 'sku', message: `Size "${size.sizeName}" needs a SKU.` };
     }
   }
   return null;
@@ -46,7 +60,34 @@ const validateVariants = (draft) => {
 const ProductForm = ({ mode = 'add', initialDraft, lookups, products = [], onSubmit, onCancel, submitting = false }) => {
   const [draft, setDraft] = useState(initialDraft || emptyProduct());
   const [step, setStep] = useState(0);
+  // `id` is bumped on every failed validation (even a repeat of the same
+  // field) so the scroll-to-field effect below re-fires even when the error
+  // itself is unchanged - e.g. the user clicks Submit twice in a row without
+  // fixing anything.
+  const [fieldError, setFieldError] = useState(null);
   const toast = useToast();
+
+  // Any edit clears the last error mark rather than leaving a red field
+  // sitting there once the user has already fixed it - it's only ever
+  // re-set by the next failed validation, on the next Next/Submit click.
+  const handleDraftChange = (nextDraft) => {
+    setDraft(nextDraft);
+    if (fieldError) setFieldError(null);
+  };
+
+  // Drives the user to whatever field just failed validation instead of
+  // leaving them to hunt for it after the toast: waits a tick for the step
+  // switch / accordion auto-open (triggered by fieldError below in the child
+  // steps) to render, then scrolls to and focuses the first marked field.
+  useEffect(() => {
+    if (!fieldError) return;
+    const timer = setTimeout(() => {
+      const el = document.querySelector('[aria-invalid="true"], [data-field-error="true"]');
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el?.focus?.({ preventScroll: true });
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [fieldError]);
 
   const { companySettings, companyMaster } = lookups;
   const isBulkPricingFeatureOn = companyMaster ? !!companyMaster.isBulkPricingFeatureOn : true;
@@ -70,9 +111,11 @@ const ProductForm = ({ mode = 'add', initialDraft, lookups, products = [], onSub
   const goNext = () => {
     const error = step === 0 ? validateBasics(draft) : step === 1 ? validateVariants(draft) : null;
     if (error) {
-      toast.error(error);
+      toast.error(error.message);
+      setFieldError({ ...error, id: Date.now() });
       return;
     }
+    setFieldError(null);
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   };
   const goBack = () => setStep((s) => Math.max(s - 1, 0));
@@ -80,11 +123,14 @@ const ProductForm = ({ mode = 'add', initialDraft, lookups, products = [], onSub
   const handleSubmit = async () => {
     const basicsError = validateBasics(draft);
     const variantsError = validateVariants(draft);
-    if (basicsError || variantsError) {
-      toast.error(basicsError || variantsError);
+    const error = basicsError || variantsError;
+    if (error) {
+      toast.error(error.message);
+      setFieldError({ ...error, id: Date.now() });
       setStep(basicsError ? 0 : 1);
       return;
     }
+    setFieldError(null);
     const { payload, mainImages, additionalImageUploads } = buildSubmitPayload(draft, { isProductCodeAutoGenerated });
     await onSubmit(payload, mainImages, additionalImageUploads);
   };
@@ -99,7 +145,8 @@ const ProductForm = ({ mode = 'add', initialDraft, lookups, products = [], onSub
       {step === 0 && (
         <ProductBasicsStep
           draft={draft}
-          onChange={setDraft}
+          onChange={handleDraftChange}
+          fieldError={fieldError}
           categories={lookups.categories}
           taxOptions={lookups.taxOptions}
           recommendedProductOptions={recommendedProductOptions}
@@ -113,7 +160,8 @@ const ProductForm = ({ mode = 'add', initialDraft, lookups, products = [], onSub
       {step === 1 && (
         <VariantsStep
           draft={draft}
-          onChange={setDraft}
+          onChange={handleDraftChange}
+          fieldError={fieldError}
           colorOptions={colorOptions}
           sizeOptions={lookups.sizeOptions}
           getSizeMasterById={lookups.getSizeMasterById}

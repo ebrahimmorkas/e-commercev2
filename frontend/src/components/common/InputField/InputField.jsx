@@ -22,6 +22,9 @@ import React, { useState } from 'react';
  * @param {boolean} props.showError - Whether to display error messages
  * @param {string} props.errorClassName - Custom class for error messages
  * @param {string} props.pattern - HTML5 pattern attribute
+ * @param {string} props.error - Externally-controlled error message (e.g. from a parent
+ *   form's submit-time validation). Shown immediately regardless of touched/blur state,
+ *   unlike the internal per-keystroke `validations` errors below.
  */
 const InputField = ({
   type = 'text',
@@ -42,12 +45,17 @@ const InputField = ({
   showError = true,
   errorClassName = '',
   pattern = null,
+  error: externalError = '',
   ...restProps
 }) => {
   // Internal state for uncontrolled component and error handling
   const [internalValue, setInternalValue] = useState(defaultValue);
-  const [error, setError] = useState('');
+  const [internalError, setError] = useState('');
   const [touched, setTouched] = useState(false);
+
+  // An external error always wins and shows immediately; the internal
+  // per-keystroke validation error only shows once the field has been touched.
+  const error = externalError || (touched ? internalError : '');
 
   // Determine if component is controlled or uncontrolled
   const isControlled = value !== undefined;
@@ -128,7 +136,7 @@ const InputField = ({
   const defaultClasses = 'px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200';
   
   // Error state classes
-  const errorClasses = error && touched ? 'border-red-500 focus:ring-red-500' : 'border-gray-300';
+  const errorClasses = error ? 'border-red-500 focus:ring-red-500' : 'border-gray-300';
   
   // Disabled state classes
   const disabledClasses = disabled ? 'bg-gray-100 cursor-not-allowed opacity-60' : 'bg-white';
@@ -164,13 +172,13 @@ const InputField = ({
         maxLength={maxLength}
         pattern={pattern}
         className={inputClasses}
-        aria-invalid={error && touched ? 'true' : 'false'}
-        aria-describedby={error && touched ? `${id || name}-error` : undefined}
+        aria-invalid={error ? 'true' : 'false'}
+        aria-describedby={error ? `${id || name}-error` : undefined}
         {...restProps}
       />
 
       {/* Error Message */}
-      {showError && error && touched && (
+      {showError && error && (
         <p 
           id={`${id || name}-error`}
           className={`mt-1 text-sm text-red-600 ${errorClassName}`}

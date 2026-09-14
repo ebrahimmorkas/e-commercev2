@@ -7,7 +7,7 @@ import theme from '../theme/theme';
  * Free-text tag list editor (colors, search keywords, exclude zip codes).
  * Enter or comma commits the current text as a new tag.
  */
-const TagInput = ({ label, placeholder, value = [], onChange, helperText, badgeVariant = 'blue' }) => {
+const TagInput = ({ label, placeholder, value = [], onChange, helperText, badgeVariant = 'blue', error = '' }) => {
   const [draft, setDraft] = useState('');
 
   const commit = () => {
@@ -39,6 +39,7 @@ const TagInput = ({ label, placeholder, value = [], onChange, helperText, badgeV
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={handleKeyDown}
         onBlur={commit}
+        error={error}
       />
       {helperText && <p className={`mt-1 text-xs ${theme.text.muted}`}>{helperText}</p>}
       {value.length > 0 && (

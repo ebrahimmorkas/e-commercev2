@@ -1,6 +1,7 @@
 import theme from '../theme/theme';
 import { GemIcon } from '../icons';
 import { useStorefrontProducts } from '../../products/hooks/useStorefrontProducts';
+import { useStorefrontBanner } from '../../banners/hooks/useStorefrontBanner';
 import ProductCard from '../../products/components/ProductCard';
 import Spinner from '../../../../components/common/Spinner/Spinner';
 import EmptyState from '../../../../components/common/EmptyState/EmptyState';
@@ -38,29 +39,63 @@ const FloatingGems = () => (
  */
 const HomePage = ({ onAddToCart, onProductClick, cartItems = {}, onIncrementItem, onDecrementItem }) => {
   const { products, loading, error, reload } = useStorefrontProducts();
+  const { banner, loading: bannerLoading } = useStorefrontBanner();
 
   return (
     <div className={theme.page.background}>
-      <section className={`${theme.hero.section} ${theme.hero.background}`}>
-        <FloatingGems />
-        <div className={theme.hero.container}>
-          <p className={`${theme.hero.eyebrowLayout} ${theme.hero.eyebrow}`}>Hutaib Tailoring Materials</p>
-          <h1 className={`${theme.hero.headingLayout} ${theme.hero.heading}`}>
-            Crystals, Pearls &amp; Beads for Every Creation
-          </h1>
-          <p className={`${theme.hero.subheadingLayout} ${theme.hero.subheading}`}>
-            Genuine Preciosa crystals, rhinestones, buttons, pearls and pressed glass beads —
-            sourced with care, delivered with pride.
-          </p>
-          <button type="button" className={`${theme.hero.ctaLayout} ${theme.hero.cta}`}>
-            <span className={theme.hero.ctaShine} />
-            <span className={theme.hero.ctaLabel}>Shop Now</span>
-          </button>
-          <div className={theme.hero.ctaWrapper}>
-            <PartnerBadge />
+      {bannerLoading ? (
+        // Hold a blank placeholder the same size as the eventual hero until
+        // we know what to show - otherwise the static fallback hero (or the
+        // wrong banner) paints for a frame first and gets swapped out once
+        // the fetch resolves, flashing on every load.
+        <section className="relative w-full aspect-video sm:aspect-auto sm:h-screen overflow-hidden bg-slate-900" />
+      ) : banner?.video ? (
+        // Full-bleed h-screen + object-cover works on wide screens, but forces
+        // a landscape video into a tall narrow box on mobile - object-cover
+        // then crops away most of the width to fill that height. Below sm,
+        // size the section by the video's own aspect ratio instead and use
+        // object-contain so the whole frame stays visible (letterboxed by the
+        // section background rather than cropped).
+        <section className="relative w-full aspect-video sm:aspect-auto sm:h-screen overflow-hidden bg-slate-900">
+          <video
+            className="absolute inset-0 h-full w-full object-contain sm:object-cover"
+            src={banner.video}
+            autoPlay
+            muted
+            loop
+            playsInline
+          />
+        </section>
+      ) : banner?.image ? (
+        <section className="relative w-full aspect-video sm:aspect-auto sm:h-screen overflow-hidden bg-slate-900">
+          <img
+            className="absolute inset-0 h-full w-full object-contain sm:object-cover"
+            src={banner.image}
+            alt={banner.name || 'Banner'}
+          />
+        </section>
+      ) : (
+        <section className={`${theme.hero.section} ${theme.hero.background}`}>
+          <FloatingGems />
+          <div className={theme.hero.container}>
+            <p className={`${theme.hero.eyebrowLayout} ${theme.hero.eyebrow}`}>Hutaib Tailoring Materials</p>
+            <h1 className={`${theme.hero.headingLayout} ${theme.hero.heading}`}>
+              Crystals, Pearls &amp; Beads for Every Creation
+            </h1>
+            <p className={`${theme.hero.subheadingLayout} ${theme.hero.subheading}`}>
+              Genuine Preciosa crystals, rhinestones, buttons, pearls and pressed glass beads —
+              sourced with care, delivered with pride.
+            </p>
+            <button type="button" className={`${theme.hero.ctaLayout} ${theme.hero.cta}`}>
+              <span className={theme.hero.ctaShine} />
+              <span className={theme.hero.ctaLabel}>Shop Now</span>
+            </button>
+            <div className={theme.hero.ctaWrapper}>
+              <PartnerBadge />
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       <section className={theme.section.wrapper}>
         <div className={theme.section.headerWrapper}>
