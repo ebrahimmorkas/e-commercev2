@@ -299,7 +299,7 @@ const Dropdown = ({
       return <span className="block truncate">{selectedOption.label}</span>;
     }
 
-    return <span className="text-gray-400">{placeholder}</span>;
+    return <span className="block truncate text-gray-400">{placeholder}</span>;
   };
 
   // Icons
