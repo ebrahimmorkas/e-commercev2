@@ -1,6 +1,6 @@
 // seed-user.js
 
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");

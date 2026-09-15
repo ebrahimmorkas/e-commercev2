@@ -9,7 +9,7 @@
 // Usage:
 //   node scripts/manageCommissionLedger.js list <vendorId> [status]
 //   node scripts/manageCommissionLedger.js collect <entryId> <vendorId> [--notes="..."] [--adminUserId=...]
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const mongoose = require('mongoose');
 const commissionService = require('../services/commissionService');
 const { VALID_COMMISSION_LEDGER_STATUSES } = require('../constants/commissionConstants');

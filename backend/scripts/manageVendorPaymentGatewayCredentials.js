@@ -24,7 +24,7 @@
 // Examples:
 //   node scripts/manageVendorPaymentGatewayCredentials.js set 64f... paytabs --profileId=PT123 --serverKey=xxxx
 //   node scripts/manageVendorPaymentGatewayCredentials.js set 64f... stripe --serverKey=sk_live_xxx --clientKey=pk_live_xxx
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const mongoose = require('mongoose');
 const vendorPaymentGatewayCredentialsService = require('../services/vendorPaymentGatewayCredentialsService');
 const { PAYMENT_GATEWAYS } = require('../constants/paymentGatewayConstants');

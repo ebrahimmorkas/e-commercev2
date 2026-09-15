@@ -7,7 +7,7 @@ const logger = require('./utils/logger.js')
 const {connectRedis} = require('./config/redisConfig');
 const realtimeService = require('./services/realtimeService');
 const abandonedCartService = require('./services/abandonedCartService');
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 // Middlewares
 const vendorDetection = require('./middlewares/vendorDetection');
 const ensureVendorDataCached = require('./middlewares/ensureVendorDataCached');

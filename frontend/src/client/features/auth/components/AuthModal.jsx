@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Modal from '../../../../components/common/Modal/Modal';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../../../../components/common/Toast';
+import htmLogo from '../../../../assets/htm_logo.jpeg';
 
 const inputClass =
   'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500';
@@ -83,7 +84,14 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
     setError('');
     setLoading(true);
 
-    const registerResult = await register(registerForm);
+    // whatsapp_no is optional on the backend (backend/models/User.js) but
+    // Mongoose still runs minlength on an empty string, unlike an omitted
+    // field - so drop it from the payload entirely when left blank.
+    const registerPayload = { ...registerForm };
+    if (!registerPayload.whatsapp_no.trim()) {
+      delete registerPayload.whatsapp_no;
+    }
+    const registerResult = await register(registerPayload);
     if (!registerResult.success) {
       setLoading(false);
       setError(registerResult.message);
@@ -105,30 +113,14 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
     <Modal
       isOpen={isOpen}
       onClose={resetAndClose}
-      title={mode === 'login' ? 'Sign in' : 'Create your account'}
+      title={
+        <span className="flex items-center gap-2.5">
+          <img src={htmLogo} alt="HTM" className="h-8 w-auto object-contain" />
+          {mode === 'login' ? 'Sign in' : 'Create your account'}
+        </span>
+      }
       size="sm"
     >
-      <div className="flex gap-2 mb-4 text-sm font-medium">
-        <button
-          type="button"
-          onClick={() => switchMode('login')}
-          className={`px-3 py-1.5 rounded-full cursor-pointer transition-colors duration-150 ${
-            mode === 'login' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-          }`}
-        >
-          Sign in
-        </button>
-        <button
-          type="button"
-          onClick={() => switchMode('register')}
-          className={`px-3 py-1.5 rounded-full cursor-pointer transition-colors duration-150 ${
-            mode === 'register' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-          }`}
-        >
-          Create account
-        </button>
-      </div>
-
       {error && (
         <div className="mb-4 px-3 py-2 rounded-lg text-sm bg-red-50 border border-red-200 text-red-700" role="alert">
           {error}
@@ -164,6 +156,17 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
           >
             {loading ? 'Signing in...' : 'Sign in'}
           </button>
+          <p className="text-center text-sm text-slate-500">
+            Don't have an account?{' '}
+            <button
+              type="button"
+              onClick={() => switchMode('register')}
+              className="font-semibold text-amber-600 hover:text-amber-700 cursor-pointer"
+              disabled={loading}
+            >
+              Create account
+            </button>
+          </p>
         </form>
       ) : (
         <form onSubmit={handleRegisterSubmit} className="space-y-3">
@@ -174,6 +177,8 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
             onChange={(e) => setRegisterForm((f) => ({ ...f, name: e.target.value }))}
             className={inputClass}
             required
+            minLength={2}
+            maxLength={50}
             disabled={loading}
           />
           <input
@@ -201,6 +206,16 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
             onChange={(e) => setRegisterForm((f) => ({ ...f, phone_no: e.target.value }))}
             className={inputClass}
             required
+            disabled={loading}
+          />
+          <input
+            type="tel"
+            placeholder="WhatsApp number (optional)"
+            value={registerForm.whatsapp_no}
+            onChange={(e) => setRegisterForm((f) => ({ ...f, whatsapp_no: e.target.value }))}
+            className={inputClass}
+            minLength={10}
+            maxLength={14}
             disabled={loading}
           />
           <div className="grid grid-cols-3 gap-3">
@@ -248,6 +263,17 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
           >
             {loading ? 'Creating account...' : 'Create account'}
           </button>
+          <p className="text-center text-sm text-slate-500">
+            Already have an account?{' '}
+            <button
+              type="button"
+              onClick={() => switchMode('login')}
+              className="font-semibold text-amber-600 hover:text-amber-700 cursor-pointer"
+              disabled={loading}
+            >
+              Sign in
+            </button>
+          </p>
         </form>
       )}
     </Modal>

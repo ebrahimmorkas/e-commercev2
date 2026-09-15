@@ -5,7 +5,7 @@
 export const SUPPORT_LINKS = [
   'Contact Us',
   'Shipping & Delivery',
-  'FAQs',
+  // 'FAQs',
   'Track Your Order',
   'Wholesale Inquiries',
 ];

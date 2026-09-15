@@ -1301,6 +1301,121 @@ const checkoutCart = async (vendorId, cartOwner, userId, locationContext, compan
     }
 };
 
+/*
+|--------------------------------------------------------------------------
+| STOCK ADJUSTMENT (order placement / cancellation)
+|--------------------------------------------------------------------------
+| Product stock was never actually adjusted anywhere - checkoutCart above
+| only ever reads size.stock to validate, it never writes it. These bring
+| stock in sync with real orders.
+|
+| Each write is a single-document, per-size conditional $inc - atomic on its
+| own regardless of replica-set support, so it doesn't depend on Mongo
+| multi-document transactions (see utils/excelRowProcessor.js's
+| useTransaction comment - transactions are off by default for this
+| deployment). decrementStockForOrder applies these one at a time and, if
+| any single item loses the race to insufficient stock, rolls back every
+| item it already decremented before failing the whole order.
+*/
+
+// A checked-out cart's line items, flattened to exactly what a stock write
+// needs. Mirrors checkoutCart's own eligibleLineItems loop, but reads
+// isCheckedOut off the (already checked-out) cart instead of re-deriving it,
+// since by the time these run checkoutCart has already frozen it.
+const checkedOutLineItems = (cart) =>
+    cart.products.flatMap((product) =>
+        product.variants.flatMap((variant) =>
+            variant.sizes
+                .filter((size) => size.isCheckedOut)
+                .map((size) => ({
+                    productId: product.productId,
+                    variantId: variant.variantId,
+                    sizeId: size.sizeId,
+                    quantity: size.quantity
+                }))
+        )
+    );
+
+// delta is negative to decrement (order placement), positive to restore
+// (cancellation). requireAvailableStock guards a decrement against a size
+// that no longer has enough stock.
+//
+// The guard has to live in the TOP-LEVEL query filter (via $elemMatch), not
+// just the arrayFilters - Product has `timestamps: true`, so an updateOne
+// whose arrayFilters match nothing still bumps updatedAt and reports
+// modifiedCount: 1, making that an unreliable success signal on its own.
+// findOneAndUpdate against an $elemMatch-guarded filter instead returns null
+// (no document matched at all) when the size doesn't exist or doesn't have
+// enough stock, which is unambiguous regardless of timestamps.
+const adjustSizeStock = async (productId, variantId, sizeId, delta, requireAvailableStock) => {
+    const sizeElemMatch = { _id: sizeId };
+    if (requireAvailableStock) {
+        sizeElemMatch.stock = { $gte: -delta };
+    }
+    const updated = await Product.findOneAndUpdate(
+        {
+            _id: productId,
+            variants: { $elemMatch: { _id: variantId, sizes: { $elemMatch: sizeElemMatch } } }
+        },
+        { $inc: { 'variants.$[v].sizes.$[s].stock': delta } },
+        { arrayFilters: [{ 'v._id': variantId }, { 's._id': sizeId }] }
+    );
+    return updated !== null;
+};
+
+// Called once per order, right before it's created, on the cart checkoutCart
+// just priced. Returns a failure result (without throwing) if any item lost
+// the stock race, so the caller can bail out of order creation before an
+// Order document (or the cart deactivation) is ever written.
+const decrementStockForOrder = async (cart) => {
+    const items = checkedOutLineItems(cart);
+    const applied = [];
+    try {
+        for (const item of items) {
+            const succeeded = await adjustSizeStock(item.productId, item.variantId, item.sizeId, -item.quantity, true);
+            if (!succeeded) {
+                for (const done of applied) {
+                    await adjustSizeStock(done.productId, done.variantId, done.sizeId, done.quantity, false);
+                }
+                return common.returnResult(
+                    false, 409,
+                    'One or more items in your cart just went out of stock. Please review your cart and try again.'
+                );
+            }
+            applied.push(item);
+        }
+        return common.returnResult(true, 200, 'Stock reserved for order');
+    } catch (err) {
+        for (const done of applied) {
+            await adjustSizeStock(done.productId, done.variantId, done.sizeId, done.quantity, false);
+        }
+        throw err;
+    }
+};
+
+// Called on order cancellation (customer cancelOrder or admin advanceOrderStep
+// reaching the Rejected step) to give back what decrementStockForOrder took.
+// Looks the cart up by id rather than taking a loaded doc, since callers only
+// ever have the order (and therefore its cartId) at that point, not the cart
+// itself. A missing cart is logged and swallowed rather than thrown - the
+// order is already cancelled by the time this runs, so a stock-restore
+// hiccup must never fail that back to the caller.
+const restoreStockForOrder = async (cartId) => {
+    try {
+        const cart = await Cart.findById(cartId);
+        if (!cart) {
+            logger.logInfo(0, 1, 'restoreStockForOrder - cart not found, stock not restored', { cartId });
+            return;
+        }
+        const items = checkedOutLineItems(cart);
+        for (const item of items) {
+            await adjustSizeStock(item.productId, item.variantId, item.sizeId, item.quantity, false);
+        }
+    } catch (err) {
+        logger.logException('Exception in restoreStockForOrder', { cartId, error: err });
+    }
+};
+
 module.exports = {
     addProductToCart,
     updateCartItemQuantity,
@@ -1314,5 +1429,7 @@ module.exports = {
     listEligibleFreeCashForCart,
     consumeFreeCashForOrder,
     refundFreeCashForReturn,
-    checkoutCart
+    checkoutCart,
+    decrementStockForOrder,
+    restoreStockForOrder
 };

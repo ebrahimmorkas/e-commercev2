@@ -1,7 +1,7 @@
 const multer = require('multer');
 const path = require('path');
 const logger = require('../../utils/logger');
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 
 const ALLOWED_IMAGE_TYPES = new RegExp(process.env.ALLOWED_IMAGE_TYPES_FOR_IMAGES, 'i');
 

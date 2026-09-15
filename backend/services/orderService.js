@@ -242,6 +242,14 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
             return common.returnResult(false, 409, 'An order has already been placed for this cart.');
         }
 
+        // Reserves stock for every checked-out line item before the Order
+        // document (or the cart's deactivation) is ever written, so a lost
+        // stock race fails the order cleanly instead of overselling.
+        const stockResult = await cartService.decrementStockForOrder(cart);
+        if (!stockResult.isSuccess) {
+            return common.returnResult(false, stockResult.statusCode, stockResult.message);
+        }
+
         const order = new Order({
             orderNumber: orderNumberResult.meta.orderNumber,
             cartId: cart._id,
@@ -280,18 +288,25 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
             createdBy: userId
         });
 
-        await order.save();
+        try {
+            await order.save();
 
-        await cartService.consumeFreeCashForOrder(vendorId, cart.freeCash, order._id, userId, companySettingsData);
+            await cartService.consumeFreeCashForOrder(vendorId, cart.freeCash, order._id, userId, companySettingsData);
 
-        await commissionService.recordCommissionForOrder(order, companyMasterData);
+            await commissionService.recordCommissionForOrder(order, companyMasterData);
 
-        // Locks the cart out of every existing cart route (all of which
-        // filter on status:'A') so it can never be mutated or re-checked-out
-        // again, and the user's next add-to-cart starts a fresh active cart.
-        cart.status = 'D';
-        cart.updatedBy = userId;
-        await cart.save();
+            // Locks the cart out of every existing cart route (all of which
+            // filter on status:'A') so it can never be mutated or re-checked-out
+            // again, and the user's next add-to-cart starts a fresh active cart.
+            cart.status = 'D';
+            cart.updatedBy = userId;
+            await cart.save();
+        } catch (err) {
+            // Stock was already reserved above - give it back since no order
+            // actually made it through.
+            await cartService.restoreStockForOrder(cart._id);
+            throw err;
+        }
 
         logger.logInfo(1, 0, 'Order created successfully', { vendorId, userId, orderId: order._id });
 
@@ -460,6 +475,7 @@ const advanceOrderStep = async (vendorId, adminUserId, orderId, targetStepCode, 
 
         if (targetStep.code === RESERVED_STEP_CODES.REJECTED) {
             await commissionService.voidCommissionForOrder(vendorId, order._id, order.cancellationReason);
+            await cartService.restoreStockForOrder(order.cartId);
         }
 
         await notifyOrderStatusChange(order, companyMasterData, websiteMasterData, companySettingsData, adminUserId);
@@ -605,6 +621,7 @@ const cancelOrder = async (vendorId, userId, orderId, cancellationReason, compan
         await order.save();
 
         await commissionService.voidCommissionForOrder(vendorId, order._id, cancellationReason);
+        await cartService.restoreStockForOrder(order.cartId);
 
         await notifyOrderStatusChange(order, companyMasterData, websiteMasterData, companySettingsData, userId);
 

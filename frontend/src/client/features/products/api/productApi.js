@@ -13,6 +13,13 @@ export const getStorefrontProducts = () =>
 export const getStorefrontProductById = (id) =>
   apiRequest(`/products/get-product/${id}`, { auth: false });
 
+// categoryId can be a main or sub-category id - the backend also includes
+// that category's active descendants (see productService.js
+// fetchProductsByCategoryForClient), so a parent category returns its
+// children's products too.
+export const getStorefrontProductsByCategory = (categoryId) =>
+  apiRequest(`/products/get-products-by-category/${categoryId}`, { auth: false });
+
 // Re-exported from features/categories - the Navbar's Shop mega-menu also
 // needs this list, so the endpoint call lives in one place.
 export { getStorefrontCategories };
@@ -20,5 +27,6 @@ export { getStorefrontCategories };
 export default {
   getStorefrontProducts,
   getStorefrontProductById,
+  getStorefrontProductsByCategory,
   getStorefrontCategories,
 };

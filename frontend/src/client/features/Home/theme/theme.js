@@ -107,6 +107,17 @@ const theme = {
     stepperButtonRight: 'rounded-r-lg disabled:opacity-40 disabled:cursor-not-allowed',
     stepperCountLayout: 'text-sm font-semibold min-w-6 text-center',
   },
+  // Layout-only classes for ProductListItem - shares theme.card's colors
+  // (background/border/shadow, text, button, stepper, etc.) so a list row
+  // stays visually consistent with the grid card, just arranged horizontally.
+  listCard: {
+    layout: 'group flex items-center gap-4 rounded-xl border p-3 sm:p-4 transition-shadow duration-200',
+    clickable: 'cursor-pointer',
+    imageWrapperLayout: 'relative w-20 h-20 sm:w-28 sm:h-28 shrink-0 overflow-hidden rounded-lg flex items-center justify-center',
+    imageLayout: 'w-full h-full object-contain',
+    bodyLayout: 'flex-1 min-w-0',
+    actionsWrapperLayout: 'w-32 sm:w-40 shrink-0',
+  },
 };
 
 export default theme;

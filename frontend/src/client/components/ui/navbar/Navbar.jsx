@@ -39,8 +39,9 @@ const CategoryItem = ({ node }) => {
           <span className="w-3 h-3 shrink-0" aria-hidden="true" />
         )}
         <a
-          href="#"
-          onClick={(e) => e.preventDefault()}
+          href={`/category/${node._id}`}
+          target="_blank"
+          rel="noopener noreferrer"
           className={`text-sm transition-colors duration-150 ${theme.panel.item}`}
         >
           {node.categoryName}
@@ -93,8 +94,9 @@ const CategoryPanel = ({ categoryTree = [], loading }) => {
       {categoryTree.map((category) => (
         <div key={category._id}>
           <a
-            href="#"
-            onClick={(e) => e.preventDefault()}
+            href={`/category/${category._id}`}
+            target="_blank"
+            rel="noopener noreferrer"
             className={`text-xs font-bold tracking-wide uppercase transition-colors duration-150 hover:text-amber-600 ${theme.panel.heading}`}
           >
             {category.categoryName}

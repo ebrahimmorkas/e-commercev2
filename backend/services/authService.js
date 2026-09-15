@@ -5,7 +5,7 @@ const { generateAccessToken, generateRefreshToken, verifyRefreshToken, hashToken
 const common = require('../utils/common');
 const cartService = require('./cartService');
 const logger = require('../utils/logger');
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 
 const SALT_ROUNDS = Number(process.env.SALT_ROUNDS);
 

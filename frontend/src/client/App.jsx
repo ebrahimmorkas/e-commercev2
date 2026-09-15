@@ -5,6 +5,7 @@ import AnnouncementBar from './components/ui/announcementBar';
 import Footer from './components/ui/footer';
 import HomePage from './features/Home/Pages/HomePage';
 import ProductDetailPage from './features/products/pages/ProductDetailPage';
+import CategoryProductsPage from './features/products/pages/CategoryProductsPage';
 import CartPage from './features/cart/pages/CartPage';
 import { useCart } from './features/cart/hooks/useCart';
 import { useAuth } from './features/auth/hooks/useAuth';
@@ -17,10 +18,13 @@ import EmptyState from '../components/common/EmptyState/EmptyState';
 import theme from './features/Home/theme/theme';
 
 // No routing library yet - path match against `/product/:id` (id = Mongo
-// ObjectId), `/cart`, `/checkout`, `/orders`, `/orders/:id`, or home.
-// pushState/popstate keep the URL shareable and the browser back button
-// working.
+// ObjectId), `/category/:id`, `/cart`, `/checkout`, `/orders`, `/orders/:id`,
+// or home. pushState/popstate keep the URL shareable and the browser back
+// button working. `/category/:id` is also opened directly as a real link
+// (new tab) from the Navbar's Shop mega-menu, so it has to work as a
+// standalone page load, not just via in-app pushState.
 const PRODUCT_PATH_RE = /^\/product\/([a-fA-F0-9]{24})$/;
+const CATEGORY_PATH_RE = /^\/category\/([a-fA-F0-9]{24})$/;
 const ORDER_DETAIL_PATH_RE = /^\/orders\/([a-fA-F0-9]{24})$/;
 const parseRoute = () => {
   const path = window.location.pathname;
@@ -31,6 +35,8 @@ const parseRoute = () => {
   if (orderId) return { type: 'order-detail', id: orderId };
   const productId = path.match(PRODUCT_PATH_RE)?.[1];
   if (productId) return { type: 'product', id: productId };
+  const categoryId = path.match(CATEGORY_PATH_RE)?.[1];
+  if (categoryId) return { type: 'category', id: categoryId };
   return { type: 'home' };
 };
 
@@ -213,6 +219,16 @@ const ClientApp = () => {
             onDecrementItem={handleDecrementItem}
             onProductClick={handleProductClick}
             onRecommendedAddToCart={handleAddToCart}
+          />
+        )}
+        {route.type === 'category' && (
+          <CategoryProductsPage
+            categoryId={route.id}
+            cartItems={cartItems}
+            onAddToCart={handleAddToCart}
+            onProductClick={handleProductClick}
+            onIncrementItem={handleIncrementItem}
+            onDecrementItem={handleDecrementItem}
           />
         )}
         {route.type === 'cart' && (
