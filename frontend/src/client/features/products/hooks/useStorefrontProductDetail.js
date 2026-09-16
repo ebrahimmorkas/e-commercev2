@@ -12,11 +12,13 @@ export const useStorefrontProductDetail = (productId) => {
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [statusCode, setStatusCode] = useState(null);
 
   const load = useCallback(async () => {
     if (!productId) return;
     setLoading(true);
     setError(null);
+    setStatusCode(null);
     try {
       const [productResult, categories] = await Promise.all([
         getStorefrontProductById(productId),
@@ -30,6 +32,7 @@ export const useStorefrontProductDetail = (productId) => {
       setProduct(shapeProductForDetail(productResult?.product, categoryNameById));
     } catch (err) {
       setError(err.message || 'Failed to load product');
+      setStatusCode(err.statusCode ?? null);
     } finally {
       setLoading(false);
     }
@@ -39,7 +42,7 @@ export const useStorefrontProductDetail = (productId) => {
     load();
   }, [load]);
 
-  return { product, loading, error, reload: load };
+  return { product, loading, error, statusCode, reload: load };
 };
 
 export default useStorefrontProductDetail;

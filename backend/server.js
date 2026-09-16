@@ -9,6 +9,7 @@ const realtimeService = require('./services/realtimeService');
 const abandonedCartService = require('./services/abandonedCartService');
 require('dotenv').config({ quiet: true });
 // Middlewares
+const { requestContext } = require('./middlewares/requestContext');
 const vendorDetection = require('./middlewares/vendorDetection');
 const ensureVendorDataCached = require('./middlewares/ensureVendorDataCached');
 // Routes
@@ -48,6 +49,12 @@ const redisService = require('./services/redisService');
 
 const app = express();
 const httpServer = http.createServer(app);
+
+// Must be the first middleware mounted - every downstream middleware,
+// controller, and service needs to run inside its AsyncLocalStorage context
+// so utils/logger.js's logException() can reach req.vendorId/req.user for
+// the ErrorLog it writes, without changing any existing logException() call site.
+app.use(requestContext);
 
 app.use(cors({
   origin: 'true',

@@ -5,17 +5,20 @@ export const useOrder = (orderId) => {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [statusCode, setStatusCode] = useState(null);
   const [cancelling, setCancelling] = useState(false);
 
   const load = useCallback(async () => {
     if (!orderId) return;
     setLoading(true);
     setError(null);
+    setStatusCode(null);
     try {
       const result = await getMyOrderById(orderId);
       setOrder(result?.order || null);
     } catch (err) {
       setError(err.message || 'Failed to load order');
+      setStatusCode(err.statusCode ?? null);
     } finally {
       setLoading(false);
     }
@@ -43,7 +46,7 @@ export const useOrder = (orderId) => {
     [orderId]
   );
 
-  return { order, loading, error, cancelling, reload: load, cancel };
+  return { order, loading, error, statusCode, cancelling, reload: load, cancel };
 };
 
 export default useOrder;

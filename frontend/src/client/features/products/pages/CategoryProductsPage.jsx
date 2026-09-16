@@ -3,6 +3,7 @@ import { useStorefrontProductsByCategory } from '../hooks/useStorefrontProductsB
 import ProductListItem from '../components/ProductListItem';
 import Spinner from '../../../../components/common/Spinner/Spinner';
 import EmptyState from '../../../../components/common/EmptyState/EmptyState';
+import StatusErrorPage from '../../../components/errors/StatusErrorPage';
 
 /**
  * Storefront product listing for one category (and its active
@@ -18,8 +19,13 @@ const CategoryProductsPage = ({
   onAddToCart,
   onIncrementItem,
   onDecrementItem,
+  onGoHome,
 }) => {
-  const { products, categoryName, loading, error, reload } = useStorefrontProductsByCategory(categoryId);
+  const { products, categoryName, loading, error, statusCode, reload } = useStorefrontProductsByCategory(categoryId);
+
+  if (!loading && error) {
+    return <StatusErrorPage statusCode={statusCode} message={error} onRetry={reload} onGoHome={onGoHome} />;
+  }
 
   return (
     <div className={theme.page.background}>
@@ -37,22 +43,6 @@ const CategoryProductsPage = ({
           <div className={theme.section.loadingWrapper}>
             <Spinner size="lg" label="Loading products" />
           </div>
-        )}
-
-        {!loading && error && (
-          <EmptyState
-            title="Couldn't load products"
-            description={error}
-            action={
-              <button
-                type="button"
-                onClick={reload}
-                className={`${theme.hero.ctaSecondaryLayout} ${theme.hero.cta}`}
-              >
-                Try Again
-              </button>
-            }
-          />
         )}
 
         {!loading && !error && products.length === 0 && (
