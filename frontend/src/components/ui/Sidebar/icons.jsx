@@ -94,6 +94,15 @@ export const BrandIcon = (props) => (
   </svg>
 );
 
+export const GroupIcon = (props) => (
+  <svg {...base} {...props}>
+    <circle cx="8.25" cy="7.5" r="2.75" />
+    <circle cx="16.5" cy="8.625" r="2.25" />
+    <path d="M2.75 19.125a5.5 5.5 0 0111 0" />
+    <path d="M14.75 19.125a4.25 4.25 0 018.083-1.837" />
+  </svg>
+);
+
 export const MenuIcon = (props) => (
   <svg {...base} {...props}>
     <path d="M4 6h16M4 12h16M4 18h16" />

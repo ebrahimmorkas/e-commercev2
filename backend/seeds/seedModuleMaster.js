@@ -18,7 +18,8 @@ const modules = [
     { moduleName: "Announcement", shortModuleName: "Announcement", code: "ANNOUNCEMENT", precedence: 9, isSystemModule: false, description: "Site announcements." },
     { moduleName: "Abandoned Cart", shortModuleName: "Abandoned Cart", code: "ABANDONED_CART", precedence: 10, isSystemModule: false, description: "Abandoned cart recovery." },
     { moduleName: "Free Cash", shortModuleName: "Free Cash", code: "FREE_CASH", precedence: 11, isSystemModule: false, description: "Free Cash campaigns." },
-    { moduleName: "Company Settings", shortModuleName: "Company Settings", code: "COMPANY_SETTINGS", precedence: 12, isSystemModule: true, description: "Vendor's own store configuration." }
+    { moduleName: "Company Settings", shortModuleName: "Company Settings", code: "COMPANY_SETTINGS", precedence: 12, isSystemModule: true, description: "Vendor's own store configuration." },
+    { moduleName: "Groups", shortModuleName: "Groups", code: "GROUP", precedence: 13, isSystemModule: false, description: "Reusable member groups (products, categories, users, brands, orders) for targeting other features." }
 ];
 
 async function seedModuleMaster() {

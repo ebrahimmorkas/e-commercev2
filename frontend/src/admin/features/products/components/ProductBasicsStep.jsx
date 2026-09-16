@@ -4,7 +4,7 @@ import Dropdown from '../../../../components/common/DropDown';
 import DescriptionListEditor from './DescriptionListEditor';
 import BulkPricingListEditor from './BulkPricingListEditor';
 import TagInput from './TagInput';
-import CategoryPathPicker from './CategoryPathPicker';
+import CategoryPathPicker from '../../../../components/common/CategoryPathPicker';
 import SectionCard from './SectionCard';
 import { TagIcon, FolderIcon, DocumentIcon, SearchIcon, CoinsIcon } from './icons';
 

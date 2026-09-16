@@ -11,6 +11,7 @@ import {
   CompanySettingsIcon,
   AbandonedCartIcon,
   FreeCashIcon,
+  GroupIcon,
 } from './icons';
 
 // moduleCode ties each nav item to its backend ModuleMaster.code (see
@@ -28,6 +29,7 @@ export const DEFAULT_NAV_ITEMS = [
   { key: 'announcements', label: 'Announcement', icon: AnnouncementIcon, moduleCode: 'ANNOUNCEMENT' },
   { key: 'abandonedCarts', label: 'Abandoned Carts', icon: AbandonedCartIcon, moduleCode: 'ABANDONED_CART' },
   { key: 'freeCash', label: 'Free Cash', icon: FreeCashIcon, moduleCode: 'FREE_CASH' },
+  { key: 'groups', label: 'Groups', icon: GroupIcon, moduleCode: 'GROUP' },
   { key: 'companySettings', label: 'Company Settings', icon: CompanySettingsIcon, moduleCode: 'COMPANY_SETTINGS' },
 ];
 

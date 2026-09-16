@@ -1,22 +1,27 @@
 import { useMemo } from 'react';
-import Dropdown from '../../../../components/common/DropDown';
-import theme from '../theme/theme';
+import Dropdown from '../DropDown';
 
 /**
  * Drill-down category picker for arbitrarily deep category trees.
  *
- * The Product schema only stores two ids - `mainCategory` (must be a root
- * category) and `subCategory` (must be a descendant of it, at ANY depth -
- * see productValidations.js's category-hierarchy rule) - but the category
- * tree itself can nest past one level (see admin/masters/category). So this
- * renders the picked path as a breadcrumb (root -> ... -> deepest pick) and
- * always offers one more dropdown for the next level down, for as long as
- * the deepest pick still has active children. `mainCategory` is path[0];
+ * Exposes a `mainCategoryId` (a root category) and a `subCategoryId` (a
+ * descendant of it, at ANY depth). Renders the picked path as a breadcrumb
+ * (root -> ... -> deepest pick) and always offers one more dropdown for the
+ * next level down, for as long as the deepest pick still has active
+ * children and `nestingAllowed` is true. `mainCategory` is path[0];
  * `subCategory` is the deepest node in the path (or empty if the path is
  * just the root).
  *
  * Clicking a breadcrumb crumb re-opens that level for reselection, dropping
  * everything picked after it - that's the "go back" affordance.
+ *
+ * @param {Array} categories - flat list of every category (any depth) for
+ *   this vendor, each with { _id, categoryName, parent_category_id, status }
+ * @param {string} mainCategoryId
+ * @param {string} subCategoryId
+ * @param {(main: string, sub: string) => void} onChange
+ * @param {boolean} nestingAllowed - false restricts the picker to a single
+ *   (root-only) selection, matching companyMaster's category-nesting flag.
  */
 const CategoryPathPicker = ({ categories = [], mainCategoryId, subCategoryId, onChange, nestingAllowed = true }) => {
   const categoryById = useMemo(() => {
@@ -73,7 +78,7 @@ const CategoryPathPicker = ({ categories = [], mainCategoryId, subCategoryId, on
         <div className="flex flex-wrap items-center gap-1.5">
           {path.map((cat, index) => (
             <span key={cat._id} className="flex items-center gap-1.5">
-              {index > 0 && <span className={`text-sm ${theme.text.muted}`}>/</span>}
+              {index > 0 && <span className="text-sm text-gray-400">/</span>}
               <button
                 type="button"
                 onClick={() => handleCrumbClick(index)}
@@ -88,7 +93,7 @@ const CategoryPathPicker = ({ categories = [], mainCategoryId, subCategoryId, on
               </button>
             </span>
           ))}
-          <button type="button" onClick={handleClear} className={`ml-1 text-xs underline ${theme.text.muted} hover:text-gray-700`}>
+          <button type="button" onClick={handleClear} className="ml-1 text-xs underline text-gray-400 hover:text-gray-700">
             Clear
           </button>
         </div>
@@ -105,7 +110,7 @@ const CategoryPathPicker = ({ categories = [], mainCategoryId, subCategoryId, on
         />
       )}
 
-      {!showNextDropdown && path.length === 0 && <p className={`text-sm ${theme.text.muted}`}>No categories available.</p>}
+      {!showNextDropdown && path.length === 0 && <p className="text-sm text-gray-400">No categories available.</p>}
     </div>
   );
 };

@@ -16,7 +16,6 @@ const groupSchema = new mongoose.Schema(
         "CATEGORY",
         "USER",
         "BRAND",
-        "TAG",
         "ORDER",
         "CUSTOM"
       ],
@@ -55,6 +54,12 @@ const groupSchema = new mongoose.Schema(
     remarks: {
       type: String,
       default: "",
+    },
+    status: {
+      type: String,
+      enum: ['I', 'A', 'D'],
+      default: 'A',
+      required: true
     },
     createdBy: {
         type: mongoose.Types.ObjectId,

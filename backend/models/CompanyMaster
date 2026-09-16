@@ -376,6 +376,28 @@ const companyMasterSchema = mongoose.Schema({
         type: Number,
         default: 50
     },
+    // Which groupTypes this vendor is entitled to create - an empty/missing
+    // array is treated as "all types allowed" (see groupService), so this is
+    // opt-out (admin restricts) rather than opt-in.
+    allowedGroupTypes: {
+        type: [String],
+        enum: ['PRODUCT', 'CATEGORY', 'USER', 'BRAND', 'ORDER', 'CUSTOM'],
+        default: ['PRODUCT', 'CATEGORY', 'USER', 'BRAND', 'ORDER', 'CUSTOM']
+    },
+    // Gates the excel-upload member picker for PRODUCT/CATEGORY/USER groups
+    // (BRAND/ORDER/CUSTOM never support excel upload, regardless of this flag).
+    isExcelUploadAllowedForGroups: {
+        type: Boolean,
+        default: false
+    },
+    // Separate from isCategoryNestingAllowed (which gates Product's category
+    // picker) - this one gates CATEGORY-type Group members specifically. False
+    // restricts a CATEGORY group's members to root (main) categories only, in
+    // both the manual picker and the excel upload's Sub Category column.
+    isNestingCategoryAllowedInGroup: {
+        type: Boolean,
+        default: false
+    },
 
     // Review
     isReviewFeatureOn: {

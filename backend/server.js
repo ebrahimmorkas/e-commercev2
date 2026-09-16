@@ -43,6 +43,7 @@ const favoriteRoutes = require('./routes/favoriteRoutes.js');
 const paymentRoutes = require('./routes/paymentRoutes.js');
 const freeCashRoutes = require('./routes/freeCashRoutes.js');
 const abandonedCartRoutes = require('./routes/abandonedCartRoutes.js');
+const userRoutes = require('./routes/userRoutes.js');
 const redisService = require('./services/redisService');
 
 const app = express();
@@ -105,6 +106,7 @@ app.use('/api/favorites', favoriteRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/free-cash', freeCashRoutes);
 app.use('/api/abandoned-cart', abandonedCartRoutes);
+app.use('/api/users', userRoutes);
 
 // Start of dummy to be removed
 app.get("/", (req, res) => {

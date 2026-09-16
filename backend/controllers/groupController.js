@@ -14,7 +14,11 @@ const formatGroupForResponse = (groupDoc) => {
     ...group,
     _id: common.encodeId(group._id),
     vendorId: common.encodeId(group.vendorId),
-    members: (group.members || []).map((memberId) => common.encodeId(memberId)),
+    // members are raw ids of the referenced collection (Product/Category/User/
+    // Brand/Order) - unlike Group's own _id, they're never encoded, since
+    // every admin list endpoint that produces them (get-products-admin,
+    // get-all-brands-admin, etc.) returns plain ids too.
+    members: group.members || [],
     createdBy: group.createdBy ? common.encodeId(group.createdBy) : group.createdBy,
     updatedBy: group.updatedBy ? common.encodeId(group.updatedBy) : group.updatedBy,
     deletedBy: group.deletedBy ? common.encodeId(group.deletedBy) : group.deletedBy,
@@ -40,18 +44,17 @@ const createGroup = async (req, res) => {
     }
 
     const payload = { ...req.body };
-    if (Array.isArray(payload.members)) {
-      payload.members = payload.members.map((memberId) => common.decodeId(memberId));
-    }
+    const files = req.files || {};
 
-    const result = await groupService.createGroup(vendorId, userId, payload, req.companyMasterData);
+    const result = await groupService.createGroup(vendorId, userId, payload, files, req.companyMasterData);
 
     if (!result.isSuccess) {
-      return common.sendError(res, result.statusCode, result.message);
+      return common.sendError(res, result.statusCode, result.message, result.meta?.excelReport ? result.meta : null);
     }
 
     return common.sendSuccess(res, result.statusCode, result.message, {
       group: formatGroupForResponse(result.meta.group),
+      excelReport: result.meta.excelReport,
     });
   } catch (error) {
     logger.logException('Error creating group', { error });
@@ -142,18 +145,17 @@ const updateGroup = async (req, res) => {
 
     const payload = { ...req.body };
     delete payload.id;
-    if (Array.isArray(payload.members)) {
-      payload.members = payload.members.map((memberId) => common.decodeId(memberId));
-    }
+    const files = req.files || {};
 
-    const result = await groupService.updateGroup(vendorId, userId, groupId, payload, req.companyMasterData);
+    const result = await groupService.updateGroup(vendorId, userId, groupId, payload, files, req.companyMasterData);
 
     if (!result.isSuccess) {
-      return common.sendError(res, result.statusCode, result.message);
+      return common.sendError(res, result.statusCode, result.message, result.meta?.excelReport ? result.meta : null);
     }
 
     return common.sendSuccess(res, result.statusCode, result.message, {
       group: formatGroupForResponse(result.meta.group),
+      excelReport: result.meta.excelReport,
     });
   } catch (error) {
     logger.logException('Error updating group', { error });
