@@ -4,6 +4,10 @@ const Address = require('../models/Address');
 const User = require('../models/User');
 const CurrencyMaster = require('../models/CurrencyMaster');
 const OrderStepMaster = require('../models/OrderStepMaster');
+const Product = require('../models/Product');
+const Cart = require('../models/Cart');
+const OrderReturn = require('../models/OrderReturn');
+const OrderExchange = require('../models/OrderExchange');
 const cartService = require('./cartService');
 const counterService = require('./counterService');
 const emailService = require('./emailService');
@@ -232,7 +236,22 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
             return common.returnResult(false, checkoutResult.statusCode, checkoutResult.message);
         }
 
-        const { cart, eligibleSubtotal, shippingAmount, grandTotal, ineligibleItems } = checkoutResult.meta;
+        const { cart, eligibleLineItems, eligibleSubtotal, shippingAmount, grandTotal, ineligibleItems } = checkoutResult.meta;
+
+        const orderItems = eligibleLineItems.map((item) => ({
+            productId: item.productId,
+            variantId: item.variantId,
+            sizeId: item.sizeId,
+            productName: item.productName,
+            variantName: item.variantName,
+            sizeName: item.sizeName,
+            sku: item.sku,
+            unitPrice: item.unitPrice,
+            quantity: item.quantity,
+            lineAmount: item.amount,
+            taxBreakdown: item.taxBreakdown,
+            lineTaxAmount: Math.round(item.taxBreakdown.reduce((sum, t) => sum + t.taxAmount, 0) * 100) / 100
+        }));
 
         // Narrows (but per the double-submit race, cannot fully close - the
         // unique {vendorId, cartId} index on Order is the hard backstop)
@@ -268,6 +287,7 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
                 startedAt: new Date(),
                 isManualUpdate: false
             }],
+            items: orderItems,
             subtotal: eligibleSubtotal,
             totalDiscountAmount: cart.totalDiscountAmount,
             totalTaxAmount: cart.totalTaxAmount,
@@ -639,8 +659,104 @@ const cancelOrder = async (vendorId, userId, orderId, cancellationReason, compan
 */
 const fetchMyOrders = async (vendorId, userId) => {
     try {
-        const orders = await Order.find({ vendorId, userId, status: { $ne: 'D' } }).sort({ orderPlacedAt: -1 });
+        // List view stays lightweight - full item breakdown is only built
+        // for the single-order detail view below.
+        const orders = await Order.find({ vendorId, userId, status: { $ne: 'D' } })
+            .select('-items')
+            .sort({ orderPlacedAt: -1 });
         return common.returnResult(true, 200, 'Orders fetched successfully', { orders });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Orders placed before Order.items existed have nothing frozen on the order
+// itself - best-effort reconstruct the line items from the linked Cart (the
+// same source this data always came from pre-migration). No historical tax
+// breakdown is possible here since checkoutCart never persisted it, so
+// taxBreakdown/lineTaxAmount are left empty for these.
+const deriveLegacyOrderItems = async (order) => {
+    try {
+        const cart = await Cart.findById(order.cartId);
+        if (!cart) {
+            return [];
+        }
+
+        const items = [];
+        for (const productEntry of cart.products) {
+            for (const variantEntry of productEntry.variants) {
+                for (const sizeEntry of variantEntry.sizes) {
+                    if (!sizeEntry.isCheckedOut) continue;
+                    items.push({
+                        productId: productEntry.productId,
+                        variantId: variantEntry.variantId,
+                        sizeId: sizeEntry.sizeId,
+                        productName: productEntry.productName,
+                        variantName: variantEntry.variantName,
+                        sizeName: sizeEntry.sizeName,
+                        sku: sizeEntry.sku,
+                        unitPrice: sizeEntry.unitPrice,
+                        quantity: sizeEntry.quantity,
+                        lineAmount: sizeEntry.unitPrice * sizeEntry.quantity,
+                        taxBreakdown: [],
+                        lineTaxAmount: 0
+                    });
+                }
+            }
+        }
+        return items;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Adds the two things intentionally NOT frozen on Order.items: the current
+// product/size image (cosmetic - never snapshotted, see Order.js) and each
+// item's live return/exchange status (a status, not a historical fact -
+// must always reflect the current OrderReturn/OrderExchange record).
+const enrichOrderItemsForDetail = async (vendorId, order) => {
+    try {
+        const baseItems = order.items && order.items.length > 0
+            ? order.items.map((item) => item.toObject())
+            : await deriveLegacyOrderItems(order);
+
+        if (baseItems.length === 0) {
+            return [];
+        }
+
+        const productIds = [...new Set(baseItems.map((item) => item.productId.toString()))];
+        const [products, returns, exchanges] = await Promise.all([
+            Product.find({ _id: { $in: productIds }, vendorId }),
+            OrderReturn.find({ vendorId, orderId: order._id, status: { $ne: 'D' } }),
+            OrderExchange.find({ vendorId, orderId: order._id, status: { $ne: 'D' } })
+        ]);
+        const productMap = new Map(products.map((p) => [p._id.toString(), p]));
+
+        const findMatchingRequest = (requests, item) => requests.find((request) =>
+            request.items.some((requestItem) =>
+                requestItem.productId.toString() === item.productId.toString() &&
+                requestItem.variantId.toString() === item.variantId.toString() &&
+                requestItem.sizeId.toString() === item.sizeId.toString()
+            )
+        );
+
+        return baseItems.map((item) => {
+            const product = productMap.get(item.productId.toString());
+            const variant = product ? product.variants.id(item.variantId) : null;
+            const size = variant ? variant.sizes.id(item.sizeId) : null;
+
+            const matchingReturn = findMatchingRequest(returns, item);
+            const matchingExchange = findMatchingRequest(exchanges, item);
+
+            return {
+                ...item,
+                image: size ? size.image : null,
+                returnStatus: matchingReturn ? matchingReturn.returnStatus : null,
+                returnId: matchingReturn ? matchingReturn._id : null,
+                exchangeStatus: matchingExchange ? matchingExchange.exchangeStatus : null,
+                exchangeId: matchingExchange ? matchingExchange._id : null
+            };
+        });
     } catch (err) {
         throw err;
     }
@@ -656,7 +772,12 @@ const fetchOrderById = async (vendorId, orderId, userId, isAdmin) => {
         if (!order) {
             return common.returnResult(false, 404, 'Order not found.');
         }
-        return common.returnResult(true, 200, 'Order fetched successfully', { order });
+
+        const items = await enrichOrderItemsForDetail(vendorId, order);
+        const orderWithItems = order.toObject();
+        orderWithItems.items = items;
+
+        return common.returnResult(true, 200, 'Order fetched successfully', { order: orderWithItems });
     } catch (err) {
         throw err;
     }
@@ -664,7 +785,9 @@ const fetchOrderById = async (vendorId, orderId, userId, isAdmin) => {
 
 const fetchAllOrdersAdmin = async (vendorId) => {
     try {
-        const orders = await Order.find({ vendorId, status: { $ne: 'D' } }).sort({ orderPlacedAt: -1 });
+        const orders = await Order.find({ vendorId, status: { $ne: 'D' } })
+            .select('-items')
+            .sort({ orderPlacedAt: -1 });
         return common.returnResult(true, 200, 'Orders fetched successfully', { orders });
     } catch (err) {
         throw err;

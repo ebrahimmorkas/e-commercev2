@@ -1162,14 +1162,22 @@ const checkoutCart = async (vendorId, cartOwner, userId, locationContext, compan
                         productId: productEntry.productId,
                         variantId: variantEntry.variantId,
                         sizeId: sizeEntry.sizeId,
+                        productName: productEntry.productName,
+                        variantName: variantEntry.variantName,
+                        sizeName: sizeEntry.sizeName,
+                        sku: sizeEntry.sku,
                         taxIds: liveProduct.taxIds || [],
+                        unitPrice: sizeEntry.unitPrice,
                         amount: sizeEntry.unitPrice * sizeEntry.quantity,
                         quantity: sizeEntry.quantity,
                         shippingType: liveSize.shipping?.type || null,
                         shippingValue: liveSize.shipping?.type === 'CUSTOM' ? liveSize.shipping.value : null,
                         mainCategoryId: liveProduct.mainCategory,
                         subCategoryId: liveProduct.subCategory,
-                        weight: liveSize.weight || null
+                        weight: liveSize.weight || null,
+                        // Filled in below, per-item, as each applicable
+                        // TaxMaster doc is resolved for this checkout.
+                        taxBreakdown: []
                     });
                 }
             }
@@ -1223,6 +1231,14 @@ const checkoutCart = async (vendorId, cartOwner, userId, locationContext, compan
                 const taxAmount = taxDoc.taxType === 'percentage'
                     ? item.amount * (taxDoc.totalRate / 100)
                     : taxDoc.totalRate;
+                const roundedTaxAmount = Math.round(taxAmount * 100) / 100;
+
+                item.taxBreakdown.push({
+                    taxId: taxDoc._id,
+                    taxName: taxDoc.name,
+                    taxRate: taxDoc.totalRate,
+                    taxAmount: roundedTaxAmount
+                });
 
                 const existing = taxTotals.get(taxDoc._id.toString());
                 if (existing) {
@@ -1288,6 +1304,7 @@ const checkoutCart = async (vendorId, cartOwner, userId, locationContext, compan
 
         return common.returnResult(true, 200, 'Checkout summary generated successfully', {
             cart,
+            eligibleLineItems,
             eligibleSubtotal,
             shippingAmount,
             shippingBreakdown: shippingResult.meta.breakdown,

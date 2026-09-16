@@ -61,6 +61,97 @@ const orderStatusHistorySchema = new mongoose.Schema(
     }
 );
 
+// Per-item tax breakdown, frozen at order-creation time from the same
+// TaxMaster lookups checkoutCart already performs (cartService.js) - a tax
+// rate change (or the TaxMaster doc being retired) after the order is
+// placed must never alter what a past order is shown to have charged.
+const orderItemTaxSchema = new mongoose.Schema(
+    {
+        taxId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "TaxMaster",
+            required: true
+        },
+        taxName: {
+            type: String,
+            required: true,
+            trim: true
+        },
+        taxRate: {
+            type: Number,
+            required: true,
+            min: 0
+        },
+        taxAmount: {
+            type: Number,
+            required: true,
+            min: 0
+        }
+    },
+    { _id: false }
+);
+
+// One product/variant/size line item actually placed on this order (i.e.
+// isCheckedOut:true on the source Cart at the moment of order creation).
+// Snapshotted the same way shippingAddressSnapshot/currency fields are -
+// name/sku/price/tax must keep showing exactly what the customer bought and
+// was charged, even if the Product/variant/size/TaxMaster is later edited,
+// deactivated, or deleted. Only the display image is intentionally NOT
+// snapshotted here (see orderService.js's enrichment step) - purely
+// cosmetic, so it is resolved live against the current Product instead.
+const orderItemSchema = new mongoose.Schema(
+    {
+        productId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Product",
+            required: true,
+            index: true
+        },
+        variantId: {
+            type: mongoose.Schema.Types.ObjectId,
+            required: true
+        },
+        sizeId: {
+            type: mongoose.Schema.Types.ObjectId,
+            required: true
+        },
+
+        productName: { type: String, required: true, trim: true },
+        variantName: { type: String, required: true, trim: true },
+        sizeName: { type: String, required: true, trim: true },
+        sku: { type: String, required: true, trim: true },
+
+        unitPrice: {
+            type: Number,
+            required: true,
+            min: 0
+        },
+        quantity: {
+            type: Number,
+            required: true,
+            min: 1
+        },
+        // unitPrice * quantity, before tax.
+        lineAmount: {
+            type: Number,
+            required: true,
+            min: 0
+        },
+
+        taxBreakdown: {
+            type: [orderItemTaxSchema],
+            default: []
+        },
+        lineTaxAmount: {
+            type: Number,
+            required: true,
+            min: 0,
+            default: 0
+        }
+    },
+    { _id: false }
+);
+
 // Snapshot of the resolved Address document at order-creation time. Address
 // is a user-owned, user-editable document - if we only kept
 // shippingAddressId/billingAddressId, a later edit (or soft-delete) to that
@@ -208,6 +299,14 @@ const orderSchema = new mongoose.Schema(
 
         statusHistory: {
             type: [orderStatusHistorySchema],
+            default: []
+        },
+
+        // The actual products/variants/sizes placed on this order. Empty
+        // only for orders created before this field existed - see
+        // orderService.js's fetchOrderById legacy fallback.
+        items: {
+            type: [orderItemSchema],
             default: []
         },
 

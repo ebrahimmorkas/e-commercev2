@@ -5,6 +5,7 @@ import Button from '../../../../components/common/Buttons';
 import Spinner from '../../../../components/common/Spinner';
 import { useOrderAdmin } from '../hooks/useOrderAdmin';
 import OrderStatusTimeline from './OrderStatusTimeline';
+import OrderItems from './OrderItems';
 import AdvanceStepForm from './AdvanceStepForm';
 import AssignDeliveryAgentForm from './AssignDeliveryAgentForm';
 import { formatOrderMoney, formatOrderDateTime, stepBadgeVariant, isOrderLocked } from '../utils/formatOrder';
@@ -91,6 +92,12 @@ const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
             <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-3">Status history</h3>
             <OrderStatusTimeline statusHistory={order.statusHistory} />
           </div>
+
+          {order.items?.length > 0 && (
+            <div className="pt-4 border-t border-gray-200">
+              <OrderItems order={order} />
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-gray-200">
             <AddressBlock title="Shipping address" snapshot={order.shippingAddressSnapshot} />

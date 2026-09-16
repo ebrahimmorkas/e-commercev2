@@ -34,11 +34,22 @@ export const useOrderAdmin = (orderId) => {
     fetchOrder();
   }, [fetchOrder]);
 
+  // Re-fetches order+steps WITHOUT toggling `loading` (mutating already
+  // covers the in-flight UI state for these two actions) - used after a
+  // mutation instead of trusting the PATCH response's bare order doc, since
+  // only GET .../admin/:id runs the item enrichment (live image,
+  // return/exchange status per item, see orderService.js).
+  const refreshOrderSilently = useCallback(async () => {
+    const [orderData, stepsData] = await Promise.all([getOrderByIdAdmin(orderId), getOrderStepOptions(orderId)]);
+    setOrder(orderData?.order || null);
+    setStepOptions(stepsData?.steps || []);
+  }, [orderId]);
+
   const advanceStep = async (targetStepCode, remarks) => {
     setMutating(true);
     try {
-      const data = await advanceOrderStep(orderId, targetStepCode, remarks);
-      setOrder(data.order);
+      await advanceOrderStep(orderId, targetStepCode, remarks);
+      await refreshOrderSilently();
       toast.success('Order status updated');
       return true;
     } catch (err) {
@@ -52,8 +63,8 @@ export const useOrderAdmin = (orderId) => {
   const assignAgent = async (deliveryAgentUserId) => {
     setMutating(true);
     try {
-      const data = await assignDeliveryAgent(orderId, deliveryAgentUserId);
-      setOrder(data.order);
+      await assignDeliveryAgent(orderId, deliveryAgentUserId);
+      await refreshOrderSilently();
       toast.success('Delivery agent assigned');
       return true;
     } catch (err) {

@@ -6,6 +6,7 @@ import Modal from '../../../../components/common/Modal/Modal';
 import { useToast } from '../../../../components/common/Toast';
 import { useOrder } from '../hooks/useOrder';
 import OrderStatusTimeline from '../components/OrderStatusTimeline';
+import OrderItems from '../components/OrderItems';
 import { formatOrderMoney, formatOrderDate, isOrderCancellable } from '../utils/formatOrder';
 
 const SummaryRow = ({ label, value, bold = false }) => (
@@ -107,6 +108,12 @@ const OrderDetailPage = ({ orderId, onBack }) => {
         <div className={`md:col-span-2 rounded-xl border p-4 sm:p-5 ${theme.card.background} ${theme.card.border}`}>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 mb-4">Status</h2>
           <OrderStatusTimeline statusHistory={order.statusHistory} />
+
+          {order.items?.length > 0 && (
+            <div className="mt-6 pt-6 border-t border-slate-200">
+              <OrderItems order={order} />
+            </div>
+          )}
 
           <div className="mt-6 pt-6 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-6">
             <AddressBlock title="Shipping address" snapshot={order.shippingAddressSnapshot} />

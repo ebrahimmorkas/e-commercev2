@@ -29,9 +29,13 @@ export const useOrder = (orderId) => {
     async (cancellationReason) => {
       setCancelling(true);
       try {
-        const result = await cancelOrderRequest(orderId, cancellationReason);
-        setOrder(result.order);
-        return result.order;
+        await cancelOrderRequest(orderId, cancellationReason);
+        // Re-fetch rather than trusting the POST response's bare order doc -
+        // only GET /my-orders/:id runs the item enrichment (live image,
+        // return/exchange status per item), see orderService.js.
+        const result = await getMyOrderById(orderId);
+        setOrder(result?.order || null);
+        return result?.order || null;
       } finally {
         setCancelling(false);
       }
