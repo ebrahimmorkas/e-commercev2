@@ -5,7 +5,7 @@ import { useRecommendedProducts } from '../hooks/useRecommendedProducts';
 import QuantityStepper from '../components/QuantityStepper';
 import ProductCard from '../components/ProductCard';
 import Spinner from '../../../../components/common/Spinner/Spinner';
-import EmptyState from '../../../../components/common/EmptyState/EmptyState';
+import StatusErrorPage from '../../../components/errors/StatusErrorPage';
 
 const pickDefaultVariant = (variants) => variants.find((v) => v.isDefaultVariant) || variants[0] || null;
 const pickDefaultSize = (variant) =>
@@ -73,7 +73,7 @@ const ProductDetailPage = ({
   onProductClick,
   onRecommendedAddToCart,
 }) => {
-  const { product, loading, error, reload } = useStorefrontProductDetail(productId);
+  const { product, loading, error, statusCode, reload } = useStorefrontProductDetail(productId);
   const { products: recommendedProducts } = useRecommendedProducts(product?.recommendedProducts);
   const [selectedVariantId, setSelectedVariantId] = useState(null);
   const [selectedSizeId, setSelectedSizeId] = useState(null);
@@ -130,23 +130,7 @@ const ProductDetailPage = ({
   }
 
   if (error) {
-    return (
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-16">
-        <EmptyState
-          title="Couldn't load this product"
-          description={error}
-          action={
-            <button
-              type="button"
-              onClick={reload}
-              className={`px-4 py-2 rounded-full text-sm font-semibold cursor-pointer ${theme.hero.cta}`}
-            >
-              Try Again
-            </button>
-          }
-        />
-      </div>
-    );
+    return <StatusErrorPage statusCode={statusCode} message={error} onRetry={reload} onGoHome={onBack} />;
   }
 
   if (!product) return null;

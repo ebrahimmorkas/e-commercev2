@@ -15,6 +15,7 @@ import OrdersPage from './features/orders/pages/OrdersPage';
 import OrderDetailPage from './features/orders/pages/OrderDetailPage';
 import { useToast } from '../components/common/Toast';
 import EmptyState from '../components/common/EmptyState/EmptyState';
+import NotFoundPage from './components/errors/NotFoundPage';
 import theme from './features/Home/theme/theme';
 
 // No routing library yet - path match against `/product/:id` (id = Mongo
@@ -23,11 +24,14 @@ import theme from './features/Home/theme/theme';
 // button working. `/category/:id` is also opened directly as a real link
 // (new tab) from the Navbar's Shop mega-menu, so it has to work as a
 // standalone page load, not just via in-app pushState.
+// Anything that doesn't match one of these is 'not-found' (previously fell
+// through to 'home' silently - see NotFoundPage).
 const PRODUCT_PATH_RE = /^\/product\/([a-fA-F0-9]{24})$/;
 const CATEGORY_PATH_RE = /^\/category\/([a-fA-F0-9]{24})$/;
 const ORDER_DETAIL_PATH_RE = /^\/orders\/([a-fA-F0-9]{24})$/;
 const parseRoute = () => {
   const path = window.location.pathname;
+  if (path === '/' || path === '') return { type: 'home' };
   if (path === '/cart') return { type: 'cart' };
   if (path === '/checkout') return { type: 'checkout' };
   if (path === '/orders') return { type: 'orders' };
@@ -37,7 +41,7 @@ const parseRoute = () => {
   if (productId) return { type: 'product', id: productId };
   const categoryId = path.match(CATEGORY_PATH_RE)?.[1];
   if (categoryId) return { type: 'category', id: categoryId };
-  return { type: 'home' };
+  return { type: 'not-found' };
 };
 
 // Shown for /checkout, /orders, and /orders/:id when reached (typically via
@@ -229,6 +233,7 @@ const ClientApp = () => {
             onProductClick={handleProductClick}
             onIncrementItem={handleIncrementItem}
             onDecrementItem={handleDecrementItem}
+            onGoHome={goHome}
           />
         )}
         {route.type === 'cart' && (
@@ -260,7 +265,7 @@ const ClientApp = () => {
         )}
         {route.type === 'orders' && isAuthenticated && <OrdersPage onBack={goHome} onOpenOrder={openOrderDetail} />}
         {route.type === 'order-detail' && isAuthenticated && (
-          <OrderDetailPage orderId={route.id} onBack={openOrders} />
+          <OrderDetailPage orderId={route.id} onBack={openOrders} onGoHome={goHome} />
         )}
         {route.type === 'home' && (
           <HomePage
@@ -271,6 +276,7 @@ const ClientApp = () => {
             onDecrementItem={handleDecrementItem}
           />
         )}
+        {route.type === 'not-found' && <NotFoundPage onGoHome={goHome} />}
       </main>
       <Footer />
 

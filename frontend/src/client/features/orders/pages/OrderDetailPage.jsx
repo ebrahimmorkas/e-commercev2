@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import theme from '../../Home/theme/theme';
 import Spinner from '../../../../components/common/Spinner/Spinner';
-import EmptyState from '../../../../components/common/EmptyState/EmptyState';
 import Modal from '../../../../components/common/Modal/Modal';
+import StatusErrorPage from '../../../components/errors/StatusErrorPage';
 import { useToast } from '../../../../components/common/Toast';
 import { useOrder } from '../hooks/useOrder';
 import OrderStatusTimeline from '../components/OrderStatusTimeline';
@@ -40,10 +40,10 @@ const AddressBlock = ({ title, snapshot }) => {
  * Single-order view. Backed by GET /api/orders/my-orders/:id, gated behind
  * the store's isOrderTrakingAllowed feature server-side (see
  * orderController.js's getMyOrderById) - a 403 from that feature check
- * surfaces here as the generic error state below.
+ * renders StatusErrorPage's dedicated 403 view below.
  */
-const OrderDetailPage = ({ orderId, onBack }) => {
-  const { order, loading, error, cancelling, cancel } = useOrder(orderId);
+const OrderDetailPage = ({ orderId, onBack, onGoHome }) => {
+  const { order, loading, error, statusCode, cancelling, reload, cancel } = useOrder(orderId);
   const toast = useToast();
   const [cancelOpen, setCancelOpen] = useState(false);
   const [reason, setReason] = useState('');
@@ -72,9 +72,12 @@ const OrderDetailPage = ({ orderId, onBack }) => {
 
   if (error || !order) {
     return (
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10">
-        <EmptyState title="Couldn't load this order" description={error || 'Order not found.'} />
-      </div>
+      <StatusErrorPage
+        statusCode={statusCode ?? 404}
+        message={error || 'This order could not be found.'}
+        onRetry={reload}
+        onGoHome={onGoHome}
+      />
     );
   }
 
