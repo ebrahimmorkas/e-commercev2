@@ -9,6 +9,7 @@ import AbandonedCartsPage from './admin/features/abandonedCart/pages/AbandonedCa
 import BannersPage from './admin/features/banners/pages/BannersPage';
 import FreeCashPage from './admin/features/freeCash/pages/FreeCashPage';
 import GroupsPage from './admin/masters/group/pages/GroupsPage';
+import CompanySettingsPage from './admin/features/companySettings/pages/CompanySettingsPage';
 import LoginPage from './admin/features/login/pages/LoginPage';
 import { useAuth } from './admin/features/login/hooks/useAuth';
 import { useAssignedModules } from './admin/modules/hooks/useAssignedModules';
@@ -71,6 +72,8 @@ function App() {
           <FreeCashPage />
         ) : effectiveActivePage === 'groups' ? (
           <GroupsPage />
+        ) : effectiveActivePage === 'companySettings' ? (
+          <CompanySettingsPage />
         ) : (
           <EmptyState
             title={`${PAGE_LABELS[effectiveActivePage] || 'This page'} is coming soon`}
