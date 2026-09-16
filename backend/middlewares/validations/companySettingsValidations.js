@@ -76,7 +76,33 @@ const companySettingsFieldsSchema = {
         })
         .label('Free Cash refund percentage'),
     timeForAbondonedCartReflection: Joi.number().integer().min(1).max(10080).label('Abandoned cart reflection time (minutes)'),
-    abondonedCartOnlyForLoggedInUsers: Joi.boolean().label('Show abandoned carts for logged-in users only')
+    abondonedCartOnlyForLoggedInUsers: Joi.boolean().label('Show abandoned carts for logged-in users only'),
+
+    // Bank Transfer - gated by CompanyMaster.showPaymentQRCodeAndBankDetails
+    // (+ WebsiteMaster.isShowingPaymentQRCodeAndBankDetailsFeatureOn),
+    // enforced in companySettingsService.js, not here. Each field is
+    // independently optional - a vendor may save partial bank info and fill
+    // in the rest later, same convention as adminAddress/instagramId etc.
+    bankAccountHolderName: Joi.string().trim().min(2).max(150).allow('', null).label('Bank account holder name'),
+    bankName: Joi.string().trim().min(2).max(150).allow('', null).label('Bank name'),
+    // Alphanumeric to also accommodate IBAN-style account numbers, not just
+    // numeric domestic account numbers.
+    bankAccountNumber: Joi.string().trim().pattern(/^[A-Za-z0-9]{4,34}$/).allow('', null)
+        .messages({ 'string.pattern.base': '{{#label}} must be 4-34 alphanumeric characters.' })
+        .label('Bank account number'),
+    // Indian IFSC format: 4 letters, a literal 0, then 6 alphanumeric chars.
+    ifscCode: Joi.string().trim().uppercase().pattern(/^[A-Z]{4}0[A-Z0-9]{6}$/).allow('', null)
+        .messages({ 'string.pattern.base': '{{#label}} must be a valid IFSC code (e.g. ABCD0123456).' })
+        .label('IFSC code'),
+    branchName: Joi.string().trim().max(150).allow('', null).label('Branch name'),
+    // SWIFT/BIC format: 8 chars, optionally 11 with a branch code suffix.
+    swiftCode: Joi.string().trim().uppercase().pattern(/^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/).allow('', null)
+        .messages({ 'string.pattern.base': '{{#label}} must be a valid SWIFT/BIC code (8 or 11 characters).' })
+        .label('SWIFT code'),
+    bankAccountType: Joi.alternatives().try(
+        Joi.string().valid('SAVINGS', 'CURRENT'),
+        Joi.string().valid('', 'null')
+    ).custom((value) => (value === '' || value === 'null' ? null : value)).allow(null).label('Bank account type')
 };
 
 const createCompanySettingsSchema = Joi.object({

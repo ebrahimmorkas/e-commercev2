@@ -10,7 +10,8 @@ const router = express.Router();
 
 const companySettingsFileFields = companySettingsUpload.fields([
     { name: 'companyLogo', maxCount: 1 },
-    { name: 'paymentScanner', maxCount: 1 }
+    { name: 'paymentScanner', maxCount: 1 },
+    { name: 'partnerCertificate', maxCount: 1 }
 ]);
 
 router.get('/get-company-settings', checkModuleAssigned('COMPANY_SETTINGS'), getCompanySettings);

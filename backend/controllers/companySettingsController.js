@@ -24,7 +24,7 @@ const updateCompanySettings = async (req, res) => {
     const vendorId = req.vendorId;
     try {
         const hasBodyFields = Object.keys(req.body || {}).length > 0;
-        const hasFiles = !!(req.files?.companyLogo?.[0] || req.files?.paymentScanner?.[0]);
+        const hasFiles = !!(req.files?.companyLogo?.[0] || req.files?.paymentScanner?.[0] || req.files?.partnerCertificate?.[0]);
         if (!hasBodyFields && !hasFiles) {
             return common.sendError(res, 400, 'At least one field or file must be provided for update');
         }

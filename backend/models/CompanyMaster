@@ -495,6 +495,23 @@ const companyMasterSchema = mongoose.Schema({
         enum: VALID_PAYMENT_GATEWAYS,
         default: null
     },
+    // Vendor entitlement: whether this vendor may fill CompanySettings'
+    // paymentScanner + bank transfer fields (bankAccountHolderName, bankName,
+    // bankAccountNumber, ifscCode, branchName, swiftCode, bankAccountType).
+    // Sits below WebsiteMaster.isShowingPaymentQRCodeAndBankDetailsFeatureOn -
+    // see companySettingsService.js.
+    showPaymentQRCodeAndBankDetails: {
+        type: Boolean,
+        default: false
+    },
+    // Vendor entitlement: whether this vendor may upload
+    // CompanySettings.partnerCertificate. Sits below
+    // WebsiteMaster.isShowingPartnerCertificateFeatureOn - see
+    // companySettingsService.js.
+    isShowingPartnerCertificateFeatureOn: {
+        type: Boolean,
+        default: false
+    },
     // End of Payment
 
     // Commission

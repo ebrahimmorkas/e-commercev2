@@ -253,6 +253,22 @@ const websiteMasterSchema = mongoose.Schema({
         enum: VALID_PAYMENT_GATEWAYS,
         default: null
     },
+    // Site-wide kill switch for CompanySettings.paymentScanner + the bank
+    // transfer fields (bankAccountHolderName, bankName, bankAccountNumber,
+    // ifscCode, branchName, swiftCode, bankAccountType) - paired with
+    // CompanyMaster.showPaymentQRCodeAndBankDetails via checkFeatureOnOrOff,
+    // see companySettingsService.js.
+    isShowingPaymentQRCodeAndBankDetailsFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    // Site-wide kill switch for CompanySettings.partnerCertificate - paired
+    // with CompanyMaster.isShowingPartnerCertificateFeatureOn via
+    // checkFeatureOnOrOff, see companySettingsService.js.
+    isShowingPartnerCertificateFeatureOn: {
+        type: Boolean,
+        default: false
+    },
     // End of Payment
 
     // Abandoned Cart

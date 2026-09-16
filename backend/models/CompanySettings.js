@@ -88,7 +88,66 @@ const companySettingsSchema = new mongoose.Schema({
       default: null
     }
   },
-  
+
+  // Start of Bank Transfer
+  // Gated together with paymentScanner above by
+  // CompanyMaster.showPaymentQRCodeAndBankDetails (+
+  // WebsiteMaster.isShowingPaymentQRCodeAndBankDetailsFeatureOn) - see
+  // companySettingsService.js.
+  bankAccountHolderName: {
+    type: String,
+    trim: true,
+    default: null
+  },
+  bankName: {
+    type: String,
+    trim: true,
+    default: null
+  },
+  bankAccountNumber: {
+    type: String,
+    trim: true,
+    default: null
+  },
+  ifscCode: {
+    type: String,
+    trim: true,
+    uppercase: true,
+    default: null
+  },
+  branchName: {
+    type: String,
+    trim: true,
+    default: null
+  },
+  swiftCode: {
+    type: String,
+    trim: true,
+    uppercase: true,
+    default: null
+  },
+  bankAccountType: {
+    type: String,
+    enum: ['SAVINGS', 'CURRENT'],
+    default: null
+  },
+  // End of Bank Transfer
+
+  // Gated by CompanyMaster.isShowingPartnerCertificateFeatureOn (+
+  // WebsiteMaster.isShowingPartnerCertificateFeatureOn) - see
+  // companySettingsService.js.
+  partnerCertificate: {
+    url: {
+      type: String,
+      default: null
+    },
+    imageAssetId: {
+      type: mongoose.Types.ObjectId,
+      ref: 'ImageAsset',
+      default: null
+    }
+  },
+
   // Policies (stored as HTML from React Quill)
   privacyPolicy: {
     type: String,
