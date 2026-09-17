@@ -256,6 +256,26 @@ const createProductSchema = Joi.object({
         'product.invalidVariantColor': 'Variant color "{{#color}}" is not one of the product\'s selected colors.'
     });
 
+// --- Bulk update (excel) row schema ------------------------------------------
+// Vendor identifies the product by `name` (matched case-insensitively -
+// see resolveProductName in productService.js). Every other product-level
+// field is intentionally left out here - bulk update only touches
+// name-matching + variants/sizes, never colors/category/disclaimer/etc.
+// variantSchema/validateVariantsArray are the exact same rules
+// createProductSchema uses - a variant/size here just gets matched against
+// an existing one by variantCode/sizeCode instead of _id (see
+// mergeVariantsIntoProduct in productService.js), its own field-level
+// validation is identical either way.
+const bulkUpdateProductRowSchema = Joi.object({
+    name: Joi.string().trim().min(1).required().label('Product name'),
+    variants: Joi.array().items(variantSchema).min(1).required().custom(validateVariantsArray)
+        .messages({
+            'variants.duplicateColor': 'Color "{{#color}}" is used in more than one variant - colors must be distinct across variants.',
+            'variants.multipleDefaults': 'Only one variant can be marked as the default variant.'
+        })
+        .label('Variants')
+});
+
 const idParamSchema = Joi.object({
     id: objectId().required().label('Product ID')
 });
@@ -331,6 +351,7 @@ const bulkCloneProductSchema = Joi.object({
 module.exports = {
     createProductSchema,
     updateProductSchema,
+    bulkUpdateProductRowSchema,
     toggleProductStatusSchema,
     deleteProductSchema,
     cloneProductSchema,

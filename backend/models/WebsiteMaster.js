@@ -148,6 +148,18 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: true
     },
+    // Global switch, on by default - paired with
+    // CompanyMaster.isBulkUpdatingProductsAllowed (per-vendor entitlement,
+    // off by default) via checkFeatureOnOrOff. See bulkUpdateProducts in
+    // productService.js.
+    // NOTE: isBulkUploadForProductsFeatureOn (the create-flow's own gate)
+    // has no matching field here - checkFeatureOnOrOff will read it as
+    // undefined/false and reject every request at the website-level check.
+    // Pre-existing gap, left untouched since it's outside this feature's scope.
+    isBulkUpdatingProductsAllowed: {
+        type: Boolean,
+        default: true
+    },
     isReturnFeatureOn: {
         type: Boolean,
         default: true

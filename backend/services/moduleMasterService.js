@@ -70,6 +70,7 @@ const isAssignmentActive = (assignment, now = new Date()) => {
 // gated by isModuleFeatureEnabled. Single source of truth - also used by
 // seeds/backfillAssignedModules.js, so the two never drift apart.
 const MODULE_FEATURE_FLAG = {
+    BULK_UPDATE_PRODUCTS: 'isBulkUpdatingProductsAllowed',
     CATEGORIES: 'isCategoryFeatureOn',
     BRAND: 'isBrandFeatureOn',
     DISCOUNT: 'isDiscountFeatureOn',

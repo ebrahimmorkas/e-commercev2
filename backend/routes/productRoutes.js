@@ -43,6 +43,8 @@ router.get( '/get-products-by-category-admin/:categoryId', vendorDetection, ensu
 
 router.post( '/bulk-upload-products', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), productBulkUpload, productController.bulkUploadProducts );
 
+router.post( '/bulk-update-products', vendorDetection, ensureVendorDataCached, checkModuleAssigned('BULK_UPDATE_PRODUCTS'), productBulkUpload, productController.bulkUpdateProducts );
+
 router.put( '/update-product', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), imageUpload.any(), parseProductData, validate(updateProductSchema, 'body'), productController.updateProduct );
 
 router.patch( '/toggle-product-status', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(toggleProductStatusSchema, 'body'), productController.toggleProductStatus );

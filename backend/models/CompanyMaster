@@ -352,6 +352,18 @@ const companyMasterSchema = mongoose.Schema({
         type: Boolean,
         default: true
     },
+    // Vendor entitlement: whether this vendor may bulk-UPDATE their existing
+    // products via excel (matches products by name, can add new variants/
+    // sizes to a matched product, and removes any of that product's
+    // variants/sizes not mentioned in the file). Off by default - unlike
+    // isBulkUploadForProductsFeatureOn (create-only, safe, on by default),
+    // this can delete data, so it follows the opt-in convention of
+    // isDiscountFeatureOn/isVideoUploadingFeatureOn instead. Paired with
+    // WebsiteMaster.isBulkUpdatingProductsAllowed via checkFeatureOnOrOff.
+    isBulkUpdatingProductsAllowed: {
+        type: Boolean,
+        default: false
+    },
     // Vendor entitlement: whether this vendor may clone their own products.
     // Paired with WebsiteMaster.isCloningProductAllowed (global switch, on
     // by default) via checkFeatureOnOrOff - off by default here, same

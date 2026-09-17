@@ -1,6 +1,7 @@
 import {
   DashboardIcon,
   ProductsIcon,
+  BulkUpdateProductsIcon,
   CategoriesIcon,
   BrandIcon,
   OrdersIcon,
@@ -20,6 +21,7 @@ import {
 export const DEFAULT_NAV_ITEMS = [
   { key: 'dashboard', label: 'Dashboard', icon: DashboardIcon, moduleCode: 'DASHBOARD' },
   { key: 'products', label: 'Products', icon: ProductsIcon, moduleCode: 'PRODUCTS' },
+  { key: 'bulkUpdateProducts', label: 'Bulk Update Products', icon: BulkUpdateProductsIcon, moduleCode: 'BULK_UPDATE_PRODUCTS' },
   { key: 'categories', label: 'Categories', icon: CategoriesIcon, moduleCode: 'CATEGORIES' },
   { key: 'brands', label: 'Brand Master', icon: BrandIcon, moduleCode: 'BRAND' },
   { key: 'orders', label: 'Orders', icon: OrdersIcon, moduleCode: 'ORDERS' },

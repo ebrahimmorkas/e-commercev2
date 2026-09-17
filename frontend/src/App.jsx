@@ -3,6 +3,7 @@ import AnnouncementsPage from './admin/features/anoucements/pages/AnnouncementsP
 import CategoriesPage from './admin/masters/category/pages/CategoriesPage';
 import BrandsPage from './admin/masters/brand/pages/BrandsPage';
 import ProductsPage from './admin/features/products/pages/ProductsPage';
+import BulkUpdateProductsPage from './admin/features/bulkUpdateProducts/pages/BulkUpdateProductsPage';
 import DiscountsPage from './admin/features/discounts/pages/DiscountsPage';
 import OrdersPage from './admin/features/orders/pages/OrdersPage';
 import AbandonedCartsPage from './admin/features/abandonedCart/pages/AbandonedCartsPage';
@@ -60,6 +61,8 @@ function App() {
           <BrandsPage />
         ) : effectiveActivePage === 'products' ? (
           <ProductsPage />
+        ) : effectiveActivePage === 'bulkUpdateProducts' ? (
+          <BulkUpdateProductsPage />
         ) : effectiveActivePage === 'discounts' ? (
           <DiscountsPage />
         ) : effectiveActivePage === 'orders' ? (

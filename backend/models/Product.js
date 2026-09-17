@@ -433,6 +433,14 @@ const productSchema = new mongoose.Schema(
     }
 );
 
+// name: unique per vendor (case-insensitive via collation), never globally -
+// vendor A and vendor B may both have a product named "abc". Verified no
+// existing duplicates before adding this (2026-09-17).
+productSchema.index({
+    vendorId: 1,
+    name: 1
+}, { unique: true, collation: { locale: 'en', strength: 2 } });
+
 productSchema.index({
     vendorId: 1,
     slug: 1
