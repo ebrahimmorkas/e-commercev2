@@ -102,6 +102,15 @@ const getAllBanners = async (req, res) => {
             return common.sendError(res, validiyResult.statusCode, validiyResult.message)
         }
 
+        // Vendor's own show/hide toggle (CompanySettings.showBanners) -
+        // distinct from the isBannerFeatureOn entitlement checked above. Not
+        // an error condition, just "nothing to show" - same convention as
+        // showAnnouncements/showReviewsToCustomers (see CompanySettings.js).
+        const companySettingsData = req.companySettingsData;
+        if (companySettingsData && companySettingsData.showBanners === false) {
+            return common.sendSuccess(res, 200, 'Banners are disabled for this store', []);
+        }
+
         const result = await redisService.getOrSet(
             redisKeys.banner(vendorId),
             async () => await bannerService.fetchAllActiveBanners(vendorId),

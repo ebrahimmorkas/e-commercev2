@@ -35,14 +35,34 @@ const BANK_TRANSFER_FIELDS = [
     'swiftCode', 'bankAccountType'
 ];
 
-// Checks whether the request is trying to touch the bank-transfer group
-// (any bank field or the paymentScanner file) or the partnerCertificate
-// file, and if so, verifies the vendor is entitled to it. Returns null when
-// nothing gated was touched (caller proceeds normally), otherwise returns
-// the first failing returnResult().
-const checkPaymentDetailsEntitlements = async (vendorId, data, files, companyMasterData, websiteMasterData) => {
+// '' and undefined/null are the same "empty" value for this comparison -
+// Joi normalizes bankAccountType's '' to null before this runs, but the
+// plain string bank fields (bankAccountHolderName etc.) are only
+// .allow('', null), so an untouched form field can legitimately arrive as
+// either depending on which one the caller used.
+const normalizeEmpty = (value) => (value === undefined || value === '' ? null : value);
+
+// Checks whether the request is actually CHANGING the bank-transfer group
+// (any bank field whose incoming value differs from what's already stored,
+// or a new paymentScanner file) or the partnerCertificate file, and if so,
+// verifies the vendor is entitled to it. Returns null when nothing gated
+// was actually touched (caller proceeds normally), otherwise returns the
+// first failing returnResult().
+//
+// Deliberately diff-based rather than presence-based: a caller that sends
+// its whole settings object on every save (not just the fields it means to
+// change) would otherwise trip this gate on every single save, for a group
+// it isn't even trying to edit - confirmed live via the admin Company
+// Settings page, which 403'd on saving an unrelated toggle for a vendor not
+// entitled to Bank Transfer, purely because it sent bankAccountHolderName:
+// '' etc. alongside everything else.
+const checkPaymentDetailsEntitlements = async (vendorId, data, files, companyMasterData, websiteMasterData, existingSettings = null) => {
     try {
-        const bankGroupTouched = BANK_TRANSFER_FIELDS.some((field) => data[field] !== undefined) || !!files?.paymentScanner?.[0];
+        const bankGroupTouched = BANK_TRANSFER_FIELDS.some((field) => {
+            if (data[field] === undefined) return false;
+            const currentValue = existingSettings ? existingSettings[field] : undefined;
+            return normalizeEmpty(data[field]) !== normalizeEmpty(currentValue);
+        }) || !!files?.paymentScanner?.[0];
         if (bankGroupTouched) {
             const check = await common.checkFeatureOnOrOff(
                 vendorId, websiteMasterData, companyMasterData,
@@ -165,7 +185,7 @@ const updateCompanySettings = async (vendorId, userId, data, files, companyMaste
             return common.returnResult(false, 404, 'Company settings not found. Please create them first.');
         }
 
-        const entitlementFailure = await checkPaymentDetailsEntitlements(vendorId, data, files, companyMasterData, websiteMasterData);
+        const entitlementFailure = await checkPaymentDetailsEntitlements(vendorId, data, files, companyMasterData, websiteMasterData, settings);
         if (entitlementFailure) {
             return entitlementFailure;
         }

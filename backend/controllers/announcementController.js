@@ -88,6 +88,16 @@ const getAllAnnouncements = async (req, res) => {
         if(!validiyResult.isSuccess) {
             return common.sendError(res, validiyResult.statusCode, validiyResult.message)
         }
+
+        // Vendor's own show/hide toggle (CompanySettings.showAnnouncements) -
+        // distinct from the isAnnouncementFeatureOn entitlement checked above.
+        // Not an error condition, just "nothing to show" - same convention as
+        // showBanners/showReviewsToCustomers (see CompanySettings.js).
+        const companySettingsData = req.companySettingsData;
+        if (companySettingsData && companySettingsData.showAnnouncements === false) {
+            return common.sendSuccess(res, 200, 'Announcements are disabled for this store', []);
+        }
+
         const result = await redisService.getOrSet(
             redisKeys.announcement(vendorId),
             async () => await announcementService.fetchAllActiveAnnouncements(vendorId),

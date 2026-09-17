@@ -47,7 +47,7 @@ const CompanySettingsPage = () => {
       setActiveTab('general');
       return;
     }
-    const { fields, files } = buildSavePayload(draft);
+    const { fields, files } = buildSavePayload(draft, { bankTransferEnabled: !!companyMaster?.showPaymentQRCodeAndBankDetails });
     await save(fields, files);
   };
 

@@ -144,18 +144,43 @@ export const mapApiSettingsToDraft = (doc) => ({
   partnerCertificate: doc.partnerCertificate || null,
 });
 
+// Mirrors BANK_TRANSFER_FIELDS in backend/services/companySettingsService.js.
+// companySettingsService.checkPaymentDetailsEntitlements treats ANY of these
+// being present in the request body (even as an empty string - it only
+// checks `!== undefined`) as "the admin is touching the Bank Transfer
+// group", and 403s the ENTIRE save if the vendor isn't entitled to it. Since
+// the draft always carries these keys (even '' when the section is hidden),
+// they must be left out of the payload entirely for a vendor who isn't
+// entitled - otherwise every save fails, not just ones that actually touch
+// bank details. Confirmed live: an unrelated "Show Announcements" toggle
+// 403'd with "This feature is temporarily unavailable" until this was fixed.
+const BANK_TRANSFER_FIELDS = [
+  'bankAccountHolderName', 'bankName', 'bankAccountNumber', 'ifscCode',
+  'branchName', 'swiftCode', 'bankAccountType',
+];
+
 /**
  * Builds the { fields, files } payload the API layer expects from a draft.
  * companyLogo/paymentScanner/partnerCertificate are only ever included in
  * `files` when the admin picked a brand new File - the pre-existing
  * { url, imageAssetId } objects are display-only and never sent back.
+ *
+ * @param {Object} draft
+ * @param {Object} [options]
+ * @param {boolean} [options.bankTransferEnabled] - CompanyMaster.showPaymentQRCodeAndBankDetails
  */
-export const buildSavePayload = (draft) => {
+export const buildSavePayload = (draft, { bankTransferEnabled = false } = {}) => {
   const {
     companyLogo, paymentScanner, partnerCertificate,
     ccList, bccList,
-    orderCancellationNotAllowedAfterStep, bankAccountType,
+    orderCancellationNotAllowedAfterStep,
     amountToRefund,
+    // Destructured out (not spread into `rest`/`fields` below) regardless of
+    // bankTransferEnabled - see BANK_TRANSFER_FIELDS comment above.
+    // eslint-disable-next-line no-unused-vars
+    bankAccountHolderName, bankName, bankAccountNumber, ifscCode,
+    // eslint-disable-next-line no-unused-vars
+    branchName, swiftCode, bankAccountType,
     ...rest
   } = draft;
 
@@ -169,10 +194,15 @@ export const buildSavePayload = (draft) => {
     // normalizeFreeCashReturnFields resets it to null there whenever
     // returnFreeCashOnOrderReturn/refundWholeFreeCashAmount call for it.
     orderCancellationNotAllowedAfterStep: orderCancellationNotAllowedAfterStep || null,
-    bankAccountType: bankAccountType || null,
     ccList: (ccList || []).filter(Boolean),
     bccList: (bccList || []).filter(Boolean),
   };
+
+  if (bankTransferEnabled) {
+    BANK_TRANSFER_FIELDS.forEach((field) => {
+      fields[field] = field === 'bankAccountType' ? (draft[field] || null) : draft[field];
+    });
+  }
 
   if (amountToRefund !== '') {
     fields.amountToRefund = Number(amountToRefund);
