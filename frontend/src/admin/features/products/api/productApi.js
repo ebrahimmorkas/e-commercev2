@@ -47,6 +47,9 @@ export const toggleProductStatus = (productId, status) =>
 export const deleteProduct = (productId) =>
   apiRequest(`${BASE}/delete-product`, { method: 'DELETE', body: { productId } });
 
+export const cloneProduct = (productId) =>
+  apiRequest(`${BASE}/clone-product`, { method: 'POST', body: { productId } });
+
 export default {
   getProductsAdmin,
   getProductByIdAdmin,
@@ -54,4 +57,5 @@ export default {
   updateProduct,
   toggleProductStatus,
   deleteProduct,
+  cloneProduct,
 };

@@ -217,6 +217,16 @@ const companySettingsSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  // Vendor's own choice: when true, cloning a product carries over each
+  // size's current stock value onto the clone. When false (default), every
+  // cloned size starts at 0 stock - avoids double-counting one physical
+  // batch of inventory across two product documents until the vendor
+  // manually sets the clone's own stock. See cloneProduct in
+  // productService.js.
+  isStockCloningAllowed: {
+    type: Boolean,
+    default: false
+  },
   // End of product
 
   // Start of Brand

@@ -315,11 +315,26 @@ const deleteProductSchema = Joi.object({
     productId: objectId().required().label('Product ID')
 });
 
+// --- Clone (single) ------------------------------------------------------------
+const cloneProductSchema = Joi.object({
+    productId: objectId().required().label('Product ID')
+});
+
+// --- Clone (bulk) ----------------------------------------------------------------
+// Capped at 50 per request - a generous batch size for a manual multi-select
+// action on the frontend, while still bounding how much work one request can
+// trigger (each clone is its own DB round trip, not a single bulk insert).
+const bulkCloneProductSchema = Joi.object({
+    productIds: Joi.array().items(objectId()).min(1).max(50).unique().required().label('Product IDs')
+});
+
 module.exports = {
     createProductSchema,
     updateProductSchema,
     toggleProductStatusSchema,
     deleteProductSchema,
+    cloneProductSchema,
+    bulkCloneProductSchema,
     idParamSchema,
     brandIdParamSchema,
     categoryIdParamSchema

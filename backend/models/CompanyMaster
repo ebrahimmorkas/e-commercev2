@@ -352,6 +352,14 @@ const companyMasterSchema = mongoose.Schema({
         type: Boolean,
         default: true
     },
+    // Vendor entitlement: whether this vendor may clone their own products.
+    // Paired with WebsiteMaster.isCloningProductAllowed (global switch, on
+    // by default) via checkFeatureOnOrOff - off by default here, same
+    // opt-in-per-vendor convention as isDiscountFeatureOn/isVideoUploadingFeatureOn.
+    isCloningProductAllowed: {
+        type: Boolean,
+        default: false
+    },
 
     // Brand
     isBrandFeatureOn: {

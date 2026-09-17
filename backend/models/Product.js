@@ -465,6 +465,15 @@ productSchema.index({
     status: 1
 });
 
+// Reference lookup for the image-safety guard (deleteProduct /
+// toggleProductStatus cascade, and updateProduct's size/variant-removal
+// cleanup) - cloning is the only way one ImageAsset can now be referenced
+// by more than one product/size, and these support the "is this image
+// still referenced elsewhere" query. See isImageAssetStillReferenced in
+// productService.js.
+productSchema.index({ "variants.sizes.image.imageAssetId": 1 });
+productSchema.index({ "variants.sizes.additionalImages.imageAssetId": 1 });
+
 productSchema.index({
     name: "text",
     searchKeywords: "text"

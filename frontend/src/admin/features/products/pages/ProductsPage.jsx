@@ -28,6 +28,11 @@ const TrashIcon = () => (
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
   </svg>
 );
+const CloneIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+  </svg>
+);
 const BackIcon = () => (
   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -38,6 +43,26 @@ const ImagePlaceholderIcon = () => (
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M4 8h16M4 4h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z" />
   </svg>
 );
+
+// Mirrors generateNextCloneName in backend/services/productService.js so the
+// confirmation dialog can show the exact name the clone will get, instead of
+// hedging with "something like". Computed off the already-loaded product
+// list (same data source the admin list itself renders from) - the source
+// name is used literally, with no "- Copy N" stripping, so cloning an
+// already-cloned product keeps stacking its own independent counter, same
+// as the backend.
+const nextCloneNameOf = (products, sourceName) => {
+  const pattern = new RegExp(`^${sourceName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} - Copy (\\d+)$`);
+  let maxCopyNumber = 0;
+  for (const product of products) {
+    const match = product.name?.match(pattern);
+    if (match) {
+      const number = parseInt(match[1], 10);
+      if (number > maxCopyNumber) maxCopyNumber = number;
+    }
+  }
+  return `${sourceName} - Copy ${maxCopyNumber + 1}`;
+};
 
 const allSizes = (product) => (product.variants || []).flatMap((v) => v.sizes || []);
 
@@ -69,13 +94,14 @@ const Thumbnail = ({ product, size = 'w-10 h-10' }) => {
 };
 
 const ProductsPage = () => {
-  const { products, loading, error, mutating, createProduct, editProduct, removeProduct, toggleStatus, fetchProductById } = useProducts();
+  const { products, loading, error, mutating, createProduct, editProduct, removeProduct, toggleStatus, cloneProduct, fetchProductById } = useProducts();
   const lookups = useProductLookups();
 
   const [view, setView] = useState('list');
   const [editingDraft, setEditingDraft] = useState(null);
   const [loadingEdit, setLoadingEdit] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [cloneTarget, setCloneTarget] = useState(null);
 
   const categoryNameById = useMemo(() => {
     const map = new Map();
@@ -115,6 +141,14 @@ const ProductsPage = () => {
     const success = await removeProduct(deleteTarget._id);
     if (success) setDeleteTarget(null);
   };
+
+  const handleConfirmClone = async () => {
+    if (!cloneTarget) return;
+    const success = await cloneProduct(cloneTarget._id);
+    if (success) setCloneTarget(null);
+  };
+
+  const cloneTargetNewName = cloneTarget ? nextCloneNameOf(products, cloneTarget.name) : '';
 
   const columns = useMemo(
     () => [
@@ -169,6 +203,7 @@ const ProductsPage = () => {
 
   const actions = [
     { label: 'Edit', icon: <PencilIcon />, variant: theme.button.secondary, onClick: openEdit },
+    { label: 'Clone', icon: <CloneIcon />, variant: theme.button.secondary, onClick: setCloneTarget },
     { label: 'Delete', icon: <TrashIcon />, variant: theme.button.danger, onClick: setDeleteTarget },
   ];
 
@@ -279,6 +314,9 @@ const ProductsPage = () => {
                     <Button variant={theme.button.secondary} size="sm" leftIcon={<PencilIcon />} onClick={() => openEdit(product)} fullWidth>
                       Edit
                     </Button>
+                    <Button variant={theme.button.secondary} size="sm" leftIcon={<CloneIcon />} onClick={() => setCloneTarget(product)} fullWidth>
+                      Clone
+                    </Button>
                     <Button variant={theme.button.danger} size="sm" leftIcon={<TrashIcon />} onClick={() => setDeleteTarget(product)} fullWidth>
                       Delete
                     </Button>
@@ -308,6 +346,27 @@ const ProductsPage = () => {
       >
         <p className={`text-sm ${theme.text.body}`}>
           Are you sure you want to delete <span className={`font-medium ${theme.text.heading}`}>{deleteTarget?.name}</span>? This action cannot be undone.
+        </p>
+      </Modal>
+
+      <Modal
+        isOpen={!!cloneTarget}
+        onClose={() => setCloneTarget(null)}
+        title="Clone Product"
+        size="sm"
+        footer={
+          <>
+            <Button variant={theme.button.ghost} onClick={() => setCloneTarget(null)} disabled={mutating}>
+              Cancel
+            </Button>
+            <Button variant={theme.button.primary} onClick={handleConfirmClone} loading={mutating}>
+              Clone
+            </Button>
+          </>
+        }
+      >
+        <p className={`text-sm ${theme.text.body}`}>
+          Clone <span className={`font-medium ${theme.text.heading}`}>{cloneTarget?.name}</span>? This will create a new product named <span className={`font-medium ${theme.text.heading}`}>"{cloneTargetNewName}"</span>.
         </p>
       </Modal>
     </div>

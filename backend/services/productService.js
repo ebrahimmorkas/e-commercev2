@@ -1,4 +1,5 @@
 const Product = require('../models/Product');
+const ImageAsset = require('../models/ImageAsset');
 const Category = require('../models/Category');
 const categoryService = require('./categoryService');
 const TaxMaster = require('../models/TaxMaster');
@@ -102,7 +103,8 @@ const resolveAdditionalImageFiles = (files = []) => {
 // skipped silently rather than failing the whole request - per the agreed
 // behavior for zip uploads.
 const applySizeImages = async ({
-    vendorId, userId, sizeFiles, existingImage, existingAdditionalImages, companyMasterData, websiteMasterData
+    vendorId, userId, sizeFiles, existingImage, existingAdditionalImages, companyMasterData, websiteMasterData,
+    excludeProductId = null
 }) => {
     const result = {};
 
@@ -151,7 +153,7 @@ const applySizeImages = async ({
         // Full replace, same semantics as the rest of this system.
         for (const old of (existingAdditionalImages || [])) {
             if (old.imageAssetId) {
-                await imageUploadService.deleteImage({ imageId: old.imageAssetId, userId });
+                await deleteImageIfUnreferenced({ imageAssetId: old.imageAssetId, userId, excludeProductId });
             }
         }
 
@@ -732,16 +734,101 @@ const generateUniqueSlug = async (vendorId, name, excludeProductId = null) => {
     }
 };
 
+// ---------------------------------------------------------------------------
+// Image reference-safety. Before cloning, every ImageAsset was always
+// dedicated 1:1 to exactly one size (every upload path creates a brand-new
+// ImageAsset - see applySizeImages). Cloning (below) is the first place an
+// ImageAsset's url/imageAssetId is ever copied onto a SECOND size, so it can
+// now be referenced by more than one product at once. These helpers make
+// every existing image-deletion/deactivation call site in this file check
+// that first, instead of unconditionally destroying/deactivating an asset
+// another still-live product/size depends on.
+// ---------------------------------------------------------------------------
+
+// Whether any OTHER (non-deleted) product's size still references this
+// ImageAsset. excludeProductId lets the product currently being
+// deleted/updated exclude its own (soon to be gone) references from the
+// check.
+const isImageAssetStillReferenced = async ({ imageAssetId, excludeProductId = null }) => {
+    try {
+        const query = {
+            status: { $ne: 'D' },
+            $or: [
+                { 'variants.sizes.image.imageAssetId': imageAssetId },
+                { 'variants.sizes.additionalImages.imageAssetId': imageAssetId }
+            ]
+        };
+        if (excludeProductId) query._id = { $ne: excludeProductId };
+
+        const existing = await Product.findOne(query).select('_id');
+        return !!existing;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Only physically deletes + marks the ImageAsset 'D' when no other
+// non-deleted product/size still points at it - otherwise leaves it
+// completely untouched (still 'A', still live in storage).
+const deleteImageIfUnreferenced = async ({ imageAssetId, userId, excludeProductId = null }) => {
+    try {
+        const stillReferenced = await isImageAssetStillReferenced({ imageAssetId, excludeProductId });
+        if (stillReferenced) return;
+        await imageUploadService.deleteImage({ imageId: imageAssetId, userId });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Same guard as deleteImageIfUnreferenced, but deactivates ('I') instead of
+// hard-deleting - used by toggleProductStatus's cascade below.
+const deactivateImageIfUnreferenced = async ({ imageAssetId, userId, excludeProductId = null }) => {
+    try {
+        const stillReferenced = await isImageAssetStillReferenced({ imageAssetId, excludeProductId });
+        if (stillReferenced) return;
+        await common.setActiveStatusToFalse(ImageAsset, imageAssetId, userId);
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Reactivating a product's own images never needs the reference guard -
+// setting an ImageAsset back to 'A' can never hurt any other referencer.
+const reactivateImage = async ({ imageAssetId, userId }) => {
+    try {
+        await common.setActiveStatusToTrue(ImageAsset, imageAssetId, userId);
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Every distinct imageAssetId referenced across a product's variants/sizes
+// (main image + additional images) - feeds the delete/toggle-status image
+// cascades below.
+const collectProductImageAssetIds = (product) => {
+    const ids = [];
+    for (const variant of (product.variants || [])) {
+        for (const size of (variant.sizes || [])) {
+            if (size.image?.imageAssetId) ids.push(size.image.imageAssetId);
+            for (const additional of (size.additionalImages || [])) {
+                if (additional.imageAssetId) ids.push(additional.imageAssetId);
+            }
+        }
+    }
+    return ids;
+};
+
 // Deletes every uploaded image (main + additional) belonging to one size
 // doc - used when a size/variant is removed entirely during an update, so
-// its Cloudinary assets don't become orphaned.
-const deleteAllImagesForSize = async (sizeDoc, userId) => {
+// its Cloudinary assets don't become orphaned (unless another product,
+// e.g. a clone, still references one of them).
+const deleteAllImagesForSize = async (sizeDoc, userId, excludeProductId = null) => {
     if (sizeDoc.image?.imageAssetId) {
-        await imageUploadService.deleteImage({ imageId: sizeDoc.image.imageAssetId, userId });
+        await deleteImageIfUnreferenced({ imageAssetId: sizeDoc.image.imageAssetId, userId, excludeProductId });
     }
     for (const additional of (sizeDoc.additionalImages || [])) {
         if (additional.imageAssetId) {
-            await imageUploadService.deleteImage({ imageId: additional.imageAssetId, userId });
+            await deleteImageIfUnreferenced({ imageAssetId: additional.imageAssetId, userId, excludeProductId });
         }
     }
 };
@@ -2135,7 +2222,7 @@ const updateProduct = async (vendorId, userId, companyMasterData, websiteMasterD
             // --- sizes removed from this variant: clean up their images ------------
             for (const [existingSizeId, existingSizeDoc] of existingSizesMap) {
                 if (!incomingSizeIds.has(existingSizeId)) {
-                    await deleteAllImagesForSize(existingSizeDoc, userId);
+                    await deleteAllImagesForSize(existingSizeDoc, userId, productId);
                 }
             }
 
@@ -2155,7 +2242,7 @@ const updateProduct = async (vendorId, userId, companyMasterData, websiteMasterD
         for (const [existingVariantId, existingVariantDoc] of existingVariantsMap) {
             if (!incomingVariantIds.has(existingVariantId)) {
                 for (const existingSizeDoc of existingVariantDoc.sizes) {
-                    await deleteAllImagesForSize(existingSizeDoc, userId);
+                    await deleteAllImagesForSize(existingSizeDoc, userId, productId);
                 }
             }
         }
@@ -2172,13 +2259,13 @@ const updateProduct = async (vendorId, userId, companyMasterData, websiteMasterD
                 const submittedSize = submittedVariants[v]?.sizes?.[s];
 
                 if (submittedSize?.removeImage && !sizeFiles?.image && variants[v].sizes[s].image?.imageAssetId) {
-                    await imageUploadService.deleteImage({ imageId: variants[v].sizes[s].image.imageAssetId, userId });
+                    await deleteImageIfUnreferenced({ imageAssetId: variants[v].sizes[s].image.imageAssetId, userId, excludeProductId: productId });
                     variants[v].sizes[s].image = undefined;
                 }
                 if (submittedSize?.removeAdditionalImages && !sizeFiles?.additionalImages?.length && variants[v].sizes[s].additionalImages?.length) {
                     for (const old of variants[v].sizes[s].additionalImages) {
                         if (old.imageAssetId) {
-                            await imageUploadService.deleteImage({ imageId: old.imageAssetId, userId });
+                            await deleteImageIfUnreferenced({ imageAssetId: old.imageAssetId, userId, excludeProductId: productId });
                         }
                     }
                     variants[v].sizes[s].additionalImages = [];
@@ -2190,7 +2277,8 @@ const updateProduct = async (vendorId, userId, companyMasterData, websiteMasterD
                     vendorId, userId, sizeFiles,
                     existingImage: variants[v].sizes[s].image || null,
                     existingAdditionalImages: variants[v].sizes[s].additionalImages || [],
-                    companyMasterData, websiteMasterData
+                    companyMasterData, websiteMasterData,
+                    excludeProductId: productId
                 });
                 if (!imagesResult.isSuccess) {
                     return common.returnResult(false, imagesResult.statusCode, imagesResult.message);
@@ -2232,6 +2320,21 @@ const toggleProductStatus = async (vendorId, userId, productId, status) => {
             return common.returnResult(false, 404, result.message);
         }
 
+        // --- cascade to the product's own images ---------------------------
+        // Going inactive: deactivate every image this product's sizes use,
+        // UNLESS another still-live product (e.g. a clone) also references
+        // it - that one stays 'A' since it's still needed there.
+        // Going active: always safe to reactivate this product's own
+        // images unconditionally - no guard needed.
+        const imageAssetIds = collectProductImageAssetIds(result.document);
+        for (const imageAssetId of imageAssetIds) {
+            if (status === 'A') {
+                await reactivateImage({ imageAssetId, userId });
+            } else {
+                await deactivateImageIfUnreferenced({ imageAssetId, userId, excludeProductId: productId });
+            }
+        }
+
         logger.logInfo(1, 0, 'Product status updated', { vendorId, productId, status });
 
         return common.returnResult(true, 200, 'Product status updated successfully', { product: result.document });
@@ -2248,9 +2351,296 @@ const deleteProduct = async (vendorId, userId, productId) => {
             return common.returnResult(false, 404, result.message);
         }
 
+        // --- cascade to the product's own images ---------------------------
+        // Physically delete every image this product's sizes used, UNLESS
+        // another still-live product (e.g. a clone) also references it -
+        // that one is left completely untouched (still 'A', still live in
+        // storage) since it's still needed there.
+        const imageAssetIds = collectProductImageAssetIds(result.document);
+        for (const imageAssetId of imageAssetIds) {
+            await deleteImageIfUnreferenced({ imageAssetId, userId, excludeProductId: productId });
+        }
+
         logger.logInfo(1, 0, 'Product deleted', { vendorId, productId });
 
         return common.returnResult(true, 200, 'Product deleted successfully');
+    } catch (err) {
+        throw err;
+    }
+};
+
+// ---------------------------------------------------------------------------
+// Product cloning
+// ---------------------------------------------------------------------------
+
+// Regenerates a code via the SAME per-vendor sequence/format the normal
+// auto-generation path uses (PRD-000001 / VAR-000001 / SIZ-000001) - shares
+// the counter with resolveProductCode/resolveVariantCode/resolveSizeCode so
+// a cloned code can never collide with a normally auto-generated one.
+// Cloning always regenerates fresh codes regardless of the vendor's own
+// isXCodeAutoGenerated setting, since there's no manual-entry step in a
+// one-click clone.
+const generateSequentialCode = async (vendorId, sequenceKey, prefix) => {
+    try {
+        const nextValue = await counterService.getNextSequenceValue(vendorId, sequenceKey);
+        return `${prefix}-${String(nextValue).padStart(6, '0')}`;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// SKU has no auto-generation convention anywhere else in this system (it's
+// always vendor-entered) - a clone still needs a fresh, unique-per-vendor
+// value with no manual-entry step, so this derives one from the source SKU
+// and retries with a random suffix on collision, same pattern as
+// generateUniqueSlug above.
+const generateUniqueClonedSku = async (vendorId, originalSku) => {
+    try {
+        const base = `${originalSku}-COPY`;
+        let candidate = base;
+        let attempts = 0;
+
+        while (await Product.findOne({ vendorId, status: { $ne: 'D' }, 'variants.sizes.sku': candidate })) {
+            candidate = `${base}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+            attempts++;
+            if (attempts > 5) {
+                throw new Error('Unable to generate a unique SKU after multiple attempts.');
+            }
+        }
+
+        return candidate;
+    } catch (err) {
+        throw err;
+    }
+};
+
+const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// "A" clones to "A - Copy 1", then "A - Copy 2", and so on. Cloning an
+// already-cloned product (e.g. "A - Copy 1") is NOT stripped back to its
+// base name first - it gets its own independent counter off its current
+// full name (so cloning "A - Copy 1" produces "A - Copy 1 - Copy 1"), per
+// explicit instruction.
+const generateNextCloneName = async (vendorId, sourceName) => {
+    try {
+        const pattern = new RegExp(`^${escapeRegExp(sourceName)} - Copy (\\d+)$`);
+        const candidates = await Product.find(
+            { vendorId, status: { $ne: 'D' }, name: pattern },
+            { name: 1 }
+        ).lean();
+
+        let maxCopyNumber = 0;
+        for (const candidate of candidates) {
+            const match = candidate.name.match(pattern);
+            if (match) {
+                const number = parseInt(match[1], 10);
+                if (number > maxCopyNumber) maxCopyNumber = number;
+            }
+        }
+
+        return `${sourceName} - Copy ${maxCopyNumber + 1}`;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Shared cloning logic for both the single-product and bulk endpoints.
+// Does NOT itself check isCloningProductAllowed or the product-count plan
+// cap - callers check those (bulk clone checks the feature flag once for
+// the whole batch, and tracks the count cap as a running local counter
+// rather than re-querying per item).
+//
+// Everything not called out below is copied as-is from the source
+// (description, colors, mainCategory/subCategory, disclaimer,
+// searchKeywords, recommendedProducts, taxIds, precedence, bulkPricing,
+// price/cancelledPrice/weight/policies/geo-exclusions/measurement values,
+// image/additionalImages). Fields regenerated because of a uniqueness
+// constraint (productCode, variantCode, sizeCode, sku, slug) or explicitly
+// decided in conversation (barcode dropped, stock, status, audit fields)
+// are listed inline.
+const cloneOneProduct = async (vendorId, userId, sourceProduct, companySettingsData) => {
+    try {
+        const newName = await generateNextCloneName(vendorId, sourceProduct.name);
+        const newProductCode = await generateSequentialCode(vendorId, 'productCode', 'PRD');
+        const newSlug = await generateUniqueSlug(vendorId, newName);
+
+        const clonedVariants = [];
+        for (const variant of sourceProduct.variants) {
+            // A variant individually soft-deleted (status 'D') is
+            // discontinued debris, independent of the parent product's own
+            // status - never carried into a clone.
+            if (variant.status === 'D') continue;
+
+            const clonedSizes = [];
+            for (const size of variant.sizes) {
+                if (size.status === 'D') continue;
+
+                const newSizeCode = await generateSequentialCode(vendorId, 'sizeCode', 'SIZ');
+                const newSku = await generateUniqueClonedSku(vendorId, size.sku);
+
+                clonedSizes.push({
+                    ...size.toObject(),
+                    _id: undefined,
+                    sizeCode: newSizeCode,
+                    sku: newSku,
+                    // Barcode mirrors a real physical barcode and is
+                    // globally unique across every vendor - never
+                    // duplicated onto a clone. Vendor sets a new one
+                    // manually afterward if needed.
+                    barcode: undefined,
+                    stock: companySettingsData.isStockCloningAllowed ? size.stock : 0,
+                    status: size.status,
+                    createdBy: userId,
+                    updatedBy: undefined,
+                    deletedBy: undefined,
+                    inActiveMarkedBy: undefined,
+                    activeMarkedBy: undefined,
+                    activeMarkedDate: null,
+                    inactiveMarkedDate: null,
+                    remarks: 'CLONED'
+                });
+            }
+
+            // Every size under this variant was individually deleted - the
+            // variant itself carries nothing forward, so drop it too.
+            if (clonedSizes.length === 0) continue;
+
+            const newVariantCode = await generateSequentialCode(vendorId, 'variantCode', 'VAR');
+            clonedVariants.push({
+                ...variant.toObject(),
+                _id: undefined,
+                variantCode: newVariantCode,
+                status: variant.status,
+                createdBy: userId,
+                updatedBy: undefined,
+                deletedBy: undefined,
+                inActiveMarkedBy: undefined,
+                activeMarkedBy: undefined,
+                activeMarkedDate: null,
+                inactiveMarkedDate: null,
+                remarks: 'CLONED',
+                sizes: clonedSizes
+            });
+        }
+
+        const clonedProduct = new Product({
+            ...sourceProduct.toObject(),
+            _id: undefined,
+            __v: undefined,
+            createdAt: undefined,
+            updatedAt: undefined,
+            name: newName,
+            slug: newSlug,
+            productCode: newProductCode,
+            variants: clonedVariants,
+            vendorId,
+            status: sourceProduct.status,
+            createdBy: userId,
+            updatedBy: undefined,
+            deletedBy: undefined,
+            inActiveMarkedBy: undefined,
+            activeMarkedBy: undefined,
+            activeMarkedDate: null,
+            inactiveMarkedDate: null,
+            remarks: 'CLONED'
+        });
+
+        await clonedProduct.save();
+
+        return common.returnResult(true, 201, 'Product cloned successfully', { product: clonedProduct });
+    } catch (err) {
+        throw err;
+    }
+};
+
+const cloneProduct = async (vendorId, userId, companyMasterData, websiteMasterData, companySettingsData, productId) => {
+    try {
+        const featureCheck = await common.checkFeatureOnOrOff(
+            vendorId, websiteMasterData, companyMasterData, 'isCloningProductAllowed', 'isCloningProductAllowed'
+        );
+        if (!featureCheck.isSuccess) {
+            return common.returnResult(false, featureCheck.statusCode, featureCheck.message);
+        }
+
+        const sourceProduct = await Product.findOne({ _id: productId, vendorId, status: { $in: ['A', 'I'] } });
+        if (!sourceProduct) {
+            return common.returnResult(false, 404, 'Product not found or cannot be cloned.');
+        }
+
+        if (companyMasterData.numberOfProductsAllowed !== undefined && companyMasterData.numberOfProductsAllowed !== null) {
+            const currentCount = await Product.countDocuments({ vendorId, status: { $ne: 'D' } });
+            if (currentCount >= companyMasterData.numberOfProductsAllowed) {
+                return common.returnResult(false, 403, `You have reached the maximum number of products (${companyMasterData.numberOfProductsAllowed}) allowed for your account.`);
+            }
+        }
+
+        const result = await cloneOneProduct(vendorId, userId, sourceProduct, companySettingsData);
+
+        if (result.isSuccess) {
+            logger.logInfo(1, 0, 'Product cloned', { vendorId, sourceProductId: productId, clonedProductId: result.meta.product._id });
+        }
+
+        return result;
+    } catch (err) {
+        throw err;
+    }
+};
+
+const bulkCloneProducts = async (vendorId, userId, companyMasterData, websiteMasterData, companySettingsData, productIds) => {
+    try {
+        const featureCheck = await common.checkFeatureOnOrOff(
+            vendorId, websiteMasterData, companyMasterData, 'isCloningProductAllowed', 'isCloningProductAllowed'
+        );
+        if (!featureCheck.isSuccess) {
+            return common.returnResult(false, featureCheck.statusCode, featureCheck.message);
+        }
+
+        let remainingSlots = null;
+        if (companyMasterData.numberOfProductsAllowed !== undefined && companyMasterData.numberOfProductsAllowed !== null) {
+            const currentCount = await Product.countDocuments({ vendorId, status: { $ne: 'D' } });
+            remainingSlots = companyMasterData.numberOfProductsAllowed - currentCount;
+        }
+
+        const results = [];
+        let successCount = 0;
+        let failureCount = 0;
+
+        // Best-effort: one product's controlled failure (plan cap reached
+        // mid-batch, not found, a returnResult-style validation failure
+        // from cloneOneProduct) is recorded and skipped rather than
+        // aborting the rest of the batch, per explicit instruction. A
+        // genuinely unexpected exception still propagates to the outer
+        // catch below, same as every other service function in this file.
+        for (const productId of productIds) {
+            if (remainingSlots !== null && remainingSlots <= 0) {
+                results.push({ productId, isSuccess: false, message: `You have reached the maximum number of products (${companyMasterData.numberOfProductsAllowed}) allowed for your account.` });
+                failureCount++;
+                continue;
+            }
+
+            const sourceProduct = await Product.findOne({ _id: productId, vendorId, status: { $in: ['A', 'I'] } });
+            if (!sourceProduct) {
+                results.push({ productId, isSuccess: false, message: 'Product not found or cannot be cloned.' });
+                failureCount++;
+                continue;
+            }
+
+            const result = await cloneOneProduct(vendorId, userId, sourceProduct, companySettingsData);
+
+            if (!result.isSuccess) {
+                results.push({ productId, isSuccess: false, message: result.message });
+                failureCount++;
+                continue;
+            }
+
+            if (remainingSlots !== null) remainingSlots--;
+            successCount++;
+            results.push({ productId, isSuccess: true, message: result.message, clonedProductId: result.meta.product._id });
+        }
+
+        logger.logInfo(successCount, failureCount, 'Bulk product clone completed', { vendorId, successCount, failureCount });
+
+        return common.returnResult(true, 200, `Cloned ${successCount} of ${productIds.length} product(s).`, { results, successCount, failureCount });
     } catch (err) {
         throw err;
     }
@@ -2261,6 +2651,8 @@ module.exports = {
     updateProduct,
     toggleProductStatus,
     deleteProduct,
+    cloneProduct,
+    bulkCloneProducts,
     fetchAllProductsForAdmin,
     fetchAllProductsForClient,
     fetchProductByIdForAdmin,

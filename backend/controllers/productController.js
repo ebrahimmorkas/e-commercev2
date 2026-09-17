@@ -250,11 +250,51 @@ const deleteProduct = async (req, res) => {
     }
 };
 
+const cloneProduct = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { productId } = req.body;
+    try {
+        const userId = req.user._id;
+
+        const result = await productService.cloneProduct(
+            vendorId, userId, req.companyMasterData, req.websiteMasterData, req.companySettingsData, productId
+        );
+
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('Error cloning product', { vendorId, productId, error });
+    }
+};
+
+const bulkCloneProducts = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { productIds } = req.body;
+    try {
+        const userId = req.user._id;
+
+        const result = await productService.bulkCloneProducts(
+            vendorId, userId, req.companyMasterData, req.websiteMasterData, req.companySettingsData, productIds
+        );
+
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('Error bulk cloning products', { vendorId, error });
+    }
+};
+
 module.exports = {
     createProduct,
     updateProduct,
     toggleProductStatus,
     deleteProduct,
+    cloneProduct,
+    bulkCloneProducts,
     getAllProductsAdmin,
     getProductByIdAdmin,
     getAllProductsClient,

@@ -136,6 +136,14 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: true
     },
+    // Global switch for product cloning - paired with
+    // CompanyMaster.isCloningProductAllowed (per-vendor entitlement, off by
+    // default) via checkFeatureOnOrOff. See cloneProduct/bulkCloneProducts
+    // in productService.js.
+    isCloningProductAllowed: {
+        type: Boolean,
+        default: true
+    },
     isBrandFeatureOn: {
         type: Boolean,
         default: true

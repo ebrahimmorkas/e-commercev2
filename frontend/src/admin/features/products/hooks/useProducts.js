@@ -111,6 +111,21 @@ export const useProducts = () => {
     }
   };
 
+  const cloneProduct = async (productId) => {
+    setMutating(true);
+    try {
+      await productApi.cloneProduct(productId);
+      toast.success('Product cloned successfully');
+      await fetchProducts();
+      return true;
+    } catch (err) {
+      toast.error(describeError(err));
+      return false;
+    } finally {
+      setMutating(false);
+    }
+  };
+
   return {
     products,
     loading,
@@ -122,6 +137,7 @@ export const useProducts = () => {
     editProduct,
     removeProduct,
     toggleStatus,
+    cloneProduct,
   };
 };
 
