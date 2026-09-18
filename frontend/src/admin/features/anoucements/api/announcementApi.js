@@ -29,9 +29,20 @@ export const deleteAnnouncement = (announcementId) =>
     body: { announcement_id: announcementId },
   });
 
+// --- Bulk multi-select actions (checkbox selection in the admin table) ------
+// Both return { results, successCount, failureCount } - see
+// backend/utils/common.js's runBulkOperation.
+export const bulkSetAnnouncementStatus = (announcementIds, status) =>
+  apiRequest(`${BASE}/bulk-status`, { method: 'PATCH', body: { announcementIds, status } });
+
+export const bulkDeleteAnnouncements = (announcementIds) =>
+  apiRequest(`${BASE}/bulk-delete`, { method: 'DELETE', body: { announcementIds } });
+
 export default {
   getAllAnnouncementsAdmin,
   addAnnouncement,
   updateAnnouncement,
   deleteAnnouncement,
+  bulkSetAnnouncementStatus,
+  bulkDeleteAnnouncements,
 };

@@ -82,6 +82,51 @@ export const useBanners = () => {
     return editBanner(banner._id, { status: nextStatus }, {});
   };
 
+  // --- Bulk multi-select actions (checkbox column) --------------------------
+  const describeBulkOutcome = (data, pastTenseVerb) => {
+    const successCount = data?.successCount ?? 0;
+    const failureCount = data?.failureCount ?? 0;
+    if (failureCount === 0) {
+      toast.success(`${successCount} banner(s) ${pastTenseVerb}`);
+    } else if (successCount === 0) {
+      toast.error(`Could not ${pastTenseVerb === 'deleted' ? 'delete' : 'update'} the selected banner(s)`);
+    } else {
+      toast.warning(`${successCount} banner(s) ${pastTenseVerb}, ${failureCount} could not be processed`);
+    }
+  };
+
+  const bulkToggleStatus = async (bannerIds, status) => {
+    if (!bannerIds || bannerIds.length === 0) return null;
+    setMutating(true);
+    try {
+      const data = await bannerApi.bulkSetBannerStatus(bannerIds, status);
+      describeBulkOutcome(data, status === 'A' ? 'activated' : 'deactivated');
+      await fetchBanners();
+      return data;
+    } catch (err) {
+      toast.error(err.message || 'Failed to update banner status');
+      return null;
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const bulkRemoveBanners = async (bannerIds) => {
+    if (!bannerIds || bannerIds.length === 0) return null;
+    setMutating(true);
+    try {
+      const data = await bannerApi.bulkDeleteBanners(bannerIds);
+      describeBulkOutcome(data, 'deleted');
+      await fetchBanners();
+      return data;
+    } catch (err) {
+      toast.error(err.message || 'Failed to delete banners');
+      return null;
+    } finally {
+      setMutating(false);
+    }
+  };
+
   return {
     banners,
     loading,
@@ -92,6 +137,8 @@ export const useBanners = () => {
     editBanner,
     removeBanner,
     toggleStatus,
+    bulkToggleStatus,
+    bulkRemoveBanners,
   };
 };
 

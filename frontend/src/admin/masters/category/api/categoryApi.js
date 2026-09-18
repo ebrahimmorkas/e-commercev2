@@ -58,10 +58,22 @@ export const bulkUploadCategories = (excelFile, zipFile) => {
   return apiRequest(`${BASE}/bulk-upload-categories`, { method: 'POST', body: formData });
 };
 
+// --- Bulk multi-select actions (checkbox selection in the admin table) ------
+// Both return { results, successCount, failureCount } - see
+// backend/utils/common.js's runBulkOperation. Distinct from bulkUploadCategories
+// above (an Excel import), these act on already-existing categories.
+export const bulkSetCategoryStatus = (categoryIds, status) =>
+  apiRequest(`${BASE}/bulk-status`, { method: 'PATCH', body: { categoryIds, status } });
+
+export const bulkDeleteCategories = (categoryIds) =>
+  apiRequest(`${BASE}/bulk-delete`, { method: 'DELETE', body: { categoryIds } });
+
 export default {
   getAdminCategories,
   addCategory,
   updateCategory,
   deleteCategory,
   bulkUploadCategories,
+  bulkSetCategoryStatus,
+  bulkDeleteCategories,
 };

@@ -171,7 +171,7 @@ const Table = ({
     const isDisabled = action.disabled ? action.disabled(row) : false;
 
     const baseClasses =
-      'inline-flex items-center gap-1 text-sm font-medium rounded-lg px-2.5 py-1.5 transition-all duration-200 focus:outline-none focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed';
+      'inline-flex items-center gap-1 text-sm font-medium rounded-lg px-2.5 py-1.5 transition-all duration-200 focus:outline-none focus:ring-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50';
     const variantClasses = actionVariants[action.variant] || actionVariants.secondary;
     const combinedClasses = `${baseClasses} ${variantClasses} ${action.className || ''}`;
 
@@ -229,7 +229,7 @@ const Table = ({
                   type="checkbox"
                   checked={allVisibleSelected}
                   onChange={toggleAll}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                   aria-label="Select all rows"
                 />
               </th>
@@ -304,7 +304,7 @@ const Table = ({
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => toggleRow(rowKey)}
-                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                         aria-label={`Select row ${rowIndex + 1}`}
                       />
                     </td>
@@ -346,7 +346,7 @@ const Table = ({
               type="button"
               disabled={page === 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               Previous
             </button>
@@ -354,7 +354,7 @@ const Table = ({
               type="button"
               disabled={page === totalPages}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               Next
             </button>

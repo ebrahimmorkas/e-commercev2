@@ -137,6 +137,56 @@ export const useFreeCash = () => {
     }
   };
 
+  // --- Bulk multi-select actions (checkbox column) --------------------------
+  // Unlike the single-row toggleStatus above, the bulk status endpoint is a
+  // dedicated, minimal status flip on the backend (freeCashService's
+  // setFreeCashStatusForBulk) - it never re-validates/re-resolves the full
+  // targeting payload the way updateFreeCash does, so the "targeting was set
+  // via excel, re-upload to change status" restriction doesn't apply here.
+  const describeBulkOutcome = (data, pastTenseVerb) => {
+    const successCount = data?.successCount ?? 0;
+    const failureCount = data?.failureCount ?? 0;
+    if (failureCount === 0) {
+      toast.success(`${successCount} Free Cash campaign(s) ${pastTenseVerb}`);
+    } else if (successCount === 0) {
+      toast.error(`Could not ${pastTenseVerb === 'deleted' ? 'delete' : 'update'} the selected campaign(s)`);
+    } else {
+      toast.warning(`${successCount} campaign(s) ${pastTenseVerb}, ${failureCount} could not be processed`);
+    }
+  };
+
+  const bulkToggleStatus = async (freeCashIds, status) => {
+    if (!freeCashIds || freeCashIds.length === 0) return null;
+    setMutating(true);
+    try {
+      const data = await freeCashApi.bulkSetFreeCashStatus(freeCashIds, status);
+      describeBulkOutcome(data, status === 'A' ? 'activated' : 'deactivated');
+      await fetchFreeCash();
+      return data;
+    } catch (err) {
+      toast.error(err.message || 'Failed to update Free Cash status');
+      return null;
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const bulkRemoveFreeCash = async (freeCashIds) => {
+    if (!freeCashIds || freeCashIds.length === 0) return null;
+    setMutating(true);
+    try {
+      const data = await freeCashApi.bulkDeleteFreeCash(freeCashIds);
+      describeBulkOutcome(data, 'deleted');
+      await fetchFreeCash();
+      return data;
+    } catch (err) {
+      toast.error(err.message || 'Failed to delete Free Cash campaigns');
+      return null;
+    } finally {
+      setMutating(false);
+    }
+  };
+
   return {
     freeCashList,
     loading,
@@ -150,6 +200,8 @@ export const useFreeCash = () => {
     toggleStatus,
     revokeForUser,
     revokeForAllUsers,
+    bulkToggleStatus,
+    bulkRemoveFreeCash,
   };
 };
 

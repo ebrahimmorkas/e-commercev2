@@ -109,6 +109,57 @@ export const useDiscounts = () => {
     return result.success;
   };
 
+  // --- Bulk multi-select actions (checkbox column) --------------------------
+  // Unlike the single-row toggleStatus above, the bulk status endpoint is a
+  // dedicated, minimal status flip on the backend (discountService's
+  // setDiscountStatusForBulk) - it never re-validates/re-resolves the full
+  // targeting payload the way updateDiscount does, so the "targeting was set
+  // via excel, re-upload to change status" restriction simply doesn't apply
+  // here and every selected discount is eligible regardless of giveDiscountTo.
+  const describeBulkOutcome = (data, pastTenseVerb) => {
+    const successCount = data?.successCount ?? 0;
+    const failureCount = data?.failureCount ?? 0;
+    if (failureCount === 0) {
+      toast.success(`${successCount} discount(s) ${pastTenseVerb}`);
+    } else if (successCount === 0) {
+      toast.error(`Could not ${pastTenseVerb === 'deleted' ? 'delete' : 'update'} the selected discount(s)`);
+    } else {
+      toast.warning(`${successCount} discount(s) ${pastTenseVerb}, ${failureCount} could not be processed`);
+    }
+  };
+
+  const bulkToggleStatus = async (discountIds, status) => {
+    if (!discountIds || discountIds.length === 0) return null;
+    setMutating(true);
+    try {
+      const data = await discountApi.bulkSetDiscountStatus(discountIds, status);
+      describeBulkOutcome(data, status === 'A' ? 'activated' : 'deactivated');
+      await fetchDiscounts();
+      return data;
+    } catch (err) {
+      toast.error(err.message || 'Failed to update discount status');
+      return null;
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const bulkRemoveDiscounts = async (discountIds) => {
+    if (!discountIds || discountIds.length === 0) return null;
+    setMutating(true);
+    try {
+      const data = await discountApi.bulkDeleteDiscounts(discountIds);
+      describeBulkOutcome(data, 'deleted');
+      await fetchDiscounts();
+      return data;
+    } catch (err) {
+      toast.error(err.message || 'Failed to delete discounts');
+      return null;
+    } finally {
+      setMutating(false);
+    }
+  };
+
   return {
     discounts,
     loading,
@@ -120,6 +171,8 @@ export const useDiscounts = () => {
     editDiscount,
     removeDiscount,
     toggleStatus,
+    bulkToggleStatus,
+    bulkRemoveDiscounts,
   };
 };
 

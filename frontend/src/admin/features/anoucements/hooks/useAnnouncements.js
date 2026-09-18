@@ -82,6 +82,51 @@ export const useAnnouncements = () => {
     return editAnnouncement(announcement._id, { status: nextStatus });
   };
 
+  // --- Bulk multi-select actions (checkbox column) --------------------------
+  const describeBulkOutcome = (data, pastTenseVerb) => {
+    const successCount = data?.successCount ?? 0;
+    const failureCount = data?.failureCount ?? 0;
+    if (failureCount === 0) {
+      toast.success(`${successCount} announcement(s) ${pastTenseVerb}`);
+    } else if (successCount === 0) {
+      toast.error(`Could not ${pastTenseVerb === 'deleted' ? 'delete' : 'update'} the selected announcement(s)`);
+    } else {
+      toast.warning(`${successCount} announcement(s) ${pastTenseVerb}, ${failureCount} could not be processed`);
+    }
+  };
+
+  const bulkToggleStatus = async (announcementIds, status) => {
+    if (!announcementIds || announcementIds.length === 0) return null;
+    setMutating(true);
+    try {
+      const data = await announcementApi.bulkSetAnnouncementStatus(announcementIds, status);
+      describeBulkOutcome(data, status === 'A' ? 'activated' : 'deactivated');
+      await fetchAnnouncements();
+      return data;
+    } catch (err) {
+      toast.error(err.message || 'Failed to update announcement status');
+      return null;
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const bulkRemoveAnnouncements = async (announcementIds) => {
+    if (!announcementIds || announcementIds.length === 0) return null;
+    setMutating(true);
+    try {
+      const data = await announcementApi.bulkDeleteAnnouncements(announcementIds);
+      describeBulkOutcome(data, 'deleted');
+      await fetchAnnouncements();
+      return data;
+    } catch (err) {
+      toast.error(err.message || 'Failed to delete announcements');
+      return null;
+    } finally {
+      setMutating(false);
+    }
+  };
+
   return {
     announcements,
     loading,
@@ -92,6 +137,8 @@ export const useAnnouncements = () => {
     editAnnouncement,
     removeAnnouncement,
     toggleStatus,
+    bulkToggleStatus,
+    bulkRemoveAnnouncements,
   };
 };
 

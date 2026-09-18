@@ -5,6 +5,7 @@ import Button from '../../../../components/common/Buttons';
 import Badge from '../../../../components/common/Badge';
 import Switch from '../../../../components/common/Switch';
 import Modal from '../../../../components/common/Modal';
+import BulkActionBar from '../../../../components/common/BulkActionBar';
 import EmptyState from '../../../../components/common/EmptyState';
 import Spinner from '../../../../components/common/Spinner';
 import { useProducts } from '../hooks/useProducts';
@@ -94,7 +95,10 @@ const Thumbnail = ({ product, size = 'w-10 h-10' }) => {
 };
 
 const ProductsPage = () => {
-  const { products, loading, error, mutating, createProduct, editProduct, removeProduct, toggleStatus, cloneProduct, fetchProductById } = useProducts();
+  const {
+    products, loading, error, mutating, createProduct, editProduct, removeProduct, toggleStatus, cloneProduct, fetchProductById,
+    bulkToggleStatus, bulkRemoveProducts, bulkCloneProducts,
+  } = useProducts();
   const lookups = useProductLookups();
 
   const [view, setView] = useState('list');
@@ -102,6 +106,9 @@ const ProductsPage = () => {
   const [loadingEdit, setLoadingEdit] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [cloneTarget, setCloneTarget] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+  const [bulkCloneConfirmOpen, setBulkCloneConfirmOpen] = useState(false);
 
   const categoryNameById = useMemo(() => {
     const map = new Map();
@@ -111,6 +118,7 @@ const ProductsPage = () => {
 
   const openAdd = () => {
     setEditingDraft(null);
+    setSelectedIds([]);
     setView('add');
   };
 
@@ -120,6 +128,7 @@ const ProductsPage = () => {
     setLoadingEdit(false);
     if (!full) return;
     setEditingDraft(mapApiProductToDraft(full));
+    setSelectedIds([]);
     setView('edit');
   };
 
@@ -149,6 +158,99 @@ const ProductsPage = () => {
   };
 
   const cloneTargetNewName = cloneTarget ? nextCloneNameOf(products, cloneTarget.name) : '';
+
+  // --- Bulk multi-select actions (checkbox column) --------------------------
+  // Admin list endpoints never return status 'D' rows in the first place, so
+  // every selected product is already either 'A' or 'I' - eligibility only
+  // needs to separate those two for the status-toggle buttons; Delete/Clone
+  // apply to the full selection either way.
+  const selectedProducts = useMemo(
+    () => products.filter((p) => selectedIds.includes(p._id)),
+    [products, selectedIds]
+  );
+  const activateEligibleIds = useMemo(
+    () => selectedProducts.filter((p) => p.status === 'I').map((p) => p._id),
+    [selectedProducts]
+  );
+  const deactivateEligibleIds = useMemo(
+    () => selectedProducts.filter((p) => p.status === 'A').map((p) => p._id),
+    [selectedProducts]
+  );
+  const isCloningAllowed = !!lookups.companyMaster?.isCloningProductAllowed;
+
+  // Tracks which specific bulk action is in flight so only that button shows
+  // a spinner - `mutating` alone is shared across every mutation in the hook
+  // and would otherwise light up all four buttons at once for any one of them.
+  const [bulkAction, setBulkAction] = useState(null);
+
+  const handleBulkActivate = async () => {
+    setBulkAction('activate');
+    await bulkToggleStatus(activateEligibleIds, 'A');
+    setBulkAction(null);
+    setSelectedIds([]);
+  };
+
+  const handleBulkDeactivate = async () => {
+    setBulkAction('deactivate');
+    await bulkToggleStatus(deactivateEligibleIds, 'I');
+    setBulkAction(null);
+    setSelectedIds([]);
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    setBulkAction('delete');
+    await bulkRemoveProducts(selectedIds);
+    setBulkAction(null);
+    setBulkDeleteConfirmOpen(false);
+    setSelectedIds([]);
+  };
+
+  const handleConfirmBulkClone = async () => {
+    setBulkAction('clone');
+    await bulkCloneProducts(selectedIds);
+    setBulkAction(null);
+    setBulkCloneConfirmOpen(false);
+    setSelectedIds([]);
+  };
+
+  const bulkActions = [
+    {
+      key: 'activate',
+      label: `Mark Active (${activateEligibleIds.length})`,
+      variant: theme.button.primary,
+      onClick: handleBulkActivate,
+      loading: bulkAction === 'activate',
+      disabled: mutating,
+      hidden: activateEligibleIds.length === 0,
+    },
+    {
+      key: 'deactivate',
+      label: `Mark Inactive (${deactivateEligibleIds.length})`,
+      variant: theme.button.secondary,
+      onClick: handleBulkDeactivate,
+      loading: bulkAction === 'deactivate',
+      disabled: mutating,
+      hidden: deactivateEligibleIds.length === 0,
+    },
+    {
+      key: 'clone',
+      label: `Clone (${selectedIds.length})`,
+      icon: <CloneIcon />,
+      variant: theme.button.outline,
+      onClick: () => setBulkCloneConfirmOpen(true),
+      disabled: mutating,
+      hidden: !isCloningAllowed || selectedIds.length === 0,
+    },
+    {
+      key: 'delete',
+      label: `Delete (${selectedIds.length})`,
+      icon: <TrashIcon />,
+      variant: theme.button.danger,
+      onClick: () => setBulkDeleteConfirmOpen(true),
+      disabled: mutating,
+      hidden: selectedIds.length === 0,
+    },
+  ];
 
   const columns = useMemo(
     () => [
@@ -275,7 +377,17 @@ const ProductsPage = () => {
           <>
             {/* Desktop / tablet: full data table */}
             <div className="hidden md:block">
-              <Table columns={columns} data={products} keyField="_id" actions={actions} pageSize={20} />
+              <BulkActionBar selectedCount={selectedIds.length} onClear={() => setSelectedIds([])} actions={bulkActions} />
+              <Table
+                columns={columns}
+                data={products}
+                keyField="_id"
+                actions={selectedIds.length > 0 ? [] : actions}
+                selectable
+                selectedKeys={selectedIds}
+                onSelectionChange={setSelectedIds}
+                pageSize={20}
+              />
             </div>
 
             {/* Mobile: card list - a 6-column table never reads well this narrow */}
@@ -367,6 +479,48 @@ const ProductsPage = () => {
       >
         <p className={`text-sm ${theme.text.body}`}>
           Clone <span className={`font-medium ${theme.text.heading}`}>{cloneTarget?.name}</span>? This will create a new product named <span className={`font-medium ${theme.text.heading}`}>"{cloneTargetNewName}"</span>.
+        </p>
+      </Modal>
+
+      <Modal
+        isOpen={bulkDeleteConfirmOpen}
+        onClose={() => setBulkDeleteConfirmOpen(false)}
+        title="Delete Products"
+        size="sm"
+        footer={
+          <>
+            <Button variant={theme.button.ghost} onClick={() => setBulkDeleteConfirmOpen(false)} disabled={mutating}>
+              Cancel
+            </Button>
+            <Button variant={theme.button.danger} onClick={handleConfirmBulkDelete} loading={mutating}>
+              Delete
+            </Button>
+          </>
+        }
+      >
+        <p className={`text-sm ${theme.text.body}`}>
+          Are you sure you want to delete <span className={`font-medium ${theme.text.heading}`}>{selectedIds.length}</span> product{selectedIds.length === 1 ? '' : 's'}? This action cannot be undone.
+        </p>
+      </Modal>
+
+      <Modal
+        isOpen={bulkCloneConfirmOpen}
+        onClose={() => setBulkCloneConfirmOpen(false)}
+        title="Clone Products"
+        size="sm"
+        footer={
+          <>
+            <Button variant={theme.button.ghost} onClick={() => setBulkCloneConfirmOpen(false)} disabled={mutating}>
+              Cancel
+            </Button>
+            <Button variant={theme.button.primary} onClick={handleConfirmBulkClone} loading={mutating}>
+              Clone
+            </Button>
+          </>
+        }
+      >
+        <p className={`text-sm ${theme.text.body}`}>
+          Clone <span className={`font-medium ${theme.text.heading}`}>{selectedIds.length}</span> selected product{selectedIds.length === 1 ? '' : 's'}? Each will be created as a new, independent product.
         </p>
       </Modal>
     </div>

@@ -6,6 +6,7 @@ import Badge from '../../../../components/common/Badge';
 import Switch from '../../../../components/common/Switch';
 import Modal from '../../../../components/common/Modal';
 import EmptyState from '../../../../components/common/EmptyState';
+import BulkActionBar from '../../../../components/common/BulkActionBar';
 import { useAnnouncements } from '../hooks/useAnnouncements';
 import AnnouncementForm from '../components/AnnouncementForm';
 import theme from '../theme/theme';
@@ -33,14 +34,22 @@ const formatDate = (value) => {
 };
 
 const AnnouncementsPage = () => {
-  const { announcements, loading, error, mutating, createAnnouncement, editAnnouncement, removeAnnouncement, toggleStatus } =
+  const { announcements, loading, error, mutating, createAnnouncement, editAnnouncement, removeAnnouncement, toggleStatus, bulkToggleStatus, bulkRemoveAnnouncements } =
     useAnnouncements();
 
   const [formModal, setFormModal] = useState({ open: false, mode: 'add', announcement: null });
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
 
-  const openAddModal = () => setFormModal({ open: true, mode: 'add', announcement: null });
-  const openEditModal = (announcement) => setFormModal({ open: true, mode: 'edit', announcement });
+  const openAddModal = () => {
+    setSelectedIds([]);
+    setFormModal({ open: true, mode: 'add', announcement: null });
+  };
+  const openEditModal = (announcement) => {
+    setSelectedIds([]);
+    setFormModal({ open: true, mode: 'edit', announcement });
+  };
   const closeFormModal = () => setFormModal({ open: false, mode: 'add', announcement: null });
 
   const handleFormSubmit = async (payload) => {
@@ -56,6 +65,79 @@ const AnnouncementsPage = () => {
     const success = await removeAnnouncement(deleteTarget._id);
     if (success) setDeleteTarget(null);
   };
+
+  // --- Bulk multi-select actions (checkbox column) --------------------------
+  // Admin list endpoints never return status 'D' rows, so every selected
+  // announcement is already 'A' or 'I' - eligibility only separates those
+  // two for the status-toggle buttons; Delete applies to the full selection.
+  const selectedAnnouncements = useMemo(
+    () => announcements.filter((a) => selectedIds.includes(a._id)),
+    [announcements, selectedIds]
+  );
+  const activateEligibleIds = useMemo(
+    () => selectedAnnouncements.filter((a) => a.status === 'I').map((a) => a._id),
+    [selectedAnnouncements]
+  );
+  const deactivateEligibleIds = useMemo(
+    () => selectedAnnouncements.filter((a) => a.status === 'A').map((a) => a._id),
+    [selectedAnnouncements]
+  );
+
+  // Tracks which specific bulk action is in flight so only that button shows
+  // a spinner - `mutating` alone is shared across every mutation in the hook
+  // and would otherwise light up every bulk button at once for any one of them.
+  const [bulkAction, setBulkAction] = useState(null);
+
+  const handleBulkActivate = async () => {
+    setBulkAction('activate');
+    await bulkToggleStatus(activateEligibleIds, 'A');
+    setBulkAction(null);
+    setSelectedIds([]);
+  };
+
+  const handleBulkDeactivate = async () => {
+    setBulkAction('deactivate');
+    await bulkToggleStatus(deactivateEligibleIds, 'I');
+    setBulkAction(null);
+    setSelectedIds([]);
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    setBulkAction('delete');
+    await bulkRemoveAnnouncements(selectedIds);
+    setBulkAction(null);
+    setBulkDeleteConfirmOpen(false);
+    setSelectedIds([]);
+  };
+
+  const bulkActions = [
+    {
+      key: 'activate',
+      label: `Mark Active (${activateEligibleIds.length})`,
+      variant: theme.button.primary,
+      onClick: handleBulkActivate,
+      loading: bulkAction === 'activate',
+      disabled: mutating,
+      hidden: activateEligibleIds.length === 0,
+    },
+    {
+      key: 'deactivate',
+      label: `Mark Inactive (${deactivateEligibleIds.length})`,
+      variant: theme.button.secondary,
+      onClick: handleBulkDeactivate,
+      loading: bulkAction === 'deactivate',
+      disabled: mutating,
+      hidden: deactivateEligibleIds.length === 0,
+    },
+    {
+      key: 'delete',
+      label: `Delete (${selectedIds.length})`,
+      variant: theme.button.danger,
+      onClick: () => setBulkDeleteConfirmOpen(true),
+      disabled: mutating,
+      hidden: selectedIds.length === 0,
+    },
+  ];
 
   const columns = useMemo(
     () => [
@@ -140,11 +222,16 @@ const AnnouncementsPage = () => {
           </p>
         )}
 
+        <BulkActionBar selectedCount={selectedIds.length} onClear={() => setSelectedIds([])} actions={bulkActions} />
+
         <Table
           columns={columns}
           data={announcements}
           keyField="_id"
-          actions={actions}
+          actions={selectedIds.length > 0 ? [] : actions}
+          selectable
+          selectedKeys={selectedIds}
+          onSelectionChange={setSelectedIds}
           loading={loading}
           pageSize={10}
           emptyComponent={
@@ -196,6 +283,27 @@ const AnnouncementsPage = () => {
           Are you sure you want to delete{' '}
           <span className={`font-medium ${theme.text.heading}`}>{deleteTarget?.name}</span>? This action cannot be
           undone.
+        </p>
+      </Modal>
+
+      <Modal
+        isOpen={bulkDeleteConfirmOpen}
+        onClose={() => setBulkDeleteConfirmOpen(false)}
+        title="Delete Announcements"
+        size="sm"
+        footer={
+          <>
+            <Button variant={theme.button.ghost} onClick={() => setBulkDeleteConfirmOpen(false)} disabled={mutating}>
+              Cancel
+            </Button>
+            <Button variant={theme.button.danger} onClick={handleConfirmBulkDelete} loading={mutating}>
+              Delete
+            </Button>
+          </>
+        }
+      >
+        <p className={`text-sm ${theme.text.body}`}>
+          Are you sure you want to delete <span className={`font-medium ${theme.text.heading}`}>{selectedIds.length}</span> announcement{selectedIds.length === 1 ? '' : 's'}? This action cannot be undone.
         </p>
       </Modal>
     </div>

@@ -58,6 +58,15 @@ export const revokeFreeCashForUser = (userId, freeCashId) =>
 export const revokeFreeCashForAllUsers = (freeCashId) =>
   apiRequest(`${BASE}/revoke/all-users`, { method: 'POST', body: { freeCashId } });
 
+// --- Bulk multi-select actions (checkbox selection in the admin table) ------
+// Both return { results, successCount, failureCount } - see
+// backend/utils/common.js's runBulkOperation.
+export const bulkSetFreeCashStatus = (freeCashIds, status) =>
+  apiRequest(`${BASE}/bulk-status`, { method: 'PATCH', body: { freeCashIds, status } });
+
+export const bulkDeleteFreeCash = (freeCashIds) =>
+  apiRequest(`${BASE}/bulk-delete`, { method: 'DELETE', body: { freeCashIds } });
+
 export default {
   getAdminFreeCash,
   getFreeCashById,
@@ -66,4 +75,6 @@ export default {
   deleteFreeCash,
   revokeFreeCashForUser,
   revokeFreeCashForAllUsers,
+  bulkSetFreeCashStatus,
+  bulkDeleteFreeCash,
 };

@@ -50,10 +50,21 @@ export const updateBanner = (bannerId, fields, media = {}) => {
 export const deleteBanner = (bannerId) =>
   apiRequest(`${BASE}/delete-banner`, { method: 'DELETE', body: { bannerId } });
 
+// --- Bulk multi-select actions (checkbox selection in the admin table) ------
+// Both return { results, successCount, failureCount } - see
+// backend/utils/common.js's runBulkOperation.
+export const bulkSetBannerStatus = (bannerIds, status) =>
+  apiRequest(`${BASE}/bulk-status`, { method: 'PATCH', body: { bannerIds, status } });
+
+export const bulkDeleteBanners = (bannerIds) =>
+  apiRequest(`${BASE}/bulk-delete`, { method: 'DELETE', body: { bannerIds } });
+
 export default {
   getAllBannersAdmin,
   getBannerById,
   addBanner,
   updateBanner,
   deleteBanner,
+  bulkSetBannerStatus,
+  bulkDeleteBanners,
 };

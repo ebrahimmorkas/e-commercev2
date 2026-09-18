@@ -7,6 +7,7 @@ import Switch from '../../../../components/common/Switch';
 import Modal from '../../../../components/common/Modal';
 import EmptyState from '../../../../components/common/EmptyState';
 import Spinner from '../../../../components/common/Spinner';
+import BulkActionBar from '../../../../components/common/BulkActionBar';
 import { useDiscounts } from '../hooks/useDiscounts';
 import { useDiscountLookups } from '../hooks/useDiscountLookups';
 import DiscountForm from '../components/DiscountForm';
@@ -43,7 +44,10 @@ const flowLabel = (doc) => {
 const valueLabel = (doc) => (doc.discountType === 'PERCENTAGE' ? `${doc.discountValue}% off` : `₹${doc.discountValue} off`);
 
 const DiscountsPage = () => {
-  const { discounts, loading, error, mutating, createDiscount, editDiscount, removeDiscount, toggleStatus, fetchDiscountById } = useDiscounts();
+  const {
+    discounts, loading, error, mutating, createDiscount, editDiscount, removeDiscount, toggleStatus, fetchDiscountById,
+    bulkToggleStatus, bulkRemoveDiscounts,
+  } = useDiscounts();
   const lookups = useDiscountLookups();
 
   const [view, setView] = useState('list');
@@ -51,10 +55,13 @@ const DiscountsPage = () => {
   const [editingId, setEditingId] = useState(null);
   const [loadingEdit, setLoadingEdit] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
 
   const openAdd = () => {
     setEditingDraft(null);
     setEditingId(null);
+    setSelectedIds([]);
     setView('add');
   };
 
@@ -65,6 +72,7 @@ const DiscountsPage = () => {
     if (!full) return;
     setEditingDraft(mapApiDiscountToDraft(full));
     setEditingId(full._id);
+    setSelectedIds([]);
     setView('edit');
   };
 
@@ -84,6 +92,79 @@ const DiscountsPage = () => {
     const success = await removeDiscount(deleteTarget._id);
     if (success) setDeleteTarget(null);
   };
+
+  // --- Bulk multi-select actions (checkbox column) --------------------------
+  // Admin list endpoints never return status 'D' rows, so every selected
+  // discount is already 'A' or 'I' - eligibility only separates those two
+  // for the status-toggle buttons; Delete applies to the full selection.
+  const selectedDiscounts = useMemo(
+    () => discounts.filter((d) => selectedIds.includes(d._id)),
+    [discounts, selectedIds]
+  );
+  const activateEligibleIds = useMemo(
+    () => selectedDiscounts.filter((d) => d.status === 'I').map((d) => d._id),
+    [selectedDiscounts]
+  );
+  const deactivateEligibleIds = useMemo(
+    () => selectedDiscounts.filter((d) => d.status === 'A').map((d) => d._id),
+    [selectedDiscounts]
+  );
+
+  // Tracks which specific bulk action is in flight so only that button shows
+  // a spinner - `mutating` alone is shared across every mutation in the hook
+  // and would otherwise light up every bulk button at once for any one of them.
+  const [bulkAction, setBulkAction] = useState(null);
+
+  const handleBulkActivate = async () => {
+    setBulkAction('activate');
+    await bulkToggleStatus(activateEligibleIds, 'A');
+    setBulkAction(null);
+    setSelectedIds([]);
+  };
+
+  const handleBulkDeactivate = async () => {
+    setBulkAction('deactivate');
+    await bulkToggleStatus(deactivateEligibleIds, 'I');
+    setBulkAction(null);
+    setSelectedIds([]);
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    setBulkAction('delete');
+    await bulkRemoveDiscounts(selectedIds);
+    setBulkAction(null);
+    setBulkDeleteConfirmOpen(false);
+    setSelectedIds([]);
+  };
+
+  const bulkActions = [
+    {
+      key: 'activate',
+      label: `Mark Active (${activateEligibleIds.length})`,
+      variant: theme.button.primary,
+      onClick: handleBulkActivate,
+      loading: bulkAction === 'activate',
+      disabled: mutating,
+      hidden: activateEligibleIds.length === 0,
+    },
+    {
+      key: 'deactivate',
+      label: `Mark Inactive (${deactivateEligibleIds.length})`,
+      variant: theme.button.secondary,
+      onClick: handleBulkDeactivate,
+      loading: bulkAction === 'deactivate',
+      disabled: mutating,
+      hidden: deactivateEligibleIds.length === 0,
+    },
+    {
+      key: 'delete',
+      label: `Delete (${selectedIds.length})`,
+      variant: theme.button.danger,
+      onClick: () => setBulkDeleteConfirmOpen(true),
+      disabled: mutating,
+      hidden: selectedIds.length === 0,
+    },
+  ];
 
   const columns = useMemo(
     () => [
@@ -207,7 +288,17 @@ const DiscountsPage = () => {
         ) : (
           <>
             <div className="hidden md:block">
-              <Table columns={columns} data={discounts} keyField="_id" actions={actions} pageSize={20} />
+              <BulkActionBar selectedCount={selectedIds.length} onClear={() => setSelectedIds([])} actions={bulkActions} />
+              <Table
+                columns={columns}
+                data={discounts}
+                keyField="_id"
+                actions={selectedIds.length > 0 ? [] : actions}
+                selectable
+                selectedKeys={selectedIds}
+                onSelectionChange={setSelectedIds}
+                pageSize={20}
+              />
             </div>
 
             <div className="md:hidden space-y-3">
@@ -263,6 +354,27 @@ const DiscountsPage = () => {
       >
         <p className={`text-sm ${theme.text.body}`}>
           Are you sure you want to delete <span className={`font-medium ${theme.text.heading}`}>{deleteTarget?.name}</span>? This action cannot be undone.
+        </p>
+      </Modal>
+
+      <Modal
+        isOpen={bulkDeleteConfirmOpen}
+        onClose={() => setBulkDeleteConfirmOpen(false)}
+        title="Delete Discounts"
+        size="sm"
+        footer={
+          <>
+            <Button variant={theme.button.ghost} onClick={() => setBulkDeleteConfirmOpen(false)} disabled={mutating}>
+              Cancel
+            </Button>
+            <Button variant={theme.button.danger} onClick={handleConfirmBulkDelete} loading={mutating}>
+              Delete
+            </Button>
+          </>
+        }
+      >
+        <p className={`text-sm ${theme.text.body}`}>
+          Are you sure you want to delete <span className={`font-medium ${theme.text.heading}`}>{selectedIds.length}</span> discount{selectedIds.length === 1 ? '' : 's'}? This action cannot be undone.
         </p>
       </Modal>
     </div>

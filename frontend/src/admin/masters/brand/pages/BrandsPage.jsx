@@ -5,6 +5,7 @@ import Button from '../../../../components/common/Buttons';
 import Switch from '../../../../components/common/Switch';
 import Modal from '../../../../components/common/Modal';
 import EmptyState from '../../../../components/common/EmptyState';
+import BulkActionBar from '../../../../components/common/BulkActionBar';
 import { useBrands } from '../hooks/useBrands';
 import BrandForm from '../components/BrandForm';
 import theme from '../theme/theme';
@@ -26,13 +27,21 @@ const TrashIcon = () => (
 );
 
 const BrandsPage = () => {
-  const { brands, loading, error, mutating, createBrand, editBrand, removeBrand, toggleStatus } = useBrands();
+  const { brands, loading, error, mutating, createBrand, editBrand, removeBrand, toggleStatus, bulkToggleStatus, bulkRemoveBrands } = useBrands();
 
   const [formModal, setFormModal] = useState({ open: false, mode: 'add', brand: null });
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
 
-  const openAddModal = () => setFormModal({ open: true, mode: 'add', brand: null });
-  const openEditModal = (brand) => setFormModal({ open: true, mode: 'edit', brand });
+  const openAddModal = () => {
+    setSelectedIds([]);
+    setFormModal({ open: true, mode: 'add', brand: null });
+  };
+  const openEditModal = (brand) => {
+    setSelectedIds([]);
+    setFormModal({ open: true, mode: 'edit', brand });
+  };
   const closeFormModal = () => setFormModal({ open: false, mode: 'add', brand: null });
 
   const handleFormSubmit = async (payload) => {
@@ -46,6 +55,79 @@ const BrandsPage = () => {
     const success = await removeBrand(deleteTarget._id);
     if (success) setDeleteTarget(null);
   };
+
+  // --- Bulk multi-select actions (checkbox column) --------------------------
+  // Admin list endpoints never return status 'D' rows, so every selected
+  // brand is already 'A' or 'I' - eligibility only separates those two for
+  // the status-toggle buttons; Delete applies to the full selection.
+  const selectedBrands = useMemo(
+    () => brands.filter((b) => selectedIds.includes(b._id)),
+    [brands, selectedIds]
+  );
+  const activateEligibleIds = useMemo(
+    () => selectedBrands.filter((b) => b.status === 'I').map((b) => b._id),
+    [selectedBrands]
+  );
+  const deactivateEligibleIds = useMemo(
+    () => selectedBrands.filter((b) => b.status === 'A').map((b) => b._id),
+    [selectedBrands]
+  );
+
+  // Tracks which specific bulk action is in flight so only that button shows
+  // a spinner - `mutating` alone is shared across every mutation in the hook
+  // and would otherwise light up every bulk button at once for any one of them.
+  const [bulkAction, setBulkAction] = useState(null);
+
+  const handleBulkActivate = async () => {
+    setBulkAction('activate');
+    await bulkToggleStatus(activateEligibleIds, 'A');
+    setBulkAction(null);
+    setSelectedIds([]);
+  };
+
+  const handleBulkDeactivate = async () => {
+    setBulkAction('deactivate');
+    await bulkToggleStatus(deactivateEligibleIds, 'I');
+    setBulkAction(null);
+    setSelectedIds([]);
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    setBulkAction('delete');
+    await bulkRemoveBrands(selectedIds);
+    setBulkAction(null);
+    setBulkDeleteConfirmOpen(false);
+    setSelectedIds([]);
+  };
+
+  const bulkActions = [
+    {
+      key: 'activate',
+      label: `Mark Active (${activateEligibleIds.length})`,
+      variant: theme.button.primary,
+      onClick: handleBulkActivate,
+      loading: bulkAction === 'activate',
+      disabled: mutating,
+      hidden: activateEligibleIds.length === 0,
+    },
+    {
+      key: 'deactivate',
+      label: `Mark Inactive (${deactivateEligibleIds.length})`,
+      variant: theme.button.secondary,
+      onClick: handleBulkDeactivate,
+      loading: bulkAction === 'deactivate',
+      disabled: mutating,
+      hidden: deactivateEligibleIds.length === 0,
+    },
+    {
+      key: 'delete',
+      label: `Delete (${selectedIds.length})`,
+      variant: theme.button.danger,
+      onClick: () => setBulkDeleteConfirmOpen(true),
+      disabled: mutating,
+      hidden: selectedIds.length === 0,
+    },
+  ];
 
   const columns = useMemo(
     () => [
@@ -114,11 +196,16 @@ const BrandsPage = () => {
           </p>
         )}
 
+        <BulkActionBar selectedCount={selectedIds.length} onClear={() => setSelectedIds([])} actions={bulkActions} />
+
         <Table
           columns={columns}
           data={brands}
           keyField="_id"
-          actions={actions}
+          actions={selectedIds.length > 0 ? [] : actions}
+          selectable
+          selectedKeys={selectedIds}
+          onSelectionChange={setSelectedIds}
           loading={loading}
           pageSize={10}
           emptyComponent={
@@ -170,6 +257,27 @@ const BrandsPage = () => {
           Are you sure you want to delete{' '}
           <span className={`font-medium ${theme.text.heading}`}>{deleteTarget?.brandName}</span>? This action cannot
           be undone.
+        </p>
+      </Modal>
+
+      <Modal
+        isOpen={bulkDeleteConfirmOpen}
+        onClose={() => setBulkDeleteConfirmOpen(false)}
+        title="Delete Brands"
+        size="sm"
+        footer={
+          <>
+            <Button variant={theme.button.ghost} onClick={() => setBulkDeleteConfirmOpen(false)} disabled={mutating}>
+              Cancel
+            </Button>
+            <Button variant={theme.button.danger} onClick={handleConfirmBulkDelete} loading={mutating}>
+              Delete
+            </Button>
+          </>
+        }
+      >
+        <p className={`text-sm ${theme.text.body}`}>
+          Are you sure you want to delete <span className={`font-medium ${theme.text.heading}`}>{selectedIds.length}</span> brand{selectedIds.length === 1 ? '' : 's'}? This action cannot be undone.
         </p>
       </Modal>
     </div>

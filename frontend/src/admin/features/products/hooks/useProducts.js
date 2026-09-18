@@ -126,6 +126,70 @@ export const useProducts = () => {
     }
   };
 
+  // Surfaces a { results, successCount, failureCount } bulk response as a
+  // single toast - success if everything went through, a warning naming the
+  // partial count when some items failed (e.g. a plan cap reached mid-batch),
+  // or an error if none did.
+  const describeBulkOutcome = (data, pastTenseVerb) => {
+    const successCount = data?.successCount ?? 0;
+    const failureCount = data?.failureCount ?? 0;
+    if (failureCount === 0) {
+      toast.success(`${successCount} product(s) ${pastTenseVerb}`);
+    } else if (successCount === 0) {
+      toast.error(`Could not ${pastTenseVerb === 'deleted' ? 'delete' : pastTenseVerb === 'cloned' ? 'clone' : 'update'} the selected product(s)`);
+    } else {
+      toast.warning(`${successCount} product(s) ${pastTenseVerb}, ${failureCount} could not be processed`);
+    }
+  };
+
+  const bulkToggleStatus = async (productIds, status) => {
+    if (!productIds || productIds.length === 0) return null;
+    setMutating(true);
+    try {
+      const data = await productApi.bulkSetProductStatus(productIds, status);
+      describeBulkOutcome(data, status === 'A' ? 'activated' : 'deactivated');
+      await fetchProducts();
+      return data;
+    } catch (err) {
+      toast.error(describeError(err));
+      return null;
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const bulkRemoveProducts = async (productIds) => {
+    if (!productIds || productIds.length === 0) return null;
+    setMutating(true);
+    try {
+      const data = await productApi.bulkDeleteProducts(productIds);
+      describeBulkOutcome(data, 'deleted');
+      await fetchProducts();
+      return data;
+    } catch (err) {
+      toast.error(describeError(err));
+      return null;
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const bulkCloneProductsAction = async (productIds) => {
+    if (!productIds || productIds.length === 0) return null;
+    setMutating(true);
+    try {
+      const data = await productApi.bulkCloneProducts(productIds);
+      describeBulkOutcome(data, 'cloned');
+      await fetchProducts();
+      return data;
+    } catch (err) {
+      toast.error(describeError(err));
+      return null;
+    } finally {
+      setMutating(false);
+    }
+  };
+
   return {
     products,
     loading,
@@ -138,6 +202,9 @@ export const useProducts = () => {
     removeProduct,
     toggleStatus,
     cloneProduct,
+    bulkToggleStatus,
+    bulkRemoveProducts,
+    bulkCloneProducts: bulkCloneProductsAction,
   };
 };
 

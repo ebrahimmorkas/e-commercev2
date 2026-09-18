@@ -107,6 +107,53 @@ export const useCategories = () => {
     }
   };
 
+  // --- Bulk multi-select actions (checkbox selection) ------------------------
+  // Distinct from runBulkUpload above (an Excel import of NEW categories) -
+  // these act on already-selected, already-existing categories.
+  const describeBulkOutcome = (data, pastTenseVerb) => {
+    const successCount = data?.successCount ?? 0;
+    const failureCount = data?.failureCount ?? 0;
+    if (failureCount === 0) {
+      toast.success(`${successCount} categor${successCount === 1 ? 'y' : 'ies'} ${pastTenseVerb}`);
+    } else if (successCount === 0) {
+      toast.error(`Could not ${pastTenseVerb === 'deleted' ? 'delete' : 'update'} the selected categories`);
+    } else {
+      toast.warning(`${successCount} categor${successCount === 1 ? 'y' : 'ies'} ${pastTenseVerb}, ${failureCount} could not be processed`);
+    }
+  };
+
+  const bulkToggleStatus = async (categoryIds, status) => {
+    if (!categoryIds || categoryIds.length === 0) return null;
+    setMutating(true);
+    try {
+      const data = await categoryApi.bulkSetCategoryStatus(categoryIds, status);
+      describeBulkOutcome(data, status === 'A' ? 'activated' : 'deactivated');
+      await fetchCategories();
+      return data;
+    } catch (err) {
+      toast.error(err.message || 'Failed to update category status');
+      return null;
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const bulkRemoveCategories = async (categoryIds) => {
+    if (!categoryIds || categoryIds.length === 0) return null;
+    setMutating(true);
+    try {
+      const data = await categoryApi.bulkDeleteCategories(categoryIds);
+      describeBulkOutcome(data, 'deleted');
+      await fetchCategories();
+      return data;
+    } catch (err) {
+      toast.error(err.message || 'Failed to delete categories');
+      return null;
+    } finally {
+      setMutating(false);
+    }
+  };
+
   return {
     categories,
     loading,
@@ -118,6 +165,8 @@ export const useCategories = () => {
     removeCategory,
     toggleStatus,
     runBulkUpload,
+    bulkToggleStatus,
+    bulkRemoveCategories,
   };
 };
 

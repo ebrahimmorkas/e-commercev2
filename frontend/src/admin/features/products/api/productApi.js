@@ -50,6 +50,18 @@ export const deleteProduct = (productId) =>
 export const cloneProduct = (productId) =>
   apiRequest(`${BASE}/clone-product`, { method: 'POST', body: { productId } });
 
+// --- Bulk multi-select actions (checkbox selection in the admin table) ------
+// All three return { results, successCount, failureCount } - see
+// backend/utils/common.js's runBulkOperation.
+export const bulkSetProductStatus = (productIds, status) =>
+  apiRequest(`${BASE}/bulk-status`, { method: 'PATCH', body: { productIds, status } });
+
+export const bulkDeleteProducts = (productIds) =>
+  apiRequest(`${BASE}/bulk-delete`, { method: 'DELETE', body: { productIds } });
+
+export const bulkCloneProducts = (productIds) =>
+  apiRequest(`${BASE}/bulk-clone-products`, { method: 'POST', body: { productIds } });
+
 export default {
   getProductsAdmin,
   getProductByIdAdmin,
@@ -58,4 +70,7 @@ export default {
   toggleProductStatus,
   deleteProduct,
   cloneProduct,
+  bulkSetProductStatus,
+  bulkDeleteProducts,
+  bulkCloneProducts,
 };

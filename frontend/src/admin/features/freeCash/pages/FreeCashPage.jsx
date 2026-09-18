@@ -8,6 +8,7 @@ import Modal from '../../../../components/common/Modal';
 import InputField from '../../../../components/common/InputField';
 import EmptyState from '../../../../components/common/EmptyState';
 import Spinner from '../../../../components/common/Spinner';
+import BulkActionBar from '../../../../components/common/BulkActionBar';
 import { useFreeCash } from '../hooks/useFreeCash';
 import { useFreeCashLookups } from '../hooks/useFreeCashLookups';
 import FreeCashForm from '../components/FreeCashForm';
@@ -50,7 +51,7 @@ const FreeCashPage = () => {
   const {
     freeCashList, loading, error, mutating,
     createFreeCash, editFreeCash, removeFreeCash, toggleStatus, fetchFreeCashById,
-    revokeForUser, revokeForAllUsers,
+    revokeForUser, revokeForAllUsers, bulkToggleStatus, bulkRemoveFreeCash,
   } = useFreeCash();
   const lookups = useFreeCashLookups();
 
@@ -61,10 +62,13 @@ const FreeCashPage = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [revokeTarget, setRevokeTarget] = useState(null);
   const [revokeUserId, setRevokeUserId] = useState('');
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
 
   const openAdd = () => {
     setEditingDraft(null);
     setEditingId(null);
+    setSelectedIds([]);
     setView('add');
   };
 
@@ -75,6 +79,7 @@ const FreeCashPage = () => {
     if (!full) return;
     setEditingDraft(mapApiFreeCashToDraft(full));
     setEditingId(full._id);
+    setSelectedIds([]);
     setView('edit');
   };
 
@@ -111,6 +116,81 @@ const FreeCashPage = () => {
     const result = await revokeForUser(revokeUserId.trim(), revokeTarget._id);
     if (result.success) closeRevokeModal();
   };
+
+  // --- Bulk multi-select actions (checkbox column) --------------------------
+  // Admin list endpoints never return status 'D' rows, so every selected
+  // campaign is already 'A' or 'I' - eligibility only separates those two
+  // for the status-toggle buttons; Delete applies to the full selection.
+  // Revoke is not a bulk action - it targets specific grants, not the
+  // campaign's own status, so it isn't offered here.
+  const selectedFreeCash = useMemo(
+    () => freeCashList.filter((f) => selectedIds.includes(f._id)),
+    [freeCashList, selectedIds]
+  );
+  const activateEligibleIds = useMemo(
+    () => selectedFreeCash.filter((f) => f.status === 'I').map((f) => f._id),
+    [selectedFreeCash]
+  );
+  const deactivateEligibleIds = useMemo(
+    () => selectedFreeCash.filter((f) => f.status === 'A').map((f) => f._id),
+    [selectedFreeCash]
+  );
+
+  // Tracks which specific bulk action is in flight so only that button shows
+  // a spinner - `mutating` alone is shared across every mutation in the hook
+  // and would otherwise light up every bulk button at once for any one of them.
+  const [bulkAction, setBulkAction] = useState(null);
+
+  const handleBulkActivate = async () => {
+    setBulkAction('activate');
+    await bulkToggleStatus(activateEligibleIds, 'A');
+    setBulkAction(null);
+    setSelectedIds([]);
+  };
+
+  const handleBulkDeactivate = async () => {
+    setBulkAction('deactivate');
+    await bulkToggleStatus(deactivateEligibleIds, 'I');
+    setBulkAction(null);
+    setSelectedIds([]);
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    setBulkAction('delete');
+    await bulkRemoveFreeCash(selectedIds);
+    setBulkAction(null);
+    setBulkDeleteConfirmOpen(false);
+    setSelectedIds([]);
+  };
+
+  const bulkActions = [
+    {
+      key: 'activate',
+      label: `Mark Active (${activateEligibleIds.length})`,
+      variant: theme.button.primary,
+      onClick: handleBulkActivate,
+      loading: bulkAction === 'activate',
+      disabled: mutating,
+      hidden: activateEligibleIds.length === 0,
+    },
+    {
+      key: 'deactivate',
+      label: `Mark Inactive (${deactivateEligibleIds.length})`,
+      variant: theme.button.secondary,
+      onClick: handleBulkDeactivate,
+      loading: bulkAction === 'deactivate',
+      disabled: mutating,
+      hidden: deactivateEligibleIds.length === 0,
+    },
+    {
+      key: 'delete',
+      label: `Delete (${selectedIds.length})`,
+      variant: theme.button.danger,
+      onClick: () => setBulkDeleteConfirmOpen(true),
+      disabled: mutating,
+      hidden: selectedIds.length === 0,
+    },
+  ];
 
   const columns = useMemo(
     () => [
@@ -225,7 +305,17 @@ const FreeCashPage = () => {
         ) : (
           <>
             <div className="hidden md:block">
-              <Table columns={columns} data={freeCashList} keyField="_id" actions={actions} pageSize={20} />
+              <BulkActionBar selectedCount={selectedIds.length} onClear={() => setSelectedIds([])} actions={bulkActions} />
+              <Table
+                columns={columns}
+                data={freeCashList}
+                keyField="_id"
+                actions={selectedIds.length > 0 ? [] : actions}
+                selectable
+                selectedKeys={selectedIds}
+                onSelectionChange={setSelectedIds}
+                pageSize={20}
+              />
             </div>
 
             <div className="md:hidden space-y-3">
@@ -285,6 +375,27 @@ const FreeCashPage = () => {
         <p className={`text-sm ${theme.text.body}`}>
           Are you sure you want to delete <span className={`font-medium ${theme.text.heading}`}>{deleteTarget?.freeCashName}</span>? This action
           cannot be undone.
+        </p>
+      </Modal>
+
+      <Modal
+        isOpen={bulkDeleteConfirmOpen}
+        onClose={() => setBulkDeleteConfirmOpen(false)}
+        title="Delete Free Cash Campaigns"
+        size="sm"
+        footer={
+          <>
+            <Button variant={theme.button.ghost} onClick={() => setBulkDeleteConfirmOpen(false)} disabled={mutating}>
+              Cancel
+            </Button>
+            <Button variant={theme.button.danger} onClick={handleConfirmBulkDelete} loading={mutating}>
+              Delete
+            </Button>
+          </>
+        }
+      >
+        <p className={`text-sm ${theme.text.body}`}>
+          Are you sure you want to delete <span className={`font-medium ${theme.text.heading}`}>{selectedIds.length}</span> campaign{selectedIds.length === 1 ? '' : 's'}? This action cannot be undone.
         </p>
       </Modal>
 

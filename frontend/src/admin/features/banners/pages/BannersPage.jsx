@@ -7,6 +7,7 @@ import Switch from '../../../../components/common/Switch';
 import Avatar from '../../../../components/common/Avatar';
 import Modal from '../../../../components/common/Modal';
 import EmptyState from '../../../../components/common/EmptyState';
+import BulkActionBar from '../../../../components/common/BulkActionBar';
 import { useBanners } from '../hooks/useBanners';
 import { useBannerLookups } from '../hooks/useBannerLookups';
 import BannerForm from '../components/BannerForm';
@@ -40,14 +41,22 @@ const formatDate = (value) => {
 };
 
 const BannersPage = () => {
-  const { banners, loading, error, mutating, createBanner, editBanner, removeBanner, toggleStatus } = useBanners();
+  const { banners, loading, error, mutating, createBanner, editBanner, removeBanner, toggleStatus, bulkToggleStatus, bulkRemoveBanners } = useBanners();
   const { companyMaster } = useBannerLookups();
 
   const [formModal, setFormModal] = useState({ open: false, mode: 'add', banner: null });
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
 
-  const openAddModal = () => setFormModal({ open: true, mode: 'add', banner: null });
-  const openEditModal = (banner) => setFormModal({ open: true, mode: 'edit', banner });
+  const openAddModal = () => {
+    setSelectedIds([]);
+    setFormModal({ open: true, mode: 'add', banner: null });
+  };
+  const openEditModal = (banner) => {
+    setSelectedIds([]);
+    setFormModal({ open: true, mode: 'edit', banner });
+  };
   const closeFormModal = () => setFormModal({ open: false, mode: 'add', banner: null });
 
   const handleFormSubmit = async (fields, media) => {
@@ -63,6 +72,79 @@ const BannersPage = () => {
     const success = await removeBanner(deleteTarget._id);
     if (success) setDeleteTarget(null);
   };
+
+  // --- Bulk multi-select actions (checkbox column) --------------------------
+  // Admin list endpoints never return status 'D' rows, so every selected
+  // banner is already 'A' or 'I' - eligibility only separates those two for
+  // the status-toggle buttons; Delete applies to the full selection.
+  const selectedBanners = useMemo(
+    () => banners.filter((b) => selectedIds.includes(b._id)),
+    [banners, selectedIds]
+  );
+  const activateEligibleIds = useMemo(
+    () => selectedBanners.filter((b) => b.status === 'I').map((b) => b._id),
+    [selectedBanners]
+  );
+  const deactivateEligibleIds = useMemo(
+    () => selectedBanners.filter((b) => b.status === 'A').map((b) => b._id),
+    [selectedBanners]
+  );
+
+  // Tracks which specific bulk action is in flight so only that button shows
+  // a spinner - `mutating` alone is shared across every mutation in the hook
+  // and would otherwise light up every bulk button at once for any one of them.
+  const [bulkAction, setBulkAction] = useState(null);
+
+  const handleBulkActivate = async () => {
+    setBulkAction('activate');
+    await bulkToggleStatus(activateEligibleIds, 'A');
+    setBulkAction(null);
+    setSelectedIds([]);
+  };
+
+  const handleBulkDeactivate = async () => {
+    setBulkAction('deactivate');
+    await bulkToggleStatus(deactivateEligibleIds, 'I');
+    setBulkAction(null);
+    setSelectedIds([]);
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    setBulkAction('delete');
+    await bulkRemoveBanners(selectedIds);
+    setBulkAction(null);
+    setBulkDeleteConfirmOpen(false);
+    setSelectedIds([]);
+  };
+
+  const bulkActions = [
+    {
+      key: 'activate',
+      label: `Mark Active (${activateEligibleIds.length})`,
+      variant: theme.button.primary,
+      onClick: handleBulkActivate,
+      loading: bulkAction === 'activate',
+      disabled: mutating,
+      hidden: activateEligibleIds.length === 0,
+    },
+    {
+      key: 'deactivate',
+      label: `Mark Inactive (${deactivateEligibleIds.length})`,
+      variant: theme.button.secondary,
+      onClick: handleBulkDeactivate,
+      loading: bulkAction === 'deactivate',
+      disabled: mutating,
+      hidden: deactivateEligibleIds.length === 0,
+    },
+    {
+      key: 'delete',
+      label: `Delete (${selectedIds.length})`,
+      variant: theme.button.danger,
+      onClick: () => setBulkDeleteConfirmOpen(true),
+      disabled: mutating,
+      hidden: selectedIds.length === 0,
+    },
+  ];
 
   const columns = useMemo(
     () => [
@@ -151,11 +233,16 @@ const BannersPage = () => {
           </p>
         )}
 
+        <BulkActionBar selectedCount={selectedIds.length} onClear={() => setSelectedIds([])} actions={bulkActions} />
+
         <Table
           columns={columns}
           data={banners}
           keyField="_id"
-          actions={actions}
+          actions={selectedIds.length > 0 ? [] : actions}
+          selectable
+          selectedKeys={selectedIds}
+          onSelectionChange={setSelectedIds}
           loading={loading}
           pageSize={10}
           emptyComponent={
@@ -208,6 +295,27 @@ const BannersPage = () => {
           Are you sure you want to delete{' '}
           <span className={`font-medium ${theme.text.heading}`}>{deleteTarget?.name}</span>? This action cannot be
           undone.
+        </p>
+      </Modal>
+
+      <Modal
+        isOpen={bulkDeleteConfirmOpen}
+        onClose={() => setBulkDeleteConfirmOpen(false)}
+        title="Delete Banners"
+        size="sm"
+        footer={
+          <>
+            <Button variant={theme.button.ghost} onClick={() => setBulkDeleteConfirmOpen(false)} disabled={mutating}>
+              Cancel
+            </Button>
+            <Button variant={theme.button.danger} onClick={handleConfirmBulkDelete} loading={mutating}>
+              Delete
+            </Button>
+          </>
+        }
+      >
+        <p className={`text-sm ${theme.text.body}`}>
+          Are you sure you want to delete <span className={`font-medium ${theme.text.heading}`}>{selectedIds.length}</span> banner{selectedIds.length === 1 ? '' : 's'}? This action cannot be undone.
         </p>
       </Modal>
     </div>

@@ -82,6 +82,53 @@ export const useBrands = () => {
     return editBrand(brand._id, { status: nextStatus });
   };
 
+  // Surfaces a { results, successCount, failureCount } bulk response as a
+  // single toast - success if everything went through, a warning naming the
+  // partial count when some items failed, or an error if none did.
+  const describeBulkOutcome = (data, pastTenseVerb) => {
+    const successCount = data?.successCount ?? 0;
+    const failureCount = data?.failureCount ?? 0;
+    if (failureCount === 0) {
+      toast.success(`${successCount} brand(s) ${pastTenseVerb}`);
+    } else if (successCount === 0) {
+      toast.error(`Could not ${pastTenseVerb === 'deleted' ? 'delete' : 'update'} the selected brand(s)`);
+    } else {
+      toast.warning(`${successCount} brand(s) ${pastTenseVerb}, ${failureCount} could not be processed`);
+    }
+  };
+
+  const bulkToggleStatus = async (brandIds, status) => {
+    if (!brandIds || brandIds.length === 0) return null;
+    setMutating(true);
+    try {
+      const data = await brandApi.bulkSetBrandStatus(brandIds, status);
+      describeBulkOutcome(data, status === 'A' ? 'activated' : 'deactivated');
+      await fetchBrands();
+      return data;
+    } catch (err) {
+      toast.error(err.message || 'Failed to update brand status');
+      return null;
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const bulkRemoveBrands = async (brandIds) => {
+    if (!brandIds || brandIds.length === 0) return null;
+    setMutating(true);
+    try {
+      const data = await brandApi.bulkDeleteBrands(brandIds);
+      describeBulkOutcome(data, 'deleted');
+      await fetchBrands();
+      return data;
+    } catch (err) {
+      toast.error(err.message || 'Failed to delete brands');
+      return null;
+    } finally {
+      setMutating(false);
+    }
+  };
+
   return {
     brands,
     loading,
@@ -92,6 +139,8 @@ export const useBrands = () => {
     editBrand,
     removeBrand,
     toggleStatus,
+    bulkToggleStatus,
+    bulkRemoveBrands,
   };
 };
 

@@ -61,6 +61,18 @@ export const activateGroup = (groupId) => apiRequest(`${BASE}/activate`, { metho
 
 export const deactivateGroup = (groupId) => apiRequest(`${BASE}/deactivate`, { method: 'PATCH', body: { id: groupId } });
 
+// --- Bulk multi-select actions (checkbox selection in the admin table) ------
+// groupIds are the same encoded ids getAllGroups/getGroupById already
+// return (see groupController's formatGroupForResponse) - the backend
+// decodes them itself before touching the database, same as the single-id
+// activate/deactivate/delete routes above. Both return
+// { results, successCount, failureCount } with each result's id re-encoded.
+export const bulkSetGroupStatus = (groupIds, status) =>
+  apiRequest(`${BASE}/bulk-status`, { method: 'PATCH', body: { groupIds, status } });
+
+export const bulkDeleteGroups = (groupIds) =>
+  apiRequest(`${BASE}/bulk-delete`, { method: 'DELETE', body: { groupIds } });
+
 export default {
   getAllGroups,
   getGroupById,
@@ -69,4 +81,6 @@ export default {
   deleteGroup,
   activateGroup,
   deactivateGroup,
+  bulkSetGroupStatus,
+  bulkDeleteGroups,
 };

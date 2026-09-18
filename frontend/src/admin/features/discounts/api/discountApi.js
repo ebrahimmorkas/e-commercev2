@@ -57,6 +57,15 @@ export const updateDiscount = (discountId, fields, excelFile) =>
 
 export const deleteDiscount = (discountId) => apiRequest(`${BASE}/${discountId}`, { method: 'DELETE' });
 
+// --- Bulk multi-select actions (checkbox selection in the admin table) ------
+// Both return { results, successCount, failureCount } - see
+// backend/utils/common.js's runBulkOperation.
+export const bulkSetDiscountStatus = (discountIds, status) =>
+  apiRequest(`${BASE}/bulk-status`, { method: 'PATCH', body: { discountIds, status } });
+
+export const bulkDeleteDiscounts = (discountIds) =>
+  apiRequest(`${BASE}/bulk-delete`, { method: 'DELETE', body: { discountIds } });
+
 export default {
   getAdminDiscounts,
   getDiscountById,
@@ -64,4 +73,6 @@ export default {
   addDiscount,
   updateDiscount,
   deleteDiscount,
+  bulkSetDiscountStatus,
+  bulkDeleteDiscounts,
 };
