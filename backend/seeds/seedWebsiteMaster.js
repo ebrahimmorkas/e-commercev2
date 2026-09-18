@@ -50,7 +50,10 @@ async function seedWebsiteMaster() {
                 isAddingOfImageAllowed: true,
                 isCcAndBccFeatureOn: true,
                 isControlSelectionFeatureOn: true,
-                isEmbeddingLinksAllowed: true
+                isEmbeddingLinksAllowed: true,
+
+                isPasswordChangeFeatureByAdminAllowed: true,
+                isAdminAddingUserFeatureAllowed: true
             },
             {
                 upsert: true,

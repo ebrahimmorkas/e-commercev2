@@ -665,8 +665,29 @@ const companyMasterSchema = mongoose.Schema({
         ],
         default: [],
         _id: false
-    }
+    },
     // End of Modules
+
+    // Customer Management
+    // Vendor entitlement: whether this vendor's admin may change/reset a
+    // customer's password directly. Off by default - same opt-in convention
+    // as isCloningProductAllowed/isBulkUpdatingProductsAllowed, since this is
+    // a sensitive, potentially risky capability. Paired with
+    // WebsiteMaster.isPasswordChangeFeatureByAdminAllowed via checkFeatureOnOrOff.
+    isPasswordChangeFeatureByAdminAllowed: {
+        type: Boolean,
+        default: false
+    },
+    // Vendor entitlement: whether this vendor's admin may create customer
+    // accounts directly, using the same fields/flow as customer
+    // self-registration. Off by default - same opt-in convention as
+    // isPasswordChangeFeatureByAdminAllowed. Paired with
+    // WebsiteMaster.isAdminAddingUserFeatureAllowed via checkFeatureOnOrOff.
+    isAdminAddingUserFeatureAllowed: {
+        type: Boolean,
+        default: false
+    }
+    // End of Customer Management
 }, {
   timestamps: true
 });

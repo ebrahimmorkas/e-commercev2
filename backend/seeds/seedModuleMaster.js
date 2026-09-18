@@ -14,6 +14,7 @@ const modules = [
     { moduleName: "Brand Master", shortModuleName: "Brands", code: "BRAND", precedence: 4, isSystemModule: false, description: "Brand management." },
     { moduleName: "Orders", shortModuleName: "Orders", code: "ORDERS", precedence: 5, isSystemModule: true, description: "Order management." },
     { moduleName: "Customers", shortModuleName: "Customers", code: "CUSTOMERS", precedence: 6, isSystemModule: true, description: "Customer management." },
+    { moduleName: "Add User", shortModuleName: "Add User", code: "ADD_USER", precedence: 6.1, isSystemModule: false, description: "Admin-created customer accounts." },
     { moduleName: "Discount", shortModuleName: "Discount", code: "DISCOUNT", precedence: 7, isSystemModule: false, description: "Discount campaigns." },
     { moduleName: "Banner", shortModuleName: "Banner", code: "BANNER", precedence: 8, isSystemModule: false, description: "Homepage banners." },
     { moduleName: "Announcement", shortModuleName: "Announcement", code: "ANNOUNCEMENT", precedence: 9, isSystemModule: false, description: "Site announcements." },

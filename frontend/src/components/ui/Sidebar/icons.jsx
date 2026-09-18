@@ -41,6 +41,14 @@ export const CustomersIcon = (props) => (
   </svg>
 );
 
+export const AddUserIcon = (props) => (
+  <svg {...base} {...props}>
+    <circle cx="9" cy="7.5" r="3.25" />
+    <path d="M2.75 19.5a6.25 6.25 0 0112.5 0" />
+    <path d="M18.75 8.25v6m3-3h-6" />
+  </svg>
+);
+
 export const DiscountIcon = (props) => (
   <svg {...base} {...props}>
     <circle cx="12" cy="12" r="8.25" />

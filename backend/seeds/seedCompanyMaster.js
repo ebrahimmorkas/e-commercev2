@@ -67,7 +67,10 @@ async function seedCompanyMaster() {
                 allowedImageExtensions: ["jpg", "jpeg", "png"],
                 isCcAndBccFeatureOn: true,
                 isControlSelectionFeatureOn: true,
-                isEmbeddingLinksAllowed: true
+                isEmbeddingLinksAllowed: true,
+
+                isPasswordChangeFeatureByAdminAllowed: true,
+                isAdminAddingUserFeatureAllowed: true
             },
             {
                 upsert: true,

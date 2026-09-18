@@ -9,9 +9,78 @@ const getAllUsersAdmin = async (req, res) => {
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta.users);
     } catch (error) {
         logger.logException('userController: getAllUsersAdmin - Exception while fetching users', { vendorId, error });
+    }
+};
+
+const createUserByAdmin = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        const result = await userService.createUserByAdmin(vendorId, req.user._id, req.body, req.websiteMasterData, req.companyMasterData);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta.user);
+    } catch (error) {
+        logger.logException('userController: createUserByAdmin - Exception while creating user', { vendorId, error });
+    }
+};
+
+const getUserByIdAdmin = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { id } = req.params;
+    try {
+        const result = await userService.fetchUserByIdAdmin(vendorId, id);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta.user);
+    } catch (error) {
+        logger.logException('userController: getUserByIdAdmin - Exception while fetching user', { vendorId, id, error });
+    }
+};
+
+const updateUserByAdmin = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { id } = req.params;
+    try {
+        const result = await userService.updateUserByAdmin(vendorId, req.user._id, id, req.body);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta.user);
+    } catch (error) {
+        logger.logException('userController: updateUserByAdmin - Exception while updating user', { vendorId, id, error });
+    }
+};
+
+const changePasswordByAdmin = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { id } = req.params;
+    try {
+        const result = await userService.changePasswordByAdmin(vendorId, req.user._id, id, req.body.newPassword, req.websiteMasterData, req.companyMasterData);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message);
+    } catch (error) {
+        logger.logException('userController: changePasswordByAdmin - Exception while changing user password', { vendorId, id, error });
+    }
+};
+
+const deleteUserByAdmin = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { id } = req.params;
+    try {
+        const result = await userService.deleteUserByAdmin(vendorId, req.user._id, id);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message);
+    } catch (error) {
+        logger.logException('userController: deleteUserByAdmin - Exception while deleting user', { vendorId, id, error });
     }
 };
 
@@ -44,7 +113,12 @@ const bulkDeleteUsers = async (req, res) => {
 };
 
 module.exports = {
+    createUserByAdmin,
     getAllUsersAdmin,
+    getUserByIdAdmin,
+    updateUserByAdmin,
+    changePasswordByAdmin,
+    deleteUserByAdmin,
     bulkSetUserStatus,
     bulkDeleteUsers
 };

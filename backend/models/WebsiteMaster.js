@@ -342,6 +342,25 @@ const websiteMasterSchema = mongoose.Schema({
     },
     // End of Free Cash
 
+    // Customer Management
+    // Global switch, on by default like isCloningProductAllowed/
+    // isBulkUpdatingProductsAllowed - CompanyMaster.isPasswordChangeFeatureByAdminAllowed
+    // (off by default, per-vendor entitlement) is the actual gate for whether
+    // a given vendor's admin can change a customer's password directly.
+    isPasswordChangeFeatureByAdminAllowed: {
+        type: Boolean,
+        default: true
+    },
+    // Global switch, on by default like isPasswordChangeFeatureByAdminAllowed -
+    // CompanyMaster.isAdminAddingUserFeatureAllowed (off by default,
+    // per-vendor entitlement) is the actual gate for whether a given vendor's
+    // admin can create customer accounts directly.
+    isAdminAddingUserFeatureAllowed: {
+        type: Boolean,
+        default: true
+    },
+    // End of Customer Management
+
 }, {
   timestamps: true
 });

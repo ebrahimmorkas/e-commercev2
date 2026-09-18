@@ -24,7 +24,8 @@ import { createPortal } from 'react-dom';
  * @param {string} props.error - Error message to display
  * @param {string} props.helperText - Helper text to display below dropdown
  * @param {React.ReactNode} props.leftIcon - Icon to display on the left
- * @param {string} props.position - Dropdown position (bottom, top, auto)
+ * @param {string} props.position - 'auto' (default) picks whichever side has room, flipping
+ *   upward when there isn't enough space below; 'top'/'bottom' force that side unconditionally.
  * @param {number} props.maxHeight - Maximum height of dropdown menu
  * @param {boolean} props.multiple - Enable multiple selection
  * @param {Function} props.renderOption - Custom option render function
@@ -49,7 +50,7 @@ const Dropdown = ({
   error = '',
   helperText = '',
   leftIcon = null,
-  position = 'bottom',
+  position = 'auto',
   maxHeight = 300,
   multiple = false,
   renderOption = null,
@@ -116,14 +117,29 @@ const Dropdown = ({
   const updateMenuPosition = useCallback(() => {
     if (!dropdownRef.current) return;
     const rect = dropdownRef.current.getBoundingClientRect();
-    const openUpward = position === 'top';
+
+    // 'top'/'bottom' are explicit, forced overrides. The default ('auto')
+    // instead picks whichever side actually has room: a trigger sitting low
+    // in a long form/modal (e.g. the last field before the submit buttons)
+    // previously always opened downward regardless of viewport space, which
+    // pushed most options past the bottom of the screen with no way to
+    // reach them - the menu is position:fixed, so page scroll doesn't bring
+    // them into view. Flip upward whenever below doesn't fit the menu but
+    // above has more room.
+    let openUpward = position === 'top';
+    if (position !== 'top' && position !== 'bottom') {
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      openUpward = spaceBelow < maxHeight && spaceAbove > spaceBelow;
+    }
+
     setMenuStyle({
       position: 'fixed',
       left: rect.left,
       width: rect.width,
       ...(openUpward ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
     });
-  }, [position]);
+  }, [position, maxHeight]);
 
   useLayoutEffect(() => {
     if (!isOpen) {
