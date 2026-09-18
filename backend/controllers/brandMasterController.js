@@ -126,11 +126,41 @@ const getBrandById = async (req, res) => {
     }
 };
 
+const bulkSetBrandStatus = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { brandIds, status } = req.body;
+    try {
+        const result = await brandMasterService.bulkSetBrandStatus(vendorId, req.user._id, brandIds, status);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('brandMasterController: bulkSetBrandStatus - Exception while bulk updating brand status', { vendorId, error });
+    }
+};
+
+const bulkDeleteBrands = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { brandIds } = req.body;
+    try {
+        const result = await brandMasterService.bulkDeleteBrands(vendorId, req.user._id, brandIds);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('brandMasterController: bulkDeleteBrands - Exception while bulk deleting brands', { vendorId, error });
+    }
+};
+
 module.exports = {
     addBrand,
     updateBrand,
     deleteBrand,
     getAllBrandsAdmin,
     getAllBrandsClient,
-    getBrandById
+    getBrandById,
+    bulkSetBrandStatus,
+    bulkDeleteBrands
 };

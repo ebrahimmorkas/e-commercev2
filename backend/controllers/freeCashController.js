@@ -241,6 +241,36 @@ const revokeFreeCashForAllUsers = async (req, res) => {
   }
 };
 
+const bulkSetFreeCashStatus = async (req, res) => {
+  const vendorId = req.vendorId;
+  const userId = req.user && req.user._id;
+  const { freeCashIds, status } = req.body;
+  try {
+    const result = await freeCashService.bulkSetFreeCashStatus(vendorId, userId, freeCashIds, status);
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+  } catch (error) {
+    logger.logException('freeCashController: bulkSetFreeCashStatus - Exception while bulk updating Free Cash status', { vendorId, error });
+  }
+};
+
+const bulkDeleteFreeCash = async (req, res) => {
+  const vendorId = req.vendorId;
+  const userId = req.user && req.user._id;
+  const { freeCashIds } = req.body;
+  try {
+    const result = await freeCashService.bulkDeleteFreeCash(vendorId, userId, freeCashIds);
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+  } catch (error) {
+    logger.logException('freeCashController: bulkDeleteFreeCash - Exception while bulk deleting Free Cash', { vendorId, error });
+  }
+};
+
 module.exports = {
   createFreeCash,
   updateFreeCash,
@@ -248,5 +278,7 @@ module.exports = {
   getAllFreeCashAdmin,
   deleteFreeCash,
   revokeFreeCashForUser,
-  revokeFreeCashForAllUsers
+  revokeFreeCashForAllUsers,
+  bulkSetFreeCashStatus,
+  bulkDeleteFreeCash
 };

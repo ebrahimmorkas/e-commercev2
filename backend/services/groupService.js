@@ -491,10 +491,48 @@ const deactivateGroup = async (vendorId, userId, groupId) => {
 
     group.status = 'I';
     group.inActiveMarkedBy = userId;
-    group.inactiveMarkedDate = new Date();
+    group.inActiveMarkedDate = new Date();
     await group.save({ validateBeforeSave: false });
 
     return common.returnResult(true, 200, "Group deactivated successfully.", { group });
+  } catch (err) {
+    throw err;
+  }
+};
+
+// Bulk multi-select actions (frontend checkbox selection) - reuse the
+// existing single-group functions above as-is (same "already active" /
+// "already inactive" / not-found business rules, same audit fields).
+const bulkSetGroupStatus = async (vendorId, userId, groupIds, status) => {
+  try {
+    const operationFn = status === 'A'
+      ? (id) => activateGroup(vendorId, userId, id)
+      : (id) => deactivateGroup(vendorId, userId, id);
+
+    const { results, successCount, failureCount } = await common.runBulkOperation(groupIds, operationFn);
+
+    return common.returnResult(
+      true, 200,
+      `${status === 'A' ? 'Activated' : 'Deactivated'} ${successCount} of ${groupIds.length} group(s).`,
+      { results, successCount, failureCount }
+    );
+  } catch (err) {
+    throw err;
+  }
+};
+
+const bulkDeleteGroups = async (vendorId, userId, groupIds) => {
+  try {
+    const { results, successCount, failureCount } = await common.runBulkOperation(
+      groupIds,
+      (id) => softDeleteGroup(vendorId, userId, id)
+    );
+
+    return common.returnResult(
+      true, 200,
+      `Deleted ${successCount} of ${groupIds.length} group(s).`,
+      { results, successCount, failureCount }
+    );
   } catch (err) {
     throw err;
   }
@@ -508,4 +546,6 @@ module.exports = {
   softDeleteGroup,
   activateGroup,
   deactivateGroup,
+  bulkSetGroupStatus,
+  bulkDeleteGroups,
 };

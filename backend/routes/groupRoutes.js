@@ -7,7 +7,7 @@ const authorize = require('../middlewares/authorize');
 const validate = require('../middlewares/validate');
 const checkModuleAssigned = require('../middlewares/checkModuleAssigned');
 const createBulkUploader = require('../middlewares/multer/bulkFileUpload');
-const { createGroupSchema, updateGroupSchema, groupIdBodySchema, groupIdParamSchema, listGroupsQuerySchema } = require('../middlewares/validations/groupValidations');
+const { createGroupSchema, updateGroupSchema, groupIdBodySchema, groupIdParamSchema, listGroupsQuerySchema, bulkGroupStatusSchema, bulkDeleteGroupSchema } = require('../middlewares/validations/groupValidations');
 
 // ONE excel file, sheet named "Products"/"Categories"/"Users" depending on the
 // group's groupType - only present when the vendor chose the excel-upload
@@ -22,5 +22,7 @@ router.put('/', authenticate, authorize('admin'), checkModuleAssigned('GROUP'), 
 router.delete('/', authenticate, authorize('admin'), checkModuleAssigned('GROUP'), validate(groupIdBodySchema, 'body'), groupController.softDeleteGroup);
 router.patch('/activate', authenticate, authorize('admin'), checkModuleAssigned('GROUP'), validate(groupIdBodySchema, 'body'), groupController.activateGroup);
 router.patch('/deactivate', authenticate, authorize('admin'), checkModuleAssigned('GROUP'), validate(groupIdBodySchema, 'body'), groupController.deactivateGroup);
+router.patch('/bulk-status', authenticate, authorize('admin'), checkModuleAssigned('GROUP'), validate(bulkGroupStatusSchema, 'body'), groupController.bulkSetGroupStatus);
+router.delete('/bulk-delete', authenticate, authorize('admin'), checkModuleAssigned('GROUP'), validate(bulkDeleteGroupSchema, 'body'), groupController.bulkDeleteGroups);
 
 module.exports = router;

@@ -181,11 +181,45 @@ const bulkUploadCategories = async (req, res) => {
     }
 };
 
+const bulkSetCategoryStatus = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { categoryIds, status } = req.body;
+    try {
+        const userId = req.user._id;
+
+        const result = await categoryService.bulkSetCategoryStatus(vendorId, userId, categoryIds, status);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('categoryController: bulkSetCategoryStatus - Exception while bulk updating category status', { vendorId, error });
+    }
+};
+
+const bulkDeleteCategories = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { categoryIds } = req.body;
+    try {
+        const userId = req.user._id;
+
+        const result = await categoryService.bulkDeleteCategories(vendorId, userId, categoryIds);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('categoryController: bulkDeleteCategories - Exception while bulk deleting categories', { vendorId, error });
+    }
+};
+
 module.exports = {
     addCategory,
     updateCategory,
     deleteCategory,
     getCategories,
     getAdminCategories,
-    bulkUploadCategories
+    bulkUploadCategories,
+    bulkSetCategoryStatus,
+    bulkDeleteCategories
 };

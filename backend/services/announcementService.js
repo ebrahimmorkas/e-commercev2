@@ -204,6 +204,76 @@ const updateAnnouncement = async (vendorId, announcementId, updateData, userId) 
     }
 };
 
+// Single-announcement status flip used only by the bulk endpoint below - a
+// fresh, minimal function rather than reusing updateAnnouncement (which also
+// handles precedence/isDefault/content, none of which apply to a bulk
+// status change).
+const setAnnouncementStatusForBulk = async (vendorId, userId, announcementId, status) => {
+    try {
+        const announcement = await Announcement.findOne({ _id: announcementId, vendorId, status: { $ne: 'D' } });
+        if (!announcement) {
+            return common.returnResult(false, 404, 'Announcement not found');
+        }
+
+        if (status === 'A') {
+            announcement.activeMarkedBy = userId;
+            announcement.activeMarkedDate = new Date();
+        } else {
+            announcement.inActiveMarkedBy = userId;
+            announcement.inactiveMarkedDate = new Date();
+        }
+        announcement.status = status;
+        announcement.updatedBy = userId;
+
+        await announcement.save();
+        return common.returnResult(true, 200, `Announcement ${status === 'A' ? 'activated' : 'deactivated'} successfully`);
+    } catch (err) {
+        throw err;
+    }
+};
+
+const bulkSetAnnouncementStatus = async (vendorId, userId, announcementIds, status) => {
+    try {
+        const { results, successCount, failureCount } = await common.runBulkOperation(
+            announcementIds,
+            (id) => setAnnouncementStatusForBulk(vendorId, userId, id, status)
+        );
+
+        if (successCount > 0) {
+            await invalidateAnnouncementCache(vendorId);
+        }
+
+        logger.logInfo(successCount, failureCount, 'Bulk announcement status update completed', { vendorId, status, successCount, failureCount });
+
+        return common.returnResult(
+            true, 200,
+            `${status === 'A' ? 'Activated' : 'Deactivated'} ${successCount} of ${announcementIds.length} announcement(s).`,
+            { results, successCount, failureCount }
+        );
+    } catch (err) {
+        throw err;
+    }
+};
+
+const bulkDeleteAnnouncements = async (vendorId, userId, announcementIds) => {
+    try {
+        const { results, successCount, failureCount } = await common.runBulkOperation(
+            announcementIds,
+            (id) => softDeleteAnnouncement(vendorId, id, userId)
+        );
+
+        logger.logInfo(successCount, failureCount, 'Bulk announcement delete completed', { vendorId, successCount, failureCount });
+
+        return common.returnResult(
+            true, 200,
+            `Deleted ${successCount} of ${announcementIds.length} announcement(s).`,
+            { results, successCount, failureCount }
+        );
+    } catch (err) {
+        throw err;
+    }
+};
+
 const fetchAllActiveAnnouncements = async (vendorId) => {
     try {
         const announcements = await Announcement.find(
@@ -259,6 +329,8 @@ module.exports = {
     getAnnouncementCount,
     softDeleteAnnouncement,
     updateAnnouncement,
+    bulkSetAnnouncementStatus,
+    bulkDeleteAnnouncements,
     fetchAllActiveAnnouncements,
     fetchAllAnnouncementsAdmin,
     fetchAnnouncementById,

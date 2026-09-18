@@ -68,6 +68,20 @@ const bulkGroupUserEmailRowSchema = Joi.object({
   __rowNumber: Joi.number().optional()
 }).unknown(false);
 
+// --- Bulk status / delete (multi-select checkbox actions) --------------------
+// Group's own _id is common.encodeId-encoded (see formatGroupForResponse in
+// groupController), never a raw hex ObjectId - so these ids are loose
+// strings, same as groupIdBodySchema/groupIdParamSchema above, and get
+// decoded via common.decodeId in the controller before reaching the service.
+const bulkGroupStatusSchema = Joi.object({
+  groupIds: Joi.array().items(Joi.string().trim().min(1)).min(1).max(50).unique().required().label('Group IDs'),
+  status: Joi.string().valid('A', 'I').required().label('Status')
+});
+
+const bulkDeleteGroupSchema = Joi.object({
+  groupIds: Joi.array().items(Joi.string().trim().min(1)).min(1).max(50).unique().required().label('Group IDs')
+});
+
 module.exports = {
   createGroupSchema,
   updateGroupSchema,
@@ -77,4 +91,6 @@ module.exports = {
   bulkGroupProductNameRowSchema,
   bulkGroupCategoryNameRowSchema,
   bulkGroupUserEmailRowSchema,
+  bulkGroupStatusSchema,
+  bulkDeleteGroupSchema,
 };

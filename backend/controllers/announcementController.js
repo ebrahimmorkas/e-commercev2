@@ -156,11 +156,41 @@ const getAnnouncementById = async (req, res) => {
     }
 };
 
+const bulkSetAnnouncementStatus = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { announcementIds, status } = req.body;
+    try {
+        const result = await announcementService.bulkSetAnnouncementStatus(vendorId, req.user._id, announcementIds, status);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('announcementController: bulkSetAnnouncementStatus - Exception while bulk updating announcement status', { vendorId, error });
+    }
+};
+
+const bulkDeleteAnnouncements = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { announcementIds } = req.body;
+    try {
+        const result = await announcementService.bulkDeleteAnnouncements(vendorId, req.user._id, announcementIds);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('announcementController: bulkDeleteAnnouncements - Exception while bulk deleting announcements', { vendorId, error });
+    }
+};
+
 module.exports = {
     addAnnouncement,
     deleteAnnouncement,
     updateAnnouncement,
     getAllAnnouncements,
     getAllAnnouncementsAdmin,
-    getAnnouncementById
+    getAnnouncementById,
+    bulkSetAnnouncementStatus,
+    bulkDeleteAnnouncements
 };

@@ -2864,6 +2864,48 @@ const toggleProductStatus = async (vendorId, userId, productId, status) => {
     }
 };
 
+// Bulk multi-select actions (frontend checkbox selection) - reuse
+// toggleProductStatus/deleteProduct as-is so the image cascade (deactivate/
+// reactivate/delete the product's own images) applies exactly the same way
+// it does for a single product.
+const bulkToggleProductStatus = async (vendorId, userId, productIds, status) => {
+    try {
+        const { results, successCount, failureCount } = await common.runBulkOperation(
+            productIds,
+            (id) => toggleProductStatus(vendorId, userId, id, status)
+        );
+
+        logger.logInfo(successCount, failureCount, 'Bulk product status update completed', { vendorId, status, successCount, failureCount });
+
+        return common.returnResult(
+            true, 200,
+            `${status === 'A' ? 'Activated' : 'Deactivated'} ${successCount} of ${productIds.length} product(s).`,
+            { results, successCount, failureCount }
+        );
+    } catch (err) {
+        throw err;
+    }
+};
+
+const bulkDeleteProducts = async (vendorId, userId, productIds) => {
+    try {
+        const { results, successCount, failureCount } = await common.runBulkOperation(
+            productIds,
+            (id) => deleteProduct(vendorId, userId, id)
+        );
+
+        logger.logInfo(successCount, failureCount, 'Bulk product delete completed', { vendorId, successCount, failureCount });
+
+        return common.returnResult(
+            true, 200,
+            `Deleted ${successCount} of ${productIds.length} product(s).`,
+            { results, successCount, failureCount }
+        );
+    } catch (err) {
+        throw err;
+    }
+};
+
 const deleteProduct = async (vendorId, userId, productId) => {
     try {
         const result = await common.softDelete(Product, productId, userId, vendorId);
@@ -3172,6 +3214,8 @@ module.exports = {
     updateProduct,
     toggleProductStatus,
     deleteProduct,
+    bulkToggleProductStatus,
+    bulkDeleteProducts,
     cloneProduct,
     bulkCloneProducts,
     fetchAllProductsForAdmin,

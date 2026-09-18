@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { addBrand, updateBrand, deleteBrand, getAllBrandsAdmin, getAllBrandsClient, getBrandById } = require('../controllers/brandMasterController');
-const { addBrandSchema, updateBrandSchema, deleteBrandSchema, idParamSchema } = require('../middlewares/validations/brandMasterValidations');
+const { addBrand, updateBrand, deleteBrand, getAllBrandsAdmin, getAllBrandsClient, getBrandById, bulkSetBrandStatus, bulkDeleteBrands } = require('../controllers/brandMasterController');
+const { addBrandSchema, updateBrandSchema, deleteBrandSchema, idParamSchema, bulkBrandStatusSchema, bulkDeleteBrandSchema } = require('../middlewares/validations/brandMasterValidations');
 const validate = require('../middlewares/validate');
 const authenticate = require('../middlewares/authenticate');
 const authorize = require('../middlewares/authorize');
@@ -13,5 +13,8 @@ router.delete('/delete-brand', authenticate, authorize('admin'), checkModuleAssi
 router.get('/get-all-brands-admin', authenticate, authorize('admin'), checkModuleAssigned('BRAND'), getAllBrandsAdmin);
 router.get('/get-all-brands', checkModuleAssigned('BRAND'), getAllBrandsClient);
 router.get('/get-brand/:id', authenticate, authorize('admin'), checkModuleAssigned('BRAND'), validate(idParamSchema, 'params'), getBrandById);
+
+router.patch('/bulk-status', authenticate, authorize('admin'), checkModuleAssigned('BRAND'), validate(bulkBrandStatusSchema, 'body'), bulkSetBrandStatus);
+router.delete('/bulk-delete', authenticate, authorize('admin'), checkModuleAssigned('BRAND'), validate(bulkDeleteBrandSchema, 'body'), bulkDeleteBrands);
 
 module.exports = router;

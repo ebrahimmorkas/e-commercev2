@@ -65,11 +65,23 @@ const bulkUserEmailRowSchema = Joi.object({
     __rowNumber: Joi.number().optional()
 }).unknown(false);
 
+// --- Bulk status / delete (multi-select checkbox actions) --------------------
+const bulkFreeCashStatusSchema = Joi.object({
+    freeCashIds: Joi.array().items(objectId()).min(1).max(50).unique().required().label('Free Cash IDs'),
+    status: Joi.string().valid('A', 'I').required().label('Status')
+});
+
+const bulkDeleteFreeCashSchema = Joi.object({
+    freeCashIds: Joi.array().items(objectId()).min(1).max(50).unique().required().label('Free Cash IDs')
+});
+
 module.exports = {
     createFreeCashSchema,
     updateFreeCashSchema,
     freeCashIdParamSchema,
     revokeFreeCashForUserSchema,
     revokeFreeCashForAllUsersSchema,
-    bulkUserEmailRowSchema
+    bulkUserEmailRowSchema,
+    bulkFreeCashStatusSchema,
+    bulkDeleteFreeCashSchema
 };

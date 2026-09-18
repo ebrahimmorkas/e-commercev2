@@ -2,6 +2,24 @@ const Announcement = require('../../models/Announcement');
 const common = require('../../utils/common');
 const logger = require('../../utils/logger');
 const mongoose = require('mongoose');
+const Joi = require('joi');
+
+const objectId = () => Joi.string().hex().length(24).messages({
+    'string.hex': '{{#label}} must be a valid id.',
+    'string.length': '{{#label}} must be a valid id.'
+});
+
+// --- Bulk status / delete (multi-select checkbox actions) - the rest of
+// this file is hand-written validation middleware (legacy), but new
+// endpoints follow the project-wide Joi + validate.js convention.
+const bulkAnnouncementStatusSchema = Joi.object({
+    announcementIds: Joi.array().items(objectId()).min(1).max(50).unique().required().label('Announcement IDs'),
+    status: Joi.string().valid('A', 'I').required().label('Status')
+});
+
+const bulkDeleteAnnouncementSchema = Joi.object({
+    announcementIds: Joi.array().items(objectId()).min(1).max(50).unique().required().label('Announcement IDs')
+});
 
 const validateAddAnnouncement = async (req, res, next) => {
     try {
@@ -234,5 +252,7 @@ const validateUpdateAnnouncement = async (req, res, next) => {
 module.exports = {
     validateAddAnnouncement,
     validateDeleteAnnouncement,
-    validateUpdateAnnouncement
+    validateUpdateAnnouncement,
+    bulkAnnouncementStatusSchema,
+    bulkDeleteAnnouncementSchema
 };

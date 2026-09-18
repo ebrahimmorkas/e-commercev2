@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const productController = require('../controllers/productController');
 const validate = require('../middlewares/validate');
-const { createProductSchema, updateProductSchema, toggleProductStatusSchema, deleteProductSchema, cloneProductSchema, bulkCloneProductSchema, idParamSchema, brandIdParamSchema, categoryIdParamSchema } = require('../middlewares/validations/productValidations');
+const { createProductSchema, updateProductSchema, toggleProductStatusSchema, deleteProductSchema, cloneProductSchema, bulkCloneProductSchema, bulkProductStatusSchema, bulkDeleteProductSchema, idParamSchema, brandIdParamSchema, categoryIdParamSchema } = require('../middlewares/validations/productValidations');
 const authenticate = require('../middlewares/authenticate');
 const authorize = require('../middlewares/authorize');
 const vendorDetection = require('../middlewares/vendorDetection');
@@ -58,5 +58,11 @@ router.delete( '/delete-product', vendorDetection, ensureVendorDataCached, check
 router.post( '/clone-product', authenticate, authorize('admin', 'user'), vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(cloneProductSchema, 'body'), productController.cloneProduct );
 
 router.post( '/bulk-clone-products', authenticate, authorize('admin', 'user'), vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(bulkCloneProductSchema, 'body'), productController.bulkCloneProducts );
+
+// Bulk multi-select actions (frontend checkbox selection) - admin-only,
+// same real-auth situation as the clone routes above.
+router.patch( '/bulk-status', authenticate, authorize('admin'), vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(bulkProductStatusSchema, 'body'), productController.bulkSetProductStatus );
+
+router.delete( '/bulk-delete', authenticate, authorize('admin'), vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(bulkDeleteProductSchema, 'body'), productController.bulkDeleteProducts );
 
 module.exports = router;

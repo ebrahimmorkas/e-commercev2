@@ -143,6 +143,71 @@ const softDeleteBrand = async (vendorId, brandId, userId) => {
     }
 };
 
+// Single-brand status flip used only by the bulk endpoint below - mirrors
+// the status branch inside updateBrand, kept separate so a bulk call never
+// touches name/shortName the way a full update would.
+const setBrandStatusForBulk = async (vendorId, userId, brandId, status) => {
+    try {
+        const brand = await BrandMaster.findOne({ _id: brandId, vendorId, status: { $ne: 'D' } });
+        if (!brand) {
+            return common.returnResult(false, 404, 'Brand not found');
+        }
+
+        if (status === 'A') {
+            brand.activeMarkedBy = userId;
+            brand.activeMarkedDate = new Date();
+        } else {
+            brand.inActiveMarkeddBy = userId;
+            brand.inactiveMarkedDate = new Date();
+        }
+        brand.status = status;
+        brand.updatedBy = userId;
+
+        await brand.save();
+        return common.returnResult(true, 200, `Brand ${status === 'A' ? 'activated' : 'deactivated'} successfully`);
+    } catch (err) {
+        throw err;
+    }
+};
+
+const bulkSetBrandStatus = async (vendorId, userId, brandIds, status) => {
+    try {
+        const { results, successCount, failureCount } = await common.runBulkOperation(
+            brandIds,
+            (id) => setBrandStatusForBulk(vendorId, userId, id, status)
+        );
+
+        logger.logInfo(successCount, failureCount, 'Bulk brand status update completed', { vendorId, status, successCount, failureCount });
+
+        return common.returnResult(
+            true, 200,
+            `${status === 'A' ? 'Activated' : 'Deactivated'} ${successCount} of ${brandIds.length} brand(s).`,
+            { results, successCount, failureCount }
+        );
+    } catch (err) {
+        throw err;
+    }
+};
+
+const bulkDeleteBrands = async (vendorId, userId, brandIds) => {
+    try {
+        const { results, successCount, failureCount } = await common.runBulkOperation(
+            brandIds,
+            (id) => softDeleteBrand(vendorId, id, userId)
+        );
+
+        logger.logInfo(successCount, failureCount, 'Bulk brand delete completed', { vendorId, successCount, failureCount });
+
+        return common.returnResult(
+            true, 200,
+            `Deleted ${successCount} of ${brandIds.length} brand(s).`,
+            { results, successCount, failureCount }
+        );
+    } catch (err) {
+        throw err;
+    }
+};
+
 const fetchAllBrandsAdmin = async (vendorId) => {
     try {
         const brands = await BrandMaster.find(
@@ -193,6 +258,8 @@ module.exports = {
     addBrand,
     updateBrand,
     softDeleteBrand,
+    bulkSetBrandStatus,
+    bulkDeleteBrands,
     fetchAllBrandsAdmin,
     fetchAllBrandsClient,
     fetchBrandById,

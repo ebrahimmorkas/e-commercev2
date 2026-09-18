@@ -165,11 +165,41 @@ const getBannerById = async (req, res) => {
     }
 };
 
+const bulkSetBannerStatus = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { bannerIds, status } = req.body;
+    try {
+        const result = await bannerService.bulkSetBannerStatus(vendorId, req.user._id, bannerIds, status);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('bannerController: bulkSetBannerStatus - Exception while bulk updating banner status', { vendorId, error });
+    }
+};
+
+const bulkDeleteBanners = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { bannerIds } = req.body;
+    try {
+        const result = await bannerService.bulkDeleteBanners(vendorId, req.user._id, bannerIds);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('bannerController: bulkDeleteBanners - Exception while bulk deleting banners', { vendorId, error });
+    }
+};
+
 module.exports = {
     addBanner,
     deleteBanner,
     updateBanner,
     getAllBanners,
     getAllBannersAdmin,
-    getBannerById
+    getBannerById,
+    bulkSetBannerStatus,
+    bulkDeleteBanners
 };

@@ -340,11 +340,45 @@ const bulkCloneProducts = async (req, res) => {
     }
 };
 
+const bulkSetProductStatus = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { productIds, status } = req.body;
+    try {
+        const userId = req.user._id;
+
+        const result = await productService.bulkToggleProductStatus(vendorId, userId, productIds, status);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('Error bulk toggling product status', { vendorId, error });
+    }
+};
+
+const bulkDeleteProducts = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { productIds } = req.body;
+    try {
+        const userId = req.user._id;
+
+        const result = await productService.bulkDeleteProducts(vendorId, userId, productIds);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('Error bulk deleting products', { vendorId, error });
+    }
+};
+
 module.exports = {
     createProduct,
     updateProduct,
     toggleProductStatus,
     deleteProduct,
+    bulkSetProductStatus,
+    bulkDeleteProducts,
     cloneProduct,
     bulkCloneProducts,
     getAllProductsAdmin,

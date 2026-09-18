@@ -787,7 +787,7 @@ const updateDiscount = async (vendorId, discountId, userId, payload, files, comp
         existingDiscount.activeMarkedDate = new Date();
       } else if (payload.status === 'I') {
         existingDiscount.inActiveMarkeddBy = userId;
-        existingDiscount.inactiveMarkedDate = new Date();
+        existingDiscount.inActiveMarkedDate = new Date();
       }
       existingDiscount.status = payload.status;
     }
@@ -799,6 +799,71 @@ const updateDiscount = async (vendorId, discountId, userId, payload, files, comp
     logger.logInfo(1, 0, 'Discount updated successfully', { vendorId, discountId });
 
     return common.returnResult(true, 200, 'Discount updated successfully', { data: existingDiscount, excelReports: resolution.excelReports });
+  } catch (err) {
+    throw err;
+  }
+};
+
+// Single-discount status flip used only by the bulk endpoint below - mirrors
+// the status branch inside updateDiscount, kept separate so a bulk call
+// never touches any of updateDiscount's other required payload fields.
+const setDiscountStatusForBulk = async (vendorId, userId, discountId, status) => {
+  try {
+    const discount = await Discount.findOne({ _id: discountId, vendorId, status: { $ne: 'D' } });
+    if (!discount) {
+      return common.returnResult(false, 404, 'Discount not found.');
+    }
+
+    if (status === 'A') {
+      discount.activeMarkedBy = userId;
+      discount.activeMarkedDate = new Date();
+    } else {
+      discount.inActiveMarkeddBy = userId;
+      discount.inActiveMarkedDate = new Date();
+    }
+    discount.status = status;
+    discount.updatedBy = userId;
+
+    await discount.save();
+    return common.returnResult(true, 200, `Discount ${status === 'A' ? 'activated' : 'deactivated'} successfully`);
+  } catch (err) {
+    throw err;
+  }
+};
+
+const bulkSetDiscountStatus = async (vendorId, userId, discountIds, status) => {
+  try {
+    const { results, successCount, failureCount } = await common.runBulkOperation(
+      discountIds,
+      (id) => setDiscountStatusForBulk(vendorId, userId, id, status)
+    );
+
+    logger.logInfo(successCount, failureCount, 'Bulk discount status update completed', { vendorId, status, successCount, failureCount });
+
+    return common.returnResult(
+      true, 200,
+      `${status === 'A' ? 'Activated' : 'Deactivated'} ${successCount} of ${discountIds.length} discount(s).`,
+      { results, successCount, failureCount }
+    );
+  } catch (err) {
+    throw err;
+  }
+};
+
+const bulkDeleteDiscounts = async (vendorId, userId, discountIds) => {
+  try {
+    const { results, successCount, failureCount } = await common.runBulkOperation(
+      discountIds,
+      (id) => deleteDiscount(vendorId, id, userId)
+    );
+
+    logger.logInfo(successCount, failureCount, 'Bulk discount delete completed', { vendorId, successCount, failureCount });
+
+    return common.returnResult(
+      true, 200,
+      `Deleted ${successCount} of ${discountIds.length} discount(s).`,
+      { results, successCount, failureCount }
+    );
   } catch (err) {
     throw err;
   }
@@ -890,5 +955,7 @@ module.exports = {
   fetchDiscountById,
   fetchDiscountsForAdmin,
   fetchActiveDiscountsForUser,
-  deleteDiscount
+  deleteDiscount,
+  bulkSetDiscountStatus,
+  bulkDeleteDiscounts
 };

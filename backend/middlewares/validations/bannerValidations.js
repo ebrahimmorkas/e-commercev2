@@ -3,6 +3,24 @@ const common = require('../../utils/common');
 const logger = require('../../utils/logger');
 const mongoose = require('mongoose');
 const fs = require('fs/promises');
+const Joi = require('joi');
+
+const objectId = () => Joi.string().hex().length(24).messages({
+    'string.hex': '{{#label}} must be a valid id.',
+    'string.length': '{{#label}} must be a valid id.'
+});
+
+// --- Bulk status / delete (multi-select checkbox actions) - the rest of
+// this file is hand-written validation middleware (legacy), but new
+// endpoints follow the project-wide Joi + validate.js convention.
+const bulkBannerStatusSchema = Joi.object({
+    bannerIds: Joi.array().items(objectId()).min(1).max(50).unique().required().label('Banner IDs'),
+    status: Joi.string().valid('A', 'I').required().label('Status')
+});
+
+const bulkDeleteBannerSchema = Joi.object({
+    bannerIds: Joi.array().items(objectId()).min(1).max(50).unique().required().label('Banner IDs')
+});
 
 // bannerMediaUpload (multer) already wrote any file(s) to a temp dir on disk by the
 // time this middleware runs - if validation rejects the request, those temp files
@@ -246,5 +264,7 @@ const validateUpdateBanner = async (req, res, next) => {
 module.exports = {
     validateAddBanner,
     validateDeleteBanner,
-    validateUpdateBanner
+    validateUpdateBanner,
+    bulkBannerStatusSchema,
+    bulkDeleteBannerSchema
 };

@@ -75,7 +75,6 @@ const createDiscount = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
   } catch (error) {
     logger.logException('Error creating discount', { vendorId, error });
-    return common.sendError(res, 500, 'Failed to create discount');
   }
 };
 
@@ -99,7 +98,6 @@ const updateDiscount = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
   } catch (error) {
     logger.logException('Error updating discount', { vendorId, discountId, error });
-    return common.sendError(res, 500, 'Failed to update discount');
   }
 };
 
@@ -121,7 +119,6 @@ const getDiscountById = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message, result.meta.data);
   } catch (error) {
     logger.logException('Error fetching discount', { vendorId, discountId, error });
-    return common.sendError(res, 500, 'Failed to fetch discount');
   }
 };
 
@@ -142,7 +139,6 @@ const getAllDiscountsAdmin = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message, result.meta.data);
   } catch (error) {
     logger.logException('Error fetching discounts', { vendorId, error });
-    return common.sendError(res, 500, 'Failed to fetch discounts');
   }
 };
 
@@ -163,7 +159,6 @@ const getActiveDiscounts = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message, result.meta.data);
   } catch (error) {
     logger.logException('Error fetching active discounts', { vendorId, error });
-    return common.sendError(res, 500, 'Failed to fetch active discounts');
   }
 };
 
@@ -186,7 +181,36 @@ const deleteDiscount = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message);
   } catch (error) {
     logger.logException('Error deleting discount', { vendorId, discountId, error });
-    return common.sendError(res, 500, 'Failed to delete discount');
+  }
+};
+
+const bulkSetDiscountStatus = async (req, res) => {
+  const vendorId = req.vendorId;
+  const userId = req.user._id;
+  const { discountIds, status } = req.body;
+  try {
+    const result = await discountService.bulkSetDiscountStatus(vendorId, userId, discountIds, status);
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+  } catch (error) {
+    logger.logException('discountController: bulkSetDiscountStatus - Exception while bulk updating discount status', { vendorId, error });
+  }
+};
+
+const bulkDeleteDiscounts = async (req, res) => {
+  const vendorId = req.vendorId;
+  const userId = req.user._id;
+  const { discountIds } = req.body;
+  try {
+    const result = await discountService.bulkDeleteDiscounts(vendorId, userId, discountIds);
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+  } catch (error) {
+    logger.logException('discountController: bulkDeleteDiscounts - Exception while bulk deleting discounts', { vendorId, error });
   }
 };
 
@@ -196,5 +220,7 @@ module.exports = {
   getDiscountById,
   getAllDiscountsAdmin,
   getActiveDiscounts,
-  deleteDiscount
+  deleteDiscount,
+  bulkSetDiscountStatus,
+  bulkDeleteDiscounts
 };

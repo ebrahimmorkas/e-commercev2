@@ -571,6 +571,76 @@ const updateFreeCash = async (vendorId, freeCashId, userId, payload, files, comp
   }
 };
 
+// Single-Free Cash status flip used only by the bulk endpoint below - a
+// fresh, minimal function rather than reusing updateFreeCash (which also
+// re-validates/re-resolves the full targeting payload).
+const setFreeCashStatusForBulk = async (vendorId, userId, freeCashId, status) => {
+  try {
+    const idCheck = common.validateObjectId(freeCashId);
+    if (!idCheck.valid) {
+      return common.returnResult(false, 400, idCheck.message);
+    }
+
+    const freeCash = await FreeCash.findOne({ _id: freeCashId, vendorId, status: { $ne: 'D' } });
+    if (!freeCash) {
+      return common.returnResult(false, 404, 'Free Cash not found.');
+    }
+
+    if (status === 'A') {
+      freeCash.activeMarkedBy = userId;
+      freeCash.activeMarkedDate = new Date();
+    } else {
+      freeCash.inActiveMarkeddBy = userId;
+      freeCash.inactiveMarkedDate = new Date();
+    }
+    freeCash.status = status;
+    freeCash.updatedBy = userId;
+
+    await freeCash.save();
+    return common.returnResult(true, 200, `Free Cash ${status === 'A' ? 'activated' : 'deactivated'} successfully`);
+  } catch (err) {
+    throw err;
+  }
+};
+
+const bulkSetFreeCashStatus = async (vendorId, userId, freeCashIds, status) => {
+  try {
+    const { results, successCount, failureCount } = await common.runBulkOperation(
+      freeCashIds,
+      (id) => setFreeCashStatusForBulk(vendorId, userId, id, status)
+    );
+
+    logger.logInfo(successCount, failureCount, 'Bulk Free Cash status update completed', { vendorId, status, successCount, failureCount });
+
+    return common.returnResult(
+      true, 200,
+      `${status === 'A' ? 'Activated' : 'Deactivated'} ${successCount} of ${freeCashIds.length} Free Cash record(s).`,
+      { results, successCount, failureCount }
+    );
+  } catch (err) {
+    throw err;
+  }
+};
+
+const bulkDeleteFreeCash = async (vendorId, userId, freeCashIds) => {
+  try {
+    const { results, successCount, failureCount } = await common.runBulkOperation(
+      freeCashIds,
+      (id) => deleteFreeCash(vendorId, id, userId)
+    );
+
+    logger.logInfo(successCount, failureCount, 'Bulk Free Cash delete completed', { vendorId, successCount, failureCount });
+
+    return common.returnResult(
+      true, 200,
+      `Deleted ${successCount} of ${freeCashIds.length} Free Cash record(s).`,
+      { results, successCount, failureCount }
+    );
+  } catch (err) {
+    throw err;
+  }
+};
+
 const fetchFreeCashById = async (vendorId, freeCashId) => {
   try {
     const idCheck = common.validateObjectId(freeCashId);
@@ -701,6 +771,8 @@ module.exports = {
   fetchFreeCashById,
   fetchAllFreeCashAdmin,
   deleteFreeCash,
+  bulkSetFreeCashStatus,
+  bulkDeleteFreeCash,
   revokeFreeCashForUser,
   revokeFreeCashForAllUsers
 };

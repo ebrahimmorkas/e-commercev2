@@ -8,6 +8,8 @@ const vendorDetection = require('../middlewares/vendorDetection');
 const ensureVendorDataCached = require('../middlewares/ensureVendorDataCached');
 const checkModuleAssigned = require('../middlewares/checkModuleAssigned');
 const createBulkUploader = require('../middlewares/multer/bulkFileUpload');
+const validate = require('../middlewares/validate');
+const { bulkDiscountStatusSchema, bulkDeleteDiscountSchema } = require('../middlewares/validations/discountValidations');
 
 // ONE excel file, with sheets named "Products" / "Categories" / "Users" -
 // only the sheet(s) relevant to the chosen giveDiscountTo need data.
@@ -23,6 +25,31 @@ router.post(
   checkModuleAssigned('DISCOUNT'),
   discountExcelFields,
   discountController.createDiscount
+);
+
+// Bulk multi-select actions (frontend checkbox selection) - registered
+// before the "/:id" routes below so "/bulk-status"/"/bulk-delete" are never
+// swallowed by the ":id" param match.
+router.patch(
+  '/bulk-status',
+  authenticate,
+  vendorDetection,
+  ensureVendorDataCached,
+  authorize('admin'),
+  checkModuleAssigned('DISCOUNT'),
+  validate(bulkDiscountStatusSchema, 'body'),
+  discountController.bulkSetDiscountStatus
+);
+
+router.delete(
+  '/bulk-delete',
+  authenticate,
+  vendorDetection,
+  ensureVendorDataCached,
+  authorize('admin'),
+  checkModuleAssigned('DISCOUNT'),
+  validate(bulkDeleteDiscountSchema, 'body'),
+  discountController.bulkDeleteDiscounts
 );
 
 router.put(

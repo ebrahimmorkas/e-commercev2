@@ -258,6 +258,59 @@ const deactivateGroup = async (req, res) => {
   }
 };
 
+const bulkSetGroupStatus = async (req, res) => {
+  try {
+    const vendorId = req.vendorId;
+    const userId = req.user._id;
+    const { groupIds, status } = req.body;
+
+    const decodedIds = groupIds.map((id) => common.decodeId(id));
+
+    const result = await groupService.bulkSetGroupStatus(vendorId, userId, decodedIds, status);
+
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+
+    // Re-encode ids before they leave the server - the caller only ever
+    // knows its groups by their encoded id, same as everywhere else on
+    // this controller.
+    const meta = {
+      ...result.meta,
+      results: result.meta.results.map((r) => ({ ...r, id: common.encodeId(r.id) }))
+    };
+
+    return common.sendSuccess(res, result.statusCode, result.message, meta);
+  } catch (error) {
+    logger.logException('Error bulk updating group status', { error });
+  }
+};
+
+const bulkDeleteGroups = async (req, res) => {
+  try {
+    const vendorId = req.vendorId;
+    const userId = req.user._id;
+    const { groupIds } = req.body;
+
+    const decodedIds = groupIds.map((id) => common.decodeId(id));
+
+    const result = await groupService.bulkDeleteGroups(vendorId, userId, decodedIds);
+
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+
+    const meta = {
+      ...result.meta,
+      results: result.meta.results.map((r) => ({ ...r, id: common.encodeId(r.id) }))
+    };
+
+    return common.sendSuccess(res, result.statusCode, result.message, meta);
+  } catch (error) {
+    logger.logException('Error bulk deleting groups', { error });
+  }
+};
+
 module.exports = {
   createGroup,
   getGroupById,
@@ -266,4 +319,6 @@ module.exports = {
   softDeleteGroup,
   activateGroup,
   deactivateGroup,
+  bulkSetGroupStatus,
+  bulkDeleteGroups,
 };

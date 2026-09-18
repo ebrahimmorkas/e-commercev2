@@ -60,9 +60,23 @@ const bulkCategoryRowSchema = Joi.object({
     __rowNumber: Joi.number().optional()
 }).unknown(false);
 
+// --- Bulk status / delete (multi-select checkbox actions) --------------------
+// Capped at 50 per request - same generous-but-bounded batch size used for
+// bulk-clone-products.
+const bulkCategoryStatusSchema = Joi.object({
+  categoryIds: Joi.array().items(objectId).min(1).max(50).unique().required().label('Category IDs'),
+  status: Joi.string().valid('A', 'I').required().label('Status')
+});
+
+const bulkDeleteCategorySchema = Joi.object({
+  categoryIds: Joi.array().items(objectId).min(1).max(50).unique().required().label('Category IDs')
+});
+
 module.exports = {
   addCategorySchema,
   updateCategorySchema,
   deleteCategorySchema,
-  bulkCategoryRowSchema   
+  bulkCategoryRowSchema,
+  bulkCategoryStatusSchema,
+  bulkDeleteCategorySchema
 };

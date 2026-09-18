@@ -15,7 +15,9 @@ const {
   updateFreeCashSchema,
   freeCashIdParamSchema,
   revokeFreeCashForUserSchema,
-  revokeFreeCashForAllUsersSchema
+  revokeFreeCashForAllUsersSchema,
+  bulkFreeCashStatusSchema,
+  bulkDeleteFreeCashSchema
 } = require('../middlewares/validations/freeCashValidations');
 
 // ONE excel file, with a "Users" sheet - only needed when giveFreeCashTo
@@ -34,6 +36,31 @@ router.post(
   freeCashExcelFields,
   validate(createFreeCashSchema, 'body'),
   freeCashController.createFreeCash
+);
+
+// Bulk multi-select actions (frontend checkbox selection) - registered
+// before the "/:id" routes below so "/bulk-status"/"/bulk-delete" are never
+// swallowed by the ":id" param match.
+router.patch(
+  '/bulk-status',
+  authenticate,
+  vendorDetection,
+  ensureVendorDataCached,
+  authorize('admin'),
+  checkModuleAssigned('FREE_CASH'),
+  validate(bulkFreeCashStatusSchema, 'body'),
+  freeCashController.bulkSetFreeCashStatus
+);
+
+router.delete(
+  '/bulk-delete',
+  authenticate,
+  vendorDetection,
+  ensureVendorDataCached,
+  authorize('admin'),
+  checkModuleAssigned('FREE_CASH'),
+  validate(bulkDeleteFreeCashSchema, 'body'),
+  freeCashController.bulkDeleteFreeCash
 );
 
 router.put(

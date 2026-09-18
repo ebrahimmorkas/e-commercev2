@@ -420,6 +420,99 @@ const softDeleteCategory = async (vendorId, userId, categoryId) => {
     }
 };
 
+// Single-category status flip used only by the bulk endpoint below - mirrors
+// the status branch inside updateCategory (parent-must-be-active check on
+// activation + cascade to descendants), kept as its own function so a bulk
+// call touches only status-related fields, never name/parent/image the way
+// updateCategory would.
+const setCategoryStatusForBulk = async (vendorId, userId, categoryId, status) => {
+    try {
+        const category = await Category.findOne({ _id: categoryId, vendorId, status: { $ne: 'D' } });
+        if (!category) return common.returnResult(false, 404, 'Category not found');
+
+        if (status === 'A' && category.parent_category_id) {
+            const parentCategory = await Category.findOne({ _id: category.parent_category_id, vendorId }, 'status');
+            if (!parentCategory || parentCategory.status !== 'A') {
+                return common.returnResult(false, 400, `Parent is inactive Hence can't mark child as active`);
+            }
+        }
+
+        const now = new Date();
+        const descendantIds = await getDescendantIds(vendorId, categoryId);
+
+        if (status === 'A') {
+            category.status = 'A';
+            category.activeMarkedBy = userId;
+            category.activeMarkedDate = now;
+            if (descendantIds.length > 0) {
+                await Category.updateMany(
+                    { _id: { $in: descendantIds } },
+                    { $set: { status: 'A', activeMarkedBy: userId, activeMarkedDate: now } }
+                );
+            }
+        } else {
+            category.status = 'I';
+            category.inActiveMarkeddBy = userId;
+            category.inactiveMarkedDate = now;
+            if (descendantIds.length > 0) {
+                await Category.updateMany(
+                    { _id: { $in: descendantIds } },
+                    { $set: { status: 'I', inActiveMarkeddBy: userId, inactiveMarkedDate: now } }
+                );
+            }
+        }
+
+        category.updatedBy = userId;
+        await category.save();
+
+        return common.returnResult(true, 200, `Category ${status === 'A' ? 'activated' : 'deactivated'} successfully`);
+    } catch (err) {
+        throw err;
+    }
+};
+
+const bulkSetCategoryStatus = async (vendorId, userId, categoryIds, status) => {
+    try {
+        const { results, successCount, failureCount } = await common.runBulkOperation(
+            categoryIds,
+            (id) => setCategoryStatusForBulk(vendorId, userId, id, status)
+        );
+
+        if (successCount > 0) {
+            await invalidateCategoryCache(vendorId);
+        }
+
+        logger.logInfo(successCount, failureCount, 'Bulk category status update completed', { vendorId, status, successCount, failureCount });
+
+        return common.returnResult(
+            true, 200,
+            `${status === 'A' ? 'Activated' : 'Deactivated'} ${successCount} of ${categoryIds.length} categor${categoryIds.length === 1 ? 'y' : 'ies'}.`,
+            { results, successCount, failureCount }
+        );
+    } catch (err) {
+        throw err;
+    }
+};
+
+const bulkDeleteCategories = async (vendorId, userId, categoryIds) => {
+    try {
+        const { results, successCount, failureCount } = await common.runBulkOperation(
+            categoryIds,
+            (id) => softDeleteCategory(vendorId, userId, id)
+        );
+
+        logger.logInfo(successCount, failureCount, 'Bulk category delete completed', { vendorId, successCount, failureCount });
+
+        return common.returnResult(
+            true, 200,
+            `Deleted ${successCount} of ${categoryIds.length} categor${categoryIds.length === 1 ? 'y' : 'ies'}.`,
+            { results, successCount, failureCount }
+        );
+    } catch (err) {
+        throw err;
+    }
+};
+
 const fetchActiveCategories = async (vendorId) => {
     try {
         const categories = await Category.find(
@@ -659,6 +752,8 @@ module.exports = {
     addCategory,
     updateCategory,
     softDeleteCategory,
+    bulkSetCategoryStatus,
+    bulkDeleteCategories,
     fetchActiveCategories,
     fetchAdminCategories,
     bulkUploadCategories,

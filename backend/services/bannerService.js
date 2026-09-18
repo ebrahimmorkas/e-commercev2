@@ -320,6 +320,75 @@ const updateBanner = async (vendorId, bannerId, updateData, newImageFile, newVid
     }
 };
 
+// Single-banner status flip used only by the bulk endpoint below - a fresh,
+// minimal function rather than reusing updateBanner (which also handles
+// media/precedence/isDefault, none of which apply to a bulk status change).
+const setBannerStatusForBulk = async (vendorId, userId, bannerId, status) => {
+    try {
+        const banner = await Banner.findOne({ _id: bannerId, vendorId, status: { $ne: 'D' } });
+        if (!banner) {
+            return common.returnResult(false, 404, 'Banner not found');
+        }
+
+        if (status === 'A') {
+            banner.activeMarkedBy = userId;
+            banner.activeMarkedDate = new Date();
+        } else {
+            banner.inActiveMarkedBy = userId;
+            banner.inactiveMarkedDate = new Date();
+        }
+        banner.status = status;
+        banner.updatedBy = userId;
+
+        await banner.save();
+        return common.returnResult(true, 200, `Banner ${status === 'A' ? 'activated' : 'deactivated'} successfully`);
+    } catch (err) {
+        throw err;
+    }
+};
+
+const bulkSetBannerStatus = async (vendorId, userId, bannerIds, status) => {
+    try {
+        const { results, successCount, failureCount } = await common.runBulkOperation(
+            bannerIds,
+            (id) => setBannerStatusForBulk(vendorId, userId, id, status)
+        );
+
+        if (successCount > 0) {
+            await invalidateBannerCache(vendorId);
+        }
+
+        logger.logInfo(successCount, failureCount, 'Bulk banner status update completed', { vendorId, status, successCount, failureCount });
+
+        return common.returnResult(
+            true, 200,
+            `${status === 'A' ? 'Activated' : 'Deactivated'} ${successCount} of ${bannerIds.length} banner(s).`,
+            { results, successCount, failureCount }
+        );
+    } catch (err) {
+        throw err;
+    }
+};
+
+const bulkDeleteBanners = async (vendorId, userId, bannerIds) => {
+    try {
+        const { results, successCount, failureCount } = await common.runBulkOperation(
+            bannerIds,
+            (id) => softDeleteBanner(vendorId, id, userId)
+        );
+
+        logger.logInfo(successCount, failureCount, 'Bulk banner delete completed', { vendorId, successCount, failureCount });
+
+        return common.returnResult(
+            true, 200,
+            `Deleted ${successCount} of ${bannerIds.length} banner(s).`,
+            { results, successCount, failureCount }
+        );
+    } catch (err) {
+        throw err;
+    }
+};
+
 const fetchAllActiveBanners = async (vendorId) => {
     try {
         const banners = await Banner.find(
@@ -372,6 +441,8 @@ module.exports = {
     addBanner,
     softDeleteBanner,
     updateBanner,
+    bulkSetBannerStatus,
+    bulkDeleteBanners,
     fetchAllActiveBanners,
     fetchAllBannersAdmin,
     fetchBannerById

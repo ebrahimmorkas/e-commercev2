@@ -453,6 +453,34 @@ const checkWhetherDocumentExists = async (Model, ids, vendorId = "not applicable
   };
 };
 
+// Runs `operationFn` once per id, best-effort - one id's failure (not found,
+// a returnResult-style business validation failure, etc.) is recorded and
+// the loop continues rather than aborting the whole batch. A genuinely
+// unexpected exception thrown by operationFn still propagates up to the
+// caller's own try/catch, same as everywhere else in this codebase.
+// operationFn(id) must resolve to a returnResult(...)-shaped object
+// ({ isSuccess, message, ... }).
+const runBulkOperation = async (ids, operationFn) => {
+  const results = [];
+  let successCount = 0;
+  let failureCount = 0;
+
+  for (const id of ids) {
+    const result = await operationFn(id);
+    const isSuccess = !!(result && result.isSuccess);
+
+    if (isSuccess) {
+      successCount++;
+    } else {
+      failureCount++;
+    }
+
+    results.push({ id, isSuccess, message: result ? result.message : 'Unknown error' });
+  }
+
+  return { results, successCount, failureCount };
+};
+
 // Get default document
 const getDefault = async (Model, vendorID) => {
   const doc = await Model.findOne({ vendorID, isDefault: true, isActive: true });
@@ -474,6 +502,7 @@ module.exports = {
   setActiveStatusToTrue,
   softDelete,
   hardDelete,
+  runBulkOperation,
   getAll,
   getByID,
   getDefault,

@@ -25,9 +25,21 @@ const idParamSchema = Joi.object({
     id: objectId().required().label('Brand ID')
 });
 
+// --- Bulk status / delete (multi-select checkbox actions) --------------------
+const bulkBrandStatusSchema = Joi.object({
+    brandIds: Joi.array().items(objectId()).min(1).max(50).unique().required().label('Brand IDs'),
+    status: Joi.string().valid('A', 'I').required().label('Status')
+});
+
+const bulkDeleteBrandSchema = Joi.object({
+    brandIds: Joi.array().items(objectId()).min(1).max(50).unique().required().label('Brand IDs')
+});
+
 module.exports = {
     addBrandSchema,
     updateBrandSchema,
     deleteBrandSchema,
-    idParamSchema
+    idParamSchema,
+    bulkBrandStatusSchema,
+    bulkDeleteBrandSchema
 };

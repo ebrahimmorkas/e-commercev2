@@ -348,6 +348,16 @@ const bulkCloneProductSchema = Joi.object({
     productIds: Joi.array().items(objectId()).min(1).max(50).unique().required().label('Product IDs')
 });
 
+// --- Bulk status / delete (multi-select checkbox actions) --------------------
+const bulkProductStatusSchema = Joi.object({
+    productIds: Joi.array().items(objectId()).min(1).max(50).unique().required().label('Product IDs'),
+    status: Joi.string().valid('A', 'I').required().label('Status')
+});
+
+const bulkDeleteProductSchema = Joi.object({
+    productIds: Joi.array().items(objectId()).min(1).max(50).unique().required().label('Product IDs')
+});
+
 module.exports = {
     createProductSchema,
     updateProductSchema,
@@ -356,6 +366,8 @@ module.exports = {
     deleteProductSchema,
     cloneProductSchema,
     bulkCloneProductSchema,
+    bulkProductStatusSchema,
+    bulkDeleteProductSchema,
     idParamSchema,
     brandIdParamSchema,
     categoryIdParamSchema
