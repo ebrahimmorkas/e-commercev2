@@ -359,6 +359,13 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: true
     },
+    // Global switch, on by default - CompanyMaster.isAdminPlacingOrderOnBehalfOfUserIsOn
+    // (off by default, per-vendor entitlement) is the actual gate for whether a
+    // given vendor's admin can place orders on behalf of a customer.
+    isAdminPlacingOrderOnBehalfOfUserIsOn: {
+        type: Boolean,
+        default: true
+    },
     // End of Customer Management
 
 }, {

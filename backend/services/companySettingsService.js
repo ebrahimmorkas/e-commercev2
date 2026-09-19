@@ -11,7 +11,7 @@ const imageUploadService = require('./imageUploadService');
 // (handled separately as file uploads) and emailTemplateAssignments (owned by
 // the dedicated assign/unassign endpoints above).
 const SIMPLE_FIELDS = [
-    'currencyId', 'adminName', 'adminWhatsappNumber', 'adminPhoneNumber', 'adminAddress',
+    'currencyId', 'storeCountryId', 'storeStateId', 'adminName', 'adminWhatsappNumber', 'adminPhoneNumber', 'adminAddress',
     'adminCity', 'adminState', 'adminPincode', 'adminEmail', 'companyName', 'instagramId',
     'facebookId', 'privacyPolicy', 'cancelPolicy', 'termsAndConditions', 'aboutUs',
     'showAnnouncements', 'isAnnouncementRotationOn', 'showBanners', 'isBannerRotationOn',

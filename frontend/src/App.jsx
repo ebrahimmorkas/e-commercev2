@@ -6,6 +6,7 @@ import ProductsPage from './admin/features/products/pages/ProductsPage';
 import BulkUpdateProductsPage from './admin/features/bulkUpdateProducts/pages/BulkUpdateProductsPage';
 import DiscountsPage from './admin/features/discounts/pages/DiscountsPage';
 import OrdersPage from './admin/features/orders/pages/OrdersPage';
+import AdminPlaceOrderPage from './admin/features/adminPlaceOrder/pages/AdminPlaceOrderPage';
 import CustomersPage from './admin/features/customers/pages/CustomersPage';
 import AddUserPage from './admin/features/addUser/pages/AddUserPage';
 import AbandonedCartsPage from './admin/features/abandonedCart/pages/AbandonedCartsPage';
@@ -69,6 +70,8 @@ function App() {
           <DiscountsPage />
         ) : effectiveActivePage === 'orders' ? (
           <OrdersPage />
+        ) : effectiveActivePage === 'adminPlaceOrder' ? (
+          <AdminPlaceOrderPage />
         ) : effectiveActivePage === 'customers' ? (
           <CustomersPage onAddUser={() => setActivePage('addUser')} />
         ) : effectiveActivePage === 'addUser' ? (

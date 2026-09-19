@@ -49,6 +49,13 @@ export const AddUserIcon = (props) => (
   </svg>
 );
 
+export const PlaceOrderIcon = (props) => (
+  <svg {...base} {...props}>
+    <path d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m-2.978-.99l-1.163 10.474A1.125 1.125 0 004.973 21h14.054a1.125 1.125 0 001.117-1.253L18.98 9.51A1.125 1.125 0 0017.865 8.5H6.135a1.125 1.125 0 00-1.117.99z" />
+    <path d="M12 12.5v5m2.5-2.5h-5" />
+  </svg>
+);
+
 export const DiscountIcon = (props) => (
   <svg {...base} {...props}>
     <circle cx="12" cy="12" r="8.25" />

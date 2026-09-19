@@ -8,7 +8,7 @@ import OrderStatusTimeline from './OrderStatusTimeline';
 import OrderItems from './OrderItems';
 import AdvanceStepForm from './AdvanceStepForm';
 import AssignDeliveryAgentForm from './AssignDeliveryAgentForm';
-import { formatOrderMoney, formatOrderDateTime, stepBadgeVariant, isOrderLocked } from '../utils/formatOrder';
+import { formatOrderMoney, formatOrderDateTime, stepBadgeVariant, isOrderLocked, orderSourceLabel, orderSourceVariant } from '../utils/formatOrder';
 import theme from '../theme/theme';
 
 const SummaryRow = ({ label, value, bold = false }) => (
@@ -31,6 +31,32 @@ const AddressBlock = ({ title, snapshot }) => {
         <br />
         {[snapshot.cityName, snapshot.stateName, snapshot.countryName].filter(Boolean).join(', ')} - {snapshot.pincode}
       </p>
+    </div>
+  );
+};
+
+// Cash counter customer details - only shown for walk-in orders, which have no
+// user account. Optional fields the admin left blank are skipped.
+const WalkInCustomerBlock = ({ customer }) => {
+  if (!customer) return null;
+  const rows = [
+    ['Name', customer.name],
+    ['Phone', customer.phone],
+    ['WhatsApp', customer.whatsapp],
+    ['Email', customer.email],
+    ['Address', customer.address],
+  ].filter(([, value]) => value);
+  return (
+    <div>
+      <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Walk-in customer</h4>
+      <dl className="mt-1 text-sm text-gray-700 space-y-0.5">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex gap-2">
+            <dt className="text-gray-500 w-20 shrink-0">{label}</dt>
+            <dd className="whitespace-pre-line">{value}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 };
@@ -100,7 +126,19 @@ const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-gray-200">
+            {order.isPlacedByAdmin && (
+              <div className="sm:col-span-2">
+                <Badge variant={orderSourceVariant(order)}>{orderSourceLabel(order)}</Badge>
+              </div>
+            )}
+            {order.isWalkInCustomer && <WalkInCustomerBlock customer={order.walkInCustomer} />}
             <AddressBlock title="Shipping address" snapshot={order.shippingAddressSnapshot} />
+            {order.adminEnteredAddress && (
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Delivery address (typed by admin)</h4>
+                <p className="mt-1 text-sm text-gray-700 whitespace-pre-line">{order.adminEnteredAddress}</p>
+              </div>
+            )}
             <AddressBlock title="Billing address" snapshot={order.billingAddressSnapshot} />
           </div>
 

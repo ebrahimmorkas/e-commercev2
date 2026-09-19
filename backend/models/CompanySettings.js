@@ -17,6 +17,20 @@ const companySettingsSchema = new mongoose.Schema({
     ref: 'CurrencyMaster',
     default: null
   },
+  // The vendor's own country/state, used to pick which TaxMaster rules apply
+  // to walk-in (cash counter) orders, which have no customer location. Will be
+  // set from dropdowns populated off CompanyMaster.allowedCountries. When
+  // null, walk-in orders get taxes with no country/state filtering.
+  storeCountryId: {
+    type: mongoose.Types.ObjectId,
+    ref: 'CountryMaster',
+    default: null
+  },
+  storeStateId: {
+    type: mongoose.Types.ObjectId,
+    ref: 'StateMaster',
+    default: null
+  },
   // Personal Information
   adminName: {
     type: String,
