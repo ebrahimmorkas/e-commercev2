@@ -11,6 +11,8 @@ const commissionService = require('./commissionService');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
 const { PAYMENT_METHODS } = require('../constants/paymentGatewayConstants');
+const { ORDER_NOTIFICATION_TYPES } = require('../constants/orderRealtimeConstants');
+const { notifyOrderChanged } = require('./orderRealtimeService');
 const {
     USER_SEARCH_FIELDS,
     USER_DROPDOWN_DEFAULT_LIMIT,
@@ -616,6 +618,9 @@ const placeOrderOnBehalfOfUser = async (vendorId, adminUserId, websiteMasterData
             await restoreDeductedStock(deductions);
             throw err;
         }
+
+        // Live-updates the admin Orders list. Walk-in orders have no userId, so no customer push.
+        notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.NEW);
 
         logger.logInfo(1, 0, 'Admin placed order on behalf of user', { vendorId, adminUserId, userId: user ? user._id : null, isWalkIn, orderId: order._id });
 
