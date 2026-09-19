@@ -13,6 +13,14 @@ const createBulkUploader = require('../middlewares/multer/bulkFileUpload');
 const productBulkUpload = createBulkUploader({ zipFieldNames: ['mainImagesZip', 'additionalImagesZip'] });
 const common = require('../utils/common');
 
+// Every route that reads or changes the admin catalogue: a logged-in admin of
+// THIS store (authenticate also rejects a token from another store). The
+// storefront read routes further down (get-products, get-product/:id,
+// by-brand, by-category) stay public. Kept before vendorDetection /
+// ensureVendorDataCached so unauthenticated requests are rejected before any
+// vendor data is loaded.
+const adminAccess = [authenticate, authorize('admin'), vendorDetection, ensureVendorDataCached];
+
 const parseProductData = (req, res, next) => {
     try {
         if (!req.body || !req.body.data) {
@@ -25,11 +33,11 @@ const parseProductData = (req, res, next) => {
     }
 };
 
-router.post( '/add-product', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), imageUpload.any(), parseProductData, validate(createProductSchema, 'body'), productController.createProduct );
+router.post( '/add-product', ...adminAccess, checkModuleAssigned('PRODUCTS'), imageUpload.any(), parseProductData, validate(createProductSchema, 'body'), productController.createProduct );
 
-router.get( '/get-products-admin', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), productController.getAllProductsAdmin );
+router.get( '/get-products-admin', ...adminAccess, checkModuleAssigned('PRODUCTS'), productController.getAllProductsAdmin );
 
-router.get( '/get-product-admin/:id', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(idParamSchema, 'params'), productController.getProductByIdAdmin );
+router.get( '/get-product-admin/:id', ...adminAccess, checkModuleAssigned('PRODUCTS'), validate(idParamSchema, 'params'), productController.getProductByIdAdmin );
 
 router.get( '/get-products', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), productController.getAllProductsClient );
 
@@ -39,30 +47,25 @@ router.get( '/get-products-by-brand/:brandId', vendorDetection, ensureVendorData
 
 router.get( '/get-products-by-category/:categoryId', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(categoryIdParamSchema, 'params'), productController.getProductsByCategory );
 
-router.get( '/get-products-by-category-admin/:categoryId', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(categoryIdParamSchema, 'params'), productController.getProductsByCategoryAdmin );
+router.get( '/get-products-by-category-admin/:categoryId', ...adminAccess, checkModuleAssigned('PRODUCTS'), validate(categoryIdParamSchema, 'params'), productController.getProductsByCategoryAdmin );
 
-router.post( '/bulk-upload-products', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), productBulkUpload, productController.bulkUploadProducts );
+router.post( '/bulk-upload-products', ...adminAccess, checkModuleAssigned('PRODUCTS'), productBulkUpload, productController.bulkUploadProducts );
 
-router.post( '/bulk-update-products', vendorDetection, ensureVendorDataCached, checkModuleAssigned('BULK_UPDATE_PRODUCTS'), productBulkUpload, productController.bulkUpdateProducts );
+router.post( '/bulk-update-products', ...adminAccess, checkModuleAssigned('BULK_UPDATE_PRODUCTS'), productBulkUpload, productController.bulkUpdateProducts );
 
-router.put( '/update-product', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), imageUpload.any(), parseProductData, validate(updateProductSchema, 'body'), productController.updateProduct );
+router.put( '/update-product', ...adminAccess, checkModuleAssigned('PRODUCTS'), imageUpload.any(), parseProductData, validate(updateProductSchema, 'body'), productController.updateProduct );
 
-router.patch( '/toggle-product-status', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(toggleProductStatusSchema, 'body'), productController.toggleProductStatus );
+router.patch( '/toggle-product-status', ...adminAccess, checkModuleAssigned('PRODUCTS'), validate(toggleProductStatusSchema, 'body'), productController.toggleProductStatus );
 
-router.delete( '/delete-product', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(deleteProductSchema, 'body'), productController.deleteProduct );
+router.delete( '/delete-product', ...adminAccess, checkModuleAssigned('PRODUCTS'), validate(deleteProductSchema, 'body'), productController.deleteProduct );
 
-// Clone routes are the only ones on this router with authenticate/authorize
-// wired in (real req.user._id for createdBy attribution) - the rest of this
-// file still uses the createProduct-era placeholder userId until that's
-// addressed separately.
-router.post( '/clone-product', authenticate, authorize('admin', 'user'), vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(cloneProductSchema, 'body'), productController.cloneProduct );
+router.post( '/clone-product', ...adminAccess, checkModuleAssigned('PRODUCTS'), validate(cloneProductSchema, 'body'), productController.cloneProduct );
 
-router.post( '/bulk-clone-products', authenticate, authorize('admin', 'user'), vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(bulkCloneProductSchema, 'body'), productController.bulkCloneProducts );
+router.post( '/bulk-clone-products', ...adminAccess, checkModuleAssigned('PRODUCTS'), validate(bulkCloneProductSchema, 'body'), productController.bulkCloneProducts );
 
-// Bulk multi-select actions (frontend checkbox selection) - admin-only,
-// same real-auth situation as the clone routes above.
-router.patch( '/bulk-status', authenticate, authorize('admin'), vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(bulkProductStatusSchema, 'body'), productController.bulkSetProductStatus );
+// Bulk multi-select actions (frontend checkbox selection).
+router.patch( '/bulk-status', ...adminAccess, checkModuleAssigned('PRODUCTS'), validate(bulkProductStatusSchema, 'body'), productController.bulkSetProductStatus );
 
-router.delete( '/bulk-delete', authenticate, authorize('admin'), vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(bulkDeleteProductSchema, 'body'), productController.bulkDeleteProducts );
+router.delete( '/bulk-delete', ...adminAccess, checkModuleAssigned('PRODUCTS'), validate(bulkDeleteProductSchema, 'body'), productController.bulkDeleteProducts );
 
 module.exports = router;

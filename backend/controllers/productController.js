@@ -2,14 +2,23 @@ const productService = require('../services/productService');
 const logger = require('../utils/logger.js');
 const common = require('../utils/common');
 
+// Every catch block below ends here. It used to only log, which left the HTTP
+// request open forever (the client just spun). Always answer, and turn a
+// MongoDB duplicate-key error that slipped past a service pre-check (two
+// admins saving the same name/SKU at once) into a clean 409.
+const handleError = (res, message, error, context = {}) => {
+    logger.logException(message, { ...context, error });
+    if (res.headersSent) return;
+    if (error && error.code === 11000) {
+        return common.sendError(res, 409, 'Another product already uses one of these values (name, SKU, barcode or code). Please change it and try again.');
+    }
+    return common.sendError(res, 500, 'Something went wrong. Please try again.');
+};
+
 const createProduct = async (req, res) => {
     const vendorId = req.vendorId;
     try {
-        // NOTE: mirrors the placeholder from the old productController.js -
-        // swap this back to req.user._id once authenticate/authorize('admin')
-        // are wired onto this route.
-        // const userId = req.user._id;
-        const userId = "6a6ed077b8ad83c8d068dda3";
+        const userId = req.user._id;
 
         const result = await productService.createProduct(
             vendorId,
@@ -26,7 +35,7 @@ const createProduct = async (req, res) => {
         }
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
-        logger.logException('Error creating product', { vendorId, error });
+        return handleError(res, 'Error creating product', error, { vendorId });
     }
 };
 
@@ -39,7 +48,7 @@ const getAllProductsAdmin = async (req, res) => {
         }
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
-        logger.logException('Error fetching products for admin', { vendorId, error });
+        return handleError(res, 'Error fetching products for admin', error, { vendorId });
     }
 };
 
@@ -53,7 +62,7 @@ const getProductByIdAdmin = async (req, res) => {
         }
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
-        logger.logException('Error fetching product by id for admin', { vendorId, id, error });
+        return handleError(res, 'Error fetching product by id for admin', error, { vendorId, id });
     }
 };
 
@@ -77,7 +86,7 @@ const getAllProductsClient = async (req, res) => {
         }
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
-        logger.logException('Error fetching products for client', { vendorId, error });
+        return handleError(res, 'Error fetching products for client', error, { vendorId });
     }
 };
 
@@ -92,7 +101,7 @@ const getProductByIdClient = async (req, res) => {
         }
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
-        logger.logException('Error fetching product by id for client', { vendorId, id, error });
+        return handleError(res, 'Error fetching product by id for client', error, { vendorId, id });
     }
 };
 
@@ -107,7 +116,7 @@ const getProductsByBrand = async (req, res) => {
         }
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
-        logger.logException('Error fetching products by brand', { vendorId, brandId, error });
+        return handleError(res, 'Error fetching products by brand', error, { vendorId, brandId });
     }
 };
 
@@ -122,7 +131,7 @@ const getProductsByCategory = async (req, res) => {
         }
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
-        logger.logException('Error fetching products by category', { vendorId, categoryId, error });
+        return handleError(res, 'Error fetching products by category', error, { vendorId, categoryId });
     }
 };
 
@@ -136,7 +145,7 @@ const getProductsByCategoryAdmin = async (req, res) => {
         }
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
-        logger.logException('Error fetching products by category for admin', { vendorId, categoryId, error });
+        return handleError(res, 'Error fetching products by category for admin', error, { vendorId, categoryId });
     }
 };
 
@@ -173,8 +182,7 @@ const bulkUploadProducts = async (req, res) => {
             return common.sendError(res, 400, `Additional images zip exceeds the allowed limit of ${zipMaxSizeMB}MB`);
         }
 
-        // NOTE: same placeholder as createProduct above - swap once authenticate/authorize('admin') are wired in.
-        const userId = "6a6ed077b8ad83c8d068dda3";
+        const userId = req.user._id;
 
         const result = await productService.bulkUploadProducts(
             vendorId, userId, excelFile.buffer,
@@ -188,7 +196,7 @@ const bulkUploadProducts = async (req, res) => {
         }
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
-        logger.logException('Error in bulk product upload', { vendorId, error });
+        return handleError(res, 'Error in bulk product upload', error, { vendorId });
     }
 };
 
@@ -225,8 +233,7 @@ const bulkUpdateProducts = async (req, res) => {
             return common.sendError(res, 400, `Additional images zip exceeds the allowed limit of ${zipMaxSizeMB}MB`);
         }
 
-        // NOTE: same placeholder as createProduct/bulkUploadProducts above - swap once authenticate/authorize('admin') are wired in.
-        const userId = "6a6ed077b8ad83c8d068dda3";
+        const userId = req.user._id;
 
         const result = await productService.bulkUpdateProducts(
             vendorId, userId, excelFile.buffer,
@@ -240,16 +247,14 @@ const bulkUpdateProducts = async (req, res) => {
         }
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
-        logger.logException('Error in bulk product update', { vendorId, error });
+        return handleError(res, 'Error in bulk product update', error, { vendorId });
     }
 };
 
 const updateProduct = async (req, res) => {
     const vendorId = req.vendorId;
     try {
-        // Same placeholder as createProduct - swap once authenticate/
-        // authorize('admin') are wired onto this route.
-        const userId = "6a6ed077b8ad83c8d068dda3";
+        const userId = req.user._id;
 
         const result = await productService.updateProduct(
             vendorId,
@@ -266,7 +271,7 @@ const updateProduct = async (req, res) => {
         }
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
-        logger.logException('Error updating product', { vendorId, error });
+        return handleError(res, 'Error updating product', error, { vendorId });
     }
 };
 
@@ -274,7 +279,7 @@ const toggleProductStatus = async (req, res) => {
     const vendorId = req.vendorId;
     const { productId, status } = req.body;
     try {
-        const userId = "6a6ed077b8ad83c8d068dda3";
+        const userId = req.user._id;
 
         const result = await productService.toggleProductStatus(vendorId, userId, productId, status);
         if (!result.isSuccess) {
@@ -282,7 +287,7 @@ const toggleProductStatus = async (req, res) => {
         }
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
-        logger.logException('Error toggling product status', { vendorId, productId, error });
+        return handleError(res, 'Error toggling product status', error, { vendorId, productId });
     }
 };
 
@@ -290,7 +295,7 @@ const deleteProduct = async (req, res) => {
     const vendorId = req.vendorId;
     const { productId } = req.body;
     try {
-        const userId = "6a6ed077b8ad83c8d068dda3";
+        const userId = req.user._id;
 
         const result = await productService.deleteProduct(vendorId, userId, productId);
         if (!result.isSuccess) {
@@ -298,7 +303,7 @@ const deleteProduct = async (req, res) => {
         }
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
-        logger.logException('Error deleting product', { vendorId, productId, error });
+        return handleError(res, 'Error deleting product', error, { vendorId, productId });
     }
 };
 
@@ -317,7 +322,7 @@ const cloneProduct = async (req, res) => {
         }
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
-        logger.logException('Error cloning product', { vendorId, productId, error });
+        return handleError(res, 'Error cloning product', error, { vendorId, productId });
     }
 };
 
@@ -336,7 +341,7 @@ const bulkCloneProducts = async (req, res) => {
         }
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
-        logger.logException('Error bulk cloning products', { vendorId, error });
+        return handleError(res, 'Error bulk cloning products', error, { vendorId });
     }
 };
 
@@ -352,7 +357,7 @@ const bulkSetProductStatus = async (req, res) => {
         }
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
-        logger.logException('Error bulk toggling product status', { vendorId, error });
+        return handleError(res, 'Error bulk toggling product status', error, { vendorId });
     }
 };
 
@@ -368,7 +373,7 @@ const bulkDeleteProducts = async (req, res) => {
         }
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
-        logger.logException('Error bulk deleting products', { vendorId, error });
+        return handleError(res, 'Error bulk deleting products', error, { vendorId });
     }
 };
 

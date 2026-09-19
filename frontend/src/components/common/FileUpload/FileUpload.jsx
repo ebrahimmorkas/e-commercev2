@@ -25,6 +25,20 @@ const formatBytes = (bytes) => {
   return `${(bytes / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 };
 
+// Short names for the MIME types most uploaders list explicitly, so the hint
+// under the dropzone reads "JPG, PNG, WEBP, GIF" instead of a raw
+// "image/jpeg,image/png,image/webp,image/gif". Anything not listed here
+// (e.g. "image/*", ".pdf") is shown exactly as passed in.
+const ACCEPT_LABELS = { 'image/jpeg': 'JPG', 'image/png': 'PNG', 'image/webp': 'WEBP', 'image/gif': 'GIF' };
+
+const formatAcceptHint = (accept) =>
+  accept
+    .split(',')
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .map((token) => ACCEPT_LABELS[token] || token)
+    .join(', ');
+
 let idCounter = 0;
 const nextId = () => `file-${Date.now()}-${idCounter++}`;
 
@@ -138,7 +152,7 @@ const FileUpload = ({
         </p>
         {(accept || maxSize) && (
           <p className="text-xs text-gray-400">
-            {accept && `${accept} `}
+            {accept && `${formatAcceptHint(accept)} `}
             {maxSize && `up to ${formatBytes(maxSize)}`}
           </p>
         )}

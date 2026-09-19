@@ -377,14 +377,18 @@ const productSchema = new mongoose.Schema(
             type: String,
             trim: true
         }],
+        // Optional: the Joi schema and productService both allow a product with
+        // no category (or a main category with no sub category), and a vendor
+        // without the Category feature can't pick one at all. `required: true`
+        // here used to contradict that and made every such product fail on save.
         mainCategory: {
             type: mongoose.Types.ObjectId,
-            required: true,
+            default: null,
             index: true
         },
         subCategory: {
             type: mongoose.Types.ObjectId,
-            required: true,
+            default: null,
             index: true
         },
         disclaimer: {
@@ -433,41 +437,57 @@ const productSchema = new mongoose.Schema(
     }
 );
 
+// Every unique index below only covers LIVE products (status A or I). A
+// soft-deleted product (status 'D') keeps its document, so without this filter
+// its name/slug/code/sku/barcode would stay reserved forever and re-creating a
+// product with the same name or SKU after deleting the old one would fail with
+// a duplicate-key error. It mirrors the `status: { $ne: 'D' }` pre-checks in
+// productService.js. (MongoDB partial indexes can't use $ne, hence $in.)
+// Existing databases need scripts/migrateProductIndexes.js run once - Mongoose
+// won't change an already-existing index's options on its own.
+const LIVE_PRODUCT = { status: { $in: ['A', 'I'] } };
+
 // name: unique per vendor (case-insensitive via collation), never globally -
 // vendor A and vendor B may both have a product named "abc". Verified no
 // existing duplicates before adding this (2026-09-17).
 productSchema.index({
     vendorId: 1,
     name: 1
-}, { unique: true, collation: { locale: 'en', strength: 2 } });
+}, { unique: true, collation: { locale: 'en', strength: 2 }, partialFilterExpression: LIVE_PRODUCT });
 
 productSchema.index({
     vendorId: 1,
     slug: 1
-}, { unique: true, sparse: true });
+}, { unique: true, partialFilterExpression: LIVE_PRODUCT });
 
 productSchema.index({
     vendorId: 1,
     productCode: 1
-}, { unique: true, sparse: true });
+}, { unique: true, partialFilterExpression: LIVE_PRODUCT });
 
 productSchema.index({
     vendorId: 1,
     "variants.variantCode": 1
-}, { unique: true, sparse: true });
+}, { unique: true, partialFilterExpression: LIVE_PRODUCT });
 
 // sku: unique per vendor, across ALL of that vendor's products (matches the
-// variantCode scope). Required on every size, so no sparse needed.
+// variantCode scope). Required on every size.
 productSchema.index({
     vendorId: 1,
     "variants.sizes.sku": 1
-}, { unique: true });
+}, { unique: true, partialFilterExpression: LIVE_PRODUCT });
 
 // barcode: globally unique across ALL vendors (mirrors a real physical
-// barcode) - deliberately NOT scoped by vendorId. Optional field, so sparse.
+// barcode) - deliberately NOT scoped by vendorId. Optional field: only string
+// barcodes are indexed, so a size with no barcode (absent OR an old explicit
+// null) never collides with another. ($type replaces `sparse`, which can't be
+// combined with a partial filter and treats an explicit null as "present".)
 productSchema.index({
     "variants.sizes.barcode": 1
-}, { unique: true, sparse: true });
+}, {
+    unique: true,
+    partialFilterExpression: { ...LIVE_PRODUCT, "variants.sizes.barcode": { $type: 'string' } }
+});
 productSchema.index({
     vendorId: 1,
     status: 1

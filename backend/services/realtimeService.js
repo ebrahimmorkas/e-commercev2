@@ -2,16 +2,18 @@ const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const logger = require('../utils/logger');
+const { REALTIME_SOCKET_ROLES } = require('../constants/realtimeConstants');
 
 /*
 |--------------------------------------------------------------------------
 | GENERIC REALTIME (SOCKET.IO) SERVICE
 |--------------------------------------------------------------------------
 | Not tied to any one module - init() is called once from server.js, and
-| every module (Abandoned Cart today, others later) pushes updates through
-| emitToVendorAdmins(). A socket only ever joins one room: the admin room of
-| the vendor its own JWT belongs to, resolved server-side from the token -
-| the client never gets to choose which vendor's room it joins.
+| every module (Abandoned Cart, Orders, ...) pushes updates through
+| emitToVendorAdmins() (admins) or emitToUser() (one customer). A socket only
+| ever joins one room, decided server-side from its own JWT - an admin joins
+| its vendor's admin room, a customer joins its own private per-user room.
+| The client never gets to choose which room it joins.
 |
 | Deliberately never throws: a realtime push is a best-effort side effect,
 | not core business logic, so a failure here must never break the request
@@ -22,6 +24,7 @@ const logger = require('../utils/logger');
 let io = null;
 
 const adminRoom = (vendorId) => `vendor:${vendorId}:admin`;
+const userRoom = (vendorId, userId) => `vendor:${vendorId}:user:${userId}`;
 
 const authenticateSocket = async (socket, next) => {
     try {
@@ -42,12 +45,13 @@ const authenticateSocket = async (socket, next) => {
             return next(new Error('Authentication required'));
         }
 
-        if (user.role !== 'admin') {
-            return next(new Error('Only admins may connect to this channel'));
+        if (!Object.values(REALTIME_SOCKET_ROLES).includes(user.role)) {
+            return next(new Error('Only admins and customers may connect to this channel'));
         }
 
         socket.data.userId = user._id;
         socket.data.vendorId = user.vendorId;
+        socket.data.role = user.role;
         next();
     } catch (err) {
         logger.logException('Exception in realtimeService socket authentication', { error: err });
@@ -67,7 +71,13 @@ const init = (httpServer) => {
         io.use(authenticateSocket);
 
         io.on('connection', (socket) => {
-            socket.join(adminRoom(socket.data.vendorId));
+            // Exactly one room per socket, chosen from the role verified in
+            // authenticateSocket - never from anything the client sent.
+            if (socket.data.role === REALTIME_SOCKET_ROLES.ADMIN) {
+                socket.join(adminRoom(socket.data.vendorId));
+            } else {
+                socket.join(userRoom(socket.data.vendorId, socket.data.userId));
+            }
 
             socket.on('disconnect', () => {
                 // No-op for now - socket.io already cleans up room membership.
@@ -96,7 +106,22 @@ const emitToVendorAdmins = (vendorId, event, payload) => {
     }
 };
 
+// Push to one customer's own connections (every open tab/device of theirs).
+// `vendorId` is part of the room name so a user id can never collide across
+// vendors.
+const emitToUser = (vendorId, userId, event, payload) => {
+    try {
+        if (!io || !vendorId || !userId) return false;
+        io.to(userRoom(vendorId, userId)).emit(event, payload);
+        return true;
+    } catch (err) {
+        logger.logException('Exception in realtimeService.emitToUser', { vendorId, userId, event, error: err });
+        return false;
+    }
+};
+
 module.exports = {
     init,
-    emitToVendorAdmins
+    emitToVendorAdmins,
+    emitToUser
 };

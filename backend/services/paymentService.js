@@ -4,6 +4,8 @@ const PaymentTransaction = require('../models/PaymentTransaction');
 const paymentProviderFactory = require('./providers/payment/paymentProviderFactory');
 const vendorPaymentGatewayCredentialsService = require('./vendorPaymentGatewayCredentialsService');
 const { PAYMENT_METHODS, PAYMENT_TRANSACTION_STATUSES } = require('../constants/paymentGatewayConstants');
+const { ORDER_NOTIFICATION_TYPES } = require('../constants/orderRealtimeConstants');
+const { notifyOrderChanged } = require('./orderRealtimeService');
 const logger = require('../utils/logger');
 const common = require('../utils/common');
 
@@ -99,6 +101,7 @@ const initiateOnlinePayment = async (vendorId, userId, orderId, vendorDomain, we
         order.payment.method = PAYMENT_METHODS.ONLINE;
         order.payment.gateway = gatewayKey;
         await order.save();
+        notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.PAYMENT_UPDATED);
 
         logger.logInfo(1, 0, 'Payment session created', { vendorId, orderId, gatewayKey, transactionId: transaction._id });
         return common.returnResult(true, 200, 'Payment session created successfully.', { redirectUrl: sessionResult.redirectUrl, transactionId: transaction._id });
@@ -122,6 +125,7 @@ const selectCashOnDelivery = async (vendorId, userId, orderId) => {
         order.payment.gateway = null;
         order.updatedBy = userId;
         await order.save();
+        notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.PAYMENT_UPDATED);
 
         logger.logInfo(1, 0, 'Cash on Delivery selected for order', { vendorId, orderId });
         return common.returnResult(true, 200, 'Cash on Delivery selected for this order.', { order });
@@ -193,6 +197,7 @@ const handleGatewayCallback = async (vendorId, gatewayKey, rawPayload) => {
             order.payment.status = 'FAILED';
             await transaction.save();
             await order.save();
+            notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.PAYMENT_UPDATED);
             logger.logInfo(0, 1, 'Payment amount/currency mismatch detected', { vendorId, orderId: order._id, transactionId: transaction._id });
             return common.returnResult(false, 502, 'Payment amount mismatch detected.');
         }
@@ -211,6 +216,7 @@ const handleGatewayCallback = async (vendorId, gatewayKey, rawPayload) => {
 
         await transaction.save();
         await order.save();
+        notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.PAYMENT_UPDATED);
 
         logger.logInfo(1, 0, 'Payment callback processed', { vendorId, orderId: order._id, transactionId: transaction._id, isPaid: verifyResult.isPaid });
         return common.returnResult(true, 200, 'Callback processed successfully.');

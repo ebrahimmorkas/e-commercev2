@@ -109,6 +109,9 @@ const ProductsPage = () => {
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const [bulkCloneConfirmOpen, setBulkCloneConfirmOpen] = useState(false);
+  // Whether the open add/edit form has anything typed into it, and whether the "discard?" prompt is showing.
+  const [formDirty, setFormDirty] = useState(false);
+  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
 
   const categoryNameById = useMemo(() => {
     const map = new Map();
@@ -135,6 +138,15 @@ const ProductsPage = () => {
   const closeForm = () => {
     setView('list');
     setEditingDraft(null);
+    setFormDirty(false);
+    setDiscardConfirmOpen(false);
+  };
+
+  // Cancel and the back arrow both come through here: a form with typed-in data asks first, since it's three
+  // steps of work that one stray click would otherwise throw away.
+  const requestCloseForm = () => {
+    if (formDirty) setDiscardConfirmOpen(true);
+    else closeForm();
   };
 
   const handleSubmit = async (payload, mainImages, additionalImageUploads) => {
@@ -320,7 +332,7 @@ const ProductsPage = () => {
     return (
       <div className="max-w-5xl mx-auto p-4 sm:p-6">
         <div className="flex items-center gap-2 mb-5">
-          <Button type="button" isIconOnly size="sm" variant={theme.button.ghost} ariaLabel="Back to products" onClick={closeForm}>
+          <Button type="button" isIconOnly size="sm" variant={theme.button.ghost} ariaLabel="Back to products" onClick={requestCloseForm}>
             <BackIcon />
           </Button>
           <div>
@@ -337,9 +349,31 @@ const ProductsPage = () => {
           lookups={lookups}
           products={products}
           onSubmit={handleSubmit}
-          onCancel={closeForm}
+          onCancel={requestCloseForm}
+          onDirtyChange={setFormDirty}
           submitting={mutating}
         />
+
+        <Modal
+          isOpen={discardConfirmOpen}
+          onClose={() => setDiscardConfirmOpen(false)}
+          title="Discard changes?"
+          size="sm"
+          footer={
+            <>
+              <Button variant={theme.button.ghost} onClick={() => setDiscardConfirmOpen(false)}>
+                Keep editing
+              </Button>
+              <Button variant={theme.button.danger} onClick={closeForm}>
+                Discard
+              </Button>
+            </>
+          }
+        >
+          <p className={`text-sm ${theme.text.body}`}>
+            {view === 'edit' ? "You have unsaved changes to this product. If you leave now they'll be lost." : "This product hasn't been saved yet. If you leave now everything you've entered will be lost."}
+          </p>
+        </Modal>
       </div>
     );
   }

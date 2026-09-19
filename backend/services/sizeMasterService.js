@@ -21,6 +21,10 @@ const shapeSize = (size) => {
     shaped.values = size.values || [];
   } else if (size.type === 'MEASURABLE') {
     shaped.measurements = (size.measurements || []).map((measurement) => ({
+      // Product create/update identifies a measurement by this id
+      // (values[].measurementId) - without it the admin form can't send a
+      // valid one and no measurable size could ever be saved.
+      _id: measurement._id,
       label: measurement.label,
       allowedUnits: (measurement.allowedUnits || []).map((unit) => ({
         _id: unit._id,

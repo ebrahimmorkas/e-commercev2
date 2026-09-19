@@ -112,7 +112,10 @@ const sizeSchema = Joi.object({
     }),
     price: Joi.number().min(0).required().label('Price'),
     cancelledPrice: Joi.number().min(0).allow(null).label('Cancelled price'),
-    stock: Joi.number().min(0).default(0).label('Stock'),
+    // Whole units only: the cart/order flow only ever adds or removes whole
+    // quantities (quantity is .integer() there), so a fractional stock such as
+    // 1.5 would leave a half unit nobody can buy.
+    stock: Joi.number().integer().min(0).default(0).label('Stock'),
     weight: weightSchema.allow(null).label('Weight'),
     sku: Joi.string().trim().min(1).required().label('SKU'),
     barcode: Joi.string().trim().allow('', null).label('Barcode'),

@@ -23,6 +23,8 @@ const {
     DELIVERY_AGENT_TO_STEP_CODE
 } = require('../constants/orderStepConstants');
 const { EMAIL_MODULES } = require('../constants/emailModuleConstants');
+const { ORDER_NOTIFICATION_TYPES } = require('../constants/orderRealtimeConstants');
+const { notifyOrderChanged } = require('./orderRealtimeService');
 
 /*
 |--------------------------------------------------------------------------
@@ -329,6 +331,8 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
             throw err;
         }
 
+        notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.NEW);
+
         logger.logInfo(1, 0, 'Order created successfully', { vendorId, userId, orderId: order._id });
 
         return common.returnResult(true, 201, 'Order placed successfully', { order, ineligibleItems });
@@ -513,6 +517,8 @@ const advanceOrderStep = async (vendorId, adminUserId, orderId, targetStepCode, 
             await restoreStockForCancelledOrder(order);
         }
 
+        notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.STATUS_CHANGED);
+
         await notifyOrderStatusChange(order, companyMasterData, websiteMasterData, companySettingsData, adminUserId);
 
         logger.logInfo(1, 0, 'Order step advanced', { vendorId, orderId, targetStepCode });
@@ -550,6 +556,8 @@ const assignDeliveryAgent = async (vendorId, adminUserId, orderId, deliveryAgent
         order.deliveryAgentAssignedAt = new Date();
         order.updatedBy = adminUserId;
         await order.save();
+
+        notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.AGENT_ASSIGNED);
 
         logger.logInfo(1, 0, 'Delivery agent assigned to order', { vendorId, orderId, deliveryAgentUserId });
         return common.returnResult(true, 200, 'Delivery agent assigned successfully', { order });
@@ -593,6 +601,8 @@ const deliveryAgentMarkDelivered = async (vendorId, deliveryAgentUserId, orderId
         order.deliveredAt = new Date();
         order.updatedBy = deliveryAgentUserId;
         await order.save();
+
+        notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.STATUS_CHANGED);
 
         await notifyOrderStatusChange(order, companyMasterData, websiteMasterData, companySettingsData, deliveryAgentUserId);
 
@@ -657,6 +667,8 @@ const cancelOrder = async (vendorId, userId, orderId, cancellationReason, compan
 
         await commissionService.voidCommissionForOrder(vendorId, order._id, cancellationReason);
         await restoreStockForCancelledOrder(order);
+
+        notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.CANCELLED);
 
         await notifyOrderStatusChange(order, companyMasterData, websiteMasterData, companySettingsData, userId);
 

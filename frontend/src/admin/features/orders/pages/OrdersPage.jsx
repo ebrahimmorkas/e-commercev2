@@ -5,6 +5,8 @@ import Badge from '../../../../components/common/Badge';
 import EmptyState from '../../../../components/common/EmptyState';
 import Button from '../../../../components/common/Buttons';
 import { useOrdersAdmin } from '../hooks/useOrdersAdmin';
+import { useRealtime } from '../../../realtime/useRealtime';
+import LiveIndicator from '../../../realtime/LiveIndicator';
 import OrderDetailModal from '../components/OrderDetailModal';
 import { formatOrderMoney, formatOrderDateTime, stepBadgeVariant, orderSourceLabel, orderSourceVariant } from '../utils/formatOrder';
 import theme from '../theme/theme';
@@ -21,7 +23,16 @@ import theme from '../theme/theme';
  */
 const OrdersPage = () => {
   const { orders, loading, error, refetch } = useOrdersAdmin();
+  const { reconnect } = useRealtime();
   const [selectedOrderId, setSelectedOrderId] = useState(null);
+
+  // Refetch first, THEN reconnect: the fetch is what refreshes an expired
+  // access token, and the socket's handshake reads that token. (No-op unless
+  // the socket has actually given up - see reconnectSocket.)
+  const handleRefresh = async () => {
+    await refetch();
+    reconnect();
+  };
 
   const columns = useMemo(
     () => [
@@ -73,9 +84,12 @@ const OrdersPage = () => {
         title={<span className="font-bold">Orders</span>}
         subtitle="View and manage every order placed on your storefront"
         headerActions={
-          <Button variant={theme.button.secondary} onClick={refetch}>
-            Refresh
-          </Button>
+          <div className="flex items-center gap-3">
+            <LiveIndicator />
+            <Button variant={theme.button.secondary} onClick={handleRefresh}>
+              Refresh
+            </Button>
+          </div>
         }
       >
         {error && (
