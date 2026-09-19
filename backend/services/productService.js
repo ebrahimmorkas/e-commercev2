@@ -102,11 +102,51 @@ const resolveAdditionalImageFiles = (files = []) => {
 // to the limit instead, and any unreadable/invalid entry inside a zip is
 // skipped silently rather than failing the whole request - per the agreed
 // behavior for zip uploads.
+// Best-effort removal of images that were uploaded earlier in a request which
+// then failed before the product they belong to was saved. Images are uploaded
+// (to the storage provider AND an ImageAsset row) BEFORE the product is
+// written, so without this every failed add would leave paid-for, unreferenced
+// files behind. Never throws - cleanup must not mask the original failure.
+const discardUploadedImages = async (imageAssetIds, userId) => {
+    for (const imageId of imageAssetIds) {
+        try {
+            await imageUploadService.deleteImage({ imageId, userId });
+        } catch (err) {
+            logger.logException('productService - discardUploadedImages: could not remove an orphaned image', { imageId, error: err });
+        }
+    }
+};
+
 const applySizeImages = async ({
     vendorId, userId, sizeFiles, existingImage, existingAdditionalImages, companyMasterData, websiteMasterData,
     excludeProductId = null
 }) => {
     const result = {};
+    // ImageAssets created by THIS call (a replaced main image reuses its
+    // existing asset, so it isn't listed). If anything below fails they are
+    // removed again, and on success they're returned as `createdImageIds` so a
+    // caller that fails later can do the same.
+    const createdImageIds = [];
+
+    try {
+        return await applySizeImagesInner({
+            vendorId, userId, sizeFiles, existingImage, existingAdditionalImages, companyMasterData, websiteMasterData,
+            excludeProductId, result, createdImageIds
+        });
+    } catch (err) {
+        await discardUploadedImages(createdImageIds, userId);
+        throw err;
+    }
+};
+
+const applySizeImagesInner = async ({
+    vendorId, userId, sizeFiles, existingImage, existingAdditionalImages, companyMasterData, websiteMasterData,
+    excludeProductId, result, createdImageIds
+}) => {
+    const fail = async (statusCode, message) => {
+        await discardUploadedImages(createdImageIds, userId);
+        return common.returnResult(false, statusCode, message);
+    };
 
     // --- main image ----------------------------------------------------
     if (sizeFiles?.image) {
@@ -135,19 +175,20 @@ const applySizeImages = async ({
             return common.returnResult(false, uploadResult.statusCode, uploadResult.message);
         }
         result.image = { url: uploadResult.meta.image.url, imageAssetId: uploadResult.meta.image._id };
+        if (!existingImage?.imageAssetId) createdImageIds.push(uploadResult.meta.image._id);
     }
 
     // --- additional images (one image OR one zip) -----------------------
     if (sizeFiles?.additionalImages?.length) {
         if (sizeFiles.additionalImages.length > 1) {
-            return common.returnResult(false, 400, 'Only one file is allowed for additional images per size - send a single image, or a single .zip containing multiple images.');
+            return fail(400, 'Only one file is allowed for additional images per size - send a single image, or a single .zip containing multiple images.');
         }
 
         const { files: expandedFiles, isFromZip } = resolveAdditionalImageFiles(sizeFiles.additionalImages);
         const limit = companyMasterData.numberOfAdditionalImagesAllowedInVariant;
 
         if (!isFromZip && limit !== undefined && limit !== null && expandedFiles.length > limit) {
-            return common.returnResult(false, 403, `Only ${limit} additional image(s) allowed per size.`);
+            return fail(403, `Only ${limit} additional image(s) allowed per size.`);
         }
 
         // Full replace, same semantics as the rest of this system.
@@ -179,14 +220,16 @@ const applySizeImages = async ({
                     });
                     continue;
                 }
-                return common.returnResult(false, uploadResult.statusCode, uploadResult.message);
+                return fail(uploadResult.statusCode, uploadResult.message);
             }
 
             uploaded.push({ url: uploadResult.meta.image.url, imageAssetId: uploadResult.meta.image._id });
+            createdImageIds.push(uploadResult.meta.image._id);
         }
         result.additionalImages = uploaded;
     }
 
+    result.createdImageIds = createdImageIds;
     return common.returnResult(true, 200, 'All Good', result);
 };
 
@@ -203,6 +246,14 @@ const validateCategories = async ({ vendorId, mainCategory, subCategory, company
                 return common.returnResult(false, 403, 'Category feature is not enabled for your account.');
             }
             return common.returnResult(true, 200, 'All Good', { mainCategory: null, subCategory: null });
+        }
+
+        // A sub category only makes sense under a main one. (Joi's `.with()`
+        // can't catch this - it treats an explicit `mainCategory: null` as
+        // "present" - and silently dropping the sub category here would save a
+        // product the admin didn't ask for.)
+        if (!mainCategory && subCategory) {
+            return common.returnResult(false, 400, 'Select a main category before choosing a sub category.');
         }
 
         if (!mainCategory) {
@@ -326,10 +377,15 @@ const validateRecommendedProducts = async ({ recommendedProducts, vendorId }) =>
     }
 };
 
+// A store with no CompanySettings document yet is a legitimate state (the
+// settings endpoint itself returns a clean 404 for it), so the code-generation
+// switches fall back to the same defaults the CompanySettings schema uses
+// (auto-generate) instead of throwing on `null`.
+const isCodeAutoGenerated = (companySettingsData, field) => companySettingsData?.[field] ?? true;
+
 const resolveProductCode = async ({ vendorId, productCode, companySettingsData }) => {
     try {
-        console.log(`company settings data is ${companySettingsData}`)
-        if (companySettingsData.isProductCodeAutoGenerated) {
+        if (isCodeAutoGenerated(companySettingsData, 'isProductCodeAutoGenerated')) {
             if (productCode) {
                 return common.returnResult(false, 400, 'Product code is auto-generated for your account and should not be provided.');
             }
@@ -380,7 +436,7 @@ const resolveProductName = async ({ vendorId, name, excludeProductId = null }) =
 
 const resolveVariantCode = async ({ vendorId, variantCode, companySettingsData, usedManualCodesInPayload }) => {
     try {
-        if (companySettingsData.isVariantCodeAutoGenerated) {
+        if (isCodeAutoGenerated(companySettingsData, 'isVariantCodeAutoGenerated')) {
             if (variantCode) {
                 return common.returnResult(false, 400, 'Variant code is auto-generated for your account and should not be provided.');
             }
@@ -424,7 +480,7 @@ const resolveVariantCode = async ({ vendorId, variantCode, companySettingsData, 
 
 const resolveSizeCode = async ({ vendorId, sizeCode, companySettingsData, usedManualCodesInPayload }) => {
     try {
-        if (companySettingsData.isSizeCodeAutoGenerated) {
+        if (isCodeAutoGenerated(companySettingsData, 'isSizeCodeAutoGenerated')) {
             if (sizeCode) {
                 return common.returnResult(false, 400, 'Size code is auto-generated for your account and should not be provided.');
             }
@@ -861,6 +917,43 @@ const deleteAllImagesForSize = async (sizeDoc, userId, excludeProductId = null) 
 // Exported service functions
 // ---------------------------------------------------------------------------
 
+// The pre-checks above (name/sku/barcode/code/slug) are read-then-write, so two
+// simultaneous requests can both pass them and only the unique index stops the
+// second one. Turn that into what the pre-check would have said, instead of
+// letting a raw E11000 escape as a 500. A slug collision is the one case that
+// isn't the admin's fault (two different names can slugify the same), so it's
+// retried with a fresh suffix rather than reported.
+const saveNewProduct = async (product, name) => {
+    const MAX_SLUG_RETRIES = 3;
+
+    for (let attempt = 0; ; attempt++) {
+        try {
+            await product.save();
+            return common.returnResult(true, 201, 'Product created successfully');
+        } catch (err) {
+            if (!err || err.code !== 11000) throw err;
+
+            const conflictField = Object.keys(err.keyPattern || {}).find((key) => key !== 'vendorId') || '';
+            const conflictValue = err.keyValue ? err.keyValue[conflictField] : undefined;
+
+            if (conflictField === 'slug' && attempt < MAX_SLUG_RETRIES) {
+                product.slug = `${slugify(name)}-${crypto.randomBytes(3).toString('hex')}`;
+                continue;
+            }
+            if (conflictField === 'name') {
+                return common.returnResult(false, 409, `A product named "${name}" already exists.`);
+            }
+            if (conflictField === 'variants.sizes.sku') {
+                return common.returnResult(false, 409, `SKU "${conflictValue}" already exists.`);
+            }
+            if (conflictField === 'variants.sizes.barcode') {
+                return common.returnResult(false, 409, `Barcode "${conflictValue}" already exists.`);
+            }
+            return common.returnResult(false, 409, 'A product or variant code was just taken by another request. Please try again.');
+        }
+    }
+};
+
 const createProduct = async (vendorId, userId, companyMasterData, websiteMasterData, companySettingsData, body, files) => {
     try {
         // --- plan limit: total products allowed -------------------------------
@@ -1035,45 +1128,63 @@ const createProduct = async (vendorId, userId, companyMasterData, websiteMasterD
             });
         }
 
-        // --- attach images, matched by variant+size array position --------
-        const groupedFiles = groupSizeFiles(files);
-        for (let v = 0; v < variants.length; v++) {
-            for (let s = 0; s < variants[v].sizes.length; s++) {
-                const sizeFiles = groupedFiles[v]?.[s];
-                if (!sizeFiles) continue;
+        // Everything from here on uploads images BEFORE the product exists, so
+        // every ImageAsset created by this request is tracked and removed again
+        // unless the product actually gets saved (any failure path, including a
+        // thrown error or a duplicate-key race, goes through the `finally`).
+        const uploadedImageIds = [];
+        let isSaved = false;
 
-                const imagesResult = await applySizeImages({
-                    vendorId, userId, sizeFiles,
-                    existingImage: null,
-                    existingAdditionalImages: [],
-                    companyMasterData, websiteMasterData
-                });
-                if (!imagesResult.isSuccess) {
-                    return common.returnResult(false, imagesResult.statusCode, imagesResult.message);
+        try {
+            // --- attach images, matched by variant+size array position --------
+            const groupedFiles = groupSizeFiles(files);
+            for (let v = 0; v < variants.length; v++) {
+                for (let s = 0; s < variants[v].sizes.length; s++) {
+                    const sizeFiles = groupedFiles[v]?.[s];
+                    if (!sizeFiles) continue;
+
+                    const imagesResult = await applySizeImages({
+                        vendorId, userId, sizeFiles,
+                        existingImage: null,
+                        existingAdditionalImages: [],
+                        companyMasterData, websiteMasterData
+                    });
+                    if (!imagesResult.isSuccess) {
+                        return common.returnResult(false, imagesResult.statusCode, imagesResult.message);
+                    }
+                    uploadedImageIds.push(...(imagesResult.meta.createdImageIds || []));
+                    if (imagesResult.meta.image) variants[v].sizes[s].image = imagesResult.meta.image;
+                    if (imagesResult.meta.additionalImages) variants[v].sizes[s].additionalImages = imagesResult.meta.additionalImages;
                 }
-                if (imagesResult.meta.image) variants[v].sizes[s].image = imagesResult.meta.image;
-                if (imagesResult.meta.additionalImages) variants[v].sizes[s].additionalImages = imagesResult.meta.additionalImages;
+            }
+
+            const product = new Product({
+                ...body,
+                mainCategory: categoryResult.meta.mainCategory,
+                subCategory: categoryResult.meta.subCategory,
+                productCode: productCodeResult.meta.productCode,
+                slug,
+                variants,
+                vendorId,
+                createdBy: userId,
+                status: 'A',
+                remarks: 'MANUAL'
+            });
+
+            const saveResult = await saveNewProduct(product, body.name);
+            if (!saveResult.isSuccess) {
+                return saveResult;
+            }
+            isSaved = true;
+
+            logger.logInfo(1, 0, 'Product created successfully', { vendorId, productId: product._id });
+
+            return common.returnResult(true, 201, 'Product created successfully', { product });
+        } finally {
+            if (!isSaved) {
+                await discardUploadedImages(uploadedImageIds, userId);
             }
         }
-
-        const product = new Product({
-            ...body,
-            mainCategory: categoryResult.meta.mainCategory,
-            subCategory: categoryResult.meta.subCategory,
-            productCode: productCodeResult.meta.productCode,
-            slug,
-            variants,
-            vendorId,
-            createdBy: userId,
-            status: 'A',
-            remarks: 'MANUAL'
-        });
-
-        await product.save();
-
-        logger.logInfo(1, 0, 'Product created successfully', { vendorId, productId: product._id });
-
-        return common.returnResult(true, 201, 'Product created successfully', { product });
     } catch (err) {
         throw err;
     }
@@ -1336,7 +1447,7 @@ const buildBrandMapForProducts = async (products) => {
 
 const fetchAllProductsForClient = async (vendorId, companySettingsData, locationCookies) => {
     try {
-        const shouldHide = companySettingsData.shouldProductsBeHiddenWhenLocationsAreExcluded;
+        const shouldHide = companySettingsData?.shouldProductsBeHiddenWhenLocationsAreExcluded;
         const locationContext = await buildLocationContext(locationCookies);
 
         const products = await common.getAll(Product, { status: 'A' }, vendorId);
@@ -1365,7 +1476,7 @@ const fetchProductsByBrandForClient = async (vendorId, brandId, companySettingsD
             return common.returnResult(false, 404, 'Brand not found.');
         }
 
-        const shouldHide = companySettingsData.shouldProductsBeHiddenWhenLocationsAreExcluded;
+        const shouldHide = companySettingsData?.shouldProductsBeHiddenWhenLocationsAreExcluded;
         const locationContext = await buildLocationContext(locationCookies);
 
         const products = await common.getAll(Product, { status: 'A', 'variants.sizes.brandId': brandId }, vendorId);
@@ -1400,7 +1511,7 @@ const fetchProductsByCategoryForClient = async (vendorId, categoryId, companySet
         const descendantIds = await categoryService.getActiveDescendantIds(vendorId, categoryDoc._id);
         const categoryIds = [categoryDoc._id, ...descendantIds];
 
-        const shouldHide = companySettingsData.shouldProductsBeHiddenWhenLocationsAreExcluded;
+        const shouldHide = companySettingsData?.shouldProductsBeHiddenWhenLocationsAreExcluded;
         const locationContext = await buildLocationContext(locationCookies);
 
         const products = await common.getAll(Product, {
@@ -1483,7 +1594,7 @@ const fetchProductByIdForClient = async (vendorId, productId, companySettingsDat
             return common.returnResult(false, 404, 'Product not found.');
         }
 
-        const shouldHide = companySettingsData.shouldProductsBeHiddenWhenLocationsAreExcluded;
+        const shouldHide = companySettingsData?.shouldProductsBeHiddenWhenLocationsAreExcluded;
         const locationContext = await buildLocationContext(locationCookies);
 
         const rawProduct = product.toObject();
@@ -3051,7 +3162,7 @@ const cloneOneProduct = async (vendorId, userId, sourceProduct, companySettingsD
                     // duplicated onto a clone. Vendor sets a new one
                     // manually afterward if needed.
                     barcode: undefined,
-                    stock: companySettingsData.isStockCloningAllowed ? size.stock : 0,
+                    stock: companySettingsData?.isStockCloningAllowed ? size.stock : 0,
                     status: size.status,
                     createdBy: userId,
                     updatedBy: undefined,

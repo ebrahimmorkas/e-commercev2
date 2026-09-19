@@ -131,7 +131,12 @@ const refreshToken = async (req, res) => {
 
         const { accessToken, refreshToken: newRefreshToken, user } = result.meta;
 
-        res.cookie('refreshToken', newRefreshToken, refreshTokenCookieOptions);
+        // newRefreshToken is null when this request didn't rotate (it lost a race against
+        // another refresh with the same cookie) - the browser's cookie must then be left
+        // alone, since the winning response is the one that carries the valid replacement.
+        if (newRefreshToken) {
+            res.cookie('refreshToken', newRefreshToken, refreshTokenCookieOptions);
+        }
 
         logInfo(1, 0, result.message, {});
         return sendSuccess(res, result.statusCode, result.message, { accessToken, user });

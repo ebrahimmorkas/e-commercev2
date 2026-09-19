@@ -7,6 +7,7 @@ import { ToastProvider } from './components/common/Toast'
 import AdminAuthProvider from './admin/features/login/context/AuthProvider'
 import ClientAuthProvider from './client/features/auth/context/AuthProvider'
 import RealtimeProvider from './admin/realtime/RealtimeProvider'
+import ClientRealtimeProvider from './client/realtime/ClientRealtimeProvider'
 
 // No router yet - the admin panel lives behind /admin, everything else is
 // the client-facing storefront demo. Each side owns its own AuthProvider
@@ -23,7 +24,9 @@ const Root = () =>
     </AdminAuthProvider>
   ) : (
     <ClientAuthProvider>
-      <ClientApp />
+      <ClientRealtimeProvider>
+        <ClientApp />
+      </ClientRealtimeProvider>
     </ClientAuthProvider>
   )
 

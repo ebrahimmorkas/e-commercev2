@@ -124,26 +124,47 @@ const loginUser = async ({ identifier, password }, deviceMeta, vendorId, guestCa
     }
 };
 
-// How long a just-rotated-away refresh token still works. Covers two
-// near-simultaneous refresh calls from the same browser sharing the same
-// (about-to-be-rotated) cookie - e.g. two rapid page reloads - without
-// meaningfully weakening replay protection for a genuinely stolen token.
-const REFRESH_REUSE_GRACE_MS = 10 * 1000;
+// Refresh tokens rotate (every successful refresh issues a new one), which
+// creates two ways for a browser to end up holding a token the server has
+// already rotated away from. Both are handled in refreshAccessToken, and both
+// rely on the rotation itself being ATOMIC (a compare-and-swap):
+//
+// 1. Concurrent refreshes with the same cookie (two tabs, a StrictMode double
+//    effect, rapid reloads). Only the request that wins the swap rotates and
+//    sets a cookie; the others get a fresh access token but NO new refresh
+//    token. Otherwise every request would mint its own token, the DB would
+//    keep whichever was saved last while the browser kept whichever response
+//    arrived last - and nothing forces those to be the same one.
+//    REFRESH_CONCURRENT_WINDOW_MS is how long after a rotation a request
+//    presenting the previous token is still treated as one of those racers.
+//
+// 2. A rotation whose response never reaches the browser (a page reload or
+//    tab close aborts the fetch, a network drop) - the server moved on, but
+//    the browser still holds the old token. The previous token therefore
+//    stays usable for REFRESH_LOST_RESPONSE_GRACE_MS, and presenting it after
+//    the concurrent window re-rotates so the browser is handed a working
+//    cookie. Cost: the token rotated away from stays valid for this long (or
+//    until the next rotation replaces it) instead of dying immediately - keep
+//    it short. It must comfortably exceed the access token lifetime (15m): a
+//    browser that got only an access token during the concurrent window still
+//    holds the old cookie, and needs it once that access token expires.
+const REFRESH_CONCURRENT_WINDOW_MS = 5 * 1000;
+const REFRESH_LOST_RESPONSE_GRACE_MS = 30 * 60 * 1000;
 
 /**
  * Refresh token rotation:
  * - Verify JWT signature/expiry of the incoming refresh token.
- * - Match its hash against the session stored in DB for that user.
- * - If matched -> rotate: issue new access + refresh tokens, update the SAME session doc
- *   (so it stays tied to that one device, and the old token becomes unusable immediately).
- * - If it instead matches the token this session most recently rotated away from, AND that
- *   happened within REFRESH_REUSE_GRACE_MS -> treat it as a same-browser race (see above) and
- *   rotate again rather than failing.
- * - If not matched at all (token reused outside the grace window/invalid/unknown) -> expected
+ * - Find the session by the token's hash - either as its current token, or as the token it
+ *   most recently rotated away from (still inside REFRESH_LOST_RESPONSE_GRACE_MS).
+ * - Rotate with one atomic findOneAndUpdate guarded on the state we just read, so of any
+ *   number of concurrent refreshes exactly one rotates. Losers - and anyone presenting the
+ *   previous token within REFRESH_CONCURRENT_WINDOW_MS of a rotation, whose new cookie is
+ *   already on its way - get an access token only (`refreshToken: null`): the cookie the
+ *   browser already has, or is about to receive, stays the one the DB knows.
+ * - Not matched at all (unknown token, or previous token past its grace) -> expected
  *   failure, force re-login.
  */
 const refreshAccessToken = async (incomingRefreshToken, deviceMeta) => {
-    let session = null;
     try {
         if (!incomingRefreshToken) {
             // return common.returnResult(false, 401, 'Refresh token is missing');
@@ -160,11 +181,12 @@ const refreshAccessToken = async (incomingRefreshToken, deviceMeta) => {
 
         const incomingHash = hashToken(incomingRefreshToken);
 
-        session = await RefreshToken.findOne({
+        let session = await RefreshToken.findOne({
             userId: decoded.userId,
             tokenHash: incomingHash,
             isValid: true
         });
+        const isCurrentToken = !!session;
 
         if (!session) {
             session = await RefreshToken.findOne({
@@ -190,17 +212,52 @@ const refreshAccessToken = async (incomingRefreshToken, deviceMeta) => {
             return common.returnResult(false, 401, 'User not found or inactive');
         }
 
-        const newRefreshToken = generateRefreshToken({ userId: user._id });
-        const newDecoded = verifyRefreshToken(newRefreshToken);
+        // A request presenting the PREVIOUS token right after a rotation is racing that
+        // rotation's own response: don't rotate again, or its cookie and ours would fight.
+        const isRacingRotation = !isCurrentToken
+            && session.rotatedAt
+            && (Date.now() - session.rotatedAt.getTime()) < REFRESH_CONCURRENT_WINDOW_MS;
 
-        session.previousTokenHash = session.tokenHash;
-        session.previousTokenExpiresAt = new Date(Date.now() + REFRESH_REUSE_GRACE_MS);
-        session.tokenHash = hashToken(newRefreshToken);
-        session.expiresAt = new Date(newDecoded.exp * 1000);
-        session.lastUsedAt = new Date();
-        session.userAgent = deviceMeta.userAgent;
-        session.ip = deviceMeta.ip;
-        await session.save();
+        let newRefreshToken = null;
+
+        if (!isRacingRotation) {
+            const candidateToken = generateRefreshToken({ userId: user._id });
+            const candidateDecoded = verifyRefreshToken(candidateToken);
+
+            // Guard = exactly the state we read above. If anything rotated in between, this
+            // matches nothing and we lose the race.
+            const guard = isCurrentToken
+                ? { _id: session._id, tokenHash: incomingHash, isValid: true }
+                : { _id: session._id, tokenHash: session.tokenHash, previousTokenHash: incomingHash, isValid: true };
+
+            const now = new Date();
+            const rotated = await RefreshToken.findOneAndUpdate(guard, {
+                $set: {
+                    tokenHash: hashToken(candidateToken),
+                    // Rotating away from the current token -> it becomes the previous one.
+                    // Re-rotating because the browser never adopted the last new token -> keep
+                    // the token it DOES hold as the previous one; the last new token was lost.
+                    previousTokenHash: isCurrentToken ? session.tokenHash : incomingHash,
+                    previousTokenExpiresAt: new Date(now.getTime() + REFRESH_LOST_RESPONSE_GRACE_MS),
+                    rotatedAt: now,
+                    expiresAt: new Date(candidateDecoded.exp * 1000),
+                    lastUsedAt: now,
+                    userAgent: deviceMeta.userAgent,
+                    ip: deviceMeta.ip
+                }
+            });
+
+            if (rotated) {
+                newRefreshToken = candidateToken;
+            } else {
+                // Lost the race (someone else rotated first) - or the session was just logged
+                // out. Only the former may proceed.
+                const stillThere = await RefreshToken.exists({ _id: session._id, isValid: true });
+                if (!stillThere) {
+                    return common.returnResult(false, 401, 'Session not found. Please login again');
+                }
+            }
+        }
 
         const newAccessToken = generateAccessToken({
             userId: user._id,
@@ -210,16 +267,14 @@ const refreshAccessToken = async (incomingRefreshToken, deviceMeta) => {
 
         return common.returnResult(true, 200, 'Session renewed successfully', {
             accessToken: newAccessToken,
+            // null when this request did not rotate - the controller must then leave the
+            // browser's cookie alone.
             refreshToken: newRefreshToken,
             user: { _id: user._id, name: user.name, username: user.username, email: user.email, role: user.role }
         });
     } catch (err) {
-        // Genuine exception (e.g. session.save() failed mid-rotation). We already trusted
-        // this session, so invalidate it defensively rather than leaving it in a half-rotated
-        // or ambiguous state, then rethrow for the controller to log/redirect.
-        if (session) {
-            await RefreshToken.deleteOne({ _id: session._id }).catch(() => {});
-        }
+        // Rotation is a single atomic update, so a failure here can never leave the session
+        // half-rotated - no need to invalidate it (a transient DB error must not log the user out).
         throw err;
     }
 };

@@ -25,16 +25,23 @@ const refreshTokenSchema = mongoose.Schema({
         default: true
     },
     // The tokenHash this session just rotated away from, kept valid for a
-    // short grace window after rotation (see REFRESH_REUSE_GRACE_MS in
-    // authService.js). Covers the case where the same browser fires two
-    // near-simultaneous refresh calls with the same (about-to-be-rotated)
-    // cookie - e.g. two rapid page reloads - so the loser of that race gets
-    // a valid renewed session instead of being logged out.
+    // grace window after rotation (see REFRESH_LOST_RESPONSE_GRACE_MS in
+    // authService.js). Covers a browser that fires near-simultaneous refresh
+    // calls with the same cookie, or never received a rotation's response
+    // (aborted fetch / reload) and still holds the old token - so it gets a
+    // valid renewed session instead of being logged out.
     previousTokenHash: {
         type: String,
         default: null
     },
     previousTokenExpiresAt: {
+        type: Date,
+        default: null
+    },
+    // When this session's token was last rotated. A request presenting the
+    // previous token within a few seconds of this is racing that rotation's
+    // own response and must not rotate again (see refreshAccessToken).
+    rotatedAt: {
         type: Date,
         default: null
     },

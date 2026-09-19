@@ -29,13 +29,30 @@ const authenticate = async (req, res, next) => {
     if (user.status === "I")
       return sendError(res, 403, "Your account has been deactivated. Please contact support.");
 
-    req.user = { _id: user._id, role: user.role, country: user.country, state: user.state, city: user.city };
+    // Tenant check: a token only works on the store its user belongs to.
+    // vendorDetection (mounted app-wide in server.js) has already resolved
+    // req.vendorId from the hostname, so without this an admin of store A
+    // could call store B's domain with A's token and act on B's data.
+    if (isForeignVendor(user, req))
+      return sendError(res, 403, "You do not have access to this store.");
+
+    req.user = { _id: user._id, role: user.role, vendorId: user.vendorId, country: user.country, state: user.state, city: user.city };
 
     next();
   } catch (error) {
     logException("Exception in authenticate middleware", error);
+    // Never leave the request hanging if something unexpected throws (e.g. a
+    // DB error while loading the user) - the caller would wait forever.
+    if (!res.headersSent) sendError(res, 500, "Something went wrong. Please try again.");
   }
 };
+
+// True only when both sides are known AND differ - a user record or request
+// without a vendorId (legacy data, or a route that runs before vendor
+// detection) is left to the rest of the middleware chain instead of being
+// locked out here.
+const isForeignVendor = (user, req) =>
+  !!user.vendorId && !!req.vendorId && user.vendorId.toString() !== req.vendorId.toString();
 
 // Guest-tolerant variant, for routes that must serve BOTH logged-in users
 // and anonymous visitors (e.g. cart). If a valid token is present, behaves
@@ -77,7 +94,13 @@ authenticate.optional = async (req, res, next) => {
       return next();
     }
 
-    req.user = { _id: user._id, role: user.role, country: user.country, state: user.state, city: user.city };
+    // A token from another store is simply not this store's user - treat the
+    // request as a guest (same as an unknown token) rather than failing it.
+    if (isForeignVendor(user, req)) {
+      return next();
+    }
+
+    req.user = { _id: user._id, role: user.role, vendorId: user.vendorId, country: user.country, state: user.state, city: user.city };
 
     next();
   } catch (error) {

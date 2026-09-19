@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import theme from './theme/theme';
 import { SearchIcon, CartIcon, UserIcon, LogoutIcon, ChevronDownIcon, OrdersIcon } from './icons';
+import { useStorefrontCompanySettings } from '../../../features/companySettings/hooks/useStorefrontCompanySettings';
 
 const getInitials = (label) => {
   if (!label) return 'U';
@@ -162,12 +163,16 @@ const Header = ({
   onOrdersClick,
   homeHref = '/',
 }) => {
+  const { companySettings } = useStorefrontCompanySettings();
+  const logoSrc = companySettings?.companyLogo?.url;
+  const logoAlt = companySettings?.companyName ;
+
   return (
     <header className={`sticky top-0 z-40 border-b ${theme.header.background} ${theme.header.border} ${theme.header.shadow}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
         <div className="flex items-center gap-4">
           <a href={homeHref} className="shrink-0 flex items-center">
-            <img src={theme.logo.src} alt={theme.logo.alt} className={theme.logo.className} />
+            <img src={logoSrc} alt={logoAlt} className={theme.logo.className} />
           </a>
 
           <SearchBar onSearch={onSearch} className="hidden sm:flex flex-1" />

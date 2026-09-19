@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getOrderByIdAdmin, getOrderStepOptions, advanceOrderStep, assignDeliveryAgent } from '../api/orderAdminApi';
 import { useToast } from '../../../../components/common/Toast';
+import { useRealtime } from '../../../realtime/useRealtime';
+import { REALTIME_RECONNECTED } from '../../../../utils/socketClient';
+
+// Must match backend's constants/orderRealtimeConstants.js.
+const ORDERS_MODULE = 'ORDERS';
 
 /**
  * Owns a single order's detail state plus the two admin mutations
  * (advance step, assign delivery agent), each surfacing errors via toast
- * and returning a boolean so callers can just check the result.
+ * and returning a boolean so callers can just check the result. Also keeps
+ * the open order live: a push for this same order (customer cancelled,
+ * payment landed, another admin advanced it) re-fetches it in place.
  */
 export const useOrderAdmin = (orderId) => {
   const [order, setOrder] = useState(null);
@@ -44,6 +51,20 @@ export const useOrderAdmin = (orderId) => {
     setOrder(orderData?.order || null);
     setStepOptions(stepsData?.steps || []);
   }, [orderId]);
+
+  const { subscribe } = useRealtime();
+
+  useEffect(() => {
+    if (!orderId) return undefined;
+
+    return subscribe(ORDERS_MODULE, ({ type, data }) => {
+      if (type !== REALTIME_RECONNECTED && data?.orderId !== orderId) return;
+      // Best-effort: a failed background refresh just leaves the current
+      // view as-is rather than surfacing an error for something the admin
+      // didn't ask for.
+      refreshOrderSilently().catch(() => {});
+    });
+  }, [subscribe, orderId, refreshOrderSilently]);
 
   const advanceStep = async (targetStepCode, remarks) => {
     setMutating(true);
