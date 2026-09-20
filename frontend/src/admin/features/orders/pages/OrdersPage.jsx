@@ -7,6 +7,7 @@ import Button from '../../../../components/common/Buttons';
 import { useOrdersAdmin } from '../hooks/useOrdersAdmin';
 import { useRealtime } from '../../../realtime/useRealtime';
 import LiveIndicator from '../../../realtime/LiveIndicator';
+import { CONNECTION_STATUS } from '../../../../utils/socketClient';
 import OrderDetailModal from '../components/OrderDetailModal';
 import { formatOrderMoney, formatOrderDateTime, stepBadgeVariant, orderSourceLabel, orderSourceVariant } from '../utils/formatOrder';
 import theme from '../theme/theme';
@@ -23,8 +24,13 @@ import theme from '../theme/theme';
  */
 const OrdersPage = () => {
   const { orders, loading, error, refetch } = useOrdersAdmin();
-  const { reconnect } = useRealtime();
+  const { status, reconnect } = useRealtime();
   const [selectedOrderId, setSelectedOrderId] = useState(null);
+
+  // While the live connection is up the list keeps itself current, so a manual Refresh is only offered when
+  // it can actually help: the connection is down/reconnecting (the list may be stale), or the last load
+  // failed (Refresh doubles as the retry - hiding it then would leave no way to try again).
+  const showRefresh = status !== CONNECTION_STATUS.CONNECTED || !!error;
 
   // Refetch first, THEN reconnect: the fetch is what refreshes an expired
   // access token, and the socket's handshake reads that token. (No-op unless
@@ -86,9 +92,11 @@ const OrdersPage = () => {
         headerActions={
           <div className="flex items-center gap-3">
             <LiveIndicator />
-            <Button variant={theme.button.secondary} onClick={handleRefresh}>
-              Refresh
-            </Button>
+            {showRefresh && (
+              <Button variant={theme.button.secondary} onClick={handleRefresh}>
+                Refresh
+              </Button>
+            )}
           </div>
         }
       >
