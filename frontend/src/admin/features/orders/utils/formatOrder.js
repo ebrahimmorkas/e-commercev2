@@ -41,6 +41,15 @@ export const formatOrderMoney = (order, amount) => {
   return order?.currencySymbolPosition === 'SUFFIX' ? `${value}${symbol}` : `${symbol}${value}`;
 };
 
+// Shipping row text for a placed order. Orders placed from the storefront
+// carry a shippingPriceBreakdown (see backend Order model); admin-placed ones
+// don't (their shipping is typed in manually), so those just show the amount.
+export const formatOrderShipping = (order) => {
+  if (order?.shippingPriceBreakdown?.isShippingPending) return 'To be confirmed';
+  if (order?.shippingPriceBreakdown && !order.shippingAmount) return 'Free';
+  return formatOrderMoney(order, order?.shippingAmount);
+};
+
 export const formatOrderDateTime = (dateValue) => {
   if (!dateValue) return '—';
   return new Date(dateValue).toLocaleString('en-IN', {

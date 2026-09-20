@@ -29,6 +29,10 @@ const removeCartItemSchema = Joi.object({
     sizeId: objectId().required().label('Size ID')
 });
 
+const shippingEstimateQuerySchema = Joi.object({
+    addressId: objectId().label('Address ID')
+});
+
 const applyDiscountsSchema = Joi.object({
     discountIds: Joi.array().items(objectId()).default([]).label('Discount IDs'),
     couponCode: Joi.string().trim().uppercase().allow('', null).label('Coupon code')
@@ -50,5 +54,6 @@ module.exports = {
     updateCartItemSchema,
     removeCartItemSchema,
     applyDiscountsSchema,
-    applyFreeCashSchema
+    applyFreeCashSchema,
+    shippingEstimateQuerySchema
 };

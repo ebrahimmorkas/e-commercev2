@@ -14,6 +14,7 @@ import PaymentBankSection from '../components/PaymentBankSection';
 import EmailSection from '../components/EmailSection';
 import FreeCashSection from '../components/FreeCashSection';
 import AbandonedCartSection from '../components/AbandonedCartSection';
+import ShippingSection from '../components/ShippingSection';
 import theme from '../theme/theme';
 
 /**
@@ -63,6 +64,10 @@ const CompanySettingsPage = () => {
     { key: 'email', label: 'Email', content: <EmailSection {...sectionProps} /> },
     { key: 'freeCash', label: 'Free Cash', content: <FreeCashSection {...sectionProps} /> },
     { key: 'abandonedCart', label: 'Abandoned Cart', content: <AbandonedCartSection {...sectionProps} /> },
+    // Hidden entirely unless the platform has enabled shipping pricing for this vendor.
+    ...(companyMaster?.isShippingPriceFeatureOn
+      ? [{ key: 'shipping', label: 'Shipping', content: <ShippingSection companyMaster={companyMaster} /> }]
+      : []),
   ];
 
   if (loading) {

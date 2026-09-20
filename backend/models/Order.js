@@ -368,6 +368,22 @@ const orderSchema = new mongoose.Schema(
             default: 0
         },
 
+        // How shippingAmount was arrived at, snapshotted at order time so a
+        // later change to the vendor's shipping settings never rewrites how a
+        // past order was priced. Null for orders that predate this field and
+        // for admin-placed orders (their shipping is typed in manually).
+        // isShippingPending: the vendor's method is CUSTOM (manual), so
+        // shippingAmount is 0 until it's entered at order confirmation.
+        shippingPriceBreakdown: {
+            type: new mongoose.Schema({
+                method: { type: String, default: null },
+                customAmount: { type: Number, min: 0, default: 0 },
+                companyAmount: { type: Number, min: 0, default: 0 },
+                isShippingPending: { type: Boolean, default: false }
+            }, { _id: false }),
+            default: null
+        },
+
         additionalCharges: {
             type: Number,
             min: 0,

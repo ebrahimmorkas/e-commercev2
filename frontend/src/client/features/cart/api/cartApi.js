@@ -32,6 +32,15 @@ export const removeCartItem = ({ productId, variantId, sizeId }) =>
     body: { productId, variantId, sizeId },
   });
 
+/**
+ * Shipping estimate for the current cart. Without an addressId the backend
+ * uses the logged-in user's default address, then the browsing-location
+ * cookies; with one (checkout) it prices against that saved address.
+ * `enabled: false` means shipping isn't switched on for this store - show nothing.
+ */
+export const getShippingEstimate = (addressId) =>
+  apiRequest(`/cart/shipping-estimate${addressId ? `?addressId=${encodeURIComponent(addressId)}` : ''}`);
+
 export const checkoutCart = () => apiRequest('/cart/checkout-cart', { method: 'POST' });
 
 export default {
@@ -40,4 +49,5 @@ export default {
   updateCartItem,
   removeCartItem,
   checkoutCart,
+  getShippingEstimate,
 };

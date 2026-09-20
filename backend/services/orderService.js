@@ -239,7 +239,7 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
             return common.returnResult(false, checkoutResult.statusCode, checkoutResult.message);
         }
 
-        const { cart, eligibleLineItems, eligibleSubtotal, shippingAmount, grandTotal, ineligibleItems } = checkoutResult.meta;
+        const { cart, eligibleLineItems, eligibleSubtotal, shippingAmount, shippingBreakdown, grandTotal, ineligibleItems } = checkoutResult.meta;
 
         const orderItems = eligibleLineItems.map((item) => ({
             productId: item.productId,
@@ -296,6 +296,12 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
             totalTaxAmount: cart.totalTaxAmount,
             totalFreeCashAmount: cart.totalFreeCashAmount,
             shippingAmount,
+            shippingPriceBreakdown: shippingBreakdown ? {
+                method: shippingBreakdown.method,
+                customAmount: shippingBreakdown.customAmount,
+                companyAmount: shippingBreakdown.companyAmount,
+                isShippingPending: shippingBreakdown.isShippingPending === true
+            } : null,
             additionalCharges: 0,
             grandTotal,
             currencyId: currency._id,

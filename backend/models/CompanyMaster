@@ -491,7 +491,7 @@ const companyMasterSchema = mongoose.Schema({
     // array = all methods allowed (same convention as allowedDiscountFeatureTypes).
     allowedShippingPriceMethods: {
         type: [String],
-        enum: ['FREE', 'FIXED', 'CATEGORY', 'COUNTRY', 'STATE', 'CITY', 'ZIP', 'WEIGHT', 'FREE_ABOVE'],
+        enum: ['FREE', 'FIXED', 'CATEGORY', 'COUNTRY', 'STATE', 'CITY', 'ZIP', 'WEIGHT', 'FREE_ABOVE', 'CUSTOM'],
         default: []
     },
     // End of Shipping Price

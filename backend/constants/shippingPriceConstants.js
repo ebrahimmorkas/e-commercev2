@@ -13,7 +13,10 @@ const SHIPPING_PRICE_METHODS = {
     CITY: 'CITY',
     ZIP: 'ZIP',
     WEIGHT: 'WEIGHT',
-    FREE_ABOVE: 'FREE_ABOVE'
+    FREE_ABOVE: 'FREE_ABOVE',
+    // Shipping price is entered manually by the vendor/admin when the order is
+    // confirmed - nothing is calculated automatically for it.
+    CUSTOM: 'CUSTOM'
 };
 
 const VALID_SHIPPING_PRICE_METHODS = Object.values(SHIPPING_PRICE_METHODS);

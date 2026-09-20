@@ -1,4 +1,5 @@
 const cartService = require('../services/cartService');
+const shippingEstimateService = require('../services/shippingEstimateService');
 const logger = require('../utils/logger.js');
 const common = require('../utils/common');
 
@@ -167,6 +168,36 @@ const getEligibleFreeCash = async (req, res) => {
     }
 };
 
+const getShippingEstimate = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        // Only the browsing-location cookies here - for a logged-in user the
+        // service resolves the chosen/default saved address itself.
+        const cookieLocation = {
+            countryId: req.cookies?.Country || null,
+            stateId: req.cookies?.State || null,
+            cityId: req.cookies?.City || null,
+            zipCode: req.cookies?.zip_code || null
+        };
+        const result = await shippingEstimateService.getShippingEstimate({
+            vendorId,
+            cartOwner: req.cartOwner,
+            userId: req.user ? req.user._id : null,
+            addressId: req.query.addressId || null,
+            cookieLocation,
+            companyMasterData: req.companyMasterData,
+            websiteMasterData: req.websiteMasterData,
+            shippingPriceSettingsData: req.shippingPriceSettingsData
+        });
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('cartController: getShippingEstimate - Exception while estimating shipping', { vendorId, error });
+    }
+};
+
 const checkoutCart = async (req, res) => {
     const vendorId = req.vendorId;
     try {
@@ -193,6 +224,7 @@ const checkoutCart = async (req, res) => {
 };
 
 module.exports = {
+    getShippingEstimate,
     addToCart,
     updateCartItem,
     removeCartItem,

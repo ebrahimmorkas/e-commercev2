@@ -8,7 +8,7 @@ import OrderStatusTimeline from './OrderStatusTimeline';
 import OrderItems from './OrderItems';
 import AdvanceStepForm from './AdvanceStepForm';
 import AssignDeliveryAgentForm from './AssignDeliveryAgentForm';
-import { formatOrderMoney, formatOrderDateTime, stepBadgeVariant, isOrderLocked, orderSourceLabel, orderSourceVariant } from '../utils/formatOrder';
+import { formatOrderMoney, formatOrderShipping, formatOrderDateTime, stepBadgeVariant, isOrderLocked, orderSourceLabel, orderSourceVariant } from '../utils/formatOrder';
 import theme from '../theme/theme';
 
 const SummaryRow = ({ label, value, bold = false }) => (
@@ -158,7 +158,7 @@ const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
               <SummaryRow label="Free cash used" value={`- ${formatOrderMoney(order, order.totalFreeCashAmount)}`} />
             )}
             <SummaryRow label="Tax" value={formatOrderMoney(order, order.totalTaxAmount)} />
-            <SummaryRow label="Shipping" value={formatOrderMoney(order, order.shippingAmount)} />
+            <SummaryRow label="Shipping" value={formatOrderShipping(order)} />
             {order.additionalCharges > 0 && (
               <SummaryRow label="Additional charges" value={formatOrderMoney(order, order.additionalCharges)} />
             )}

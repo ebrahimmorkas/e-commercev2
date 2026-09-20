@@ -7,7 +7,7 @@ import { useToast } from '../../../../components/common/Toast';
 import { useOrder } from '../hooks/useOrder';
 import OrderStatusTimeline from '../components/OrderStatusTimeline';
 import OrderItems from '../components/OrderItems';
-import { formatOrderMoney, formatOrderDate, isOrderCancellable } from '../utils/formatOrder';
+import { formatOrderMoney, formatOrderShipping, formatOrderDate, isOrderCancellable } from '../utils/formatOrder';
 
 const SummaryRow = ({ label, value, bold = false }) => (
   <div className={`flex justify-between text-sm ${bold ? 'font-bold text-slate-900' : 'text-slate-600'}`}>
@@ -142,7 +142,7 @@ const OrderDetailPage = ({ orderId, onBack, onGoHome }) => {
               <SummaryRow label="Free cash used" value={`- ${formatOrderMoney(order, order.totalFreeCashAmount)}`} />
             )}
             <SummaryRow label="Tax" value={formatOrderMoney(order, order.totalTaxAmount)} />
-            <SummaryRow label="Shipping" value={formatOrderMoney(order, order.shippingAmount)} />
+            <SummaryRow label="Shipping" value={formatOrderShipping(order)} />
             {order.additionalCharges > 0 && (
               <SummaryRow label="Additional charges" value={formatOrderMoney(order, order.additionalCharges)} />
             )}
