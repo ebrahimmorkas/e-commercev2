@@ -3,6 +3,7 @@ const { parseExcelBuffer } = require('../utils/excelParser');
 const { extractZipEntries } = require('../utils/zipExtractor');
 const { processExcelRows } = require('../utils/excelRowProcessor');
 const Category = require('../models/Category');
+const Product = require('../models/Product');
 const logger = require('../utils/logger');
 const redisService = require('./redisService');
 const redisKeys = require('../utils/redisKeys');
@@ -387,6 +388,41 @@ const updateCategory = async (vendorId, userId, categoryId, data, file, websiteM
     }
 };
 
+/**
+ * Which of the given categories are referenced by a LIVE product, and by how many. A product references
+ * a category through mainCategory or subCategory (a product filed 3 levels deep stores the top level
+ * and the deepest one). "Live" = Active or Inactive: an inactive product still exists and still points
+ * at its category, only a soft-deleted ('D') one has let go of it.
+ */
+const findProductUsage = async (vendorId, categoryIds) => {
+    const filter = {
+        vendorId,
+        status: { $ne: 'D' },
+        $or: [{ mainCategory: { $in: categoryIds } }, { subCategory: { $in: categoryIds } }]
+    };
+
+    const count = await Product.countDocuments(filter);
+    if (count === 0) return { count: 0, productNames: [], usedCategoryNames: [] };
+
+    const [sample, usedAsMain, usedAsSub] = await Promise.all([
+        Product.find(filter, 'name').sort({ name: 1 }).limit(3).lean(),
+        Product.distinct('mainCategory', filter),
+        Product.distinct('subCategory', filter)
+    ]);
+
+    // distinct() also returns each matched product's OTHER category (which may sit outside the subtree
+    // being deleted), so narrow it back down to the categories that are actually in the way.
+    const inSubtree = new Set(categoryIds.map(String));
+    const usedIds = [...new Set([...usedAsMain, ...usedAsSub].filter(Boolean).map(String))].filter((id) => inSubtree.has(id));
+    const usedCategories = await Category.find({ _id: { $in: usedIds } }, 'categoryName').lean();
+
+    return {
+        count,
+        productNames: sample.map((p) => p.name),
+        usedCategoryNames: usedCategories.map((c) => c.categoryName)
+    };
+};
+
 const softDeleteCategory = async (vendorId, userId, categoryId) => {
     try {
         const category = await Category.findOne({ _id: categoryId, vendorId, status: { $ne: 'D' } });
@@ -394,6 +430,19 @@ const softDeleteCategory = async (vendorId, userId, categoryId) => {
 
         const descendantIds = await getDescendantIds(vendorId, categoryId);
         const allIds = [categoryId, ...descendantIds];
+
+        // Deleting a category deletes its whole subtree, so a product filed under ANY category in that
+        // subtree blocks it - e.g. one filed under "Rectangle M" also blocks deleting "Rectangle" and
+        // "Crystal". Checked before anything is touched, so a refusal changes nothing.
+        const usage = await findProductUsage(vendorId, allIds);
+        if (usage.count > 0) {
+            const usedNames = usage.usedCategoryNames.map((name) => `"${name}"`).join(', ');
+            const shownProducts = usage.productNames.join(', ') + (usage.count > usage.productNames.length ? `, and ${usage.count - usage.productNames.length} more` : '');
+            return common.returnResult(
+                false, 409,
+                `Cannot delete "${category.categoryName}": ${usedNames} ${usage.usedCategoryNames.length === 1 ? 'is' : 'are'} used by ${usage.count} product${usage.count === 1 ? '' : 's'} (${shownProducts}). Move or delete ${usage.count === 1 ? 'that product' : 'those products'} first.`
+            );
+        }
 
         const categoriesWithImages = await Category.find(
             { _id: { $in: allIds }, 'image.imageAssetId': { $ne: null } },

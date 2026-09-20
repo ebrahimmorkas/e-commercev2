@@ -73,7 +73,9 @@ export const useCategories = () => {
       await fetchCategories();
       return true;
     } catch (err) {
-      toast.error(err.message || 'Failed to delete category');
+      // A category that products still use comes back as a 409 whose message names the category and the
+      // products - long enough that it needs more than the default 4 seconds to read.
+      toast.error(err.message || 'Failed to delete category', { duration: 9000 });
       return false;
     } finally {
       setMutating(false);
@@ -110,15 +112,26 @@ export const useCategories = () => {
   // --- Bulk multi-select actions (checkbox selection) ------------------------
   // Distinct from runBulkUpload above (an Excel import of NEW categories) -
   // these act on already-selected, already-existing categories.
+  // The backend reports why each failed category was refused (e.g. a delete blocked because products
+  // still use it) - surfaced here so the admin isn't left guessing what "could not be processed" means.
+  const describeFailureReasons = (data) => {
+    const reasons = [...new Set((data?.results || []).filter((r) => !r.isSuccess).map((r) => r.message).filter(Boolean))];
+    if (reasons.length === 0) return '';
+    return ` ${reasons.slice(0, 2).join(' ')}${reasons.length > 2 ? ` (+${reasons.length - 2} more)` : ''}`;
+  };
+
   const describeBulkOutcome = (data, pastTenseVerb) => {
     const successCount = data?.successCount ?? 0;
     const failureCount = data?.failureCount ?? 0;
+    const reasons = describeFailureReasons(data);
+    // A reason is a sentence to read, not a label to glance at - keep the toast up longer when there is one.
+    const withReasons = reasons ? { duration: 9000 } : undefined;
     if (failureCount === 0) {
       toast.success(`${successCount} categor${successCount === 1 ? 'y' : 'ies'} ${pastTenseVerb}`);
     } else if (successCount === 0) {
-      toast.error(`Could not ${pastTenseVerb === 'deleted' ? 'delete' : 'update'} the selected categories`);
+      toast.error(`Could not ${pastTenseVerb === 'deleted' ? 'delete' : 'update'} the selected categories.${reasons}`, withReasons);
     } else {
-      toast.warning(`${successCount} categor${successCount === 1 ? 'y' : 'ies'} ${pastTenseVerb}, ${failureCount} could not be processed`);
+      toast.warning(`${successCount} categor${successCount === 1 ? 'y' : 'ies'} ${pastTenseVerb}, ${failureCount} could not be processed.${reasons}`, withReasons);
     }
   };
 
