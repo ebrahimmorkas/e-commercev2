@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getOrderByIdAdmin, getOrderStepOptions, advanceOrderStep, assignDeliveryAgent } from '../api/orderAdminApi';
+import { getOrderByIdAdmin, getOrderStepOptions, advanceOrderStep, assignDeliveryAgent, setOrderShippingPrice, updateOrderShippingPrice, getOrderUserAddresses, updateOrderShippingAddress, addProductsToOrder } from '../api/orderAdminApi';
 import { useToast } from '../../../../components/common/Toast';
 import { useRealtime } from '../../../realtime/useRealtime';
 import { REALTIME_RECONNECTED } from '../../../../utils/socketClient';
@@ -17,6 +17,10 @@ const ORDERS_MODULE = 'ORDERS';
 export const useOrderAdmin = (orderId) => {
   const [order, setOrder] = useState(null);
   const [stepOptions, setStepOptions] = useState([]);
+  // Server-computed: both the platform and vendor "edit shipping price" gates are on.
+  const [canEditShippingPrice, setCanEditShippingPrice] = useState(false);
+  const [canEditShippingAddress, setCanEditShippingAddress] = useState(false);
+  const [canEditOrder, setCanEditOrder] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [mutating, setMutating] = useState(false);
@@ -29,6 +33,15 @@ export const useOrderAdmin = (orderId) => {
     try {
       const [orderData, stepsData] = await Promise.all([getOrderByIdAdmin(orderId), getOrderStepOptions(orderId)]);
       setOrder(orderData?.order || null);
+    setCanEditShippingPrice(orderData?.canEditShippingPrice === true);
+    setCanEditShippingAddress(orderData?.canEditShippingAddress === true);
+    setCanEditOrder(orderData?.canEditOrder === true);
+      setCanEditShippingPrice(orderData?.canEditShippingPrice === true);
+    setCanEditShippingAddress(orderData?.canEditShippingAddress === true);
+    setCanEditOrder(orderData?.canEditOrder === true);
+      setCanEditShippingAddress(orderData?.canEditShippingAddress === true);
+    setCanEditOrder(orderData?.canEditOrder === true);
+      setCanEditOrder(orderData?.canEditOrder === true);
       setStepOptions(stepsData?.steps || []);
     } catch (err) {
       setError(err.message || 'Failed to load order');
@@ -49,6 +62,9 @@ export const useOrderAdmin = (orderId) => {
   const refreshOrderSilently = useCallback(async () => {
     const [orderData, stepsData] = await Promise.all([getOrderByIdAdmin(orderId), getOrderStepOptions(orderId)]);
     setOrder(orderData?.order || null);
+    setCanEditShippingPrice(orderData?.canEditShippingPrice === true);
+    setCanEditShippingAddress(orderData?.canEditShippingAddress === true);
+    setCanEditOrder(orderData?.canEditOrder === true);
     setStepOptions(stepsData?.steps || []);
   }, [orderId]);
 
@@ -81,6 +97,72 @@ export const useOrderAdmin = (orderId) => {
     }
   };
 
+  const addShippingPrice = async (shippingAmount) => {
+    setMutating(true);
+    try {
+      await setOrderShippingPrice(orderId, shippingAmount);
+      await refreshOrderSilently();
+      toast.success('Shipping price added');
+      return true;
+    } catch (err) {
+      toast.error(err.message || 'Could not add shipping price');
+      return false;
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const editShippingPrice = async (shippingAmount) => {
+    setMutating(true);
+    try {
+      await updateOrderShippingPrice(orderId, shippingAmount);
+      await refreshOrderSilently();
+      toast.success('Shipping price updated');
+      return true;
+    } catch (err) {
+      toast.error(err.message || 'Could not update shipping price');
+      return false;
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  // Stable identity (only depends on orderId) so EditShippingAddressForm's load effect runs once.
+  const loadUserAddresses = useCallback(async () => {
+    const data = await getOrderUserAddresses(orderId);
+    return data?.addresses || [];
+  }, [orderId]);
+
+  const editShippingAddress = async (payload) => {
+    setMutating(true);
+    try {
+      await updateOrderShippingAddress(orderId, payload);
+      await refreshOrderSilently();
+      toast.success('Shipping address updated');
+      return true;
+    } catch (err) {
+      toast.error(err.message || 'Could not update shipping address');
+      return false;
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const addProducts = async (items) => {
+    setMutating(true);
+    try {
+      await addProductsToOrder(orderId, items);
+      await refreshOrderSilently();
+      toast.success('Products added to the order');
+      return true;
+    } catch (err) {
+      toast.error(err.message || 'Could not add products to the order');
+      return false;
+    } finally {
+      setMutating(false);
+    }
+  };
+
   const assignAgent = async (deliveryAgentUserId) => {
     setMutating(true);
     try {
@@ -96,7 +178,7 @@ export const useOrderAdmin = (orderId) => {
     }
   };
 
-  return { order, stepOptions, loading, error, mutating, refetch: fetchOrder, advanceStep, assignAgent };
+  return { order, stepOptions, loading, error, mutating, refetch: fetchOrder, advanceStep, assignAgent, addShippingPrice, editShippingPrice, canEditShippingPrice, canEditShippingAddress, loadUserAddresses, editShippingAddress, canEditOrder, addProducts };
 };
 
 export default useOrderAdmin;

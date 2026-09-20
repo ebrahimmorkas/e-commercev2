@@ -14,6 +14,7 @@ const createAddressSchema = Joi.object({
   pincode: Joi.string().trim().pattern(/^[0-9A-Za-z\- ]{3,10}$/).required().messages({
     "string.pattern.base": "pincode must be 3-10 characters (letters, numbers, spaces, or hyphens)",
   }),
+  isDefault: Joi.boolean().label("Default address"),
 });
 
 // At least one field required for an update; everything else optional.
@@ -29,6 +30,7 @@ const updateAddressSchema = Joi.object({
   pincode: Joi.string().trim().pattern(/^[0-9A-Za-z\- ]{3,10}$/).messages({
     "string.pattern.base": "pincode must be 3-10 characters (letters, numbers, spaces, or hyphens)",
   }),
+  isDefault: Joi.boolean().label("Default address"),
 })
   .min(1)
   .messages({ "object.min": "At least one field must be provided to update" });

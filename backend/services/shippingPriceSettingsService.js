@@ -21,8 +21,7 @@ const METHOD_FIELDS = [
     'stateRules', 'stateRestPrice',
     'cityRules', 'cityRestPrice',
     'zipRules', 'zipRestPrice',
-    'weightUnit', 'weightBrackets', 'weightRestPrice',
-    'freeAboveThreshold', 'freeAboveFallbackPrice'
+    'weightUnit', 'weightBrackets', 'weightRestPrice'
 ];
 
 // Assigning `undefined` to a Mongoose document path does NOT clear a
@@ -46,9 +45,7 @@ const METHOD_FIELD_EMPTY_VALUE = {
     zipRestPrice: null,
     weightUnit: null,
     weightBrackets: [],
-    weightRestPrice: null,
-    freeAboveThreshold: null,
-    freeAboveFallbackPrice: null
+    weightRestPrice: null
 };
 
 const invalidateShippingPriceSettingsCache = async (vendorId) => {
@@ -195,6 +192,8 @@ const createShippingPriceSettings = async (vendorId, userId, data, companyMaster
         for (const field of METHOD_FIELDS) {
             settingsData[field] = data[field] !== undefined ? data[field] : METHOD_FIELD_EMPTY_VALUE[field];
         }
+        // Not method-specific: applies on top of whichever method is chosen.
+        settingsData.freeAboveThreshold = data.freeAboveThreshold ?? null;
         settingsData.createdBy = { userID: userId, vendorID: vendorId };
         settingsData.updatedBy = { userID: userId, vendorID: vendorId };
 
@@ -229,6 +228,7 @@ const updateShippingPriceSettings = async (vendorId, userId, data, companyMaster
         for (const field of METHOD_FIELDS) {
             settings[field] = data[field] !== undefined ? data[field] : METHOD_FIELD_EMPTY_VALUE[field];
         }
+        settings.freeAboveThreshold = data.freeAboveThreshold ?? null;
         settings.updatedBy = { userID: userId, vendorID: vendorId };
 
         const updated = await settings.save();

@@ -39,6 +39,33 @@ const validateLocationHierarchy = async ({ country_id, state_id, city_id }) => {
 };
 
 /**
+ * Clears the default flag from every other address of this user+vendor, so
+ * the one being set as default is the only one. Called BEFORE saving the new
+ * default; the partial unique index on Address is the concurrency backstop.
+ */
+const clearOtherDefaults = async ({ userId, vendorId }, exceptAddressId = null) => {
+  try {
+    const filter = { userId, vendorId, isDefault: true };
+    if (exceptAddressId) filter._id = { $ne: exceptAddressId };
+    await Address.updateMany(filter, { $set: { isDefault: false, updatedBy: userId } });
+  } catch (err) {
+    throw err;
+  }
+};
+
+/**
+ * The address to pre-select / estimate shipping against: the user's default
+ * address, or null when they have no default (or no addresses at all).
+ */
+const getDefaultAddress = async ({ userId, vendorId }) => {
+  try {
+    return await Address.findOne({ userId, vendorId, isDefault: true, status: { $ne: "D" } });
+  } catch (err) {
+    throw err;
+  }
+};
+
+/**
  * Creates a new address for the logged-in user, under the current vendor.
  */
 const createAddress = async (payload, context) => {
@@ -53,8 +80,15 @@ const createAddress = async (payload, context) => {
     const hierarchyError = await validateLocationHierarchy({ country_id, state_id, city_id });
     if (!hierarchyError.isSuccess) return hierarchyError;
 
+    // A user's first address is always their default; after that it's only
+    // the default when they explicitly ask for it.
+    const existingCount = await Address.countDocuments({ userId, vendorId, status: { $ne: "D" } });
+    const isDefault = existingCount === 0 ? true : payload.isDefault === true;
+    if (isDefault) await clearOtherDefaults({ userId, vendorId });
+
     const address = await Address.create({
       ...payload,
+      isDefault,
       userId: userId,
       vendorId: vendorId,
       createdBy: userId,
@@ -79,7 +113,7 @@ const listAddresses = async ({ userId, vendorId }) => {
       .populate("country_id", "country_name")
       .populate("state_id", "state_name")
       .populate("city_id", "city_name")
-      .sort({ createdAt: -1 });
+      .sort({ isDefault: -1, createdAt: -1 });
 
     return common.returnResult(true, 200, `${addresses.length} addresses found`, { addresses });
   } catch (err) {
@@ -147,6 +181,13 @@ const updateAddress = async (addressId, payload, context) => {
       if (!hierarchyError.isSuccess) return hierarchyError;
     }
 
+    if (payload.isDefault === false && address.isDefault) {
+      return common.returnResult(false, 400, "A default address is required. Mark another address as default instead.");
+    }
+    if (payload.isDefault === true && !address.isDefault) {
+      await clearOtherDefaults({ userId, vendorId }, address._id);
+    }
+
     Object.assign(address, payload, { updatedBy: userId });
     await address.save();
 
@@ -173,9 +214,21 @@ const deleteAddress = async (addressId, { userId, vendorId }) => {
       return common.returnResult(false, 404, "Address not found");
     }
 
+    const wasDefault = address.isDefault;
     address.status = "D";
+    address.isDefault = false;
     address.deletedBy = userId;
     await address.save();
+
+    // Never leave a user with addresses but no default - promote the most
+    // recently added remaining one.
+    if (wasDefault) {
+      await Address.findOneAndUpdate(
+        { userId, vendorId, status: "A" },
+        { $set: { isDefault: true, updatedBy: userId } },
+        { sort: { createdAt: -1 } }
+      );
+    }
 
     return common.returnResult(true, 200, `Address Deleted Successfully`);
   } catch (err) {
@@ -185,6 +238,7 @@ const deleteAddress = async (addressId, { userId, vendorId }) => {
 
 module.exports = {
   createAddress,
+  getDefaultAddress,
   listAddresses,
   getAddressById,
   updateAddress,

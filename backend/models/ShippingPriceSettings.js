@@ -200,14 +200,11 @@ const shippingPriceSettingsSchema = new mongoose.Schema({
         default: null
     },
 
-    // FREE_ABOVE
+    // Free-shipping-above: NOT a method - it applies on top of whichever
+    // method is chosen. An order whose subtotal is at or above this ships
+    // free; below it, the chosen method's price applies. null = no free-
+    // shipping threshold. (Only honoured while the shipping price feature is on.)
     freeAboveThreshold: {
-        type: Number,
-        min: 0,
-        default: null
-    },
-    // Charged when the cart subtotal is below freeAboveThreshold.
-    freeAboveFallbackPrice: {
         type: Number,
         min: 0,
         default: null

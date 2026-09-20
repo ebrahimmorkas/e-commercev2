@@ -14,6 +14,7 @@ const emailService = require('./emailService');
 const emailTemplateMasterService = require('./emailTemplateMasterService');
 const commissionService = require('./commissionService');
 const adminPlaceOrderService = require('./adminPlaceOrderService');
+const addressService = require('./addressService');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
 const {
@@ -239,7 +240,16 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
             return common.returnResult(false, checkoutResult.statusCode, checkoutResult.message);
         }
 
-        const { cart, eligibleLineItems, eligibleSubtotal, shippingAmount, grandTotal, ineligibleItems } = checkoutResult.meta;
+        const { cart, eligibleLineItems, eligibleSubtotal, shippingBreakdown, ineligibleItems } = checkoutResult.meta;
+
+        // Manual (CUSTOM) shipping: the admin enters the price after the order
+        // is placed, so shipping stays null and the total excludes it (including
+        // any per-product custom charge checkout added) until then.
+        const isShippingPending = shippingBreakdown?.isShippingPending === true;
+        const shippingAmount = isShippingPending ? null : checkoutResult.meta.shippingAmount;
+        const grandTotal = isShippingPending
+            ? Math.round((checkoutResult.meta.grandTotal - checkoutResult.meta.shippingAmount) * 100) / 100
+            : checkoutResult.meta.grandTotal;
 
         const orderItems = eligibleLineItems.map((item) => ({
             productId: item.productId,
@@ -296,6 +306,13 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
             totalTaxAmount: cart.totalTaxAmount,
             totalFreeCashAmount: cart.totalFreeCashAmount,
             shippingAmount,
+            shippingPriceBreakdown: shippingBreakdown ? {
+                method: shippingBreakdown.method,
+                customAmount: shippingBreakdown.customAmount,
+                companyAmount: shippingBreakdown.companyAmount,
+                isShippingPending,
+                isFreeAboveApplied: shippingBreakdown.isFreeAboveApplied === true
+            } : null,
             additionalCharges: 0,
             grandTotal,
             currencyId: currency._id,
@@ -350,6 +367,10 @@ const restoreStockForCancelledOrder = async (order) => {
             return;
         }
         await cartService.restoreStockForOrder(order.cartId);
+        // Products added by an admin after placement (Edit Order) aren't on the
+        // cart; they carry their own stockDeductedQuantity. Cart-based items
+        // have none (null), so this only gives back the added ones.
+        await adminPlaceOrderService.restoreStockForAdminOrder(order);
     } catch (err) {
         throw err;
     }
@@ -523,6 +544,206 @@ const advanceOrderStep = async (vendorId, adminUserId, orderId, targetStepCode, 
 
         logger.logInfo(1, 0, 'Order step advanced', { vendorId, orderId, targetStepCode });
         return common.returnResult(true, 200, 'Order status updated successfully', { order });
+    } catch (err) {
+        throw err;
+    }
+};
+
+/*
+|--------------------------------------------------------------------------
+| MANUAL SHIPPING PRICE
+|--------------------------------------------------------------------------
+| For orders placed while the vendor's shipping method is CUSTOM: the admin
+| enters the shipping price once, which is added to the grand total. A single
+| conditional update (not read-modify-save) so two admins can't both add it.
+*/
+const setOrderShippingPrice = async (vendorId, adminUserId, orderId, shippingAmount) => {
+    try {
+        const amount = Math.round(shippingAmount * 100) / 100;
+        const blockedStepCodes = [...TERMINAL_STEP_CODES, RESERVED_STEP_CODES.REJECTED];
+
+        const updated = await Order.findOneAndUpdate(
+            {
+                _id: orderId,
+                vendorId,
+                status: { $ne: 'D' },
+                'shippingPriceBreakdown.isShippingPending': true,
+                'payment.status': { $in: ['PENDING', 'FAILED'] },
+                currentStepCode: { $nin: blockedStepCodes },
+                cancelledAt: null
+            },
+            [{
+                $set: {
+                    shippingAmount: amount,
+                    grandTotal: { $round: [{ $add: ['$grandTotal', amount] }, 2] },
+                    'shippingPriceBreakdown.companyAmount': amount,
+                    'shippingPriceBreakdown.isShippingPending': false,
+                    updatedBy: adminUserId,
+                    updatedAt: '$$NOW'
+                }
+            }],
+            // Mongoose 9 refuses an aggregation-pipeline update unless told it is one.
+            { new: true, updatePipeline: true }
+        );
+
+        if (!updated) {
+            // Nothing matched - work out why, for a useful message.
+            const order = await Order.findOne({ _id: orderId, vendorId, status: { $ne: 'D' } });
+            if (!order) {
+                return common.returnResult(false, 404, 'Order not found.');
+            }
+            if (!order.shippingPriceBreakdown?.isShippingPending) {
+                return common.returnResult(false, 400, 'This order does not need a shipping price to be added.');
+            }
+            if (order.payment?.status && !['PENDING', 'FAILED'].includes(order.payment.status)) {
+                return common.returnResult(false, 409, 'Payment has already been made for this order, so its total can no longer change.');
+            }
+            return common.returnResult(false, 400, 'This order has been finalized, cancelled or rejected and can no longer be updated.');
+        }
+
+        notifyOrderChanged(updated, ORDER_NOTIFICATION_TYPES.SHIPPING_UPDATED);
+
+        logger.logInfo(1, 0, 'Order shipping price added', { vendorId, orderId, shippingAmount: amount });
+        return common.returnResult(true, 200, 'Shipping price added successfully', { order: updated });
+    } catch (err) {
+        throw err;
+    }
+};
+
+/*
+| Edit an order's ALREADY-SET shipping price (feature-gated in the controller
+| by isEditingShippingPriceFeatureOn). The new grand total is computed inside
+| the update from the order's current values (old shipping is swapped for the
+| new one), so it stays correct even if two admins edit at once.
+| Not allowed once a payment has been taken (the total would no longer match
+| what was paid) or once the order is finalized/cancelled/rejected. Orders
+| still waiting for their first price use setOrderShippingPrice instead.
+*/
+const updateOrderShippingPrice = async (vendorId, adminUserId, orderId, shippingAmount) => {
+    try {
+        const amount = Math.round(shippingAmount * 100) / 100;
+        const blockedStepCodes = [...TERMINAL_STEP_CODES, RESERVED_STEP_CODES.REJECTED];
+
+        const updated = await Order.findOneAndUpdate(
+            {
+                _id: orderId,
+                vendorId,
+                status: { $ne: 'D' },
+                'shippingPriceBreakdown.isShippingPending': { $ne: true },
+                'payment.status': { $in: ['PENDING', 'FAILED'] },
+                currentStepCode: { $nin: blockedStepCodes },
+                cancelledAt: null
+            },
+            [{
+                $set: {
+                    grandTotal: { $round: [{ $add: [{ $subtract: ['$grandTotal', { $ifNull: ['$shippingAmount', 0] }] }, amount] }, 2] },
+                    shippingAmount: amount,
+                    shippingPriceBreakdown: {
+                        $cond: [
+                            { $eq: [{ $type: '$shippingPriceBreakdown' }, 'object'] },
+                            { $mergeObjects: ['$shippingPriceBreakdown', { customAmount: 0, companyAmount: amount, isFreeAboveApplied: false }] },
+                            '$shippingPriceBreakdown'
+                        ]
+                    },
+                    updatedBy: adminUserId,
+                    updatedAt: '$$NOW'
+                }
+            }],
+            { new: true, updatePipeline: true }
+        );
+
+        if (!updated) {
+            const order = await Order.findOne({ _id: orderId, vendorId, status: { $ne: 'D' } });
+            if (!order) {
+                return common.returnResult(false, 404, 'Order not found.');
+            }
+            if (order.shippingPriceBreakdown?.isShippingPending) {
+                return common.returnResult(false, 400, 'This order has no shipping price yet. Use Add Shipping Price instead.');
+            }
+            if (order.payment?.status && !['PENDING', 'FAILED'].includes(order.payment.status)) {
+                return common.returnResult(false, 409, 'Payment has already been made for this order, so its shipping price can no longer be changed.');
+            }
+            return common.returnResult(false, 400, 'This order has been finalized, cancelled or rejected and can no longer be updated.');
+        }
+
+        notifyOrderChanged(updated, ORDER_NOTIFICATION_TYPES.SHIPPING_UPDATED);
+
+        logger.logInfo(1, 0, 'Order shipping price updated', { vendorId, orderId, shippingAmount: amount });
+        return common.returnResult(true, 200, 'Shipping price updated successfully', { order: updated });
+    } catch (err) {
+        throw err;
+    }
+};
+
+/*
+|--------------------------------------------------------------------------
+| EDIT SHIPPING ADDRESS AFTER PLACEMENT
+|--------------------------------------------------------------------------
+| Feature-gated in the controller (isEditingShippingAddressAfterOrderIsPlacedFeatureOn).
+| The order keeps its own address snapshot, so switching to one of the
+| customer's saved addresses re-snapshots it, and a typed address lives only
+| on the order (adminEnteredAddress) - neither touches the customer's address
+| book. Shipping price and tax are NOT recalculated by an address change.
+*/
+const ADDRESS_EDIT_BLOCKED_STEP_CODES = [...TERMINAL_STEP_CODES, RESERVED_STEP_CODES.REJECTED];
+
+const fetchUserAddressesForOrder = async (vendorId, orderId) => {
+    try {
+        const order = await Order.findOne({ _id: orderId, vendorId, status: { $ne: 'D' } });
+        if (!order) {
+            return common.returnResult(false, 404, 'Order not found.');
+        }
+        if (!order.userId) {
+            return common.returnResult(true, 200, 'This order has no customer account, so there are no saved addresses.', { addresses: [] });
+        }
+        const result = await addressService.listAddresses({ userId: order.userId, vendorId });
+        return common.returnResult(true, 200, 'Addresses fetched successfully', { addresses: result.meta.addresses });
+    } catch (err) {
+        throw err;
+    }
+};
+
+const updateOrderShippingAddress = async (vendorId, adminUserId, orderId, { addressId, addressText }) => {
+    try {
+        const order = await Order.findOne({ _id: orderId, vendorId, status: { $ne: 'D' } });
+        if (!order) {
+            return common.returnResult(false, 404, 'Order not found.');
+        }
+        if (ADDRESS_EDIT_BLOCKED_STEP_CODES.includes(order.currentStepCode) || order.cancelledAt) {
+            return common.returnResult(false, 400, 'This order has been finalized, cancelled or rejected and can no longer be updated.');
+        }
+
+        let changes;
+        if (addressId) {
+            if (!order.userId) {
+                return common.returnResult(false, 400, 'This order has no customer account. Enter the address instead.');
+            }
+            const address = await Address.findOne({ _id: addressId, userId: order.userId, vendorId, status: { $ne: 'D' } });
+            if (!address) {
+                return common.returnResult(false, 404, 'That address was not found for this customer.');
+            }
+            const snapshotResult = await buildAddressSnapshot(address);
+            if (snapshotResult.error) {
+                return common.returnResult(false, 400, snapshotResult.error);
+            }
+            changes = { shippingAddressId: address._id, shippingAddressSnapshot: snapshotResult.snapshot, adminEnteredAddress: null };
+        } else {
+            changes = { shippingAddressId: null, shippingAddressSnapshot: null, adminEnteredAddress: addressText };
+        }
+
+        const updated = await Order.findOneAndUpdate(
+            { _id: orderId, vendorId, status: { $ne: 'D' }, currentStepCode: { $nin: ADDRESS_EDIT_BLOCKED_STEP_CODES }, cancelledAt: null },
+            { $set: { ...changes, updatedBy: adminUserId } },
+            { new: true }
+        );
+        if (!updated) {
+            return common.returnResult(false, 400, 'This order has been finalized, cancelled or rejected and can no longer be updated.');
+        }
+
+        notifyOrderChanged(updated, ORDER_NOTIFICATION_TYPES.ADDRESS_UPDATED);
+
+        logger.logInfo(1, 0, 'Order shipping address updated', { vendorId, orderId, usedSavedAddress: !!addressId });
+        return common.returnResult(true, 200, 'Shipping address updated successfully', { order: updated });
     } catch (err) {
         throw err;
     }
@@ -849,11 +1070,16 @@ module.exports = {
     buildAddressSnapshot,
     createOrderFromCart,
     advanceOrderStep,
+    setOrderShippingPrice,
+    updateOrderShippingPrice,
+    fetchUserAddressesForOrder,
+    updateOrderShippingAddress,
     assignDeliveryAgent,
     deliveryAgentMarkDelivered,
     cancelOrder,
     fetchMyOrders,
     fetchOrderById,
+    deriveLegacyOrderItems,
     fetchAllOrdersAdmin,
     fetchOrderStepOptions
 };

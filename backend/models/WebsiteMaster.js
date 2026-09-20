@@ -252,6 +252,26 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: true
     },
+    // Lets an admin change an order's shipping price after it has been set
+    // (Edit Shipping Price on the order). Gated separately from the shipping
+    // price feature itself.
+    isEditingShippingPriceFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    // Lets an admin change where an order is delivered after it has been
+    // placed (switch to another saved address of the customer, or type a new
+    // one on the order).
+    isEditingShippingAddressAfterOrderIsPlacedFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    // Lets an admin edit an order after it has been placed (Edit Order:
+    // add products to it).
+    isEditingOrderFeatureOn: {
+        type: Boolean,
+        default: true
+    },
     // End of Shipping Price
 
     // Payment

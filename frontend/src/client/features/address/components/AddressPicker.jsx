@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Spinner from '../../../../components/common/Spinner/Spinner';
 import EmptyState from '../../../../components/common/EmptyState/EmptyState';
 import { useAddresses } from '../hooks/useAddresses';
@@ -36,6 +36,14 @@ const AddressPicker = ({ selectedId, onSelect }) => {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [deletingId, setDeletingId] = useState(null);
+
+  // Pre-select the default address (falling back to the first one) so the
+  // shipping estimate and "Place Order" work without an extra click.
+  useEffect(() => {
+    if (selectedId || addresses.length === 0) return;
+    const preferred = addresses.find((a) => a.isDefault) || addresses[0];
+    onSelect?.(preferred._id);
+  }, [addresses, selectedId, onSelect]);
 
   const openAddForm = () => {
     setEditingAddress(null);
@@ -128,7 +136,14 @@ const AddressPicker = ({ selectedId, onSelect }) => {
                 onChange={() => onSelect?.(address._id)}
               />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-slate-900">{address.address_name}</p>
+                <p className="text-sm font-semibold text-slate-900">
+                  {address.address_name}
+                  {address.isDefault && (
+                    <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-semibold uppercase align-middle">
+                      Default
+                    </span>
+                  )}
+                </p>
                 <p className="mt-0.5 text-xs text-slate-500">{formatAddress(address)}</p>
               </div>
               <div className="flex items-center gap-3 shrink-0 text-xs font-medium">

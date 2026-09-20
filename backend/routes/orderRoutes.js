@@ -8,12 +8,16 @@ const vendorDetection = require('../middlewares/vendorDetection');
 const ensureVendorDataCached = require('../middlewares/ensureVendorDataCached');
 const checkModuleAssigned = require('../middlewares/checkModuleAssigned');
 const validate = require('../middlewares/validate');
+const { productsQuerySchema, productIdParamSchema } = require('../middlewares/validations/adminPlaceOrderValidations');
 const {
     createOrderSchema,
     orderIdParamSchema,
     advanceOrderStepSchema,
     assignDeliveryAgentSchema,
-    cancelOrderSchema
+    cancelOrderSchema,
+    setShippingPriceSchema,
+    setShippingAddressSchema,
+    addOrderProductsSchema
 } = require('../middlewares/validations/orderValidations');
 
 const vendorContext = [authenticate, vendorDetection, ensureVendorDataCached, checkModuleAssigned('ORDERS')];
@@ -72,6 +76,56 @@ router.patch(
     validate(orderIdParamSchema, 'params'),
     validate(advanceOrderStepSchema, 'body'),
     orderController.advanceOrderStep
+);
+
+router.patch(
+    '/admin/:id/shipping-price',
+    ...vendorContext,
+    authorize('admin'),
+    validate(orderIdParamSchema, 'params'),
+    validate(setShippingPriceSchema, 'body'),
+    orderController.setOrderShippingPrice
+);
+
+router.put(
+    '/admin/:id/shipping-price',
+    ...vendorContext,
+    authorize('admin'),
+    validate(orderIdParamSchema, 'params'),
+    validate(setShippingPriceSchema, 'body'),
+    orderController.updateOrderShippingPrice
+);
+
+// --- Edit Order (gated by isEditingOrderFeatureOn in the controller) ---
+// Product picker data - the same picker Place Order uses.
+router.get('/admin/edit/categories', ...vendorContext, authorize('admin'), orderController.getEditOrderCategories);
+router.get('/admin/edit/products', ...vendorContext, authorize('admin'), validate(productsQuerySchema, 'query'), orderController.getEditOrderProducts);
+router.get('/admin/edit/products/:productId/options', ...vendorContext, authorize('admin'), validate(productIdParamSchema, 'params'), orderController.getEditOrderProductOptions);
+
+router.post(
+    '/admin/:id/add-products',
+    ...vendorContext,
+    authorize('admin'),
+    validate(orderIdParamSchema, 'params'),
+    validate(addOrderProductsSchema, 'body'),
+    orderController.addProductsToOrder
+);
+
+router.get(
+    '/admin/:id/user-addresses',
+    ...vendorContext,
+    authorize('admin'),
+    validate(orderIdParamSchema, 'params'),
+    orderController.getOrderUserAddresses
+);
+
+router.put(
+    '/admin/:id/shipping-address',
+    ...vendorContext,
+    authorize('admin'),
+    validate(orderIdParamSchema, 'params'),
+    validate(setShippingAddressSchema, 'body'),
+    orderController.updateOrderShippingAddress
 );
 
 router.patch(

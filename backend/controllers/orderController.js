@@ -1,4 +1,5 @@
 const orderService = require('../services/orderService');
+const orderEditService = require('../services/orderEditService');
 const logger = require('../utils/logger.js');
 const common = require('../utils/common');
 
@@ -101,7 +102,12 @@ const getOrderByIdAdmin = async (req, res) => {
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+        // Both the platform-wide and the vendor's own gate must be on for the
+        // admin UI to offer "Edit Shipping Price".
+        const canEditShippingPrice = !!(req.websiteMasterData?.isEditingShippingPriceFeatureOn && req.companyMasterData?.isEditingShippingPriceFeatureOn);
+        const canEditShippingAddress = !!(req.websiteMasterData?.[ADDRESS_EDIT_FLAG] && req.companyMasterData?.[ADDRESS_EDIT_FLAG]);
+        const canEditOrder = !!(req.websiteMasterData?.[ORDER_EDIT_FLAG] && req.companyMasterData?.[ORDER_EDIT_FLAG]);
+        return common.sendSuccess(res, result.statusCode, result.message, { ...result.meta, canEditShippingPrice, canEditShippingAddress, canEditOrder });
     } catch (error) {
         logger.logException('orderController: getOrderByIdAdmin - Exception while fetching order', { vendorId, id, error });
     }
@@ -138,6 +144,157 @@ const advanceOrderStep = async (req, res) => {
     }
 };
 
+const setOrderShippingPrice = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { id } = req.params;
+    try {
+        const result = await orderService.setOrderShippingPrice(vendorId, req.user._id, id, req.body.shippingAmount);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('orderController: setOrderShippingPrice - Exception while adding order shipping price', { vendorId, id, error });
+    }
+};
+
+const updateOrderShippingPrice = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { id } = req.params;
+    try {
+        const validityResult = await common.checkFeatureOnOrOff(vendorId, req.websiteMasterData, req.companyMasterData, 'isEditingShippingPriceFeatureOn', 'isEditingShippingPriceFeatureOn');
+        if (!validityResult.isSuccess) {
+            return common.sendError(res, validityResult.statusCode, validityResult.message);
+        }
+
+        const result = await orderService.updateOrderShippingPrice(vendorId, req.user._id, id, req.body.shippingAmount);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('orderController: updateOrderShippingPrice - Exception while updating order shipping price', { vendorId, id, error });
+    }
+};
+
+const ORDER_EDIT_FLAG = 'isEditingOrderFeatureOn';
+
+// Shared by every Edit Order endpoint: both the platform-wide and the vendor's own gate must be on.
+const checkOrderEditingOn = async (req) => {
+    return common.checkFeatureOnOrOff(req.vendorId, req.websiteMasterData, req.companyMasterData, ORDER_EDIT_FLAG, ORDER_EDIT_FLAG);
+};
+
+const getEditOrderCategories = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        const validityResult = await checkOrderEditingOn(req);
+        if (!validityResult.isSuccess) {
+            return common.sendError(res, validityResult.statusCode, validityResult.message);
+        }
+        const result = await orderEditService.fetchCategoriesForEdit(vendorId);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta.categories);
+    } catch (error) {
+        logger.logException('orderController: getEditOrderCategories - Exception while fetching categories for order editing', { vendorId, error });
+    }
+};
+
+const getEditOrderProducts = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        const validityResult = await checkOrderEditingOn(req);
+        if (!validityResult.isSuccess) {
+            return common.sendError(res, validityResult.statusCode, validityResult.message);
+        }
+        const result = await orderEditService.fetchProductsForEdit(vendorId, req.query);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta.products);
+    } catch (error) {
+        logger.logException('orderController: getEditOrderProducts - Exception while fetching products for order editing', { vendorId, error });
+    }
+};
+
+const getEditOrderProductOptions = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        const validityResult = await checkOrderEditingOn(req);
+        if (!validityResult.isSuccess) {
+            return common.sendError(res, validityResult.statusCode, validityResult.message);
+        }
+        const result = await orderEditService.fetchProductOptionsForEdit(vendorId, req.companySettingsData, req.params.productId);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('orderController: getEditOrderProductOptions - Exception while fetching product options for order editing', { vendorId, error });
+    }
+};
+
+const addProductsToOrder = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { id } = req.params;
+    try {
+        const validityResult = await checkOrderEditingOn(req);
+        if (!validityResult.isSuccess) {
+            return common.sendError(res, validityResult.statusCode, validityResult.message);
+        }
+        const result = await orderEditService.addProductsToOrder(
+            vendorId, req.user._id, id, req.body.items, req.companyMasterData, req.companySettingsData
+        );
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('orderController: addProductsToOrder - Exception while adding products to order', { vendorId, id, error });
+    }
+};
+
+const ADDRESS_EDIT_FLAG = 'isEditingShippingAddressAfterOrderIsPlacedFeatureOn';
+
+const getOrderUserAddresses = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { id } = req.params;
+    try {
+        const validityResult = await common.checkFeatureOnOrOff(vendorId, req.websiteMasterData, req.companyMasterData, ADDRESS_EDIT_FLAG, ADDRESS_EDIT_FLAG);
+        if (!validityResult.isSuccess) {
+            return common.sendError(res, validityResult.statusCode, validityResult.message);
+        }
+
+        const result = await orderService.fetchUserAddressesForOrder(vendorId, id);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('orderController: getOrderUserAddresses - Exception while fetching the order customer addresses', { vendorId, id, error });
+    }
+};
+
+const updateOrderShippingAddress = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { id } = req.params;
+    try {
+        const validityResult = await common.checkFeatureOnOrOff(vendorId, req.websiteMasterData, req.companyMasterData, ADDRESS_EDIT_FLAG, ADDRESS_EDIT_FLAG);
+        if (!validityResult.isSuccess) {
+            return common.sendError(res, validityResult.statusCode, validityResult.message);
+        }
+
+        const result = await orderService.updateOrderShippingAddress(vendorId, req.user._id, id, req.body);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('orderController: updateOrderShippingAddress - Exception while updating order shipping address', { vendorId, id, error });
+    }
+};
+
 const assignDeliveryAgent = async (req, res) => {
     const vendorId = req.vendorId;
     const { id } = req.params;
@@ -171,6 +328,14 @@ const deliveryAgentMarkDelivered = async (req, res) => {
 };
 
 module.exports = {
+    getEditOrderCategories,
+    getEditOrderProducts,
+    getEditOrderProductOptions,
+    addProductsToOrder,
+    getOrderUserAddresses,
+    updateOrderShippingAddress,
+    updateOrderShippingPrice,
+    setOrderShippingPrice,
     createOrder,
     getMyOrders,
     getMyOrderById,

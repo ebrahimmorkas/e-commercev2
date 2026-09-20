@@ -16,6 +16,7 @@ const EMPTY_FORM = {
   state_id: '',
   city_id: '',
   pincode: '',
+  isDefault: false,
 };
 
 // Address docs come back from the API with country_id/state_id/city_id
@@ -34,6 +35,7 @@ const toFormValues = (address) => {
     state_id: idOf(address.state_id),
     city_id: idOf(address.city_id),
     pincode: address.pincode || '',
+    isDefault: address.isDefault === true,
   };
 };
 
@@ -181,6 +183,17 @@ const AddressForm = ({ isOpen, onClose, onSubmit, editingAddress = null, saving 
           required
           disabled={saving}
         />
+
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={form.isDefault}
+            onChange={(e) => setForm((f) => ({ ...f, isDefault: e.target.checked }))}
+            // The current default can't be un-defaulted here - another address has to be made default instead.
+            disabled={saving || editingAddress?.isDefault === true}
+          />
+          Set as my default address
+        </label>
 
         <button
           type="submit"

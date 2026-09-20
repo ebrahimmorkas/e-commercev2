@@ -2,6 +2,8 @@ import theme from '../../Home/theme/theme';
 import QuantityStepper from '../../products/components/QuantityStepper';
 import Spinner from '../../../../components/common/Spinner/Spinner';
 import EmptyState from '../../../../components/common/EmptyState/EmptyState';
+import { useShippingEstimate } from '../hooks/useShippingEstimate';
+import { formatShippingEstimate, shippingAmountForTotal } from '../utils/formatShipping';
 
 const formatMoney = (amount) => `₹${(amount ?? 0).toLocaleString('en-IN')}`;
 
@@ -86,6 +88,11 @@ const CartPage = ({
   reload,
 }) => {
   const itemCount = lineItems.reduce((sum, item) => sum + item.quantity, 0);
+  const { estimate: shippingEstimate } = useShippingEstimate({
+    refreshKey: `${itemCount}:${subtotal}`,
+    skip: lineItems.length === 0,
+  });
+  const deliveringTo = shippingEstimate?.deliveringTo;
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
@@ -98,6 +105,11 @@ const CartPage = ({
       </button>
 
       <h1 className={`text-xl sm:text-2xl font-bold ${theme.section.heading}`}>Your Cart</h1>
+      {deliveringTo?.label && (
+        <p className="mt-1 text-sm text-slate-500">
+          Delivering to: <span className="font-medium text-slate-700">{deliveringTo.addressName ? `${deliveringTo.addressName} - ` : ''}{deliveringTo.label}</span>
+        </p>
+      )}
 
       {loading && (
         <div className="flex justify-center py-24">
@@ -157,9 +169,18 @@ const CartPage = ({
               <span>Items ({itemCount})</span>
               <span>{formatMoney(subtotal)}</span>
             </div>
+            {shippingEstimate && (
+              <div className="mt-2 flex justify-between text-sm text-slate-600">
+                <span>Shipping</span>
+                <span>{formatShippingEstimate(shippingEstimate, formatMoney)}</span>
+              </div>
+            )}
+            {shippingEstimate?.isShippingPending && (
+              <p className="mt-1 text-xs text-slate-500">Shipping price will be manually calculated by admin.</p>
+            )}
             <div className="mt-2 pt-3 border-t border-slate-200 flex justify-between text-base font-bold text-slate-900">
-              <span>Subtotal</span>
-              <span>{formatMoney(subtotal)}</span>
+              <span>{shippingEstimate ? 'Estimated total' : 'Subtotal'}</span>
+              <span>{formatMoney(subtotal + shippingAmountForTotal(shippingEstimate))}</span>
             </div>
             <p className="mt-1 text-xs text-slate-400">Taxes and discounts calculated at checkout.</p>
             <button

@@ -4,6 +4,8 @@ import Spinner from '../../../../components/common/Spinner/Spinner';
 import EmptyState from '../../../../components/common/EmptyState/EmptyState';
 import AddressPicker from '../../address/components/AddressPicker';
 import { placeOrder } from '../api/ordersApi';
+import { useShippingEstimate } from '../../cart/hooks/useShippingEstimate';
+import { formatShippingEstimate, shippingAmountForTotal } from '../../cart/utils/formatShipping';
 
 const formatMoney = (amount) => `₹${(amount ?? 0).toLocaleString('en-IN')}`;
 
@@ -24,6 +26,13 @@ const CheckoutPage = ({ lineItems = [], subtotal = 0, cartLoading, onBack, onPla
   const [selectedAddressId, setSelectedAddressId] = useState(null);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState('');
+  // Re-priced whenever the shopper picks a different saved address (location-based
+  // methods depend on it). The final amount is still recomputed server-side at placement.
+  const { estimate: shippingEstimate } = useShippingEstimate({
+    addressId: selectedAddressId,
+    refreshKey: `${lineItems.length}:${subtotal}`,
+    skip: lineItems.length === 0,
+  });
 
   const handlePlaceOrder = async () => {
     if (!selectedAddressId) {
@@ -100,9 +109,18 @@ const CheckoutPage = ({ lineItems = [], subtotal = 0, cartLoading, onBack, onPla
             <span>Items ({lineItems.reduce((sum, item) => sum + item.quantity, 0)})</span>
             <span>{formatMoney(subtotal)}</span>
           </div>
+          {shippingEstimate && (
+            <div className="mt-2 flex justify-between text-sm text-slate-600">
+              <span>Shipping</span>
+              <span>{formatShippingEstimate(shippingEstimate, formatMoney)}</span>
+            </div>
+          )}
+          {shippingEstimate?.isShippingPending && (
+            <p className="mt-1 text-xs text-slate-400">Shipping price will be manually calculated by admin.</p>
+          )}
           <div className="mt-2 pt-3 border-t border-slate-200 flex justify-between text-base font-bold text-slate-900">
             <span>Estimated total</span>
-            <span>{formatMoney(subtotal)}</span>
+            <span>{formatMoney(subtotal + shippingAmountForTotal(shippingEstimate))}</span>
           </div>
           <p className="mt-1 text-xs text-slate-400">Final taxes/discounts are calculated when the order is placed.</p>
           <button

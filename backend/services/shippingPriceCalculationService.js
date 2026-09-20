@@ -112,6 +112,11 @@ const calculateWeightAmount = async (companyItems, settings) => {
 | Computes the shipping-price contribution of a cart's COMPANY_SETTINGS-priced
 | line items (per the vendor's single active ShippingPriceSettings.method),
 | plus the flat sum of any CUSTOM-priced line items, per unit x quantity.
+| Free shipping above (settings.freeAboveThreshold): when the subtotal reaches it,
+| the order ships free whatever the method - breakdown.isFreeAboveApplied.
+| CUSTOM (manual) method: contributes 0 and sets breakdown.isShippingPending.
+| Location methods (COUNTRY/STATE/CITY/ZIP) charge the matching rule's
+| price, or the "rest" price for any place with no rule.
 | Returns 0 gracefully (never errors) whenever the feature is off or
 | unconfigured, so a missing/disabled shipping-price setup never blocks
 | checkout.
@@ -128,14 +133,26 @@ const calculateShippingPriceAmount = async ({ lineItems, subtotal, shippingPrice
 
         const featureOn = !!(websiteMasterData?.isShippingPriceFeatureOn && companyMasterData?.isShippingPriceFeatureOn);
 
+        // Free shipping above a vendor-set order amount overrides every method
+        // (and any per-product custom charge): the order simply ships free.
+        // Only while the shipping price feature is on.
+        const freeAboveThreshold = shippingPriceSettings?.freeAboveThreshold;
+        if (featureOn && shippingPriceSettings && freeAboveThreshold > 0 && subtotal >= freeAboveThreshold) {
+            return common.returnResult(true, 200, 'Shipping price calculated successfully', {
+                shippingAmount: 0,
+                breakdown: { customAmount: 0, companyAmount: 0, method: shippingPriceSettings.method, isShippingPending: false, isFreeAboveApplied: true }
+            });
+        }
+
         if (!featureOn || !shippingPriceSettings || companyItems.length === 0) {
             return common.returnResult(true, 200, 'Shipping price calculated successfully', {
                 shippingAmount: round2(customAmount),
-                breakdown: { customAmount: round2(customAmount), companyAmount: 0, method: shippingPriceSettings?.method || null }
+                breakdown: { customAmount: round2(customAmount), companyAmount: 0, method: shippingPriceSettings?.method || null, isShippingPending: false }
             });
         }
 
         let companyAmount = 0;
+        let isShippingPending = false;
         switch (shippingPriceSettings.method) {
             case SHIPPING_PRICE_METHODS.FREE:
                 companyAmount = 0;
@@ -164,8 +181,11 @@ const calculateShippingPriceAmount = async ({ lineItems, subtotal, shippingPrice
             case SHIPPING_PRICE_METHODS.WEIGHT:
                 companyAmount = await calculateWeightAmount(companyItems, shippingPriceSettings);
                 break;
-            case SHIPPING_PRICE_METHODS.FREE_ABOVE:
-                companyAmount = subtotal >= shippingPriceSettings.freeAboveThreshold ? 0 : (shippingPriceSettings.freeAboveFallbackPrice || 0);
+            case SHIPPING_PRICE_METHODS.CUSTOM:
+                // Entered manually when the order is confirmed - nothing to
+                // calculate now, so it contributes 0 and is flagged pending.
+                companyAmount = 0;
+                isShippingPending = true;
                 break;
             default:
                 companyAmount = 0;
@@ -175,7 +195,7 @@ const calculateShippingPriceAmount = async ({ lineItems, subtotal, shippingPrice
 
         return common.returnResult(true, 200, 'Shipping price calculated successfully', {
             shippingAmount,
-            breakdown: { customAmount: round2(customAmount), companyAmount: round2(companyAmount), method: shippingPriceSettings.method }
+            breakdown: { customAmount: round2(customAmount), companyAmount: round2(companyAmount), method: shippingPriceSettings.method, isShippingPending }
         });
     } catch (err) {
         throw err;
