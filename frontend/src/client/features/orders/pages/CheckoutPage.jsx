@@ -116,7 +116,7 @@ const CheckoutPage = ({ lineItems = [], subtotal = 0, cartLoading, onBack, onPla
             </div>
           )}
           {shippingEstimate?.isShippingPending && (
-            <p className="mt-1 text-xs text-slate-400">The store will confirm your shipping charge after you place the order.</p>
+            <p className="mt-1 text-xs text-slate-400">Shipping price will be manually calculated by admin.</p>
           )}
           <div className="mt-2 pt-3 border-t border-slate-200 flex justify-between text-base font-bold text-slate-900">
             <span>Estimated total</span>

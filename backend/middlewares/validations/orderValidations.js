@@ -26,6 +26,32 @@ const assignDeliveryAgentSchema = Joi.object({
     deliveryAgentUserId: objectId().required().label('Delivery agent')
 });
 
+const setShippingPriceSchema = Joi.object({
+    shippingAmount: Joi.number().min(0).max(10000000).precision(2).required().label('Shipping price')
+});
+
+// Exactly one of: switch to one of the customer's saved addresses, or an
+// open-text address typed by the admin (stored on the order only, never
+// saved to the customer's address book).
+const setShippingAddressSchema = Joi.object({
+    addressId: objectId().label('Address'),
+    addressText: Joi.string().trim().min(5).max(1000).label('Address')
+})
+    .xor('addressId', 'addressText')
+    .messages({ 'object.missing': 'Choose a saved address or enter a new address.', 'object.xor': 'Provide either a saved address or a new address, not both.' });
+
+// Products an admin adds to an already-placed order. Same fields as Place Order's items.
+const addOrderProductsSchema = Joi.object({
+    items: Joi.array().items(
+        Joi.object({
+            productId: objectId().required().label('Product'),
+            variantId: objectId().required().label('Variant'),
+            sizeId: objectId().required().label('Size'),
+            quantity: Joi.number().integer().min(1).max(100000).required().label('Quantity')
+        })
+    ).min(1).max(50).required().label('Items')
+});
+
 const cancelOrderSchema = Joi.object({
     cancellationReason: Joi.string().trim().min(1).max(500).required().label('Cancellation reason')
 });
@@ -35,5 +61,8 @@ module.exports = {
     orderIdParamSchema,
     advanceOrderStepSchema,
     assignDeliveryAgentSchema,
-    cancelOrderSchema
+    cancelOrderSchema,
+    setShippingPriceSchema,
+    setShippingAddressSchema,
+    addOrderProductsSchema
 };

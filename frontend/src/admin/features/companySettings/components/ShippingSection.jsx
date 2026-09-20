@@ -176,27 +176,8 @@ const ShippingSection = ({ companyMaster }) => {
       case 'CUSTOM':
         return (
           <p className={`text-sm ${theme.text.body}`}>
-            You will enter the shipping price manually when you confirm each order. Customers see &quot;To be confirmed&quot; until then.
+            You will enter the shipping price manually when you confirm each order. Customers see &quot;To be confirmed&quot; until then (unless the order qualifies for free shipping above).
           </p>
-        );
-      case 'FREE_ABOVE':
-        return (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <InputField
-              type="number"
-              label="Shipping is free when the order is at or above"
-              min={0}
-              value={draft.freeAboveThreshold}
-              onChange={(e) => patch({ freeAboveThreshold: e.target.value })}
-            />
-            <InputField
-              type="number"
-              label="Shipping price when the order is below that"
-              min={0}
-              value={draft.freeAboveFallbackPrice}
-              onChange={(e) => patch({ freeAboveFallbackPrice: e.target.value })}
-            />
-          </div>
         );
       case 'WEIGHT':
         return (
@@ -315,6 +296,29 @@ const ShippingSection = ({ companyMaster }) => {
           </ul>
         </Alert>
       )}
+
+      <div className="border border-gray-200 rounded-lg p-3 space-y-3">
+        <Switch
+          label="Is free shipping above an order amount?"
+          description="Orders at or above the amount ship free, whichever option is chosen below. Orders under it pay the shipping price set below."
+          checked={draft.isFreeAboveEnabled}
+          onChange={(e) => {
+            setProblems([]);
+            patch({ isFreeAboveEnabled: e.target.checked });
+          }}
+          color={theme.switch.color}
+        />
+        {draft.isFreeAboveEnabled && (
+          <InputField
+            type="number"
+            label="Free shipping above order amount"
+            placeholder="e.g. 1000"
+            min={0}
+            value={draft.freeAboveThreshold}
+            onChange={(e) => patch({ freeAboveThreshold: e.target.value })}
+          />
+        )}
+      </div>
 
       {steps.slice(0, selectedIndex + 1).map((step, index) => {
         const isSelected = index === selectedIndex;

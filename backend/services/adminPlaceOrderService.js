@@ -127,13 +127,12 @@ const fetchUserAddresses = async (vendorId, websiteMasterData, companyMasterData
 
 // Every active category (any depth), flat - the shape the shared
 // CategoryPathPicker builds its main -> sub -> deeper drill-down from.
-const fetchCategories = async (vendorId, websiteMasterData, companyMasterData) => {
+// Feature-gate-free loaders: Place Order gates them with
+// isAdminPlacingOrderOnBehalfOfUserIsOn (the fetchX wrappers below), and Edit
+// Order (orderEditService.js) gates them with isEditingOrderFeatureOn, so the
+// product picker behaves identically in both.
+const loadCategories = async (vendorId) => {
     try {
-        const featureCheck = await checkFeatureOn(vendorId, websiteMasterData, companyMasterData);
-        if (!featureCheck.isSuccess) {
-            return common.returnResult(false, featureCheck.statusCode, featureCheck.message);
-        }
-
         const categories = await Category.find({ vendorId, status: 'A' })
             .select('categoryName parent_category_id status')
             .sort({ categoryName: 1 })
@@ -145,15 +144,23 @@ const fetchCategories = async (vendorId, websiteMasterData, companyMasterData) =
     }
 };
 
-// Active products only. With categoryId (the deepest category the admin has
-// picked so far) it matches that category and everything beneath it.
-const fetchActiveProducts = async (vendorId, websiteMasterData, companyMasterData, query) => {
+const fetchCategories = async (vendorId, websiteMasterData, companyMasterData) => {
     try {
         const featureCheck = await checkFeatureOn(vendorId, websiteMasterData, companyMasterData);
         if (!featureCheck.isSuccess) {
             return common.returnResult(false, featureCheck.statusCode, featureCheck.message);
         }
 
+        return await loadCategories(vendorId);
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Active products only. With categoryId (the deepest category the admin has
+// picked so far) it matches that category and everything beneath it.
+const loadActiveProducts = async (vendorId, query) => {
+    try {
         const { categoryId, search } = query;
         const filter = { vendorId, status: 'A' };
 
@@ -185,16 +192,24 @@ const fetchActiveProducts = async (vendorId, websiteMasterData, companyMasterDat
     }
 };
 
-// Variant dropdown -> size dropdown data for one product, active variants and
-// sizes only. Stock is returned so the UI can flag out-of-stock sizes; whether
-// they may still be ordered is decided server-side by allowOutOfStockProductsAdding.
-const fetchProductOptions = async (vendorId, websiteMasterData, companyMasterData, companySettingsData, productId) => {
+const fetchActiveProducts = async (vendorId, websiteMasterData, companyMasterData, query) => {
     try {
         const featureCheck = await checkFeatureOn(vendorId, websiteMasterData, companyMasterData);
         if (!featureCheck.isSuccess) {
             return common.returnResult(false, featureCheck.statusCode, featureCheck.message);
         }
 
+        return await loadActiveProducts(vendorId, query);
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Variant dropdown -> size dropdown data for one product, active variants and
+// sizes only. Stock is returned so the UI can flag out-of-stock sizes; whether
+// they may still be ordered is decided server-side by allowOutOfStockProductsAdding.
+const loadProductOptions = async (vendorId, companySettingsData, productId) => {
+    try {
         const product = await Product.findOne({ _id: productId, vendorId, status: 'A' }).lean();
         if (!product) {
             return common.returnResult(false, 404, 'Product not found.');
@@ -225,6 +240,19 @@ const fetchProductOptions = async (vendorId, websiteMasterData, companyMasterDat
             allowOutOfStockProductsAdding: allowOutOfStock,
             variants
         });
+    } catch (err) {
+        throw err;
+    }
+};
+
+const fetchProductOptions = async (vendorId, websiteMasterData, companyMasterData, companySettingsData, productId) => {
+    try {
+        const featureCheck = await checkFeatureOn(vendorId, websiteMasterData, companyMasterData);
+        if (!featureCheck.isSuccess) {
+            return common.returnResult(false, featureCheck.statusCode, featureCheck.message);
+        }
+
+        return await loadProductOptions(vendorId, companySettingsData, productId);
     } catch (err) {
         throw err;
     }
@@ -638,5 +666,13 @@ module.exports = {
     fetchActiveProducts,
     fetchProductOptions,
     placeOrderOnBehalfOfUser,
-    restoreStockForAdminOrder
+    restoreStockForAdminOrder,
+    // shared with orderEditService.js
+    loadCategories,
+    loadActiveProducts,
+    loadProductOptions,
+    resolveOrderLines,
+    applyTaxes,
+    deductStockForLine,
+    restoreDeductedStock
 };

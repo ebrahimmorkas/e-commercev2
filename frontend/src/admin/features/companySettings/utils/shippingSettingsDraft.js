@@ -6,12 +6,15 @@
  * single stored `method`. SHIPPING_STEPS is that chain, in order - a step is
  * only offered when the vendor is allowed that method
  * (CompanyMaster.allowedShippingPriceMethods; empty = all allowed).
+ *
+ * "Free shipping above an order amount" is NOT one of those methods: it is a
+ * separate toggle (draft.isFreeAboveEnabled) + amount (draft.freeAboveThreshold)
+ * that applies on top of whichever method is chosen.
  */
 export const SHIPPING_STEPS = [
   { method: 'FREE', question: 'Is shipping price free?' },
   { method: 'FIXED', question: 'Is shipping price fixed?' },
   { method: 'CUSTOM', question: 'Do you want to enter the shipping price manually?' },
-  { method: 'FREE_ABOVE', question: 'Is shipping free above a certain order amount?' },
   { method: 'WEIGHT', question: 'Is shipping price determined by weight?' },
   { method: 'CATEGORY', question: 'Is shipping price based on product category?' },
   { method: 'COUNTRY', question: 'Is shipping price based on country?' },
@@ -43,8 +46,8 @@ export const RULE_CONFIG = {
 export const emptyShippingDraft = (method = 'FREE') => ({
   method,
   fixedPrice: '',
+  isFreeAboveEnabled: false,
   freeAboveThreshold: '',
-  freeAboveFallbackPrice: '',
   weightUnit: '',
   weightBrackets: [{ minWeight: '', maxWeight: '', price: '' }],
   weightRestPrice: '',
@@ -74,8 +77,9 @@ export const mapApiShippingToDraft = (settings) => {
   return {
     ...base,
     fixedPrice: str(settings.fixedPrice),
+    // A saved threshold means the toggle was on.
+    isFreeAboveEnabled: settings.freeAboveThreshold !== null && settings.freeAboveThreshold !== undefined,
     freeAboveThreshold: str(settings.freeAboveThreshold),
-    freeAboveFallbackPrice: str(settings.freeAboveFallbackPrice),
     weightUnit: str(settings.weightUnit),
     weightBrackets:
       Array.isArray(settings.weightBrackets) && settings.weightBrackets.length > 0
@@ -105,14 +109,10 @@ const restNumber = (value) => (isBlank(value) ? 0 : Number(value));
 /** Builds the API body: only the active method's fields are sent (the backend forbids the rest). */
 export const buildShippingPayload = (draft) => {
   const { method } = draft;
-  const payload = { method };
+  // Toggle off = no free-shipping threshold (sent as null so a previously saved one is cleared).
+  const payload = { method, freeAboveThreshold: draft.isFreeAboveEnabled ? Number(draft.freeAboveThreshold) : null };
 
   if (method === 'FIXED') payload.fixedPrice = Number(draft.fixedPrice);
-
-  if (method === 'FREE_ABOVE') {
-    payload.freeAboveThreshold = Number(draft.freeAboveThreshold);
-    payload.freeAboveFallbackPrice = Number(draft.freeAboveFallbackPrice);
-  }
 
   if (method === 'WEIGHT') {
     payload.weightUnit = draft.weightUnit;
@@ -147,11 +147,8 @@ export const validateShippingDraft = (draft) => {
 
   if (method === 'FIXED' && !isValidPrice(draft.fixedPrice)) errors.push('Enter a fixed shipping price (0 or more).');
 
-  if (method === 'FREE_ABOVE') {
-    if (!isValidPrice(draft.freeAboveThreshold) || Number(draft.freeAboveThreshold) <= 0) {
-      errors.push('Enter the order amount above which shipping is free (greater than 0).');
-    }
-    if (!isValidPrice(draft.freeAboveFallbackPrice)) errors.push('Enter the shipping price charged below that amount (0 or more).');
+  if (draft.isFreeAboveEnabled && (!isValidPrice(draft.freeAboveThreshold) || Number(draft.freeAboveThreshold) <= 0)) {
+    errors.push('Enter the order amount above which shipping is free (greater than 0).');
   }
 
   if (method === 'WEIGHT') {

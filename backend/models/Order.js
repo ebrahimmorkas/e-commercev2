@@ -362,6 +362,7 @@ const orderSchema = new mongoose.Schema(
             default: 0
         },
 
+        // null = not decided yet (manual/CUSTOM shipping awaiting the admin).
         shippingAmount: {
             type: Number,
             min: 0,
@@ -373,13 +374,16 @@ const orderSchema = new mongoose.Schema(
         // past order was priced. Null for orders that predate this field and
         // for admin-placed orders (their shipping is typed in manually).
         // isShippingPending: the vendor's method is CUSTOM (manual), so
-        // shippingAmount is 0 until it's entered at order confirmation.
+        // shippingAmount stays null and grandTotal excludes shipping until an
+        // admin enters it (orderService.setOrderShippingPrice).
         shippingPriceBreakdown: {
             type: new mongoose.Schema({
                 method: { type: String, default: null },
                 customAmount: { type: Number, min: 0, default: 0 },
                 companyAmount: { type: Number, min: 0, default: 0 },
-                isShippingPending: { type: Boolean, default: false }
+                isShippingPending: { type: Boolean, default: false },
+                // Shipping was waived because the order reached the vendor's free-shipping threshold.
+                isFreeAboveApplied: { type: Boolean, default: false }
             }, { _id: false }),
             default: null
         },
@@ -434,18 +438,21 @@ const orderSchema = new mongoose.Schema(
         },
 
         // Required on normal orders. Admin-placed orders may carry a saved
-        // address, a free-text address (adminEnteredAddress), or neither.
+        // address, a free-text address (adminEnteredAddress), or neither. An
+        // admin may also replace a customer order's address with a typed one
+        // after placement (orderService.updateOrderShippingAddress), in which
+        // case these two are cleared and adminEnteredAddress is set.
         shippingAddressId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Address",
-            required: function () { return !this.isPlacedByAdmin; },
+            required: function () { return !this.isPlacedByAdmin && !this.adminEnteredAddress; },
             default: null,
             index: true
         },
 
         shippingAddressSnapshot: {
             type: orderAddressSnapshotSchema,
-            required: function () { return !this.isPlacedByAdmin; },
+            required: function () { return !this.isPlacedByAdmin && !this.adminEnteredAddress; },
             default: undefined
         },
 

@@ -175,6 +175,9 @@ const CartPage = ({
                 <span>{formatShippingEstimate(shippingEstimate, formatMoney)}</span>
               </div>
             )}
+            {shippingEstimate?.isShippingPending && (
+              <p className="mt-1 text-xs text-slate-500">Shipping price will be manually calculated by admin.</p>
+            )}
             <div className="mt-2 pt-3 border-t border-slate-200 flex justify-between text-base font-bold text-slate-900">
               <span>{shippingEstimate ? 'Estimated total' : 'Subtotal'}</span>
               <span>{formatMoney(subtotal + shippingAmountForTotal(shippingEstimate))}</span>

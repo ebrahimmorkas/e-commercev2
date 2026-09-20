@@ -120,6 +120,12 @@ const OrderDetailPage = ({ orderId, onBack, onGoHome }) => {
 
           <div className="mt-6 pt-6 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-6">
             <AddressBlock title="Shipping address" snapshot={order.shippingAddressSnapshot} />
+            {!order.shippingAddressSnapshot && order.adminEnteredAddress && (
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Shipping address</h3>
+                <p className="mt-1 text-sm text-slate-700 whitespace-pre-line">{order.adminEnteredAddress}</p>
+              </div>
+            )}
             <AddressBlock title="Billing address" snapshot={order.billingAddressSnapshot} />
           </div>
 
@@ -143,6 +149,9 @@ const OrderDetailPage = ({ orderId, onBack, onGoHome }) => {
             )}
             <SummaryRow label="Tax" value={formatOrderMoney(order, order.totalTaxAmount)} />
             <SummaryRow label="Shipping" value={formatOrderShipping(order)} />
+            {order.shippingPriceBreakdown?.isShippingPending && (
+              <p className="text-xs text-slate-500">Shipping price will be manually calculated by admin.</p>
+            )}
             {order.additionalCharges > 0 && (
               <SummaryRow label="Additional charges" value={formatOrderMoney(order, order.additionalCharges)} />
             )}

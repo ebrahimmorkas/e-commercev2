@@ -8,7 +8,10 @@ import OrderStatusTimeline from './OrderStatusTimeline';
 import OrderItems from './OrderItems';
 import AdvanceStepForm from './AdvanceStepForm';
 import AssignDeliveryAgentForm from './AssignDeliveryAgentForm';
-import { formatOrderMoney, formatOrderShipping, formatOrderDateTime, stepBadgeVariant, isOrderLocked, orderSourceLabel, orderSourceVariant } from '../utils/formatOrder';
+import AddShippingPriceForm from './AddShippingPriceForm';
+import EditShippingAddressForm from './EditShippingAddressForm';
+import EditOrderForm from './EditOrderForm';
+import { formatOrderMoney, formatOrderShipping, canEditShipping, canEditShippingAddressFor, canEditOrderFor, formatOrderDateTime, stepBadgeVariant, isOrderLocked, orderSourceLabel, orderSourceVariant } from '../utils/formatOrder';
 import theme from '../theme/theme';
 
 const SummaryRow = ({ label, value, bold = false }) => (
@@ -67,11 +70,47 @@ const WalkInCustomerBlock = ({ customer }) => {
  * GET/PATCH /api/orders/admin/... (orderAdminApi.js).
  */
 const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
-  const { order, stepOptions, loading, error, mutating, advanceStep, assignAgent } = useOrderAdmin(orderId);
-  const [activeForm, setActiveForm] = useState(null); // null | 'advance' | 'assign'
+  const { order, stepOptions, loading, error, mutating, advanceStep, assignAgent, addShippingPrice, editShippingPrice, canEditShippingPrice, canEditShippingAddress, loadUserAddresses, editShippingAddress, canEditOrder, addProducts } = useOrderAdmin(orderId);
+  const [activeForm, setActiveForm] = useState(null); // null | 'advance' | 'assign' | 'shipping' | 'editShipping' | 'editAddress' | 'editOrder'
 
   const handleAdvance = async (targetStepCode, remarks) => {
     const success = await advanceStep(targetStepCode, remarks);
+    if (success) {
+      setActiveForm(null);
+      onChanged?.();
+    }
+    return success;
+  };
+
+  const handleAddShipping = async (shippingAmount) => {
+    const success = await addShippingPrice(shippingAmount);
+    if (success) {
+      setActiveForm(null);
+      onChanged?.();
+    }
+    return success;
+  };
+
+  const handleEditShipping = async (shippingAmount) => {
+    const success = await editShippingPrice(shippingAmount);
+    if (success) {
+      setActiveForm(null);
+      onChanged?.();
+    }
+    return success;
+  };
+
+  const handleEditAddress = async (payload) => {
+    const success = await editShippingAddress(payload);
+    if (success) {
+      setActiveForm(null);
+      onChanged?.();
+    }
+    return success;
+  };
+
+  const handleAddProducts = async (items) => {
+    const success = await addProducts(items);
     if (success) {
       setActiveForm(null);
       onChanged?.();
@@ -159,6 +198,9 @@ const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
             )}
             <SummaryRow label="Tax" value={formatOrderMoney(order, order.totalTaxAmount)} />
             <SummaryRow label="Shipping" value={formatOrderShipping(order)} />
+            {order.shippingPriceBreakdown?.isShippingPending && (
+              <p className="text-xs text-amber-600">Shipping price is not added yet - the total above excludes it.</p>
+            )}
             {order.additionalCharges > 0 && (
               <SummaryRow label="Additional charges" value={formatOrderMoney(order, order.additionalCharges)} />
             )}
@@ -185,6 +227,39 @@ const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
                   onCancel={() => setActiveForm(null)}
                   submitting={mutating}
                 />
+              ) : activeForm === 'shipping' ? (
+                <AddShippingPriceForm
+                  currencySymbol={order.currencySymbol}
+                  onSubmit={handleAddShipping}
+                  onCancel={() => setActiveForm(null)}
+                  submitting={mutating}
+                />
+              ) : activeForm === 'editShipping' ? (
+                <AddShippingPriceForm
+                  key="edit-shipping"
+                  initialAmount={order.shippingAmount}
+                  submitLabel="Update shipping price"
+                  hint="The order total is recalculated with the new shipping price."
+                  currencySymbol={order.currencySymbol}
+                  onSubmit={handleEditShipping}
+                  onCancel={() => setActiveForm(null)}
+                  submitting={mutating}
+                />
+              ) : activeForm === 'editOrder' ? (
+                <EditOrderForm
+                  order={order}
+                  onSubmit={handleAddProducts}
+                  onCancel={() => setActiveForm(null)}
+                  submitting={mutating}
+                />
+              ) : activeForm === 'editAddress' ? (
+                <EditShippingAddressForm
+                  order={order}
+                  loadAddresses={loadUserAddresses}
+                  onSubmit={handleEditAddress}
+                  onCancel={() => setActiveForm(null)}
+                  submitting={mutating}
+                />
               ) : activeForm === 'assign' ? (
                 <AssignDeliveryAgentForm onSubmit={handleAssign} onCancel={() => setActiveForm(null)} submitting={mutating} />
               ) : (
@@ -192,6 +267,26 @@ const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
                   <Button variant={theme.button.primary} onClick={() => setActiveForm('advance')}>
                     Advance step
                   </Button>
+                  {order.shippingPriceBreakdown?.isShippingPending && (
+                    <Button variant={theme.button.secondary} onClick={() => setActiveForm('shipping')}>
+                      Add Shipping price
+                    </Button>
+                  )}
+                  {canEditShippingPrice && canEditShipping(order) && (
+                    <Button variant={theme.button.secondary} onClick={() => setActiveForm('editShipping')}>
+                      Edit Shipping Price
+                    </Button>
+                  )}
+                  {canEditOrder && canEditOrderFor(order) && (
+                    <Button variant={theme.button.secondary} onClick={() => setActiveForm('editOrder')}>
+                      Edit Order
+                    </Button>
+                  )}
+                  {canEditShippingAddress && canEditShippingAddressFor(order) && (
+                    <Button variant={theme.button.secondary} onClick={() => setActiveForm('editAddress')}>
+                      Edit Shipping Address
+                    </Button>
+                  )}
                   <Button variant={theme.button.secondary} onClick={() => setActiveForm('assign')}>
                     Assign delivery agent
                   </Button>

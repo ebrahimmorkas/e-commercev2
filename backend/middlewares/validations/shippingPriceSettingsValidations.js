@@ -92,9 +92,9 @@ const shippingPriceSettingsFields = {
     weightBrackets: onlyFor(SHIPPING_PRICE_METHODS.WEIGHT, Joi.array().items(weightBracketSchema).min(1).max(50)).label('Weight brackets'),
     weightRestPrice: restPriceFor(SHIPPING_PRICE_METHODS.WEIGHT, 'Weight rest price'),
 
-    // FREE_ABOVE
-    freeAboveThreshold: onlyFor(SHIPPING_PRICE_METHODS.FREE_ABOVE, Joi.number().greater(0).precision(2)).label('Free-above threshold'),
-    freeAboveFallbackPrice: onlyFor(SHIPPING_PRICE_METHODS.FREE_ABOVE, Joi.number().min(0).precision(2)).label('Free-above fallback price')
+    // Free shipping above this order amount - optional, works with every
+    // method (null / omitted = no free-shipping threshold).
+    freeAboveThreshold: Joi.number().greater(0).precision(2).max(100000000).allow(null).label('Free shipping threshold')
 };
 
 const createShippingPriceSettingsSchema = Joi.object(shippingPriceSettingsFields);

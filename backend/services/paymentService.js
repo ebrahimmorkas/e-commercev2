@@ -36,6 +36,12 @@ const initiateOnlinePayment = async (vendorId, userId, orderId, vendorDomain, we
             return common.returnResult(false, 409, 'This order has already been paid.');
         }
 
+        // Manual shipping not entered yet - the total is still incomplete, so
+        // paying now would under-charge. Cash on delivery isn't blocked.
+        if (order.shippingPriceBreakdown?.isShippingPending) {
+            return common.returnResult(false, 409, 'The store has not confirmed the shipping charge for this order yet. Please pay once it is added.');
+        }
+
         // Sits below the WebsiteMaster/CompanyMaster admin-level entitlement
         // gate (already checked in paymentController before this is called)
         // - this is the vendor's OWN on/off switch for online payment on

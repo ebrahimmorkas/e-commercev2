@@ -41,6 +41,28 @@ export const formatOrderMoney = (order, amount) => {
   return order?.currencySymbolPosition === 'SUFFIX' ? `${value}${symbol}` : `${symbol}${value}`;
 };
 
+// Whether an order's already-set shipping price may still be edited: it has a
+// price (not waiting for its first one) and no payment has been taken. The
+// backend re-checks this (orderService.updateOrderShippingPrice).
+export const canEditShipping = (order) =>
+  !!order &&
+  !order.shippingPriceBreakdown?.isShippingPending &&
+  ['PENDING', 'FAILED'].includes(order.payment?.status || 'PENDING');
+
+// Whether products may still be added to an order: not finalized, cancelled or
+// rejected, and no payment taken yet. The backend re-checks this.
+export const canEditOrderFor = (order) =>
+  !!order &&
+  !isOrderLocked(order) &&
+  order.currentStepCode !== 'REJECTED' &&
+  !order.cancelledAt &&
+  ['PENDING', 'FAILED'].includes(order.payment?.status || 'PENDING');
+
+// Whether an order's delivery address may still be changed: not finalized,
+// cancelled or rejected. The backend re-checks this.
+export const canEditShippingAddressFor = (order) =>
+  !!order && !isOrderLocked(order) && order.currentStepCode !== 'REJECTED' && !order.cancelledAt;
+
 // Shipping row text for a placed order. Orders placed from the storefront
 // carry a shippingPriceBreakdown (see backend Order model); admin-placed ones
 // don't (their shipping is typed in manually), so those just show the amount.

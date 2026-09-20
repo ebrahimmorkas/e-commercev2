@@ -39,6 +39,31 @@ const recordCommissionForOrder = async (order, companyMasterData) => {
     }
 };
 
+// Called after an order's subtotal changes (Edit Order adds products): brings
+// its ledger entry's base/amount back in line, using the percentage that was
+// locked in when the order was placed. A no-op when there is no entry
+// (commission wasn't on for this vendor). An entry already COLLECTED/VOIDED
+// is left alone and logged - that needs a human decision.
+const syncCommissionForOrder = async (order) => {
+    try {
+        const entry = await CommissionLedgerEntry.findOne({ vendorId: order.vendorId, orderId: order._id });
+        if (!entry) {
+            return null;
+        }
+        if (entry.ledgerStatus !== COMMISSION_LEDGER_STATUSES.PENDING) {
+            logger.logInfo(0, 1, 'Order changed after its commission was settled - needs manual reconciliation', { vendorId: order.vendorId, orderId: order._id, ledgerStatus: entry.ledgerStatus });
+            return entry;
+        }
+
+        entry.commissionBaseAmount = Math.max(0, (order.subtotal || 0) - (order.totalDiscountAmount || 0));
+        entry.commissionAmount = Math.round(entry.commissionBaseAmount * entry.commissionPercentage) / 100;
+        await entry.save();
+        return entry;
+    } catch (err) {
+        throw err;
+    }
+};
+
 // Called when an order is cancelled/rejected (orderService.cancelOrder /
 // advanceOrderStep -> REJECTED) - a no-op if no ledger entry exists
 // (commission wasn't on for this vendor) or it's already voided. An entry
@@ -107,6 +132,7 @@ const listByVendor = async (vendorId, ledgerStatus) => {
 
 module.exports = {
     recordCommissionForOrder,
+    syncCommissionForOrder,
     voidCommissionForOrder,
     markCollected,
     listByVendor

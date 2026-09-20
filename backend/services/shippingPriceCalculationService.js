@@ -112,6 +112,8 @@ const calculateWeightAmount = async (companyItems, settings) => {
 | Computes the shipping-price contribution of a cart's COMPANY_SETTINGS-priced
 | line items (per the vendor's single active ShippingPriceSettings.method),
 | plus the flat sum of any CUSTOM-priced line items, per unit x quantity.
+| Free shipping above (settings.freeAboveThreshold): when the subtotal reaches it,
+| the order ships free whatever the method - breakdown.isFreeAboveApplied.
 | CUSTOM (manual) method: contributes 0 and sets breakdown.isShippingPending.
 | Location methods (COUNTRY/STATE/CITY/ZIP) charge the matching rule's
 | price, or the "rest" price for any place with no rule.
@@ -130,6 +132,17 @@ const calculateShippingPriceAmount = async ({ lineItems, subtotal, shippingPrice
         const customAmount = customItems.reduce((sum, i) => sum + (i.shippingValue || 0) * i.quantity, 0);
 
         const featureOn = !!(websiteMasterData?.isShippingPriceFeatureOn && companyMasterData?.isShippingPriceFeatureOn);
+
+        // Free shipping above a vendor-set order amount overrides every method
+        // (and any per-product custom charge): the order simply ships free.
+        // Only while the shipping price feature is on.
+        const freeAboveThreshold = shippingPriceSettings?.freeAboveThreshold;
+        if (featureOn && shippingPriceSettings && freeAboveThreshold > 0 && subtotal >= freeAboveThreshold) {
+            return common.returnResult(true, 200, 'Shipping price calculated successfully', {
+                shippingAmount: 0,
+                breakdown: { customAmount: 0, companyAmount: 0, method: shippingPriceSettings.method, isShippingPending: false, isFreeAboveApplied: true }
+            });
+        }
 
         if (!featureOn || !shippingPriceSettings || companyItems.length === 0) {
             return common.returnResult(true, 200, 'Shipping price calculated successfully', {
@@ -173,9 +186,6 @@ const calculateShippingPriceAmount = async ({ lineItems, subtotal, shippingPrice
                 // calculate now, so it contributes 0 and is flagged pending.
                 companyAmount = 0;
                 isShippingPending = true;
-                break;
-            case SHIPPING_PRICE_METHODS.FREE_ABOVE:
-                companyAmount = subtotal >= shippingPriceSettings.freeAboveThreshold ? 0 : (shippingPriceSettings.freeAboveFallbackPrice || 0);
                 break;
             default:
                 companyAmount = 0;
