@@ -8,8 +8,9 @@ import Avatar from '../../../../components/common/Avatar';
 import Modal from '../../../../components/common/Modal';
 import EmptyState from '../../../../components/common/EmptyState';
 import BulkActionBar from '../../../../components/common/BulkActionBar';
+import SearchInput from '../../../../components/common/SearchInput';
 import { useCategories } from '../hooks/useCategories';
-import { flattenToTree } from '../utils/categoryTree';
+import { filterTreeRows, flattenToTree } from '../utils/categoryTree';
 import CategoryForm from '../components/CategoryForm';
 import BulkUploadModal from '../components/BulkUploadModal';
 import theme from '../theme/theme';
@@ -61,7 +62,21 @@ const CategoriesPage = () => {
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
 
+  const [searchTerm, setSearchTerm] = useState('');
+
   const treeRows = useMemo(() => flattenToTree(categories), [categories]);
+  const visibleRows = useMemo(() => filterTreeRows(treeRows, searchTerm), [treeRows, searchTerm]);
+  const isSearching = searchTerm.trim() !== '';
+  // Rows shown only as a match's parent don't count as results.
+  const matchCount = useMemo(() => visibleRows.filter((row) => !row.isContextOnly).length, [visibleRows]);
+
+  // A bulk action must never reach rows the admin can no longer see, so narrowing the
+  // search drops any selected category that just got filtered out.
+  const handleSearchChange = (value) => {
+    setSearchTerm(value);
+    const stillVisible = new Set(filterTreeRows(treeRows, value).map((row) => row._id));
+    setSelectedIds((prev) => prev.filter((id) => stillVisible.has(id)));
+  };
 
   const descendantCount = (categoryId) => {
     const idStr = String(categoryId);
@@ -70,6 +85,8 @@ const CategoriesPage = () => {
 
   const openAddModal = (parentCategory = null) => {
     setSelectedIds([]);
+    // A leftover search would hide the category the admin is about to add.
+    setSearchTerm('');
     setFormModal({
       open: true,
       mode: 'add',
@@ -178,7 +195,11 @@ const CategoriesPage = () => {
         key: 'categoryName',
         label: 'Category',
         render: (row) => (
-          <div className="flex items-center gap-2" style={{ paddingLeft: row.depth * theme.tree.indentPx }}>
+          <div
+            className={`flex items-center gap-2 ${row.isContextOnly ? 'opacity-50' : ''}`}
+            style={{ paddingLeft: row.depth * theme.tree.indentPx }}
+            title={row.isContextOnly ? "Shown as the parent of a match - doesn't match the search itself" : undefined}
+          >
             {row.depth > 0 && <span className={theme.tree.connector}>└</span>}
             <Avatar src={row.image?.url} name={row.categoryName} shape="square" size="sm" />
             <span className={`font-medium ${theme.text.heading}`}>{row.categoryName}</span>
@@ -260,11 +281,23 @@ const CategoriesPage = () => {
           </p>
         )}
 
+        {!loading && categories.length > 0 && (
+          <SearchInput
+            value={searchTerm}
+            onChange={handleSearchChange}
+            placeholder="Search category name…"
+            ariaLabel="Search categories"
+            matchCount={matchCount}
+            totalCount={categories.length}
+            itemLabel="categories"
+          />
+        )}
+
         <BulkActionBar selectedCount={selectedIds.length} onClear={() => setSelectedIds([])} actions={bulkActions} />
 
         <Table
           columns={columns}
-          data={treeRows}
+          data={visibleRows}
           keyField="_id"
           actions={selectedIds.length > 0 ? [] : actions}
           selectable
@@ -272,15 +305,28 @@ const CategoriesPage = () => {
           onSelectionChange={setSelectedIds}
           loading={loading}
           emptyComponent={
-            <EmptyState
-              title="No categories yet"
-              description="Create your first category to start organizing your products."
-              action={
-                <Button variant={theme.button.primary} leftIcon={<PlusIcon />} onClick={() => openAddModal()}>
-                  Add Category
-                </Button>
-              }
-            />
+            isSearching && categories.length > 0 ? (
+              <EmptyState
+                size="sm"
+                title="No matching categories"
+                description={`Nothing matches "${searchTerm.trim()}". Try a different name.`}
+                action={
+                  <Button variant={theme.button.secondary} onClick={() => handleSearchChange('')}>
+                    Clear search
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                title="No categories yet"
+                description="Create your first category to start organizing your products."
+                action={
+                  <Button variant={theme.button.primary} leftIcon={<PlusIcon />} onClick={() => openAddModal()}>
+                    Add Category
+                  </Button>
+                }
+              />
+            )
           }
         />
       </Card>

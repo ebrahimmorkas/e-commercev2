@@ -34,6 +34,39 @@ export const flattenToTree = (categories) => {
 };
 
 /**
+ * Search filter over the rows flattenToTree() produced. Keeps every category
+ * whose name contains all of the term's words (any order, case-insensitive) plus
+ * each match's ancestors, so a matching sub-category still shows under its
+ * parents at its real depth. Ancestors that don't match themselves come back
+ * flagged `isContextOnly: true` so the table can dim them. A match's own
+ * children are not pulled in - only the path down to it.
+ */
+export const filterTreeRows = (treeRows, term) => {
+  const words = term.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return treeRows;
+
+  const byId = new Map(treeRows.map((row) => [String(row._id), row]));
+  const matchIds = new Set();
+  treeRows.forEach((row) => {
+    const name = (row.categoryName || '').toLowerCase();
+    if (words.every((word) => name.includes(word))) matchIds.add(String(row._id));
+  });
+
+  const visibleIds = new Set(matchIds);
+  matchIds.forEach((id) => {
+    let parent = parentKey(byId.get(id));
+    while (parent && byId.has(parent) && !visibleIds.has(parent)) {
+      visibleIds.add(parent);
+      parent = parentKey(byId.get(parent));
+    }
+  });
+
+  return treeRows
+    .filter((row) => visibleIds.has(String(row._id)))
+    .map((row) => (matchIds.has(String(row._id)) ? row : { ...row, isContextOnly: true }));
+};
+
+/**
  * All descendant _ids of categoryId (not including categoryId itself),
  * mirroring the backend's getDescendantIds - used to stop the UI from even
  * offering a self/descendant as a new parent (the backend still enforces

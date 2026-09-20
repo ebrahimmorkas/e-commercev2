@@ -1,5 +1,5 @@
 const authService = require('../services/authService');
-const { sendSuccess, sendError } = require('../utils/common');
+const { sendSuccess, sendError, checkFeatureOnOrOff } = require('../utils/common');
 const { logInfo, logException } = require('../utils/logger');
 const { accessTokenCookieOptions, refreshTokenCookieOptions, guestCartCookieOptions, knownUserIdCookieOptions } = require('../utils/cookieOptions');
 
@@ -8,17 +8,67 @@ const getDeviceMeta = (req) => ({
     ip: req.ip || req.connection?.remoteAddress || 'unknown'
 });
 
+// TRN = Tax Registration Number: exactly 15 digits (UAE FTA format).
+const TRN_PATTERN = /^\d{15}$/;
+const BUSINESS_FULL_NAME_MAX_LENGTH = 100;
+
+// Three gates, all must be on: the global WebsiteMaster flag, the vendor's
+// CompanyMaster entitlement (both via checkFeatureOnOrOff, like every other
+// feature), and the vendor's own opt-in in Company Settings. A vendor with no
+// settings document yet has the feature off, same as an explicit false.
+const isTaxRegistrationEnabled = async (req) => {
+    const masterCheck = await checkFeatureOnOrOff(
+        req.vendorId, req.websiteMasterData, req.companyMasterData,
+        'isTaxRegistrationFeatureOn', 'isTaxRegistrationFeatureOn'
+    );
+    return masterCheck.isSuccess && req.companySettingsData?.isTaxRegistrationOnSignupEnabled === true;
+};
+
+// Public - the storefront register form asks this to decide whether to show the
+// "I am tax registered" checkbox. Only the one boolean is exposed, never the
+// rest of the vendor's settings.
+const getRegistrationConfig = async (req, res) => {
+    try {
+        return sendSuccess(res, 200, 'Registration config fetched successfully', {
+            taxRegistrationEnabled: await isTaxRegistrationEnabled(req)
+        });
+    } catch (err) {
+        logException('Error while fetching registration config', err);
+        return sendError(res, 500, 'Failed to fetch registration config');
+    }
+};
+
 const register = async (req, res) => {
     try {
         const vendorId = req.vendorId;
         if(!vendorId) {
             return sendError(res, 400, `Vendor Identification failed`);
         }
-        const { name, username, email, phone_no, whatsapp_no, password, country, state, city } = req.body;
+        const { name, username, email, phone_no, whatsapp_no, password, country, state, city, isTaxRegistered, businessFullName, trn } = req.body;
 
         if (!name || !username || !email || !phone_no || !password || !country || !state || !city) {
             logInfo(0, 1, 'Register failed - missing required fields', { username, email });
             return sendError(res, 400, 'name, username, email, phone_no, password, country, state and city are required');
+        }
+
+        // Tax registration details: only honoured when the vendor has the feature on
+        // AND the customer ticked the box. Otherwise they're dropped, so a stale or
+        // hand-crafted business name / TRN can never be stored against an untick.
+        let taxDetails = { isTaxRegistered: false };
+        if (isTaxRegistered === true && await isTaxRegistrationEnabled(req)) {
+            const cleanBusinessName = typeof businessFullName === 'string' ? businessFullName.trim() : '';
+            const cleanTrn = typeof trn === 'string' ? trn.trim() : '';
+            if (!cleanBusinessName || !cleanTrn) {
+                logInfo(0, 1, 'Register failed - tax registered without business name/TRN', { username, email });
+                return sendError(res, 400, 'Business full name and TRN are required when registering as tax registered');
+            }
+            if (cleanBusinessName.length > BUSINESS_FULL_NAME_MAX_LENGTH) {
+                return sendError(res, 400, `Business full name cannot exceed ${BUSINESS_FULL_NAME_MAX_LENGTH} characters`);
+            }
+            if (!TRN_PATTERN.test(cleanTrn)) {
+                return sendError(res, 400, 'TRN must be exactly 15 digits');
+            }
+            taxDetails = { isTaxRegistered: true, businessFullName: cleanBusinessName, trn: cleanTrn };
         }
 
         const companyMasterData = req.companyMasterData;
@@ -41,7 +91,8 @@ const register = async (req, res) => {
             password,
             country,
             state,
-            city
+            city,
+            ...taxDetails
         });
 
         if(!newUser.isSuccess) {
@@ -53,6 +104,8 @@ const register = async (req, res) => {
         return sendSuccess(res, newUser.statusCode, newUser.message, newUser.meta.user);
     } catch (err) {
         logException('Error while registering user', err);
+        // Must always respond - a catch that only logs leaves the client spinning.
+        return sendError(res, 500, 'Registration failed. Please try again.');
     }
 };
 
@@ -186,6 +239,7 @@ const logoutAll = async (req, res) => {
 
 module.exports = {
     register,
+    getRegistrationConfig,
     login,
     refreshToken,
     logout,

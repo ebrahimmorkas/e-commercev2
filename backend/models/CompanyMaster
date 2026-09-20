@@ -693,6 +693,16 @@ const companyMasterSchema = mongoose.Schema({
     isAdminPlacingOrderOnBehalfOfUserIsOn: {
         type: Boolean,
         default: false
+    },
+    // Vendor entitlement: whether this vendor may offer the optional "I am tax
+    // registered" (Business Full Name + TRN) fields on customer signup. Off by
+    // default - same opt-in convention as isAdminAddingUserFeatureAllowed. Paired
+    // with WebsiteMaster.isTaxRegistrationFeatureOn via checkFeatureOnOrOff; the
+    // vendor's own on/off choice underneath is
+    // CompanySettings.isTaxRegistrationOnSignupEnabled.
+    isTaxRegistrationFeatureOn: {
+        type: Boolean,
+        default: false
     }
     // End of Customer Management
 }, {

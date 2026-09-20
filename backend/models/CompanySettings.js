@@ -210,6 +210,17 @@ const companySettingsSchema = new mongoose.Schema({
   },
   // End of Banner
 
+  // Start of Customer Signup
+  // Vendor's own on/off choice: when true, the storefront register form shows an
+  // optional "I am tax registered" checkbox that reveals Business Full Name + TRN
+  // inputs. Off by default so existing vendors' signup is unchanged. Read by the
+  // public GET /api/auth/registration-config and enforced in authController.register.
+  isTaxRegistrationOnSignupEnabled: {
+    type: Boolean,
+    default: false
+  },
+  // End of Customer Signup
+
   // Start of product
   showReviewsToCustomers: {
       type: Boolean,

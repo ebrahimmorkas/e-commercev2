@@ -71,7 +71,8 @@ async function seedCompanyMaster() {
 
                 isPasswordChangeFeatureByAdminAllowed: true,
                 isAdminAddingUserFeatureAllowed: true,
-                isAdminPlacingOrderOnBehalfOfUserIsOn: true
+                isAdminPlacingOrderOnBehalfOfUserIsOn: true,
+                isTaxRegistrationFeatureOn: true
             },
             {
                 upsert: true,

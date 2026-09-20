@@ -4,9 +4,14 @@ import theme from '../theme/theme';
 /**
  * @param {Object} props.draft
  * @param {(patch: Object) => void} props.onChange
+ * @param {Object|null} props.companyMaster - CompanyMaster entitlement flags (isTaxRegistrationFeatureOn gates the signup switch)
  */
-const StorefrontSection = ({ draft, onChange }) => {
+const StorefrontSection = ({ draft, onChange, companyMaster }) => {
   const set = (patch) => onChange(patch);
+
+  // Only the CompanyMaster half of the gate is visible here, same accepted limitation as
+  // the Payment & Bank tab - the server checks WebsiteMaster too when signup is used.
+  const taxRegistrationEntitled = !!companyMaster?.isTaxRegistrationFeatureOn;
 
   return (
     <div className="space-y-4">
@@ -46,6 +51,21 @@ const StorefrontSection = ({ draft, onChange }) => {
             color={theme.switch.color}
           />
         )}
+      </div>
+
+      <div className="border border-gray-200 rounded-lg p-3">
+        <Switch
+          label="Ask for Tax Registration at Signup"
+          description={
+            taxRegistrationEntitled
+              ? "Show an optional 'I am tax registered' checkbox on the customer signup form. When a customer ticks it, they must also enter a Business Full Name and a 15-digit TRN."
+              : 'Not enabled for your account. Please contact support to turn this feature on.'
+          }
+          checked={taxRegistrationEntitled && draft.isTaxRegistrationOnSignupEnabled}
+          onChange={(e) => set({ isTaxRegistrationOnSignupEnabled: e.target.checked })}
+          disabled={!taxRegistrationEntitled}
+          color={theme.switch.color}
+        />
       </div>
 
       <div className="border border-gray-200 rounded-lg p-3">

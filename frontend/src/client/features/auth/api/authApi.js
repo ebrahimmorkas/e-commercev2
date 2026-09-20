@@ -10,8 +10,17 @@ import { apiRequest } from '../../../../utils/apiClient';
 
 /**
  * @param {Object} data - { name, username, email, phone_no, whatsapp_no, password, country, state, city }
+ *   plus, only when the vendor has tax registration on and the customer ticked it:
+ *   { isTaxRegistered: true, businessFullName, trn }
  */
 export const register = (data) => apiRequest('/auth/register', { method: 'POST', body: data, auth: false });
+
+/**
+ * Public - tells the register form whether to offer the "I am tax registered"
+ * checkbox (a vendor's own Company Settings choice).
+ * @returns {Promise<{ taxRegistrationEnabled: boolean }>}
+ */
+export const getRegistrationConfig = () => apiRequest('/auth/registration-config', { auth: false });
 
 /**
  * @param {string} identifier - username, email, or phone number
@@ -29,4 +38,4 @@ export const refreshToken = () => apiRequest('/auth/refresh-token', { method: 'P
 
 export const logout = () => apiRequest('/auth/logout', { method: 'POST', auth: false });
 
-export default { register, login, refreshToken, logout };
+export default { register, getRegistrationConfig, login, refreshToken, logout };

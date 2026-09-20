@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Modal from '../../../../components/common/Modal/Modal';
 import { useAuth } from '../hooks/useAuth';
+import { getRegistrationConfig } from '../api/authApi';
 import { useToast } from '../../../../components/common/Toast';
 import htmLogo from '../../../../assets/htm_logo.jpeg';
 
@@ -17,6 +18,9 @@ const EMPTY_REGISTER_FORM = {
   country: '',
   state: '',
   city: '',
+  isTaxRegistered: false,
+  businessFullName: '',
+  trn: '',
 };
 
 /**
@@ -37,6 +41,25 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
   const [error, setError] = useState('');
   const [loginForm, setLoginForm] = useState({ identifier: '', password: '' });
   const [registerForm, setRegisterForm] = useState(EMPTY_REGISTER_FORM);
+  // Whether this vendor offers the optional "I am tax registered" checkbox (a Company
+  // Settings choice). Off until the API says otherwise, and stays off if the call fails,
+  // so a config hiccup can never block signup.
+  const [taxRegistrationEnabled, setTaxRegistrationEnabled] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || mode !== 'register') return undefined;
+    let cancelled = false;
+    getRegistrationConfig()
+      .then((config) => {
+        if (!cancelled) setTaxRegistrationEnabled(config?.taxRegistrationEnabled === true);
+      })
+      .catch(() => {
+        if (!cancelled) setTaxRegistrationEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, mode]);
 
   const resetAndClose = () => {
     setError('');
@@ -90,6 +113,16 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
     const registerPayload = { ...registerForm };
     if (!registerPayload.whatsapp_no.trim()) {
       delete registerPayload.whatsapp_no;
+    }
+    // Tax details only travel with a ticked box on a vendor that offers it; otherwise
+    // the three keys are dropped so the payload is identical to a plain signup.
+    if (taxRegistrationEnabled && registerPayload.isTaxRegistered) {
+      registerPayload.businessFullName = registerPayload.businessFullName.trim();
+      registerPayload.trn = registerPayload.trn.trim();
+    } else {
+      delete registerPayload.isTaxRegistered;
+      delete registerPayload.businessFullName;
+      delete registerPayload.trn;
     }
     const registerResult = await register(registerPayload);
     if (!registerResult.success) {
@@ -247,6 +280,55 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
               disabled={loading}
             />
           </div>
+          {taxRegistrationEnabled && (
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={registerForm.isTaxRegistered}
+                  onChange={(e) =>
+                    setRegisterForm((f) => ({
+                      ...f,
+                      isTaxRegistered: e.target.checked,
+                      // Unticking drops what was typed, so it can't be resubmitted later by accident.
+                      ...(e.target.checked ? {} : { businessFullName: '', trn: '' }),
+                    }))
+                  }
+                  className="h-4 w-4 rounded border-slate-300 accent-amber-600 cursor-pointer"
+                  disabled={loading}
+                />
+                I am tax registered
+              </label>
+              {registerForm.isTaxRegistered && (
+                <>
+                  <input
+                    type="text"
+                    placeholder="Business full name"
+                    value={registerForm.businessFullName}
+                    onChange={(e) => setRegisterForm((f) => ({ ...f, businessFullName: e.target.value }))}
+                    className={inputClass}
+                    required
+                    maxLength={100}
+                    disabled={loading}
+                  />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="TRN (15 digits)"
+                    value={registerForm.trn}
+                    onChange={(e) => setRegisterForm((f) => ({ ...f, trn: e.target.value.replace(/\D/g, '') }))}
+                    className={inputClass}
+                    required
+                    minLength={15}
+                    maxLength={15}
+                    pattern="\d{15}"
+                    title="TRN must be exactly 15 digits"
+                    disabled={loading}
+                  />
+                </>
+              )}
+            </div>
+          )}
           <input
             type="password"
             placeholder="Password"

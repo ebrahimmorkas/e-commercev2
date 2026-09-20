@@ -18,7 +18,7 @@ const getUserCount = async (vendorId) => {
     }
 };
 
-const registerUser = async ({ vendorId, name, username, email, phone_no, whatsapp_no, password, country, state, city }) => {
+const registerUser = async ({ vendorId, name, username, email, phone_no, whatsapp_no, password, country, state, city, isTaxRegistered, businessFullName, trn }) => {
     try {
         const existingUser = await User.findOne({
             vendorId,
@@ -42,7 +42,11 @@ const registerUser = async ({ vendorId, name, username, email, phone_no, whatsap
             authProvider: 'local',
             country,
             state,
-            city
+            city,
+            isTaxRegistered: isTaxRegistered === true,
+            // Only present for a tax-registered signup; undefined keeps them off the document.
+            businessFullName: isTaxRegistered === true ? businessFullName : undefined,
+            trn: isTaxRegistered === true ? trn : undefined
         });
 
         return common.returnResult(true, 201, `User registered successfully`, {

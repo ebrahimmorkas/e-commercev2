@@ -75,6 +75,24 @@ const userSchema = mongoose.Schema({
         type: String,
         required: true,
     },  
+    // Optional tax registration details captured at signup (only when the vendor has
+    // CompanySettings.isTaxRegistrationOnSignupEnabled on). businessFullName/trn are
+    // only stored when isTaxRegistered is true. trn is deliberately NOT unique - more
+    // than one person at the same business may register under one TRN.
+    isTaxRegistered: {
+        type: Boolean,
+        default: false
+    },
+    businessFullName: {
+        type: String,
+        trim: true,
+        maxlength: 100
+    },
+    trn: {
+        type: String,
+        trim: true,
+        maxlength: 15
+    },
     updated_by: {
         type: mongoose.Types.ObjectId,
         index: true

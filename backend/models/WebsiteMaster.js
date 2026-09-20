@@ -366,6 +366,14 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: true
     },
+    // Global switch, on by default - CompanyMaster.isTaxRegistrationFeatureOn
+    // (off by default, per-vendor entitlement) is the next gate, and the vendor's
+    // own CompanySettings.isTaxRegistrationOnSignupEnabled is the last one, for
+    // the optional "I am tax registered" (Business Full Name + TRN) signup fields.
+    isTaxRegistrationFeatureOn: {
+        type: Boolean,
+        default: true
+    },
     // End of Customer Management
 
 }, {

@@ -7,6 +7,7 @@ import Switch from '../../../../components/common/Switch';
 import Modal from '../../../../components/common/Modal';
 import BulkActionBar from '../../../../components/common/BulkActionBar';
 import EmptyState from '../../../../components/common/EmptyState';
+import SearchInput from '../../../../components/common/SearchInput';
 import Spinner from '../../../../components/common/Spinner';
 import { useProducts } from '../hooks/useProducts';
 import { useProductLookups } from '../hooks/useProductLookups';
@@ -83,6 +84,29 @@ const priceRangeOf = (product) => {
 
 const stockOf = (product) => allSizes(product).reduce((sum, s) => sum + (s.stock || 0), 0);
 
+// Client-side search over the list the admin endpoint already returns in full (it has no
+// pagination), so no backend query is needed. Every whitespace-separated word must match
+// somewhere, in any order, so "red tee" finds a product named "Tee" with a red variant SKU.
+// Covers what the admin can see or type in the form: name, code, category, keywords,
+// variant name/code and each size's SKU / barcode / size code.
+const productSearchText = (product, categoryName) => {
+  const parts = [product.name, product.productCode, categoryName, ...(product.searchKeywords || [])];
+  (product.variants || []).forEach((variant) => {
+    parts.push(variant.displayName, variant.variantCode);
+    (variant.sizes || []).forEach((size) => parts.push(size.sku, size.barcode, size.sizeCode));
+  });
+  return parts.filter(Boolean).join(' ').toLowerCase();
+};
+
+const filterProducts = (products, term, categoryNameById) => {
+  const words = term.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return products;
+  return products.filter((product) => {
+    const text = productSearchText(product, categoryNameById.get(String(product.mainCategory)));
+    return words.every((word) => text.includes(word));
+  });
+};
+
 const Thumbnail = ({ product, size = 'w-10 h-10' }) => {
   const url = thumbnailOf(product);
   return url ? (
@@ -119,9 +143,25 @@ const ProductsPage = () => {
     return map;
   }, [lookups.categories]);
 
+  const [searchTerm, setSearchTerm] = useState('');
+  const filteredProducts = useMemo(
+    () => filterProducts(products, searchTerm, categoryNameById),
+    [products, searchTerm, categoryNameById]
+  );
+
+  // A bulk action must never reach rows the admin can no longer see, so narrowing the
+  // search drops any selected product that just got filtered out.
+  const handleSearchChange = (value) => {
+    setSearchTerm(value);
+    const stillVisible = new Set(filterProducts(products, value, categoryNameById).map((p) => p._id));
+    setSelectedIds((prev) => prev.filter((id) => stillVisible.has(id)));
+  };
+
   const openAdd = () => {
     setEditingDraft(null);
     setSelectedIds([]);
+    // A leftover search would hide the product the admin is about to add.
+    setSearchTerm('');
     setView('add');
   };
 
@@ -315,6 +355,19 @@ const ProductsPage = () => {
     [categoryNameById, mutating, toggleStatus]
   );
 
+  const noMatchesState = (
+    <EmptyState
+      size="sm"
+      title="No matching products"
+      description={`Nothing matches "${searchTerm.trim()}". Try a different name, code or SKU.`}
+      action={
+        <Button variant={theme.button.secondary} onClick={() => handleSearchChange('')}>
+          Clear search
+        </Button>
+      }
+    />
+  );
+
   const actions = [
     { label: 'Edit', icon: <PencilIcon />, variant: theme.button.secondary, onClick: openEdit },
     { label: 'Clone', icon: <CloneIcon />, variant: theme.button.secondary, onClick: setCloneTarget },
@@ -409,12 +462,23 @@ const ProductsPage = () => {
           />
         ) : (
           <>
+            <SearchInput
+              value={searchTerm}
+              onChange={handleSearchChange}
+              placeholder="Search name, code, SKU, category…"
+              ariaLabel="Search products"
+              matchCount={filteredProducts.length}
+              totalCount={products.length}
+              itemLabel="products"
+            />
+
             {/* Desktop / tablet: full data table */}
             <div className="hidden md:block">
               <BulkActionBar selectedCount={selectedIds.length} onClear={() => setSelectedIds([])} actions={bulkActions} />
               <Table
                 columns={columns}
-                data={products}
+                data={filteredProducts}
+                emptyComponent={noMatchesState}
                 keyField="_id"
                 actions={selectedIds.length > 0 ? [] : actions}
                 selectable
@@ -426,7 +490,8 @@ const ProductsPage = () => {
 
             {/* Mobile: card list - a 6-column table never reads well this narrow */}
             <div className="md:hidden space-y-3">
-              {products.map((product) => (
+              {filteredProducts.length === 0 && noMatchesState}
+              {filteredProducts.map((product) => (
                 <div key={product._id} className="rounded-xl border border-gray-200 p-3">
                   <div className="flex items-start gap-3">
                     <Thumbnail product={product} size="w-12 h-12" />

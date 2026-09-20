@@ -6,6 +6,7 @@ import Switch from '../../../../components/common/Switch';
 import Modal from '../../../../components/common/Modal';
 import EmptyState from '../../../../components/common/EmptyState';
 import BulkActionBar from '../../../../components/common/BulkActionBar';
+import SearchInput from '../../../../components/common/SearchInput';
 import { useBrands } from '../hooks/useBrands';
 import BrandForm from '../components/BrandForm';
 import theme from '../theme/theme';
@@ -26,6 +27,17 @@ const TrashIcon = () => (
   </svg>
 );
 
+// Client-side search: the admin endpoint returns every brand at once. Every
+// whitespace-separated word must match the name or short name, in any order.
+const filterBrands = (brands, term) => {
+  const words = term.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return brands;
+  return brands.filter((brand) => {
+    const text = `${brand.brandName || ''} ${brand.brandShortName || ''}`.toLowerCase();
+    return words.every((word) => text.includes(word));
+  });
+};
+
 const BrandsPage = () => {
   const { brands, loading, error, mutating, createBrand, editBrand, removeBrand, toggleStatus, bulkToggleStatus, bulkRemoveBrands } = useBrands();
 
@@ -33,9 +45,23 @@ const BrandsPage = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredBrands = useMemo(() => filterBrands(brands, searchTerm), [brands, searchTerm]);
+  const isSearching = searchTerm.trim() !== '';
+
+  // A bulk action must never reach rows the admin can no longer see, so narrowing the
+  // search drops any selected brand that just got filtered out.
+  const handleSearchChange = (value) => {
+    setSearchTerm(value);
+    const stillVisible = new Set(filterBrands(brands, value).map((b) => b._id));
+    setSelectedIds((prev) => prev.filter((id) => stillVisible.has(id)));
+  };
 
   const openAddModal = () => {
     setSelectedIds([]);
+    // A leftover search would hide the brand the admin is about to add.
+    setSearchTerm('');
     setFormModal({ open: true, mode: 'add', brand: null });
   };
   const openEditModal = (brand) => {
@@ -196,11 +222,23 @@ const BrandsPage = () => {
           </p>
         )}
 
+        {!loading && brands.length > 0 && (
+          <SearchInput
+            value={searchTerm}
+            onChange={handleSearchChange}
+            placeholder="Search brand name or short name…"
+            ariaLabel="Search brands"
+            matchCount={filteredBrands.length}
+            totalCount={brands.length}
+            itemLabel="brands"
+          />
+        )}
+
         <BulkActionBar selectedCount={selectedIds.length} onClear={() => setSelectedIds([])} actions={bulkActions} />
 
         <Table
           columns={columns}
-          data={brands}
+          data={filteredBrands}
           keyField="_id"
           actions={selectedIds.length > 0 ? [] : actions}
           selectable
@@ -209,15 +247,28 @@ const BrandsPage = () => {
           loading={loading}
           pageSize={10}
           emptyComponent={
-            <EmptyState
-              title="No brands yet"
-              description="Create your first brand so it can be assigned to products."
-              action={
-                <Button variant={theme.button.primary} leftIcon={<PlusIcon />} onClick={openAddModal}>
-                  Add Brand
-                </Button>
-              }
-            />
+            isSearching && brands.length > 0 ? (
+              <EmptyState
+                size="sm"
+                title="No matching brands"
+                description={`Nothing matches "${searchTerm.trim()}". Try a different name.`}
+                action={
+                  <Button variant={theme.button.secondary} onClick={() => handleSearchChange('')}>
+                    Clear search
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                title="No brands yet"
+                description="Create your first brand so it can be assigned to products."
+                action={
+                  <Button variant={theme.button.primary} leftIcon={<PlusIcon />} onClick={openAddModal}>
+                    Add Brand
+                  </Button>
+                }
+              />
+            )
           }
         />
       </Card>

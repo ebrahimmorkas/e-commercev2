@@ -54,7 +54,8 @@ async function seedWebsiteMaster() {
 
                 isPasswordChangeFeatureByAdminAllowed: true,
                 isAdminAddingUserFeatureAllowed: true,
-                isAdminPlacingOrderOnBehalfOfUserIsOn: true
+                isAdminPlacingOrderOnBehalfOfUserIsOn: true,
+                isTaxRegistrationFeatureOn: true
             },
             {
                 upsert: true,

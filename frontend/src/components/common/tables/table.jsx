@@ -120,8 +120,11 @@ const Table = ({
    * Pagination
    */
   const totalPages = pageSize ? Math.max(1, Math.ceil(sortedData.length / pageSize)) : 1;
+  // Clamp rather than trust `page`: when the caller filters `data` down (e.g. a
+  // search box) the stored page can end up past the last one and would render empty.
+  const currentPage = Math.min(page, totalPages);
   const pagedData = pageSize
-    ? sortedData.slice((page - 1) * pageSize, page * pageSize)
+    ? sortedData.slice((currentPage - 1) * pageSize, currentPage * pageSize)
     : sortedData;
 
   const handleSort = (column) => {
@@ -339,21 +342,21 @@ const Table = ({
       {pageSize && totalPages > 1 && (
         <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-t border-gray-200">
           <span className="text-sm text-gray-600">
-            Page {page} of {totalPages} &middot; {sortedData.length} rows
+            Page {currentPage} of {totalPages} &middot; {sortedData.length} rows
           </span>
           <div className="flex gap-2">
             <button
               type="button"
-              disabled={page === 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              onClick={() => setPage(Math.max(1, currentPage - 1))}
               className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               Previous
             </button>
             <button
               type="button"
-              disabled={page === totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
               className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               Next

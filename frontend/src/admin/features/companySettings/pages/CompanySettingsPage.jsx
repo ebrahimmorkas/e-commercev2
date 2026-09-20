@@ -56,7 +56,7 @@ const CompanySettingsPage = () => {
   const tabs = [
     { key: 'general', label: 'General', content: <GeneralInfoSection {...sectionProps} errors={formErrors} /> },
     { key: 'policies', label: 'Policies', content: <PoliciesSection {...sectionProps} /> },
-    { key: 'storefront', label: 'Storefront', content: <StorefrontSection {...sectionProps} /> },
+    { key: 'storefront', label: 'Storefront', content: <StorefrontSection {...sectionProps} companyMaster={companyMaster} /> },
     { key: 'product', label: 'Product', content: <ProductSection {...sectionProps} /> },
     { key: 'cartOrder', label: 'Cart & Order', content: <CartOrderSection {...sectionProps} /> },
     { key: 'payment', label: 'Payment & Bank', content: <PaymentBankSection {...sectionProps} companyMaster={companyMaster} /> },
