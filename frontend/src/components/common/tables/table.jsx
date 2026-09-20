@@ -44,6 +44,8 @@ import React, { useState, useMemo } from 'react';
  * @param {boolean} props.bordered - Add borders around cells
  * @param {boolean} props.compact - Reduce cell padding
  * @param {number} props.pageSize - Rows per page (omit to disable pagination)
+ * @param {*} props.resetPageOn - Jump back to page 1 whenever this value changes (e.g. a search term).
+ *   Sorting is left alone.
  * @param {string} props.className - Extra classes for the outer wrapper
  * @param {string} props.tableClassName - Extra classes for the <table> element
  * @param {Function} props.onRowClick - (row) => void
@@ -68,6 +70,7 @@ const Table = ({
   bordered = false,
   compact = false,
   pageSize = null,
+  resetPageOn,
   className = '',
   tableClassName = '',
   onRowClick,
@@ -76,6 +79,14 @@ const Table = ({
   const [internalSelected, setInternalSelected] = useState([]);
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [page, setPage] = useState(1);
+
+  // Adjusting state while rendering (not in an effect) is React's recommended way to reset
+  // state when a prop changes - it avoids a render with the stale page.
+  const [lastResetKey, setLastResetKey] = useState(resetPageOn);
+  if (resetPageOn !== lastResetKey) {
+    setLastResetKey(resetPageOn);
+    setPage(1);
+  }
 
   const isSelectionControlled = selectedKeys !== undefined;
   const currentSelected = isSelectionControlled ? selectedKeys : internalSelected;

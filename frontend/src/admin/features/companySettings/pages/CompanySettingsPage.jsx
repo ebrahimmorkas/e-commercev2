@@ -13,6 +13,7 @@ import CartOrderSection from '../components/CartOrderSection';
 import PaymentBankSection from '../components/PaymentBankSection';
 import EmailSection from '../components/EmailSection';
 import FreeCashSection from '../components/FreeCashSection';
+import InvoiceSection from '../components/InvoiceSection';
 import AbandonedCartSection from '../components/AbandonedCartSection';
 import ShippingSection from '../components/ShippingSection';
 import theme from '../theme/theme';
@@ -39,13 +40,18 @@ const CompanySettingsPage = () => {
     const nextErrors = {};
     if (!draft.adminName.trim()) nextErrors.adminName = 'Admin name is required';
     if (!draft.adminEmail.trim()) nextErrors.adminEmail = 'Admin email is required';
+    if (draft.taxRegistrationNumber && !/^\d{15}$/.test(draft.taxRegistrationNumber)) {
+      nextErrors.taxRegistrationNumber = 'TRN must be exactly 15 digits';
+    }
     setFormErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
+    return nextErrors;
   };
 
   const handleSave = async () => {
-    if (!validate()) {
-      setActiveTab('general');
+    const errors = validate();
+    if (Object.keys(errors).length > 0) {
+      // Jump to the tab that holds the first problem.
+      setActiveTab(errors.adminName || errors.adminEmail ? 'general' : 'invoice');
       return;
     }
     const { fields, files } = buildSavePayload(draft, { bankTransferEnabled: !!companyMaster?.showPaymentQRCodeAndBankDetails });
@@ -62,6 +68,7 @@ const CompanySettingsPage = () => {
     { key: 'cartOrder', label: 'Cart & Order', content: <CartOrderSection {...sectionProps} /> },
     { key: 'payment', label: 'Payment & Bank', content: <PaymentBankSection {...sectionProps} companyMaster={companyMaster} /> },
     { key: 'email', label: 'Email', content: <EmailSection {...sectionProps} /> },
+    { key: 'invoice', label: 'Invoice', content: <InvoiceSection {...sectionProps} errors={formErrors} /> },
     { key: 'freeCash', label: 'Free Cash', content: <FreeCashSection {...sectionProps} /> },
     { key: 'abandonedCart', label: 'Abandoned Cart', content: <AbandonedCartSection {...sectionProps} /> },
     // Hidden entirely unless the platform has enabled shipping pricing for this vendor.

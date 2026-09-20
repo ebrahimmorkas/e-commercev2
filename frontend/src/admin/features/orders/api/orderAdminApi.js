@@ -1,4 +1,4 @@
-import { apiRequest } from '../../../../utils/apiClient';
+import { apiRequest, apiDownload } from '../../../../utils/apiClient';
 
 const BASE = '/orders';
 
@@ -109,4 +109,16 @@ export const assignDeliveryAgent = (id, deliveryAgentUserId) =>
     body: { deliveryAgentUserId },
   });
 
-export default { getAllOrdersAdmin, getOrderByIdAdmin, getOrderStepOptions, advanceOrderStep, setOrderShippingPrice, updateOrderShippingPrice, getOrderUserAddresses, updateOrderShippingAddress, getEditCategories, getEditProducts, getEditProductOptions, addProductsToOrder, assignDeliveryAgent };
+/**
+ * The PDF invoice for any order of this vendor (generated on the server).
+ * @returns {Promise<{ blob: Blob, filename: string|null }>}
+ */
+export const downloadInvoiceAdmin = (id) => apiDownload(`${BASE}/admin/${id}/invoice`);
+
+/**
+ * The credit note of a cancelled/rejected order that had an invoice.
+ * @returns {Promise<{ blob: Blob, filename: string|null }>}
+ */
+export const downloadCreditNoteAdmin = (id) => apiDownload(`${BASE}/admin/${id}/invoice?type=credit-note`);
+
+export default { getAllOrdersAdmin, getOrderByIdAdmin, getOrderStepOptions, advanceOrderStep, setOrderShippingPrice, updateOrderShippingPrice, getOrderUserAddresses, updateOrderShippingAddress, getEditCategories, getEditProducts, getEditProductOptions, addProductsToOrder, assignDeliveryAgent, downloadInvoiceAdmin, downloadCreditNoteAdmin };

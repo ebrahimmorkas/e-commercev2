@@ -4,13 +4,38 @@ import Table from '../../../../components/common/tables';
 import Badge from '../../../../components/common/Badge';
 import EmptyState from '../../../../components/common/EmptyState';
 import Button from '../../../../components/common/Buttons';
+import SearchInput from '../../../../components/common/SearchInput';
 import { useOrdersAdmin } from '../hooks/useOrdersAdmin';
 import { useRealtime } from '../../../realtime/useRealtime';
 import LiveIndicator from '../../../realtime/LiveIndicator';
 import { CONNECTION_STATUS } from '../../../../utils/socketClient';
 import OrderDetailModal from '../components/OrderDetailModal';
+import { filterBySearch } from '../../../../utils/searchFilter';
 import { formatOrderMoney, formatOrderDateTime, stepBadgeVariant, orderSourceLabel, orderSourceVariant } from '../utils/formatOrder';
 import theme from '../theme/theme';
+
+// Client-side search: the admin endpoint returns every order at once, and live pushes keep that
+// list current, so filtering it here also covers orders arriving while a search is active
+// (matching rules: utils/searchFilter.js). Limited to what the list rows carry - order number,
+// source, status, payment, the address snapshot, and the customer's name/phone for walk-in
+// orders. Online orders only carry a user id here, not the customer's name.
+const orderSearchFields = (order) => [
+  order.orderNumber,
+  orderSourceLabel(order),
+  order.currentStepName,
+  order.currentStepCode,
+  order.payment?.status,
+  order.payment?.method,
+  order.payment?.transactionId,
+  order.walkInCustomer?.name,
+  order.walkInCustomer?.phone,
+  order.walkInCustomer?.whatsapp,
+  order.walkInCustomer?.email,
+  order.shippingAddressSnapshot?.building,
+  order.shippingAddressSnapshot?.cityName,
+  order.shippingAddressSnapshot?.stateName,
+  order.shippingAddressSnapshot?.pincode,
+];
 
 /**
  * Admin order management: all orders for this vendor, with a detail view
@@ -26,6 +51,10 @@ const OrdersPage = () => {
   const { orders, loading, error, refetch } = useOrdersAdmin();
   const { status, reconnect } = useRealtime();
   const [selectedOrderId, setSelectedOrderId] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredOrders = useMemo(() => filterBySearch(orders, searchTerm, orderSearchFields), [orders, searchTerm]);
+  const isSearching = searchTerm.trim() !== '';
 
   // While the live connection is up the list keeps itself current, so a manual Refresh is only offered when
   // it can actually help: the connection is down/reconnecting (the list may be stale), or the last load
@@ -108,15 +137,43 @@ const OrdersPage = () => {
           </p>
         )}
 
+        {!loading && orders.length > 0 && (
+          <SearchInput
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Search order #, status, payment, customer or city…"
+            ariaLabel="Search orders"
+            matchCount={filteredOrders.length}
+            totalCount={orders.length}
+            itemLabel="orders"
+          />
+        )}
+
         <Table
           columns={columns}
-          data={orders}
+          data={filteredOrders}
           keyField="_id"
           actions={actions}
           loading={loading}
           pageSize={15}
+          resetPageOn={searchTerm}
           onRowClick={(row) => setSelectedOrderId(row._id)}
-          emptyComponent={<EmptyState title="No orders yet" description="Orders placed on your storefront will show up here." />}
+          emptyComponent={
+            isSearching && orders.length > 0 ? (
+              <EmptyState
+                size="sm"
+                title="No matching orders"
+                description={`Nothing matches "${searchTerm.trim()}". Try an order number, status or payment method.`}
+                action={
+                  <Button variant={theme.button.secondary} onClick={() => setSearchTerm('')}>
+                    Clear search
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState title="No orders yet" description="Orders placed on your storefront will show up here." />
+            )
+          }
         />
       </Card>
 

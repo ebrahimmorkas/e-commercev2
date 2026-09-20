@@ -7,6 +7,7 @@ import Modal from '../../../../components/common/Modal';
 import EmptyState from '../../../../components/common/EmptyState';
 import BulkActionBar from '../../../../components/common/BulkActionBar';
 import SearchInput from '../../../../components/common/SearchInput';
+import { filterBySearch } from '../../../../utils/searchFilter';
 import { useBrands } from '../hooks/useBrands';
 import BrandForm from '../components/BrandForm';
 import theme from '../theme/theme';
@@ -27,16 +28,8 @@ const TrashIcon = () => (
   </svg>
 );
 
-// Client-side search: the admin endpoint returns every brand at once. Every
-// whitespace-separated word must match the name or short name, in any order.
-const filterBrands = (brands, term) => {
-  const words = term.toLowerCase().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return brands;
-  return brands.filter((brand) => {
-    const text = `${brand.brandName || ''} ${brand.brandShortName || ''}`.toLowerCase();
-    return words.every((word) => text.includes(word));
-  });
-};
+// Client-side search: the admin endpoint returns every brand at once (matching rules: utils/searchFilter.js).
+const filterBrands = (brands, term) => filterBySearch(brands, term, (brand) => [brand.brandName, brand.brandShortName]);
 
 const BrandsPage = () => {
   const { brands, loading, error, mutating, createBrand, editBrand, removeBrand, toggleStatus, bulkToggleStatus, bulkRemoveBrands } = useBrands();
@@ -246,6 +239,7 @@ const BrandsPage = () => {
           onSelectionChange={setSelectedIds}
           loading={loading}
           pageSize={10}
+          resetPageOn={searchTerm}
           emptyComponent={
             isSearching && brands.length > 0 ? (
               <EmptyState

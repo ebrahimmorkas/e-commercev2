@@ -1,4 +1,4 @@
-import { apiRequest } from '../../../../utils/apiClient';
+import { apiRequest, apiDownload } from '../../../../utils/apiClient';
 
 /**
  * Storefront order placement/history. All routes require a logged-in user
@@ -31,4 +31,16 @@ export const getMyOrderById = (id) => apiRequest(`/orders/my-orders/${id}`);
 export const cancelOrder = (id, cancellationReason) =>
   apiRequest(`/orders/my-orders/${id}/cancel`, { method: 'POST', body: { cancellationReason } });
 
-export default { placeOrder, getMyOrders, getMyOrderById, cancelOrder };
+/**
+ * The PDF invoice for one of the logged-in customer's own orders (generated on the server).
+ * @returns {Promise<{ blob: Blob, filename: string|null }>}
+ */
+export const downloadMyInvoice = (id) => apiDownload(`/orders/my-orders/${id}/invoice`);
+
+/**
+ * The credit note raised when the customer's order was cancelled (only exists for cancelled orders that had an invoice).
+ * @returns {Promise<{ blob: Blob, filename: string|null }>}
+ */
+export const downloadMyCreditNote = (id) => apiDownload(`/orders/my-orders/${id}/invoice?type=credit-note`);
+
+export default { placeOrder, getMyOrders, getMyOrderById, cancelOrder, downloadMyInvoice, downloadMyCreditNote };

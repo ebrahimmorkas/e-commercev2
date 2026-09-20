@@ -13,6 +13,7 @@ const counterService = require('./counterService');
 const emailService = require('./emailService');
 const emailTemplateMasterService = require('./emailTemplateMasterService');
 const commissionService = require('./commissionService');
+const invoiceService = require('./invoiceService');
 const adminPlaceOrderService = require('./adminPlaceOrderService');
 const addressService = require('./addressService');
 const common = require('../utils/common');
@@ -350,6 +351,9 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
 
         notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.NEW);
 
+        // Never fails the order: if this can't issue the invoice now, it is issued on first download.
+        await invoiceService.tryIssueInvoiceForOrder(order, { companySettingsData, companyMasterData, websiteMasterData });
+
         logger.logInfo(1, 0, 'Order created successfully', { vendorId, userId, orderId: order._id });
 
         return common.returnResult(true, 201, 'Order placed successfully', { order, ineligibleItems });
@@ -513,6 +517,12 @@ const advanceOrderStep = async (vendorId, adminUserId, orderId, targetStepCode, 
             return common.returnResult(false, 400, "That step is not part of this order's workflow.");
         }
 
+        // Rejecting is one-way and has side effects (stock goes back, commission and invoice are voided).
+        // Repeating it on an already-rejected order used to give the stock back a second time.
+        if (targetStep.code === RESERVED_STEP_CODES.REJECTED && order.currentStepCode === RESERVED_STEP_CODES.REJECTED) {
+            return common.returnResult(false, 400, 'This order has already been rejected.');
+        }
+
         closeCurrentHistoryEntryAndPushNext(order, targetStep, adminUserId, true);
 
         if (targetStep.code === RESERVED_STEP_CODES.DISPATCHED) {
@@ -536,6 +546,8 @@ const advanceOrderStep = async (vendorId, adminUserId, orderId, targetStepCode, 
         if (targetStep.code === RESERVED_STEP_CODES.REJECTED) {
             await commissionService.voidCommissionForOrder(vendorId, order._id, order.cancellationReason);
             await restoreStockForCancelledOrder(order);
+            // Voids the invoice (if one was issued) and raises its credit note; never fails the rejection.
+            await invoiceService.tryVoidInvoiceForOrder(order, order.cancellationReason);
         }
 
         notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.STATUS_CHANGED);
@@ -888,6 +900,8 @@ const cancelOrder = async (vendorId, userId, orderId, cancellationReason, compan
 
         await commissionService.voidCommissionForOrder(vendorId, order._id, cancellationReason);
         await restoreStockForCancelledOrder(order);
+        // Voids the invoice (if one was issued) and raises its credit note; never fails the cancellation.
+        await invoiceService.tryVoidInvoiceForOrder(order, cancellationReason);
 
         notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.CANCELLED);
 
@@ -1023,6 +1037,10 @@ const fetchOrderById = async (vendorId, orderId, userId, isAdmin) => {
 
         const items = await enrichOrderItemsForDetail(vendorId, order);
         const orderWithItems = order.toObject();
+        // Whether this order can have a PDF invoice: only orders with line items actually stored on
+        // them can. Older orders show items rebuilt from their cart (with no tax breakdown), which
+        // an invoice cannot be built from - the UI uses this to offer the download only when it works.
+        orderWithItems.invoiceAvailable = order.items.length > 0;
         orderWithItems.items = items;
 
         return common.returnResult(true, 200, 'Order fetched successfully', { order: orderWithItems });

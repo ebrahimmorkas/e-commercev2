@@ -13,6 +13,7 @@ import { useProducts } from '../hooks/useProducts';
 import { useProductLookups } from '../hooks/useProductLookups';
 import ProductForm from '../components/ProductForm';
 import { mapApiProductToDraft } from '../utils/productDraft';
+import { filterBySearch } from '../../../../utils/searchFilter';
 import theme from '../theme/theme';
 
 const PlusIcon = () => (
@@ -85,27 +86,20 @@ const priceRangeOf = (product) => {
 const stockOf = (product) => allSizes(product).reduce((sum, s) => sum + (s.stock || 0), 0);
 
 // Client-side search over the list the admin endpoint already returns in full (it has no
-// pagination), so no backend query is needed. Every whitespace-separated word must match
-// somewhere, in any order, so "red tee" finds a product named "Tee" with a red variant SKU.
+// pagination), so no backend query is needed (matching rules: utils/searchFilter.js).
 // Covers what the admin can see or type in the form: name, code, category, keywords,
 // variant name/code and each size's SKU / barcode / size code.
-const productSearchText = (product, categoryName) => {
-  const parts = [product.name, product.productCode, categoryName, ...(product.searchKeywords || [])];
+const productSearchFields = (product, categoryName) => {
+  const fields = [product.name, product.productCode, categoryName, ...(product.searchKeywords || [])];
   (product.variants || []).forEach((variant) => {
-    parts.push(variant.displayName, variant.variantCode);
-    (variant.sizes || []).forEach((size) => parts.push(size.sku, size.barcode, size.sizeCode));
+    fields.push(variant.displayName, variant.variantCode);
+    (variant.sizes || []).forEach((size) => fields.push(size.sku, size.barcode, size.sizeCode));
   });
-  return parts.filter(Boolean).join(' ').toLowerCase();
+  return fields;
 };
 
-const filterProducts = (products, term, categoryNameById) => {
-  const words = term.toLowerCase().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return products;
-  return products.filter((product) => {
-    const text = productSearchText(product, categoryNameById.get(String(product.mainCategory)));
-    return words.every((word) => text.includes(word));
-  });
-};
+const filterProducts = (products, term, categoryNameById) =>
+  filterBySearch(products, term, (product) => productSearchFields(product, categoryNameById.get(String(product.mainCategory))));
 
 const Thumbnail = ({ product, size = 'w-10 h-10' }) => {
   const url = thumbnailOf(product);
@@ -485,6 +479,7 @@ const ProductsPage = () => {
                 selectedKeys={selectedIds}
                 onSelectionChange={setSelectedIds}
                 pageSize={20}
+                resetPageOn={searchTerm}
               />
             </div>
 

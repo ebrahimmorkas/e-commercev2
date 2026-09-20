@@ -4,6 +4,8 @@ import Spinner from '../../../../components/common/Spinner/Spinner';
 import Modal from '../../../../components/common/Modal/Modal';
 import StatusErrorPage from '../../../components/errors/StatusErrorPage';
 import { useToast } from '../../../../components/common/Toast';
+import { useInvoiceDownload } from '../../../../hooks/useInvoiceDownload';
+import { downloadMyInvoice, downloadMyCreditNote } from '../api/ordersApi';
 import { useOrder } from '../hooks/useOrder';
 import OrderStatusTimeline from '../components/OrderStatusTimeline';
 import OrderItems from '../components/OrderItems';
@@ -45,6 +47,8 @@ const AddressBlock = ({ title, snapshot }) => {
 const OrderDetailPage = ({ orderId, onBack, onGoHome }) => {
   const { order, loading, error, statusCode, cancelling, reload, cancel } = useOrder(orderId);
   const toast = useToast();
+  const { download: downloadInvoice, downloading: downloadingInvoice } = useInvoiceDownload(downloadMyInvoice);
+  const { download: downloadCreditNote, downloading: downloadingCreditNote } = useInvoiceDownload(downloadMyCreditNote);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [reason, setReason] = useState('');
   const [cancelError, setCancelError] = useState('');
@@ -96,15 +100,38 @@ const OrderDetailPage = ({ orderId, onBack, onGoHome }) => {
           <h1 className={`text-xl sm:text-2xl font-bold ${theme.section.heading}`}>{order.orderNumber}</h1>
           <p className="text-sm text-slate-500">Placed on {formatOrderDate(order.orderPlacedAt)}</p>
         </div>
-        {isOrderCancellable(order) && (
-          <button
-            type="button"
-            onClick={() => setCancelOpen(true)}
-            className="px-4 py-2 rounded-full text-sm font-semibold cursor-pointer border border-red-200 text-red-600 hover:bg-red-50"
-          >
-            Cancel order
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Decided by the server: feature on, order invoiceable (older orders and never-invoiced cancelled orders are not). */}
+          {order.invoiceDownloadable && (
+            <button
+              type="button"
+              onClick={() => downloadInvoice(order._id)}
+              disabled={downloadingInvoice}
+              className="px-4 py-2 rounded-full text-sm font-semibold cursor-pointer border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {downloadingInvoice ? 'Preparing invoice...' : 'Download invoice'}
+            </button>
+          )}
+          {order.creditNoteDownloadable && (
+            <button
+              type="button"
+              onClick={() => downloadCreditNote(order._id)}
+              disabled={downloadingCreditNote}
+              className="px-4 py-2 rounded-full text-sm font-semibold cursor-pointer border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {downloadingCreditNote ? 'Preparing credit note...' : 'Download credit note'}
+            </button>
+          )}
+          {isOrderCancellable(order) && (
+            <button
+              type="button"
+              onClick={() => setCancelOpen(true)}
+              className="px-4 py-2 rounded-full text-sm font-semibold cursor-pointer border border-red-200 text-red-600 hover:bg-red-50"
+            >
+              Cancel order
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">

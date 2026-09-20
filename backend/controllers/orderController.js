@@ -1,7 +1,65 @@
 const orderService = require('../services/orderService');
 const orderEditService = require('../services/orderEditService');
+const invoiceService = require('../services/invoiceService');
 const logger = require('../utils/logger.js');
 const common = require('../utils/common');
+
+// Streams a generated invoice PDF as a download. Content-Disposition is exposed so a
+// cross-origin frontend can read the filename.
+const sendInvoicePdf = (res, { buffer, filename }) => {
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.status(200).send(buffer);
+};
+
+// A customer may only download the invoice of one of their own orders; an admin, any order
+// of the vendor. Both go through the same isPDFDownloadableFeatureOn gate (in the service).
+const downloadInvoice = (isAdmin) => async (req, res) => {
+    const vendorId = req.vendorId;
+    const { id } = req.params;
+    try {
+        // ?type=credit-note downloads the credit note of a cancelled order instead of the invoice.
+        const type = req.query.type;
+        if (type !== undefined && type !== 'credit-note') {
+            return common.sendError(res, 400, "type must be 'credit-note' when given.");
+        }
+
+        const result = await invoiceService.getInvoicePdfForOrder(vendorId, id, isAdmin ? null : req.user._id, {
+            companySettingsData: req.companySettingsData,
+            companyMasterData: req.companyMasterData,
+            websiteMasterData: req.websiteMasterData
+        }, { document: type === 'credit-note' ? 'credit-note' : 'invoice' });
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return sendInvoicePdf(res, result.meta);
+    } catch (error) {
+        logger.logException('orderController: downloadInvoice - Exception while generating invoice', { vendorId, id, error });
+        return common.sendError(res, 500, 'Could not generate the invoice. Please try again.');
+    }
+};
+
+// What the order screens need to decide which invoice buttons to show. The feature flag is checked
+// here (both master levels) so a screen never offers a download that would just be refused.
+const attachInvoiceInfo = async (req, order) => {
+    const featureCheck = await common.checkFeatureOnOrOff(
+        req.vendorId, req.websiteMasterData, req.companyMasterData,
+        'isPDFDownloadableFeatureOn', 'isPDFDownloadableFeatureOn'
+    );
+    const summary = await invoiceService.getInvoiceSummaryForOrder(req.vendorId, order._id);
+    order.invoiceNumber = summary ? summary.invoiceNumber : null;
+    order.invoiceStatus = summary ? summary.status : null;
+    // An invoice can be downloaded when the feature is on and the order has one, or is invoiceable
+    // (has stored line items and was not cancelled before an invoice was ever issued).
+    order.invoiceDownloadable = featureCheck.isSuccess && (!!summary || (order.invoiceAvailable && !order.cancelledAt));
+    order.creditNoteDownloadable = featureCheck.isSuccess && !!summary && !!summary.creditNoteNumber;
+    return order;
+};
+
+const downloadMyInvoice = downloadInvoice(false);
+const downloadInvoiceAdmin = downloadInvoice(true);
 
 const createOrder = async (req, res) => {
     const vendorId = req.vendorId;
@@ -59,6 +117,7 @@ const getMyOrderById = async (req, res) => {
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
+        await attachInvoiceInfo(req, result.meta.order);
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('orderController: getMyOrderById - Exception while fetching order', { vendorId, id, error });
@@ -102,6 +161,7 @@ const getOrderByIdAdmin = async (req, res) => {
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
+        await attachInvoiceInfo(req, result.meta.order);
         // Both the platform-wide and the vendor's own gate must be on for the
         // admin UI to offer "Edit Shipping Price".
         const canEditShippingPrice = !!(req.websiteMasterData?.isEditingShippingPriceFeatureOn && req.companyMasterData?.isEditingShippingPriceFeatureOn);
@@ -345,5 +405,7 @@ module.exports = {
     getOrderStepOptions,
     advanceOrderStep,
     assignDeliveryAgent,
-    deliveryAgentMarkDelivered
+    deliveryAgentMarkDelivered,
+    downloadMyInvoice,
+    downloadInvoiceAdmin
 };

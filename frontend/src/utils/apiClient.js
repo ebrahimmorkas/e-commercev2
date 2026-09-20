@@ -155,4 +155,53 @@ export const apiRequest = async (path, { method = 'GET', body, auth = true, head
   return payload.data;
 };
 
+/**
+ * Downloads a binary response (e.g. an invoice PDF) with the same auth header and
+ * single refresh-and-retry on 401 as apiRequest. Errors still arrive as the API's
+ * usual JSON, so they surface as an ApiError with the server's message.
+ *
+ * @param {string} path - relative to the API base URL
+ * @param {Object} options
+ * @param {boolean} options.auth - attach the Authorization: Bearer header (default true)
+ * @returns {Promise<{ blob: Blob, filename: string|null }>} filename comes from Content-Disposition
+ */
+export const apiDownload = async (path, { auth = true, _isRetry = false } = {}) => {
+  const requestHeaders = {};
+  if (auth) {
+    const token = getAccessToken();
+    if (token) requestHeaders.Authorization = `Bearer ${token}`;
+  }
+
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, { headers: requestHeaders, credentials: 'include' });
+  } catch {
+    throw new ApiError('Unable to reach the server. Please check your connection.', 0);
+  }
+
+  if (response.status === 401 && auth && !_isRetry) {
+    const newToken = await performRefresh();
+    if (newToken) {
+      setAccessToken(newToken);
+      return apiDownload(path, { auth, _isRetry: true });
+    }
+    clearAccessToken();
+    sessionExpiredHandler?.();
+  }
+
+  if (!response.ok) {
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch {
+      // Non-JSON error body; fall back to the status text below
+    }
+    throw new ApiError(payload?.message || `Request failed with status ${response.status}`, response.status, payload?.errors || null);
+  }
+
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
+  return { blob: await response.blob(), filename: match ? decodeURIComponent(match[1]) : null };
+};
+
 export default apiRequest;

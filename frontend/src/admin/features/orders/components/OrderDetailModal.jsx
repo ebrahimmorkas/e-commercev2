@@ -4,6 +4,8 @@ import Badge from '../../../../components/common/Badge';
 import Button from '../../../../components/common/Buttons';
 import Spinner from '../../../../components/common/Spinner';
 import { useOrderAdmin } from '../hooks/useOrderAdmin';
+import { useInvoiceDownload } from '../../../../hooks/useInvoiceDownload';
+import { downloadInvoiceAdmin, downloadCreditNoteAdmin } from '../api/orderAdminApi';
 import OrderStatusTimeline from './OrderStatusTimeline';
 import OrderItems from './OrderItems';
 import AdvanceStepForm from './AdvanceStepForm';
@@ -71,6 +73,8 @@ const WalkInCustomerBlock = ({ customer }) => {
  */
 const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
   const { order, stepOptions, loading, error, mutating, advanceStep, assignAgent, addShippingPrice, editShippingPrice, canEditShippingPrice, canEditShippingAddress, loadUserAddresses, editShippingAddress, canEditOrder, addProducts } = useOrderAdmin(orderId);
+  const { download: downloadInvoice, downloading: downloadingInvoice } = useInvoiceDownload(downloadInvoiceAdmin);
+  const { download: downloadCreditNote, downloading: downloadingCreditNote } = useInvoiceDownload(downloadCreditNoteAdmin);
   const [activeForm, setActiveForm] = useState(null); // null | 'advance' | 'assign' | 'shipping' | 'editShipping' | 'editAddress' | 'editOrder'
 
   const handleAdvance = async (targetStepCode, remarks) => {
@@ -148,9 +152,22 @@ const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
                 </p>
               )}
             </div>
-            <Badge variant={stepBadgeVariant(order.currentStepCode)} size="lg">
-              {order.currentStepName}
-            </Badge>
+            <div className="flex items-center gap-2">
+              {/* Decided by the server: feature on, order invoiceable (older orders and never-invoiced cancelled orders are not). */}
+              {order.invoiceDownloadable && (
+                <Button variant={theme.button.secondary} size="sm" onClick={() => downloadInvoice(order._id)} loading={downloadingInvoice}>
+                  Download invoice{order.invoiceNumber ? ` (${order.invoiceNumber})` : ''}
+                </Button>
+              )}
+              {order.creditNoteDownloadable && (
+                <Button variant={theme.button.secondary} size="sm" onClick={() => downloadCreditNote(order._id)} loading={downloadingCreditNote}>
+                  Download credit note
+                </Button>
+              )}
+              <Badge variant={stepBadgeVariant(order.currentStepCode)} size="lg">
+                {order.currentStepName}
+              </Badge>
+            </div>
           </div>
 
           <div>

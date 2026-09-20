@@ -5,6 +5,8 @@
  * questions needed to keep the parent-category picker from offering cycles.
  */
 
+import { parseSearchTerm, matchesSearch } from '../../../../utils/searchFilter';
+
 const parentKey = (category) => (category.parent_category_id ? String(category.parent_category_id) : null);
 
 /**
@@ -42,14 +44,13 @@ export const flattenToTree = (categories) => {
  * children are not pulled in - only the path down to it.
  */
 export const filterTreeRows = (treeRows, term) => {
-  const words = term.toLowerCase().split(/\s+/).filter(Boolean);
+  const words = parseSearchTerm(term);
   if (words.length === 0) return treeRows;
 
   const byId = new Map(treeRows.map((row) => [String(row._id), row]));
   const matchIds = new Set();
   treeRows.forEach((row) => {
-    const name = (row.categoryName || '').toLowerCase();
-    if (words.every((word) => name.includes(word))) matchIds.add(String(row._id));
+    if (matchesSearch(row.categoryName, words)) matchIds.add(String(row._id));
   });
 
   const visibleIds = new Set(matchIds);

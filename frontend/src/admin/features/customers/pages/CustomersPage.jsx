@@ -9,9 +9,11 @@ import InputField from '../../../../components/common/InputField';
 import EmptyState from '../../../../components/common/EmptyState';
 import Spinner from '../../../../components/common/Spinner';
 import BulkActionBar from '../../../../components/common/BulkActionBar';
+import SearchInput from '../../../../components/common/SearchInput';
 import { useCustomers } from '../hooks/useCustomers';
 import { useCustomerLookups } from '../hooks/useCustomerLookups';
 import { useAssignedModules } from '../../../modules/hooks/useAssignedModules';
+import { filterBySearch } from '../../../../utils/searchFilter';
 import CustomerForm from '../components/CustomerForm';
 import theme from '../theme/theme';
 
@@ -35,6 +37,11 @@ const TrashIcon = () => (
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
   </svg>
 );
+
+// Client-side search: the admin endpoint returns every customer at once (matching rules:
+// utils/searchFilter.js). Limited to what that list endpoint returns.
+const filterCustomers = (customers, term) =>
+  filterBySearch(customers, term, (c) => [c.name, c.username, c.email, c.phone_no, c.whatsapp_no, c.role]);
 
 const PASSWORD_PATTERN = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/;
 
@@ -69,6 +76,17 @@ const CustomersPage = ({ onAddUser }) => {
   const [passwordTouched, setPasswordTouched] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredCustomers = useMemo(() => filterCustomers(customers, searchTerm), [customers, searchTerm]);
+
+  // A bulk action must never reach rows the admin can no longer see, so narrowing the
+  // search drops any selected customer that just got filtered out.
+  const handleSearchChange = (value) => {
+    setSearchTerm(value);
+    const stillVisible = new Set(filterCustomers(customers, value).map((c) => c._id));
+    setSelectedIds((prev) => prev.filter((id) => stillVisible.has(id)));
+  };
 
   // Add User needs BOTH gates to actually work (see backend/routes/userRoutes.js):
   // the ADD_USER module assigned to this vendor, and the
@@ -239,6 +257,19 @@ const CustomersPage = ({ onAddUser }) => {
     [mutating, toggleStatus]
   );
 
+  const noMatchesState = (
+    <EmptyState
+      size="sm"
+      title="No matching customers"
+      description={`Nothing matches "${searchTerm.trim()}". Try a different name, email or phone number.`}
+      action={
+        <Button variant={theme.button.secondary} onClick={() => handleSearchChange('')}>
+          Clear search
+        </Button>
+      }
+    />
+  );
+
   const actions = [
     { label: 'Edit', icon: <PencilIcon />, variant: theme.button.secondary, onClick: openEdit },
     ...(isChangePasswordAllowed
@@ -282,24 +313,37 @@ const CustomersPage = ({ onAddUser }) => {
           />
         ) : (
           <>
+            <SearchInput
+              value={searchTerm}
+              onChange={handleSearchChange}
+              placeholder="Search name, username, email or phone…"
+              ariaLabel="Search customers"
+              matchCount={filteredCustomers.length}
+              totalCount={customers.length}
+              itemLabel="customers"
+            />
+
             {/* Desktop / tablet: full data table */}
             <div className="hidden md:block">
               <BulkActionBar selectedCount={selectedIds.length} onClear={() => setSelectedIds([])} actions={bulkActions} />
               <Table
                 columns={columns}
-                data={customers}
+                data={filteredCustomers}
+                emptyComponent={noMatchesState}
                 keyField="_id"
                 actions={selectedIds.length > 0 ? [] : actions}
                 selectable
                 selectedKeys={selectedIds}
                 onSelectionChange={setSelectedIds}
                 pageSize={20}
+                resetPageOn={searchTerm}
               />
             </div>
 
             {/* Mobile: card list - a 4-column table never reads well this narrow */}
             <div className="md:hidden space-y-3">
-              {customers.map((customer) => (
+              {filteredCustomers.length === 0 && noMatchesState}
+              {filteredCustomers.map((customer) => (
                 <div key={customer._id} className="rounded-xl border border-gray-200 p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">

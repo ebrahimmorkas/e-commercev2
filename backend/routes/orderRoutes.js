@@ -41,6 +41,14 @@ router.get(
     orderController.getMyOrderById
 );
 
+router.get(
+    '/my-orders/:id/invoice',
+    ...vendorContext,
+    authorize('user'),
+    validate(orderIdParamSchema, 'params'),
+    orderController.downloadMyInvoice
+);
+
 router.post(
     '/my-orders/:id/cancel',
     ...vendorContext,
@@ -59,6 +67,14 @@ router.get(
     authorize('admin'),
     validate(orderIdParamSchema, 'params'),
     orderController.getOrderByIdAdmin
+);
+
+router.get(
+    '/admin/:id/invoice',
+    ...vendorContext,
+    authorize('admin'),
+    validate(orderIdParamSchema, 'params'),
+    orderController.downloadInvoiceAdmin
 );
 
 router.get(

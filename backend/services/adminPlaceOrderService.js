@@ -8,6 +8,7 @@ const TaxMaster = require('../models/TaxMaster');
 const OrderStepMaster = require('../models/OrderStepMaster');
 const categoryService = require('./categoryService');
 const commissionService = require('./commissionService');
+const invoiceService = require('./invoiceService');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
 const { PAYMENT_METHODS } = require('../constants/paymentGatewayConstants');
@@ -649,6 +650,9 @@ const placeOrderOnBehalfOfUser = async (vendorId, adminUserId, websiteMasterData
 
         // Live-updates the admin Orders list. Walk-in orders have no userId, so no customer push.
         notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.NEW);
+
+        // Never fails the order: if this can't issue the invoice now, it is issued on first download.
+        await invoiceService.tryIssueInvoiceForOrder(order, { companySettingsData, companyMasterData, websiteMasterData });
 
         logger.logInfo(1, 0, 'Admin placed order on behalf of user', { vendorId, adminUserId, userId: user ? user._id : null, isWalkIn, orderId: order._id });
 

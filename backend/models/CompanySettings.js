@@ -221,6 +221,51 @@ const companySettingsSchema = new mongoose.Schema({
   },
   // End of Customer Signup
 
+  // Start of Invoice (PDF tax invoice issued when an order is placed - see invoiceService.js)
+  // The seller's own Tax Registration Number, printed in the invoice header. A vendor
+  // without one gets a plain "INVOICE" instead of a "TAX INVOICE".
+  taxRegistrationNumber: {
+    type: String,
+    trim: true,
+    default: null
+  },
+  // Start of every invoice number, e.g. 'SI' -> SI26/1 (prefix + 2-digit year + / + running
+  // number). Blank falls back to 'SI'.
+  invoicePrefix: {
+    type: String,
+    trim: true,
+    uppercase: true,
+    maxlength: 10,
+    default: 'SI'
+  },
+  // Text printed above the signature line, e.g. "We declare that this invoice shows the
+  // actual price of the goods described...". Blank = a sensible default.
+  invoiceDeclaration: {
+    type: String,
+    trim: true,
+    maxlength: 500,
+    default: null
+  },
+  // Print two labelled copies ("Original" and "Duplicate") in the same PDF, like a Tally invoice.
+  invoicePrintDuplicateCopy: {
+    type: Boolean,
+    default: false
+  },
+  // Round each invoice's grand total to a whole amount and show the difference as a "Round off"
+  // row. Off = exact amount. NOTE: online payments still charge the exact order amount, so turn
+  // this on only when payment is collected against the invoice total (cash / bank transfer).
+  invoiceRoundOffToWhole: {
+    type: Boolean,
+    default: false
+  },
+  // Email the customer their invoice PDF (as an attachment) right after they place an order.
+  // Needs the email feature + attachments allowed for the vendor (see emailService.js).
+  emailInvoiceOnOrderPlaced: {
+    type: Boolean,
+    default: false
+  },
+  // End of Invoice
+
   // Start of product
   showReviewsToCustomers: {
       type: Boolean,
