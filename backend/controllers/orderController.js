@@ -4,6 +4,13 @@ const invoiceService = require('../services/invoiceService');
 const logger = require('../utils/logger.js');
 const common = require('../utils/common');
 
+// Every handler must answer: a catch that only logs leaves the HTTP request open forever and the
+// client's spinner never stops. (headersSent: a streamed response may already have started.)
+const sendServerError = (res) => {
+    if (res.headersSent) return;
+    return common.sendError(res, 500, 'Something went wrong. Please try again.');
+};
+
 // Streams a generated invoice PDF as a download. Content-Disposition is exposed so a
 // cross-origin frontend can read the filename.
 const sendInvoicePdf = (res, { buffer, filename }) => {
@@ -83,6 +90,7 @@ const createOrder = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('orderController: createOrder - Exception while creating order', { vendorId, error });
+        return sendServerError(res);
     }
 };
 
@@ -96,6 +104,7 @@ const getMyOrders = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('orderController: getMyOrders - Exception while fetching orders', { vendorId, error });
+        return sendServerError(res);
     }
 };
 
@@ -121,6 +130,7 @@ const getMyOrderById = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('orderController: getMyOrderById - Exception while fetching order', { vendorId, id, error });
+        return sendServerError(res);
     }
 };
 
@@ -137,6 +147,7 @@ const cancelOrder = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('orderController: cancelOrder - Exception while cancelling order', { vendorId, id, error });
+        return sendServerError(res);
     }
 };
 
@@ -150,6 +161,7 @@ const getAllOrdersAdmin = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('orderController: getAllOrdersAdmin - Exception while fetching orders', { vendorId, error });
+        return sendServerError(res);
     }
 };
 
@@ -170,6 +182,7 @@ const getOrderByIdAdmin = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, { ...result.meta, canEditShippingPrice, canEditShippingAddress, canEditOrder });
     } catch (error) {
         logger.logException('orderController: getOrderByIdAdmin - Exception while fetching order', { vendorId, id, error });
+        return sendServerError(res);
     }
 };
 
@@ -184,6 +197,7 @@ const getOrderStepOptions = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('orderController: getOrderStepOptions - Exception while fetching order steps', { vendorId, id, error });
+        return sendServerError(res);
     }
 };
 
@@ -201,6 +215,7 @@ const advanceOrderStep = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('orderController: advanceOrderStep - Exception while advancing order step', { vendorId, id, error });
+        return sendServerError(res);
     }
 };
 
@@ -215,6 +230,7 @@ const setOrderShippingPrice = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('orderController: setOrderShippingPrice - Exception while adding order shipping price', { vendorId, id, error });
+        return sendServerError(res);
     }
 };
 
@@ -234,6 +250,7 @@ const updateOrderShippingPrice = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('orderController: updateOrderShippingPrice - Exception while updating order shipping price', { vendorId, id, error });
+        return sendServerError(res);
     }
 };
 
@@ -258,6 +275,7 @@ const getEditOrderCategories = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta.categories);
     } catch (error) {
         logger.logException('orderController: getEditOrderCategories - Exception while fetching categories for order editing', { vendorId, error });
+        return sendServerError(res);
     }
 };
 
@@ -275,6 +293,7 @@ const getEditOrderProducts = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta.products);
     } catch (error) {
         logger.logException('orderController: getEditOrderProducts - Exception while fetching products for order editing', { vendorId, error });
+        return sendServerError(res);
     }
 };
 
@@ -292,6 +311,7 @@ const getEditOrderProductOptions = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('orderController: getEditOrderProductOptions - Exception while fetching product options for order editing', { vendorId, error });
+        return sendServerError(res);
     }
 };
 
@@ -312,6 +332,7 @@ const addProductsToOrder = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('orderController: addProductsToOrder - Exception while adding products to order', { vendorId, id, error });
+        return sendServerError(res);
     }
 };
 
@@ -333,6 +354,7 @@ const getOrderUserAddresses = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('orderController: getOrderUserAddresses - Exception while fetching the order customer addresses', { vendorId, id, error });
+        return sendServerError(res);
     }
 };
 
@@ -352,6 +374,7 @@ const updateOrderShippingAddress = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('orderController: updateOrderShippingAddress - Exception while updating order shipping address', { vendorId, id, error });
+        return sendServerError(res);
     }
 };
 
@@ -368,6 +391,7 @@ const assignDeliveryAgent = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('orderController: assignDeliveryAgent - Exception while assigning delivery agent', { vendorId, id, error });
+        return sendServerError(res);
     }
 };
 
@@ -384,6 +408,7 @@ const deliveryAgentMarkDelivered = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('orderController: deliveryAgentMarkDelivered - Exception while marking order delivered', { vendorId, id, error });
+        return sendServerError(res);
     }
 };
 

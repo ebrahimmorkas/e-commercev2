@@ -1,6 +1,7 @@
 const Invoice = require('../models/Invoice');
 const Order = require('../models/Order');
 const User = require('../models/User');
+const CompanySettings = require('../models/CompanySettings');
 const CountryMaster = require('../models/CountryMaster');
 const StateMaster = require('../models/StateMaster');
 const counterService = require('./counterService');
@@ -170,6 +171,40 @@ const buildLinesAndTotals = (order, { roundOffToWhole = false } = {}) => {
     };
 };
 
+/**
+ * Everything on an invoice that comes from the ORDER (buyer, place of supply, lines, totals, tax
+ * summary, amounts in words). The seller/bank/declaration are deliberately not here: they are
+ * frozen when the invoice is issued. Shared by issuing and by refreshing after an order edit so
+ * the two can never disagree about how an order becomes an invoice.
+ * @param {Object} seller - the invoice's seller block (only region/country are read, for place of supply)
+ */
+const buildOrderDerivedInvoiceFields = async (order, { seller, companySettingsData }) => {
+    try {
+        const buyer = await buildBuyer(order);
+        const { lines, taxSummary, taxLabel, totals } = buildLinesAndTotals(order, {
+            roundOffToWhole: companySettingsData?.invoiceRoundOffToWhole === true
+        });
+
+        const shipping = order.shippingAddressSnapshot;
+        const placeOfSupply = shipping
+            ? [shipping.stateName, shipping.countryName].filter(Boolean).join(', ')
+            : [seller?.region, seller?.country].filter(Boolean).join(', ') || null;
+
+        return {
+            buyer,
+            placeOfSupply,
+            lines,
+            totals,
+            taxSummary,
+            taxLabel,
+            amountInWords: amountInWords(totals.grandTotal, order.currencyCode, order.currencyDecimalPlaces),
+            taxAmountInWords: amountInWords(totals.taxTotal, order.currencyCode, order.currencyDecimalPlaces)
+        };
+    } catch (err) {
+        throw err;
+    }
+};
+
 const isInvoiceFeatureOn = async (vendorId, websiteMasterData, companyMasterData) => {
     try {
         return await common.checkFeatureOnOrOff(vendorId, websiteMasterData, companyMasterData, FEATURE_FLAG, FEATURE_FLAG);
@@ -203,15 +238,9 @@ const issueInvoiceForOrder = async (order, { companySettingsData, companyMasterD
 
         const issuedAt = new Date();
         const year = issuedAt.getFullYear();
-        const [seller, buyer] = await Promise.all([buildSeller(companySettingsData), buildBuyer(order)]);
-        const { lines, taxSummary, taxLabel, totals } = buildLinesAndTotals(order, {
-            roundOffToWhole: companySettingsData?.invoiceRoundOffToWhole === true
-        });
-
-        const shipping = order.shippingAddressSnapshot;
-        const placeOfSupply = shipping
-            ? [shipping.stateName, shipping.countryName].filter(Boolean).join(', ')
-            : [seller.region, seller.country].filter(Boolean).join(', ') || null;
+        const seller = await buildSeller(companySettingsData);
+        const { buyer, placeOfSupply, lines, totals, taxSummary, taxLabel, amountInWords: totalInWords, taxAmountInWords } =
+            await buildOrderDerivedInvoiceFields(order, { seller, companySettingsData });
 
         const sequence = await counterService.getNextSequenceValue(vendorId, `invoiceNumber:${year}`);
         const prefix = (companySettingsData?.invoicePrefix || DEFAULT_INVOICE_PREFIX).toUpperCase();
@@ -238,8 +267,8 @@ const issueInvoiceForOrder = async (order, { companySettingsData, companyMasterD
                 lines,
                 totals,
                 taxSummary,
-                amountInWords: amountInWords(totals.grandTotal, order.currencyCode, order.currencyDecimalPlaces),
-                taxAmountInWords: amountInWords(totals.taxTotal, order.currencyCode, order.currencyDecimalPlaces)
+                amountInWords: totalInWords,
+                taxAmountInWords
             });
             logger.logInfo(1, 0, 'Invoice issued', { vendorId, orderId: order._id, invoiceNumber: invoice.invoiceNumber });
             return common.returnResult(true, 201, 'Invoice issued', { invoice });
@@ -379,6 +408,53 @@ const tryVoidInvoiceForOrder = (order, reason) =>
         return null;
     });
 
+/**
+ * Brings an order's ISSUED invoice back in line with the order after the order was edited
+ * (products added, shipping price set/changed, delivery address changed). Invoices are issued when
+ * the order is placed, and those edits are only allowed while the order is unpaid and open, so the
+ * invoice is updated in place: same number, bumped `revision`. Without this the customer would
+ * download (and a later credit note would reverse) figures from before the edit.
+ * Only the order-derived fields change; the seller details stay as they were when it was issued.
+ * Not behind the feature flag, for the same reason as voiding: an invoice that exists must stay correct.
+ * Nothing to do if there is no invoice, it is void, or the order was cancelled.
+ * @param {Object} [context]
+ * @param {Object} [context.companySettingsData] - loaded from the DB when the caller has none to hand
+ */
+const refreshInvoiceForOrder = async (order, { companySettingsData } = {}) => {
+    try {
+        const { vendorId } = order;
+        const invoice = await Invoice.findOne({ vendorId, orderId: order._id });
+        if (!invoice || invoice.status !== 'ISSUED' || order.cancelledAt || !order.items || order.items.length === 0) {
+            return common.returnResult(true, 200, 'No invoice to refresh');
+        }
+
+        const settings = companySettingsData || await CompanySettings.findOne({ vendorId }).lean();
+        const fields = await buildOrderDerivedInvoiceFields(order, { seller: invoice.seller, companySettingsData: settings });
+
+        // Only touches an ISSUED invoice, so a cancellation that voided it meanwhile is never overwritten.
+        const refreshed = await Invoice.findOneAndUpdate(
+            { _id: invoice._id, status: 'ISSUED' },
+            { $set: { ...fields, lastRevisedAt: new Date() }, $inc: { revision: 1 } },
+            { returnDocument: 'after' }
+        );
+        if (!refreshed) {
+            return common.returnResult(true, 200, 'No invoice to refresh');
+        }
+
+        logger.logInfo(1, 0, 'Invoice refreshed after order edit', { vendorId, orderId: order._id, invoiceNumber: refreshed.invoiceNumber, revision: refreshed.revision });
+        return common.returnResult(true, 200, 'Invoice refreshed', { invoice: refreshed });
+    } catch (err) {
+        throw err;
+    }
+};
+
+/** Never throws - an order edit must not fail because of a problem with the invoice. */
+const tryRefreshInvoiceForOrder = (order, context) =>
+    refreshInvoiceForOrder(order, context).catch((err) => {
+        logger.logException('invoiceService: could not refresh invoice after order edit', { orderId: order._id, error: err });
+        return null;
+    });
+
 /** What the order screens need to know: is there an invoice, what number, is it void, is there a credit note. */
 const getInvoiceSummaryForOrder = async (vendorId, orderId) => {
     try {
@@ -437,6 +513,8 @@ module.exports = {
     emailInvoiceToCustomer,
     voidInvoiceForOrder,
     tryVoidInvoiceForOrder,
+    refreshInvoiceForOrder,
+    tryRefreshInvoiceForOrder,
     getInvoiceSummaryForOrder,
     getInvoicePdfForOrder,
     // Exposed for unit tests only.

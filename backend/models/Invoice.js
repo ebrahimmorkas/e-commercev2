@@ -54,6 +54,10 @@ const invoiceSchema = new mongoose.Schema(
         sequence: { type: Number, required: true, min: 1 },
         year: { type: Number, required: true },
         issuedAt: { type: Date, required: true, default: Date.now },
+        // Bumped each time the invoice is brought back in line with an edited order (products added,
+        // shipping price or address changed) - see invoiceService.refreshInvoiceForOrder. The number stays.
+        revision: { type: Number, default: 0, min: 0 },
+        lastRevisedAt: { type: Date, default: null },
 
         // ISSUED until the order is cancelled/rejected; then VOID, and a credit note is issued for it.
         status: { type: String, enum: ['ISSUED', 'VOID'], default: 'ISSUED', required: true },

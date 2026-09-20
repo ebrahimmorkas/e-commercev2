@@ -6,6 +6,7 @@ const common = require('../utils/common');
 const logger = require('../utils/logger');
 const adminPlaceOrderService = require('./adminPlaceOrderService');
 const commissionService = require('./commissionService');
+const invoiceService = require('./invoiceService');
 const orderService = require('./orderService');
 const { ORDER_NOTIFICATION_TYPES } = require('../constants/orderRealtimeConstants');
 const { RESERVED_STEP_CODES, TERMINAL_STEP_CODES } = require('../constants/orderStepConstants');
@@ -211,6 +212,7 @@ const addProductsToOrder = async (vendorId, adminUserId, orderId, items, company
         }
 
         await commissionService.syncCommissionForOrder(updated);
+        await invoiceService.tryRefreshInvoiceForOrder(updated, { companySettingsData });
         notifyOrderChanged(updated, ORDER_NOTIFICATION_TYPES.ITEMS_UPDATED);
 
         logger.logInfo(1, 0, 'Products added to order', { vendorId, orderId, addedLines: newItems.length, addedTotal });

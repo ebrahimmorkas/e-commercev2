@@ -614,6 +614,7 @@ const setOrderShippingPrice = async (vendorId, adminUserId, orderId, shippingAmo
         }
 
         notifyOrderChanged(updated, ORDER_NOTIFICATION_TYPES.SHIPPING_UPDATED);
+        await invoiceService.tryRefreshInvoiceForOrder(updated);
 
         logger.logInfo(1, 0, 'Order shipping price added', { vendorId, orderId, shippingAmount: amount });
         return common.returnResult(true, 200, 'Shipping price added successfully', { order: updated });
@@ -679,6 +680,7 @@ const updateOrderShippingPrice = async (vendorId, adminUserId, orderId, shipping
         }
 
         notifyOrderChanged(updated, ORDER_NOTIFICATION_TYPES.SHIPPING_UPDATED);
+        await invoiceService.tryRefreshInvoiceForOrder(updated);
 
         logger.logInfo(1, 0, 'Order shipping price updated', { vendorId, orderId, shippingAmount: amount });
         return common.returnResult(true, 200, 'Shipping price updated successfully', { order: updated });
@@ -753,6 +755,7 @@ const updateOrderShippingAddress = async (vendorId, adminUserId, orderId, { addr
         }
 
         notifyOrderChanged(updated, ORDER_NOTIFICATION_TYPES.ADDRESS_UPDATED);
+        await invoiceService.tryRefreshInvoiceForOrder(updated);
 
         logger.logInfo(1, 0, 'Order shipping address updated', { vendorId, orderId, usedSavedAddress: !!addressId });
         return common.returnResult(true, 200, 'Shipping address updated successfully', { order: updated });
