@@ -13,6 +13,7 @@ const counterService = require('./counterService');
 const emailService = require('./emailService');
 const emailTemplateMasterService = require('./emailTemplateMasterService');
 const commissionService = require('./commissionService');
+const adminPlaceOrderService = require('./adminPlaceOrderService');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
 const {
@@ -340,6 +341,20 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
     }
 };
 
+// Normal orders give stock back from their linked Cart. Admin-placed orders
+// have no Cart - they restore exactly what was deducted, per item.
+const restoreStockForCancelledOrder = async (order) => {
+    try {
+        if (order.isPlacedByAdmin) {
+            await adminPlaceOrderService.restoreStockForAdminOrder(order);
+            return;
+        }
+        await cartService.restoreStockForOrder(order.cartId);
+    } catch (err) {
+        throw err;
+    }
+};
+
 /*
 |--------------------------------------------------------------------------
 | STEP TRANSITION HELPERS
@@ -499,7 +514,7 @@ const advanceOrderStep = async (vendorId, adminUserId, orderId, targetStepCode, 
 
         if (targetStep.code === RESERVED_STEP_CODES.REJECTED) {
             await commissionService.voidCommissionForOrder(vendorId, order._id, order.cancellationReason);
-            await cartService.restoreStockForOrder(order.cartId);
+            await restoreStockForCancelledOrder(order);
         }
 
         notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.STATUS_CHANGED);
@@ -651,7 +666,7 @@ const cancelOrder = async (vendorId, userId, orderId, cancellationReason, compan
         await order.save();
 
         await commissionService.voidCommissionForOrder(vendorId, order._id, cancellationReason);
-        await cartService.restoreStockForOrder(order.cartId);
+        await restoreStockForCancelledOrder(order);
 
         notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.CANCELLED);
 
@@ -829,6 +844,9 @@ const fetchOrderStepOptions = async (vendorId, orderId) => {
 };
 
 module.exports = {
+    resolveOrderNumber,
+    resolveOrderCurrency,
+    buildAddressSnapshot,
     createOrderFromCart,
     advanceOrderStep,
     assignDeliveryAgent,

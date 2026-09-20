@@ -20,6 +20,8 @@ const phonePattern = /^[0-9+\-\s()]{7,15}$/;
 
 const companySettingsFieldsSchema = {
     currencyId: nullableObjectId().label('Currency'),
+    storeCountryId: nullableObjectId().label('Store country'),
+    storeStateId: nullableObjectId().label('Store state'),
     adminName: Joi.string().trim().min(2).max(100).label('Admin name'),
     adminWhatsappNumber: Joi.string().trim().pattern(phonePattern).allow('', null).label('Admin WhatsApp number'),
     adminPhoneNumber: Joi.string().trim().pattern(phonePattern).allow('', null).label('Admin phone number'),

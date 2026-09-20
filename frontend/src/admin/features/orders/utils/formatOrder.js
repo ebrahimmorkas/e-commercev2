@@ -14,6 +14,20 @@ const STEP_BADGE_VARIANTS = {
 
 export const stepBadgeVariant = (stepCode) => STEP_BADGE_VARIANTS[stepCode] || 'gray';
 
+// Where an order came from. Walk-in (cash counter) orders have no user, so the
+// typed customer name (or a generic label) is what identifies them.
+export const orderSourceLabel = (order) => {
+  if (order?.isWalkInCustomer) return `Walk-in: ${order.walkInCustomer?.name || 'Customer'}`;
+  if (order?.isPlacedByAdmin) return 'Placed by admin';
+  return 'Online';
+};
+
+export const orderSourceVariant = (order) => {
+  if (order?.isWalkInCustomer) return 'purple';
+  if (order?.isPlacedByAdmin) return 'blue';
+  return 'gray';
+};
+
 export const isOrderLocked = (order) => !!order && TERMINAL_STEP_CODES.includes(order.currentStepCode);
 
 // Order snapshots its own currency at creation time, so historical orders

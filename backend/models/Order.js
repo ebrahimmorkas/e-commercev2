@@ -147,6 +147,16 @@ const orderItemSchema = new mongoose.Schema(
             required: true,
             min: 0,
             default: 0
+        },
+        // Admin-placed orders only (see isPlacedByAdmin). The stock actually
+        // taken off the size for this line - can be less than `quantity` when
+        // the vendor allows out-of-stock adding and stock was clamped at 0.
+        // Cancellation restores exactly this amount. null on normal orders,
+        // which restore from the linked Cart instead.
+        stockDeductedQuantity: {
+            type: Number,
+            min: 0,
+            default: null
         }
     },
     { _id: false }
@@ -236,6 +246,17 @@ const orderPaymentSchema = new mongoose.Schema(
     }
 );
 
+const walkInCustomerSchema = new mongoose.Schema(
+    {
+        name: { type: String, required: true, trim: true, minlength: 2, maxlength: 50 },
+        phone: { type: String, required: true, trim: true, minlength: 10, maxlength: 14 },
+        whatsapp: { type: String, trim: true, minlength: 10, maxlength: 14, default: null },
+        email: { type: String, trim: true, lowercase: true, maxlength: 254, default: null },
+        address: { type: String, trim: true, maxlength: 1000, default: null }
+    },
+    { _id: false }
+);
+
 const orderSchema = new mongoose.Schema(
     {
         orderNumber: {
@@ -245,10 +266,12 @@ const orderSchema = new mongoose.Schema(
             index: true
         },
 
+        // Absent on admin-placed orders - they are built straight from the
+        // admin's payload and never touch a Cart.
         cartId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Cart",
-            required: true,
+            required: function () { return !this.isPlacedByAdmin; },
             index: true
         },
 
@@ -259,10 +282,12 @@ const orderSchema = new mongoose.Schema(
             index: true
         },
 
+        // Absent on walk-in (cash counter) orders - see isWalkInCustomer.
         userId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
-            required: true,
+            required: function () { return !this.isWalkInCustomer; },
+            default: null,
             index: true
         },
 
@@ -392,16 +417,66 @@ const orderSchema = new mongoose.Schema(
             default: 2
         },
 
+        // Required on normal orders. Admin-placed orders may carry a saved
+        // address, a free-text address (adminEnteredAddress), or neither.
         shippingAddressId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Address",
-            required: true,
+            required: function () { return !this.isPlacedByAdmin; },
+            default: null,
             index: true
         },
 
         shippingAddressSnapshot: {
             type: orderAddressSnapshotSchema,
-            required: true
+            required: function () { return !this.isPlacedByAdmin; },
+            default: undefined
+        },
+
+        // --- Admin placing order on behalf of a user ---
+        isPlacedByAdmin: {
+            type: Boolean,
+            required: true,
+            default: false,
+            index: true
+        },
+
+        // Cash counter sale: the customer is not in the system. No User is
+        // created - whatever the admin typed is kept here (name and phone are
+        // always present, the rest are optional).
+        isWalkInCustomer: {
+            type: Boolean,
+            required: true,
+            default: false,
+            index: true
+        },
+
+        walkInCustomer: {
+            type: walkInCustomerSchema,
+            default: undefined
+        },
+
+        placedByAdminId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null,
+            index: true
+        },
+
+        // Fixed amount the admin knocked off, already subtracted from grandTotal.
+        adminDiscountAmount: {
+            type: Number,
+            min: 0,
+            default: 0
+        },
+
+        // Open-text delivery address typed by the admin (not tied to any
+        // saved Address document).
+        adminEnteredAddress: {
+            type: String,
+            trim: true,
+            maxlength: 1000,
+            default: null
         },
 
         billingAddressId: {
@@ -589,9 +664,12 @@ orderSchema.index(
     { unique: true }
 );
 
+// Partial so admin-placed orders (which have no cartId) don't all collide on
+// a null value. NOTE: changing this index's options requires dropping the old
+// vendorId_1_cartId_1 index once - see scripts/migrateOrderCartIdIndex.js.
 orderSchema.index(
     { vendorId: 1, cartId: 1 },
-    { unique: true }
+    { unique: true, partialFilterExpression: { cartId: { $type: "objectId" } } }
 );
 
 orderSchema.index({

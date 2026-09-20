@@ -70,7 +70,8 @@ async function seedCompanyMaster() {
                 isEmbeddingLinksAllowed: true,
 
                 isPasswordChangeFeatureByAdminAllowed: true,
-                isAdminAddingUserFeatureAllowed: true
+                isAdminAddingUserFeatureAllowed: true,
+                isAdminPlacingOrderOnBehalfOfUserIsOn: true
             },
             {
                 upsert: true,

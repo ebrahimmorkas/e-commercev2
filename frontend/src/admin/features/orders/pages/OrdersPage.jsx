@@ -8,7 +8,7 @@ import { useOrdersAdmin } from '../hooks/useOrdersAdmin';
 import { useRealtime } from '../../../realtime/useRealtime';
 import LiveIndicator from '../../../realtime/LiveIndicator';
 import OrderDetailModal from '../components/OrderDetailModal';
-import { formatOrderMoney, formatOrderDateTime, stepBadgeVariant } from '../utils/formatOrder';
+import { formatOrderMoney, formatOrderDateTime, stepBadgeVariant, orderSourceLabel, orderSourceVariant } from '../utils/formatOrder';
 import theme from '../theme/theme';
 
 /**
@@ -41,6 +41,11 @@ const OrdersPage = () => {
         label: 'Order #',
         sortable: true,
         render: (row) => <span className={`font-medium ${theme.text.heading}`}>{row.orderNumber}</span>,
+      },
+      {
+        key: 'source',
+        label: 'Source',
+        render: (row) => <Badge variant={orderSourceVariant(row)}>{orderSourceLabel(row)}</Badge>,
       },
       { key: 'orderPlacedAt', label: 'Placed On', sortable: true, render: (row) => formatOrderDateTime(row.orderPlacedAt) },
       {

@@ -686,6 +686,13 @@ const companyMasterSchema = mongoose.Schema({
     isAdminAddingUserFeatureAllowed: {
         type: Boolean,
         default: false
+    },
+    // Lets this vendor's admin place an order on behalf of a customer (ADMIN_PLACE_ORDER
+    // module). Off by default - same opt-in convention as isAdminAddingUserFeatureAllowed.
+    // Paired with WebsiteMaster.isAdminPlacingOrderOnBehalfOfUserIsOn via checkFeatureOnOrOff.
+    isAdminPlacingOrderOnBehalfOfUserIsOn: {
+        type: Boolean,
+        default: false
     }
     // End of Customer Management
 }, {
