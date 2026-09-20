@@ -13,13 +13,14 @@ import AuthModal from './features/auth/components/AuthModal';
 import CheckoutPage from './features/orders/pages/CheckoutPage';
 import OrdersPage from './features/orders/pages/OrdersPage';
 import OrderDetailPage from './features/orders/pages/OrderDetailPage';
+import AddressesPage from './features/address/pages/AddressesPage';
 import { useToast } from '../components/common/Toast';
 import EmptyState from '../components/common/EmptyState/EmptyState';
 import NotFoundPage from './components/errors/NotFoundPage';
 import theme from './features/Home/theme/theme';
 
 // No routing library yet - path match against `/product/:id` (id = Mongo
-// ObjectId), `/category/:id`, `/cart`, `/checkout`, `/orders`, `/orders/:id`,
+// ObjectId), `/category/:id`, `/cart`, `/checkout`, `/orders`, `/orders/:id`, `/addresses`,
 // or home. pushState/popstate keep the URL shareable and the browser back
 // button working. `/category/:id` is also opened directly as a real link
 // (new tab) from the Navbar's Shop mega-menu, so it has to work as a
@@ -35,6 +36,7 @@ const parseRoute = () => {
   if (path === '/cart') return { type: 'cart' };
   if (path === '/checkout') return { type: 'checkout' };
   if (path === '/orders') return { type: 'orders' };
+  if (path === '/addresses') return { type: 'addresses' };
   const orderId = path.match(ORDER_DETAIL_PATH_RE)?.[1];
   if (orderId) return { type: 'order-detail', id: orderId };
   const productId = path.match(PRODUCT_PATH_RE)?.[1];
@@ -44,7 +46,7 @@ const parseRoute = () => {
   return { type: 'not-found' };
 };
 
-// Shown for /checkout, /orders, and /orders/:id when reached (typically via
+// Shown for /checkout, /orders, /orders/:id, and /addresses when reached (typically via
 // a direct URL or a page refresh) while logged out.
 const SignInGate = ({ onBack, onSignIn }) => (
   <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10">
@@ -102,6 +104,8 @@ const ClientApp = () => {
     removeItem: removeCartItemFromHook,
   } = useCart();
   const [route, setRoute] = useState(parseRoute);
+  // Delivery address picked on the cart page; carried into checkout so the shopper doesn't re-pick it.
+  const [deliveryAddressId, setDeliveryAddressId] = useState(null);
 
   useEffect(() => {
     const handlePopState = () => setRoute(parseRoute());
@@ -119,6 +123,7 @@ const ClientApp = () => {
   const openCart = () => navigate('/cart', { type: 'cart' });
   const openCheckout = () => navigate('/checkout', { type: 'checkout' });
   const openOrders = () => navigate('/orders', { type: 'orders' });
+  const openAddresses = () => navigate('/addresses', { type: 'addresses' });
   const openOrderDetail = (id) => navigate(`/orders/${id}`, { type: 'order-detail', id });
   const goHome = () => navigate('/', { type: 'home' });
 
@@ -126,7 +131,9 @@ const ClientApp = () => {
 
   const handleLogout = () => {
     logout();
-    if (route.type === 'checkout' || route.type === 'orders' || route.type === 'order-detail') goHome();
+    setDeliveryAddressId(null);
+    if (route.type === 'checkout' || route.type === 'orders' || route.type === 'order-detail' || route.type === 'addresses')
+      goHome();
   };
 
   const handleOrdersClick = () => {
@@ -135,6 +142,14 @@ const ClientApp = () => {
       return;
     }
     openOrders();
+  };
+
+  const handleAddressesClick = () => {
+    if (!isAuthenticated) {
+      setAuthModalOpen(true);
+      return;
+    }
+    openAddresses();
   };
 
   const addItemToCart = async ({ productId: itemProductId, variantId, sizeId }) => {
@@ -207,6 +222,7 @@ const ClientApp = () => {
         onLoginClick={handleLoginClick}
         onLogout={handleLogout}
         onOrdersClick={handleOrdersClick}
+        onAddressesClick={handleAddressesClick}
         onSearch={handleSearch}
         onCartClick={openCart}
       />
@@ -247,10 +263,16 @@ const ClientApp = () => {
             onDecrementItem={handleDecrementItem}
             onRemoveItem={handleRemoveItem}
             onCheckout={handleCheckoutClick}
+            isAuthenticated={isAuthenticated}
+            addressId={deliveryAddressId}
+            onAddressChange={setDeliveryAddressId}
             reload={reloadCart}
           />
         )}
-        {(route.type === 'checkout' || route.type === 'orders' || route.type === 'order-detail') &&
+        {(route.type === 'checkout' ||
+          route.type === 'orders' ||
+          route.type === 'order-detail' ||
+          route.type === 'addresses') &&
           !isAuthenticated && (
             <SignInGate onBack={goHome} onSignIn={() => setAuthModalOpen(true)} />
           )}
@@ -259,11 +281,13 @@ const ClientApp = () => {
             lineItems={lineItems}
             subtotal={subtotal}
             cartLoading={cartLoading}
+            initialAddressId={deliveryAddressId}
             onBack={openCart}
             onPlaced={handleOrderPlaced}
           />
         )}
         {route.type === 'orders' && isAuthenticated && <OrdersPage onBack={goHome} onOpenOrder={openOrderDetail} />}
+        {route.type === 'addresses' && isAuthenticated && <AddressesPage onBack={goHome} />}
         {route.type === 'order-detail' && isAuthenticated && (
           <OrderDetailPage orderId={route.id} onBack={openOrders} onGoHome={goHome} />
         )}

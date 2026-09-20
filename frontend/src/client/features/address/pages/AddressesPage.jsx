@@ -1,19 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import theme from '../../Home/theme/theme';
 import Spinner from '../../../../components/common/Spinner/Spinner';
 import EmptyState from '../../../../components/common/EmptyState/EmptyState';
-import { useAddresses } from '../hooks/useAddresses';
-import AddressForm from './AddressForm';
-import { formatAddress } from '../utils/formatAddress';
 import { useToast } from '../../../../components/common/Toast';
+import { useAddresses } from '../hooks/useAddresses';
+import AddressForm from '../components/AddressForm';
+import { formatAddress } from '../utils/formatAddress';
 
 /**
- * Saved-address radio list for checkout, with inline add/edit/delete. Used
- * by CheckoutPage - see features/orders/pages/CheckoutPage.jsx.
- *
- * @param {string} [selectedId]
- * @param {Function} onSelect - Called with an address _id.
+ * My Addresses: full CRUD for the logged-in customer's saved addresses.
+ * Backed by /api/address/* (login required - see addressApi.js).
  */
-const AddressPicker = ({ selectedId, onSelect }) => {
+const AddressesPage = ({ onBack }) => {
   const { addresses, loading, error, reload, addAddress, editAddress, removeAddress } = useAddresses();
   const toast = useToast();
   const [formOpen, setFormOpen] = useState(false);
@@ -21,14 +19,6 @@ const AddressPicker = ({ selectedId, onSelect }) => {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [deletingId, setDeletingId] = useState(null);
-
-  // Pre-select the default address (falling back to the first one) so the
-  // shipping estimate and "Place Order" work without an extra click.
-  useEffect(() => {
-    if (addresses.length === 0 || addresses.some((a) => a._id === selectedId)) return;
-    const preferred = addresses.find((a) => a.isDefault) || addresses[0];
-    onSelect?.(preferred._id);
-  }, [addresses, selectedId, onSelect]);
 
   const openAddForm = () => {
     setEditingAddress(null);
@@ -65,7 +55,6 @@ const AddressPicker = ({ selectedId, onSelect }) => {
     setDeletingId(address._id);
     try {
       await removeAddress(address._id);
-      if (selectedId === address._id) onSelect?.(null);
       toast.success('Address removed');
     } catch (err) {
       toast.error(err.message || 'Could not remove address');
@@ -74,52 +63,71 @@ const AddressPicker = ({ selectedId, onSelect }) => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center py-10">
-        <Spinner label="Loading addresses" />
-      </div>
-    );
-  }
+  return (
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+      <button
+        type="button"
+        onClick={onBack}
+        className="text-sm font-medium text-slate-500 hover:text-slate-700 cursor-pointer mb-4 sm:mb-6"
+      >
+        ← Continue shopping
+      </button>
 
-  if (error) {
-    return (
-      <EmptyState
-        title="Couldn't load your addresses"
-        description={error}
-        action={
+      <div className="flex items-center justify-between gap-3">
+        <h1 className={`text-xl sm:text-2xl font-bold ${theme.section.heading}`}>My Addresses</h1>
+        {!loading && !error && addresses.length > 0 && (
           <button
             type="button"
-            onClick={reload}
-            className="px-4 py-2 rounded-full text-sm font-semibold cursor-pointer bg-amber-500 hover:bg-amber-400 text-slate-900"
+            onClick={openAddForm}
+            className={`px-4 py-2 rounded-full text-sm font-semibold cursor-pointer ${theme.hero.cta}`}
           >
-            Try Again
+            + Add address
           </button>
-        }
-      />
-    );
-  }
+        )}
+      </div>
 
-  return (
-    <div>
-      {addresses.length === 0 ? (
-        <EmptyState size="sm" title="No saved addresses" description="Add a shipping address to continue." />
-      ) : (
-        <div className="space-y-3">
-          {addresses.map((address) => (
-            <label
-              key={address._id}
-              className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors duration-150 ${
-                selectedId === address._id ? 'border-amber-500 bg-amber-50' : 'border-slate-200 hover:border-slate-300'
-              }`}
+      {loading && (
+        <div className="flex justify-center py-24">
+          <Spinner size="lg" label="Loading addresses" />
+        </div>
+      )}
+
+      {!loading && error && (
+        <EmptyState
+          title="Couldn't load your addresses"
+          description={error}
+          action={
+            <button
+              type="button"
+              onClick={reload}
+              className={`px-4 py-2 rounded-full text-sm font-semibold cursor-pointer ${theme.hero.cta}`}
             >
-              <input
-                type="radio"
-                name="shipping-address"
-                className="mt-1 shrink-0"
-                checked={selectedId === address._id}
-                onChange={() => onSelect?.(address._id)}
-              />
+              Try Again
+            </button>
+          }
+        />
+      )}
+
+      {!loading && !error && addresses.length === 0 && (
+        <EmptyState
+          title="No saved addresses"
+          description="Add a shipping address to speed up checkout."
+          action={
+            <button
+              type="button"
+              onClick={openAddForm}
+              className={`px-4 py-2 rounded-full text-sm font-semibold cursor-pointer ${theme.hero.cta}`}
+            >
+              Add Address
+            </button>
+          }
+        />
+      )}
+
+      {!loading && !error && addresses.length > 0 && (
+        <div className="mt-6 space-y-3">
+          {addresses.map((address) => (
+            <div key={address._id} className="flex items-start gap-3 rounded-xl border border-slate-200 p-4">
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-slate-900">
                   {address.address_name}
@@ -134,38 +142,24 @@ const AddressPicker = ({ selectedId, onSelect }) => {
               <div className="flex items-center gap-3 shrink-0 text-xs font-medium">
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    openEditForm(address);
-                  }}
+                  onClick={() => openEditForm(address)}
                   className="text-slate-500 hover:text-slate-800 cursor-pointer"
                 >
                   Edit
                 </button>
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleDelete(address);
-                  }}
+                  onClick={() => handleDelete(address)}
                   disabled={deletingId === address._id}
                   className="text-red-500 hover:text-red-700 cursor-pointer disabled:opacity-60"
                 >
                   {deletingId === address._id ? 'Removing...' : 'Remove'}
                 </button>
               </div>
-            </label>
+            </div>
           ))}
         </div>
       )}
-
-      <button
-        type="button"
-        onClick={openAddForm}
-        className="mt-3 text-sm font-semibold text-amber-700 hover:text-amber-800 cursor-pointer"
-      >
-        + Add a new address
-      </button>
 
       <AddressForm
         isOpen={formOpen}
@@ -179,4 +173,4 @@ const AddressPicker = ({ selectedId, onSelect }) => {
   );
 };
 
-export default AddressPicker;
+export default AddressesPage;

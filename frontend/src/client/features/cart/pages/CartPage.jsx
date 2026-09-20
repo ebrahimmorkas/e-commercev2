@@ -1,4 +1,7 @@
+import { useState } from 'react';
 import theme from '../../Home/theme/theme';
+import Modal from '../../../../components/common/Modal/Modal';
+import AddressPicker from '../../address/components/AddressPicker';
 import QuantityStepper from '../../products/components/QuantityStepper';
 import Spinner from '../../../../components/common/Spinner/Spinner';
 import EmptyState from '../../../../components/common/EmptyState/EmptyState';
@@ -73,6 +76,9 @@ const CartLineItem = ({ item, onIncrement, onDecrement, onRemove }) => (
  * @param {Function} props.onDecrementItem - Called with a sizeId.
  * @param {Function} props.onRemoveItem - Called with a sizeId.
  * @param {Function} [props.onCheckout] - Called when "Proceed to Checkout" is clicked.
+ * @param {boolean} [props.isAuthenticated] - Saved addresses (and so changing the delivery address) need a login.
+ * @param {string|null} [props.addressId] - Saved address the shipping estimate is priced against.
+ * @param {Function} [props.onAddressChange] - Called with a saved address _id (or null).
  * @param {Function} [props.reload]
  */
 const CartPage = ({
@@ -85,10 +91,15 @@ const CartPage = ({
   onDecrementItem,
   onRemoveItem,
   onCheckout,
+  isAuthenticated = false,
+  addressId = null,
+  onAddressChange,
   reload,
 }) => {
+  const [addressModalOpen, setAddressModalOpen] = useState(false);
   const itemCount = lineItems.reduce((sum, item) => sum + item.quantity, 0);
   const { estimate: shippingEstimate } = useShippingEstimate({
+    addressId,
     refreshKey: `${itemCount}:${subtotal}`,
     skip: lineItems.length === 0,
   });
@@ -105,11 +116,35 @@ const CartPage = ({
       </button>
 
       <h1 className={`text-xl sm:text-2xl font-bold ${theme.section.heading}`}>Your Cart</h1>
-      {deliveringTo?.label && (
+      {(deliveringTo?.label || isAuthenticated) && (
         <p className="mt-1 text-sm text-slate-500">
-          Delivering to: <span className="font-medium text-slate-700">{deliveringTo.addressName ? `${deliveringTo.addressName} - ` : ''}{deliveringTo.label}</span>
+          {deliveringTo?.label && (
+            <>
+              Delivering to: <span className="font-medium text-slate-700">{deliveringTo.addressName ? `${deliveringTo.addressName} - ` : ''}{deliveringTo.label}</span>
+            </>
+          )}
+          {isAuthenticated && (
+            <button
+              type="button"
+              onClick={() => setAddressModalOpen(true)}
+              className="ml-2 font-semibold text-amber-700 hover:text-amber-800 cursor-pointer"
+            >
+              {deliveringTo?.label ? 'Change' : 'Choose delivery address'}
+            </button>
+          )}
         </p>
       )}
+
+      <Modal isOpen={addressModalOpen} onClose={() => setAddressModalOpen(false)} title="Delivery address" size="md">
+        <AddressPicker selectedId={addressId} onSelect={onAddressChange} />
+        <button
+          type="button"
+          onClick={() => setAddressModalOpen(false)}
+          className="mt-4 w-full py-2.5 rounded-lg text-sm font-semibold cursor-pointer bg-slate-900 hover:bg-amber-600 text-white transition-colors duration-150"
+        >
+          Done
+        </button>
+      </Modal>
 
       {loading && (
         <div className="flex justify-center py-24">

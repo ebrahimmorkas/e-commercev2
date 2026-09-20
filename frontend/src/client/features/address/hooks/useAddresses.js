@@ -36,8 +36,7 @@ export const useAddresses = () => {
     load();
   }, [load]);
 
-  // createAddress's response carries no address back (backend bug - see
-  // addressApi.js), so the only way to pick up the new row is to reload.
+  // Reload after each write so default-flag changes on other rows show up too.
   const addAddress = useCallback(
     async (payload) => {
       await createAddress(payload);

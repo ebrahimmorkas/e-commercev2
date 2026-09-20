@@ -19,11 +19,12 @@ const formatMoney = (amount) => `₹${(amount ?? 0).toLocaleString('en-IN')}`;
  * @param {Array} lineItems
  * @param {number} subtotal
  * @param {boolean} cartLoading
+ * @param {string|null} [initialAddressId] - Address already chosen on the cart page.
  * @param {Function} onBack - Back to cart.
  * @param {Function} onPlaced - Called with the new order's _id on success.
  */
-const CheckoutPage = ({ lineItems = [], subtotal = 0, cartLoading, onBack, onPlaced }) => {
-  const [selectedAddressId, setSelectedAddressId] = useState(null);
+const CheckoutPage = ({ lineItems = [], subtotal = 0, cartLoading, initialAddressId = null, onBack, onPlaced }) => {
+  const [selectedAddressId, setSelectedAddressId] = useState(initialAddressId);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState('');
   // Re-priced whenever the shopper picks a different saved address (location-based

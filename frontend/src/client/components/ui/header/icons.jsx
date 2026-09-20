@@ -49,3 +49,10 @@ export const OrdersIcon = (props) => (
     <path d="M12 13v8" />
   </svg>
 );
+
+export const LocationIcon = (props) => (
+  <svg {...base} {...props}>
+    <path d="M12 21s7-5.686 7-11a7 7 0 10-14 0c0 5.314 7 11 7 11z" />
+    <circle cx="12" cy="10" r="2.5" />
+  </svg>
+);

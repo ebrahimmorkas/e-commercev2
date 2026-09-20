@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import theme from './theme/theme';
-import { SearchIcon, CartIcon, UserIcon, LogoutIcon, ChevronDownIcon, OrdersIcon } from './icons';
+import { SearchIcon, CartIcon, UserIcon, LogoutIcon, ChevronDownIcon, OrdersIcon, LocationIcon } from './icons';
 import { useStorefrontCompanySettings } from '../../../features/companySettings/hooks/useStorefrontCompanySettings';
 
 const getInitials = (label) => {
@@ -56,7 +56,7 @@ const CartButton = ({ count = 0, onClick }) => (
   </button>
 );
 
-const ProfileMenu = ({ user, onLogout, onOrdersClick }) => {
+const ProfileMenu = ({ user, onLogout, onOrdersClick, onAddressesClick }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
 
@@ -120,6 +120,18 @@ const ProfileMenu = ({ user, onLogout, onOrdersClick }) => {
             type="button"
             onClick={() => {
               setIsOpen(false);
+              onAddressesClick?.();
+            }}
+            className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium transition-colors duration-150 cursor-pointer ${theme.profile.trigger}`}
+            role="menuitem"
+          >
+            <LocationIcon className="w-4.5 h-4.5" />
+            Addresses
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIsOpen(false);
               onLogout?.();
             }}
             className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium transition-colors duration-150 cursor-pointer ${theme.profile.menu.logout}`}
@@ -149,6 +161,7 @@ const ProfileMenu = ({ user, onLogout, onOrdersClick }) => {
  * @param {Function} [props.onLoginClick] - Called when the login button is clicked (shown when logged out).
  * @param {Function} [props.onLogout] - Called when logout is selected from the profile menu.
  * @param {Function} [props.onOrdersClick] - Called when "My Orders" is selected from the profile menu.
+ * @param {Function} [props.onAddressesClick] - Called when "Addresses" is selected from the profile menu.
  * @param {string} [props.homeHref] - href for the logo link.
  */
 const Header = ({
@@ -161,6 +174,7 @@ const Header = ({
   onLoginClick,
   onLogout,
   onOrdersClick,
+  onAddressesClick,
   homeHref = '/',
 }) => {
   const { companySettings } = useStorefrontCompanySettings();
@@ -182,7 +196,7 @@ const Header = ({
             {authLoading ? (
               <div className="w-9 h-9 rounded-full bg-slate-100 animate-pulse" aria-hidden="true" />
             ) : isAuthenticated ? (
-              <ProfileMenu user={user} onLogout={onLogout} onOrdersClick={onOrdersClick} />
+              <ProfileMenu user={user} onLogout={onLogout} onOrdersClick={onOrdersClick} onAddressesClick={onAddressesClick} />
             ) : (
               <button
                 type="button"
