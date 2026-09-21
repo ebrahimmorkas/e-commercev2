@@ -14,10 +14,10 @@ async function seedUser() {
         console.log("✅ MongoDB Connected");
 
         const vendorId = new mongoose.Types.ObjectId(
-            "6a660d580c332ce960286ce0"
+            process.env.SEED_VENDOR_ID || "6a660d580c332ce960286ce0"
         );
 
-        const email = "admin@example.com";
+        const email = process.env.SEED_ADMIN_EMAIL || "admin@example.com";
 
         // Check if the user already exists
         const existingUser = await User.findOne({
@@ -31,7 +31,7 @@ async function seedUser() {
         }
 
         // Hash the password
-        const hashedPassword = await bcrypt.hash("Admin@123", 10);
+        const hashedPassword = await bcrypt.hash(process.env.SEED_ADMIN_PASSWORD || "Admin@123", 10);
 
         // Create the user
         await User.create({
@@ -44,6 +44,9 @@ async function seedUser() {
             phone_no: "9876543210",
             whatsapp_no: "9876543210",
             email,
+            country: process.env.SEED_ADMIN_COUNTRY || "India",
+            state: process.env.SEED_ADMIN_STATE || "Maharashtra",
+            city: process.env.SEED_ADMIN_CITY || "Mumbai",
             role: "admin",
             status: "A",
         });

@@ -7,7 +7,7 @@ async function seedCompanyMaster() {
     try {
         await mongoose.connect(process.env.MONGODB_URI);
 
-        const vendorId = new mongoose.Types.ObjectId("6a63443e263b29b8e59374eb");
+        const vendorId = new mongoose.Types.ObjectId(process.env.SEED_VENDOR_ID || "6a63443e263b29b8e59374eb");
 
         const company = await CompanyMaster.findOneAndUpdate(
             { vendorId },
