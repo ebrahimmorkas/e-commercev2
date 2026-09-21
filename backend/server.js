@@ -57,8 +57,15 @@ const httpServer = http.createServer(app);
 // the ErrorLog it writes, without changing any existing logException() call site.
 app.use(requestContext);
 
+// CORS_ORIGINS is a comma-separated allow-list (e.g. the deployed frontend URL). Empty keeps the
+// old behaviour of reflecting any origin, which is fine locally where the Vite proxy is same-origin.
+const allowedOrigins = (process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map((o) => o.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
+
 app.use(cors({
-  origin: 'true',
+  origin: allowedOrigins.length ? allowedOrigins : true,
   credentials: true,
 }));
 
