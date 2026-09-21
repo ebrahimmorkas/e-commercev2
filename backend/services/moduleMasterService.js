@@ -79,6 +79,7 @@ const MODULE_FEATURE_FLAG = {
     ABANDONED_CART: 'isAbondonedCartFeatureOn',
     FREE_CASH: 'isFreeCashFeatureOn',
     GROUP: 'isGroupFeatureOn',
+    EMAIL_TEMPLATE: 'isEmailTemplateFeatureOn',
     ADMIN_PLACE_ORDER: 'isAdminPlacingOrderOnBehalfOfUserIsOn'
 };
 
