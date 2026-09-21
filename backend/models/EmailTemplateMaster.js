@@ -80,7 +80,15 @@ const emailTemplateMasterSchema = mongoose.Schema({
 });
 
 // Two different vendors may both name a template "Order Confirmation" -
-// uniqueness is scoped per vendor, not global.
-emailTemplateMasterSchema.index({ vendorId: 1, templateName: 1 }, { unique: true });
+// uniqueness is scoped per vendor, not global. The index is partial (live
+// templates only) so a soft-deleted template (status 'D') doesn't reserve its
+// name forever - it mirrors the `status: { $ne: 'D' }` pre-checks in
+// emailTemplateMasterService.js. (MongoDB partial indexes can't use $ne,
+// hence $in.) Existing databases need scripts/migrateEmailTemplateIndexes.js
+// run once - Mongoose won't change an existing index's options on its own.
+emailTemplateMasterSchema.index(
+    { vendorId: 1, templateName: 1 },
+    { unique: true, partialFilterExpression: { status: { $in: ['A', 'I'] } } }
+);
 
 module.exports = mongoose.model('EmailTemplateMaster', emailTemplateMasterSchema);

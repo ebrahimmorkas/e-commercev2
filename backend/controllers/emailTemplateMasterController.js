@@ -81,11 +81,11 @@ const getAllTemplatesAdmin = async (req, res) => {
             return common.sendError(res, validityResult.statusCode, validityResult.message);
         }
 
-        const result = await emailTemplateMasterService.fetchAllTemplatesAdmin(vendorId);
+        const result = await emailTemplateMasterService.fetchAllTemplatesAdmin(vendorId, req.companySettingsData, companyMasterData);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta.templates);
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('emailTemplateMasterController: getAllTemplatesAdmin - Exception while fetching email templates', { vendorId, error });
     }
@@ -116,11 +116,51 @@ const getAvailableVariables = async (req, res) => {
     }
 };
 
+const bulkSetTemplateStatus = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { templateIds, status } = req.body;
+    try {
+        const validityResult = await common.checkFeatureOnOrOff(vendorId, req.websiteMasterData, req.companyMasterData, 'isEmailTemplateFeatureOn', 'isEmailTemplateFeatureOn');
+        if (!validityResult.isSuccess) {
+            return common.sendError(res, validityResult.statusCode, validityResult.message);
+        }
+
+        const result = await emailTemplateMasterService.bulkSetTemplateStatus(vendorId, req.user._id, templateIds, status);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('emailTemplateMasterController: bulkSetTemplateStatus - Exception while bulk updating email template status', { vendorId, error });
+    }
+};
+
+const bulkDeleteTemplates = async (req, res) => {
+    const vendorId = req.vendorId;
+    const { templateIds } = req.body;
+    try {
+        const validityResult = await common.checkFeatureOnOrOff(vendorId, req.websiteMasterData, req.companyMasterData, 'isEmailTemplateFeatureOn', 'isEmailTemplateFeatureOn');
+        if (!validityResult.isSuccess) {
+            return common.sendError(res, validityResult.statusCode, validityResult.message);
+        }
+
+        const result = await emailTemplateMasterService.bulkDeleteTemplates(vendorId, req.user._id, templateIds);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('emailTemplateMasterController: bulkDeleteTemplates - Exception while bulk deleting email templates', { vendorId, error });
+    }
+};
+
 module.exports = {
     addTemplate,
     updateTemplate,
     deleteTemplate,
     getAllTemplatesAdmin,
     getTemplateById,
-    getAvailableVariables
+    getAvailableVariables,
+    bulkSetTemplateStatus,
+    bulkDeleteTemplates
 };

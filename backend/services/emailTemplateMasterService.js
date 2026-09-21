@@ -47,19 +47,16 @@ const resolveTemplateForModule = async (vendorId, module, companyMasterData, com
 // its own - but leaves no dangling reference behind for anything that reads
 // the assignments array directly (a future admin UI, support tooling, etc.).
 const removeTemplateAssignments = async (vendorId, templateId) => {
-    const settings = await CompanySettings.findOne({ vendorId });
-    if (!settings) {
-        return;
+    // Targeted $pull rather than load-and-save(): save() revalidates every
+    // required field on the whole CompanySettings document, so an unrelated
+    // gap (e.g. a missing adminName) would block deactivating/deleting a template.
+    const result = await CompanySettings.updateOne(
+        { vendorId, 'emailTemplateAssignments.templateId': templateId },
+        { $pull: { emailTemplateAssignments: { templateId } } }
+    );
+    if (result.modifiedCount > 0) {
+        await redisService.del(redisKeys.companySettings(vendorId));
     }
-
-    const hadAssignment = settings.emailTemplateAssignments.some((a) => a.templateId.toString() === templateId.toString());
-    if (!hadAssignment) {
-        return;
-    }
-
-    settings.emailTemplateAssignments = settings.emailTemplateAssignments.filter((a) => a.templateId.toString() !== templateId.toString());
-    await settings.save();
-    await redisService.del(redisKeys.companySettings(vendorId));
 };
 
 const getTemplateCount = async (vendorId) => {
@@ -200,14 +197,98 @@ const softDeleteTemplate = async (vendorId, templateId, userId) => {
     }
 };
 
-const fetchAllTemplatesAdmin = async (vendorId) => {
+const fetchAllTemplatesAdmin = async (vendorId, companySettingsData, companyMasterData) => {
     try {
         const templates = await EmailTemplateMaster.find(
             { vendorId, status: { $in: ['A', 'I'] } },
             null,
             { sort: { templateName: 1 } }
         );
-        return common.returnResult(true, 200, 'Email templates fetched successfully', { templates });
+
+        // Which module each template is currently bound to (CompanySettings.
+        // emailTemplateAssignments), plus the vendor's template quota, so the
+        // admin list can show "assigned to Order" and "X of N used" without
+        // extra round trips.
+        const assignments = companySettingsData && Array.isArray(companySettingsData.emailTemplateAssignments)
+            ? companySettingsData.emailTemplateAssignments.map((a) => ({ module: a.module, templateId: a.templateId.toString() }))
+            : [];
+        const numberOfTemplatesAllowed = companyMasterData && companyMasterData.numberOfTemplatesAllowed != null
+            ? companyMasterData.numberOfTemplatesAllowed
+            : null;
+
+        return common.returnResult(true, 200, 'Email templates fetched successfully', {
+            templates,
+            assignments,
+            templateCount: templates.length,
+            numberOfTemplatesAllowed
+        });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Single-template status flip used by the bulk action - same rules and audit
+// fields as the `status` branch of updateTemplate, but with explicit
+// "already active / already inactive" outcomes so a bulk run can report them.
+const setTemplateStatus = async (vendorId, templateId, status, userId) => {
+    try {
+        const template = await EmailTemplateMaster.findOne({ _id: templateId, vendorId, status: { $ne: 'D' } });
+        if (!template) {
+            return common.returnResult(false, 404, 'Email template not found');
+        }
+
+        if (template.status === status) {
+            return common.returnResult(false, 409, status === 'A' ? 'Email template is already active' : 'Email template is already inactive');
+        }
+
+        if (status === 'A') {
+            template.activeMarkedBy = userId;
+            template.activeMarkedDate = new Date();
+        } else {
+            template.inActiveMarkeddBy = userId;
+            template.inactiveMarkedDate = new Date();
+            await removeTemplateAssignments(vendorId, templateId);
+        }
+        template.status = status;
+        template.updatedBy = userId;
+        await template.save();
+
+        logger.logInfo(1, 0, 'Email template status changed', { vendorId, templateId, status });
+        return common.returnResult(true, 200, 'Email template status updated successfully');
+    } catch (err) {
+        throw err;
+    }
+};
+
+const bulkSetTemplateStatus = async (vendorId, userId, templateIds, status) => {
+    try {
+        const { results, successCount, failureCount } = await common.runBulkOperation(
+            templateIds,
+            (id) => setTemplateStatus(vendorId, id, status, userId)
+        );
+
+        return common.returnResult(
+            true, 200,
+            `${status === 'A' ? 'Activated' : 'Deactivated'} ${successCount} of ${templateIds.length} email template(s).`,
+            { results, successCount, failureCount }
+        );
+    } catch (err) {
+        throw err;
+    }
+};
+
+const bulkDeleteTemplates = async (vendorId, userId, templateIds) => {
+    try {
+        const { results, successCount, failureCount } = await common.runBulkOperation(
+            templateIds,
+            (id) => softDeleteTemplate(vendorId, id, userId)
+        );
+
+        return common.returnResult(
+            true, 200,
+            `Deleted ${successCount} of ${templateIds.length} email template(s).`,
+            { results, successCount, failureCount }
+        );
     } catch (err) {
         throw err;
     }
@@ -232,5 +313,8 @@ module.exports = {
     updateTemplate,
     softDeleteTemplate,
     fetchAllTemplatesAdmin,
+    setTemplateStatus,
+    bulkSetTemplateStatus,
+    bulkDeleteTemplates,
     fetchTemplateById
 };

@@ -28,7 +28,16 @@ const deleteTemplateSchema = Joi.object({
     templateId: objectId().required().label('Template ID')
 });
 
-const idParamSchema = Joi.object({
+const bulkTemplateStatusSchema = Joi.object({
+    templateIds: Joi.array().items(objectId().required()).min(1).max(50).unique().required().label('Template IDs'),
+    status: Joi.string().valid('A', 'I').required().label('Status')
+});
+
+const bulkDeleteTemplateSchema = Joi.object({
+    templateIds: Joi.array().items(objectId().required()).min(1).max(50).unique().required().label('Template IDs')
+});
+
+const idParamSchema =Joi.object({
     id: objectId().required().label('Template ID')
 });
 
@@ -40,6 +49,8 @@ module.exports = {
     addTemplateSchema,
     updateTemplateSchema,
     deleteTemplateSchema,
+    bulkTemplateStatusSchema,
+    bulkDeleteTemplateSchema,
     idParamSchema,
     moduleParamSchema
 };

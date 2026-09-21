@@ -302,17 +302,21 @@ const assignEmailTemplate = async (vendorId, module, templateId, userId) => {
             return common.returnResult(false, 404, 'Email template not found');
         }
 
-        const settings = await CompanySettings.findOne({ vendorId });
-        if (!settings) {
+        const settingsExists = await CompanySettings.exists({ vendorId });
+        if (!settingsExists) {
             return common.returnResult(false, 404, 'Company settings not found');
         }
 
-        settings.emailTemplateAssignments = settings.emailTemplateAssignments.filter((a) => a.module !== module);
-        settings.emailTemplateAssignments.push({ module, templateId });
-        settings.updatedBy = { userID: userId, vendorID: vendorId };
-
-        await settings.save();
+        // Targeted updates rather than load-and-save(): save() revalidates every
+        // required field on the whole document, so an unrelated gap in the
+        // vendor's settings (e.g. adminName not filled in yet) would block a
+        // change that only touches emailTemplateAssignments.
+        const updatedBy = { userID: userId, vendorID: vendorId };
+        await CompanySettings.updateOne({ vendorId }, { $pull: { emailTemplateAssignments: { module } } });
+        await CompanySettings.updateOne({ vendorId }, { $push: { emailTemplateAssignments: { module, templateId } }, $set: { updatedBy } });
         await redisService.del(redisKeys.companySettings(vendorId));
+
+        const settings = await CompanySettings.findOne({ vendorId });
 
         logger.logInfo(1, 0, 'Email template assigned to module', { vendorId, module, templateId });
         return common.returnResult(true, 200, 'Email template assigned successfully', { settings });
@@ -323,16 +327,18 @@ const assignEmailTemplate = async (vendorId, module, templateId, userId) => {
 
 const unassignEmailTemplate = async (vendorId, module, userId) => {
     try {
-        const settings = await CompanySettings.findOne({ vendorId });
-        if (!settings) {
+        const settingsExists = await CompanySettings.exists({ vendorId });
+        if (!settingsExists) {
             return common.returnResult(false, 404, 'Company settings not found');
         }
 
-        settings.emailTemplateAssignments = settings.emailTemplateAssignments.filter((a) => a.module !== module);
-        settings.updatedBy = { userID: userId, vendorID: vendorId };
-
-        await settings.save();
+        await CompanySettings.updateOne(
+            { vendorId },
+            { $pull: { emailTemplateAssignments: { module } }, $set: { updatedBy: { userID: userId, vendorID: vendorId } } }
+        );
         await redisService.del(redisKeys.companySettings(vendorId));
+
+        const settings = await CompanySettings.findOne({ vendorId });
 
         logger.logInfo(1, 0, 'Email template unassigned from module', { vendorId, module });
         return common.returnResult(true, 200, 'Email template unassigned successfully', { settings });

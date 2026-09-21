@@ -125,6 +125,13 @@ export const GroupIcon = (props) => (
   </svg>
 );
 
+export const EmailTemplateIcon = (props) => (
+  <svg {...base} {...props}>
+    <path d="M3.75 6.75A2.25 2.25 0 016 4.5h12a2.25 2.25 0 012.25 2.25v10.5A2.25 2.25 0 0118 19.5H6a2.25 2.25 0 01-2.25-2.25V6.75z" />
+    <path d="M3.75 7.5l8.25 6 8.25-6" />
+  </svg>
+);
+
 export const MenuIcon = (props) => (
   <svg {...base} {...props}>
     <path d="M4 6h16M4 12h16M4 18h16" />
