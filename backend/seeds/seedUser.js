@@ -44,6 +44,9 @@ async function seedUser() {
             phone_no: "9876543210",
             whatsapp_no: "9876543210",
             email,
+            country: "India",
+            state: "Maharashtra",
+            city: "Mumbai",
             role: "admin",
             status: "A",
         });
