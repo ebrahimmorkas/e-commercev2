@@ -84,7 +84,10 @@ const initiateOnlinePayment = async (vendorId, userId, orderId, vendorDomain, we
         });
         await transaction.save();
 
-        const returnUrl = `https://${vendorDomain}${process.env.PAYMENT_RETURN_PATH || '/checkout/payment-result'}?orderId=${order._id}`;
+        // Encoded here (not left to the controller) since this URL is handed
+        // straight to the gateway and the browser lands on it directly after
+        // payment - the raw order _id must never appear in that redirect.
+        const returnUrl = `https://${vendorDomain}${process.env.PAYMENT_RETURN_PATH || '/checkout/payment-result'}?orderId=${common.encodeId(order._id)}`;
         const callbackUrl = `https://${vendorDomain}/api/payments/callback/${gatewayKey}`;
 
         const provider = paymentProviderFactory.getProvider(gatewayKey);

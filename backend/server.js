@@ -1,3 +1,11 @@
+// Must run before any other require - several modules below (e.g.
+// abandonedCartService -> utils/common.js) read process.env at module-load
+// time (ID_ENCRYPTION_KEY/IV, computed once as top-level consts), not
+// lazily. Loading dotenv after them meant common.js always saw those vars
+// as unset and silently fell back to a random per-process key, so every
+// encoded id became undecodable on every single restart.
+require('dotenv').config({ quiet: true });
+
 const express = require('express');
 const http = require('http');
 const cors = require('cors')
@@ -7,7 +15,6 @@ const logger = require('./utils/logger.js')
 const {connectRedis} = require('./config/redisConfig');
 const realtimeService = require('./services/realtimeService');
 const abandonedCartService = require('./services/abandonedCartService');
-require('dotenv').config({ quiet: true });
 // Middlewares
 const { requestContext } = require('./middlewares/requestContext');
 const vendorDetection = require('./middlewares/vendorDetection');
@@ -56,6 +63,9 @@ const httpServer = http.createServer(app);
 // so utils/logger.js's logException() can reach req.vendorId/req.user for
 // the ErrorLog it writes, without changing any existing logException() call site.
 app.use(requestContext);
+
+// TEMPORARY - verification pass for the ID-encoding rollout, remove after.
+app.use(require('./middlewares/_rawIdScanner'));
 
 app.use(cors({
   origin: 'true',

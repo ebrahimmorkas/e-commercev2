@@ -107,8 +107,17 @@ const createReturnRequest = async (vendorId, userId, orderId, payload, companyMa
         } else {
             // Whole-order mode: auto-limited to whichever items are still
             // eligible (confirmed decision) rather than blocking the whole
-            // request over one expired item.
+            // request over one expired item. One shared reason applies to
+            // every item - createReturnRequestSchema only makes `reason`
+            // required at the per-item level (for the fewItemsReturnOnly
+            // branch above), so it must be checked here too: a request that
+            // omits the top-level reason would otherwise apply `undefined`
+            // to every item and fail Mongoose's own required-field
+            // validation on .save() below instead of returning a clean 400.
             const { reason, reasonDescription } = payload;
+            if (!reason || !reason.trim()) {
+                return common.returnResult(false, 400, 'Reason is required.');
+            }
             selectedItems = eligibleItems.map((item) => ({ ...item, reason, reasonDescription: reasonDescription || null }));
             isWholeOrderReturn = true;
         }

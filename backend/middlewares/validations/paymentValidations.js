@@ -1,9 +1,11 @@
 const Joi = require('joi');
 const { VALID_PAYMENT_GATEWAYS } = require('../../constants/paymentGatewayConstants');
 
-const objectId = () => Joi.string().hex().length(24).messages({
-    'string.hex': '{{#label}} must be a valid id.',
-    'string.length': '{{#label}} must be a valid id.'
+// orderId is common.encodeId-encoded (see orderController.js's
+// formatOrderForResponse) - opaque-string check, decoded via
+// common.decodeId in paymentController.js before reaching the service.
+const objectId = () => Joi.string().trim().min(1).messages({
+    'string.min': '{{#label}} must be a valid id.',
 });
 
 const orderIdParamSchema = Joi.object({

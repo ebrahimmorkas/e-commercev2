@@ -1,8 +1,11 @@
 const Joi = require('joi');
 
-const objectId = () => Joi.string().hex().length(24).messages({
-    'string.hex': '{{#label}} must be a valid id.',
-    'string.length': '{{#label}} must be a valid id.'
+// User ids are common.encodeId-encoded (see formatUserForResponse in
+// userController), never a raw hex ObjectId - so this is a loose
+// opaque-string check, not a hex/length one. Decoded via common.decodeId in
+// the controller before reaching the service.
+const objectId = () => Joi.string().trim().min(1).messages({
+    'string.min': '{{#label}} must be a valid id.',
 });
 
 // Shared across the profile-update, admin-create and password-change schemas

@@ -29,7 +29,7 @@ const GROUP_TYPE_MODEL_MAP = {
   PRODUCT: 'Product',
   CATEGORY: 'Category',
   USER: 'User',
-  BRAND: 'Brand',
+  BRAND: 'BrandMaster',
   ORDER: 'Order',
 };
 

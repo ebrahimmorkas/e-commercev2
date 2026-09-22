@@ -1,9 +1,11 @@
 const Joi = require('joi');
 const { VALID_EMAIL_MODULES } = require('../../constants/emailModuleConstants');
 
-const objectId = () => Joi.string().hex().length(24).messages({
-    'string.hex': '{{#label}} must be a valid id.',
-    'string.length': '{{#label}} must be a valid id.'
+// Template ids are common.encodeId-encoded (see formatTemplateForResponse in
+// emailTemplateMasterController), never a raw hex ObjectId - so this is a
+// loose opaque-string check, not a hex/length one.
+const objectId = () => Joi.string().trim().min(1).messages({
+    'string.min': '{{#label}} must be a valid id.',
 });
 
 const addTemplateSchema = Joi.object({

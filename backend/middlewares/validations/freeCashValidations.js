@@ -1,9 +1,11 @@
 const Joi = require('joi');
 const { FREE_CASH_OPTIONS } = require('../../constants/freeCashConstants');
 
-const objectId = () => Joi.string().hex().length(24).messages({
-    'string.hex': '{{#label}} must be a valid id.',
-    'string.length': '{{#label}} must be a valid id.'
+// Free Cash ids (own id, target user/group/category ids) are
+// common.encodeId-encoded, never raw hex ObjectIds - loose opaque-string
+// check, decoded via common.decodeId in the controller.
+const objectId = () => Joi.string().trim().min(1).messages({
+    'string.min': '{{#label}} must be a valid id.',
 });
 
 const objectIdArray = (label) => Joi.array().items(objectId()).label(label);

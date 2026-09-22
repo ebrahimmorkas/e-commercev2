@@ -4,6 +4,26 @@ const redisKeys = require('../utils/redisKeys');
 const logger = require('../utils/logger');
 const common = require('../utils/common');
 
+// Converts a Banner mongoose doc into a response-safe object with every
+// ObjectId field encoded via common.encodeId.
+const formatBannerForResponse = (bannerDoc) => {
+    if (!bannerDoc) return bannerDoc;
+    const banner = bannerDoc.toObject ? bannerDoc.toObject() : bannerDoc;
+
+    return {
+        ...banner,
+        _id: banner._id ? common.encodeId(banner._id) : banner._id,
+        vendorId: banner.vendorId ? common.encodeId(banner.vendorId) : banner.vendorId,
+        imageAssetId: banner.imageAssetId ? common.encodeId(banner.imageAssetId) : banner.imageAssetId,
+        videoAssetId: banner.videoAssetId ? common.encodeId(banner.videoAssetId) : banner.videoAssetId,
+        createdBy: banner.createdBy ? common.encodeId(banner.createdBy) : banner.createdBy,
+        updatedBy: banner.updatedBy ? common.encodeId(banner.updatedBy) : banner.updatedBy,
+        deletedBy: banner.deletedBy ? common.encodeId(banner.deletedBy) : banner.deletedBy,
+        activeMarkedBy: banner.activeMarkedBy ? common.encodeId(banner.activeMarkedBy) : banner.activeMarkedBy,
+        inActiveMarkedBy: banner.inActiveMarkedBy ? common.encodeId(banner.inActiveMarkedBy) : banner.inActiveMarkedBy,
+    };
+};
+
 const addBanner = async (req, res) => {
     const vendorId = req.vendorId;
     try {
@@ -30,11 +50,11 @@ const addBanner = async (req, res) => {
         const videoFile = req.files?.video?.[0] || null;
 
         const result = await bannerService.addBanner(vendorId, req.body, imageFile, videoFile, countResult.meta.count, req.user._id, companyMasterData, websiteMasterData);
-        
+
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta.banner);
+        return common.sendSuccess(res, result.statusCode, result.message, formatBannerForResponse(result.meta.banner));
 
     } catch (error) {
         logger.logException('bannerController: addBanner - Exception while adding banner', { vendorId, error });
@@ -43,6 +63,8 @@ const addBanner = async (req, res) => {
 
 const deleteBanner = async (req, res) => {
     const vendorId = req.vendorId;
+    // Already decoded to a raw ObjectId by validateDeleteBanner (which needs
+    // it raw for its own mongoose.Types.ObjectId check) - don't decode again.
     const { bannerId } = req.body;
     try {
         const websiteMasterData = req.websiteMasterData;
@@ -64,6 +86,8 @@ const deleteBanner = async (req, res) => {
 
 const updateBanner = async (req, res) => {
     const vendorId = req.vendorId;
+    // Already decoded to a raw ObjectId by validateUpdateBanner (which needs
+    // it raw for its own Banner.findOne lookup) - don't decode again.
     const { bannerId } = req.body;
     try {
         const websiteMasterData = req.websiteMasterData;
@@ -76,6 +100,7 @@ const updateBanner = async (req, res) => {
             ...req.body,
             isDefault: req.body.isDefault !== undefined ? req.body.isDefault === 'true' || req.body.isDefault === true : undefined
         };
+        delete updateData.bannerId;
 
         const imageFile = req.files?.image?.[0] || null;
         const videoFile = req.files?.video?.[0] || null;
@@ -86,7 +111,7 @@ const updateBanner = async (req, res) => {
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta.banner);
+        return common.sendSuccess(res, result.statusCode, result.message, formatBannerForResponse(result.meta.banner));
     } catch (error) {
         logger.logException('bannerController: updateBanner - Exception while updating banner', { vendorId, error });
     }
@@ -119,7 +144,7 @@ const getAllBanners = async (req, res) => {
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta.banners);
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta.banners.map(formatBannerForResponse));
     } catch (error) {
         logger.logException('bannerController: getAllBanners - Exception while fetching banners', { vendorId, error });
     }
@@ -138,7 +163,7 @@ const getAllBannersAdmin = async (req, res) => {
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta.banners);
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta.banners.map(formatBannerForResponse));
     } catch (error) {
         logger.logException('bannerController: getAllBannersAdmin - Exception while fetching all banners for admin', { vendorId, error });
     }
@@ -146,7 +171,7 @@ const getAllBannersAdmin = async (req, res) => {
 
 const getBannerById = async (req, res) => {
     const vendorId = req.vendorId;
-    const { id } = req.params;
+    let id;
     try {
         const websiteMasterData = req.websiteMasterData;
         const companyMasterData = req.companyMasterData;
@@ -154,12 +179,13 @@ const getBannerById = async (req, res) => {
         if(!validiyResult.isSuccess) {
             return common.sendError(res, validiyResult.statusCode, validiyResult.message)
         }
+        id = common.decodeId(req.params.id);
         const result = await bannerService.fetchBannerById(vendorId, id);
 
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta.banner);
+        return common.sendSuccess(res, result.statusCode, result.message, formatBannerForResponse(result.meta.banner));
     } catch (error) {
         logger.logException('bannerController: getBannerById - Exception while fetching banner by ID', { vendorId, error });
     }
@@ -167,13 +193,18 @@ const getBannerById = async (req, res) => {
 
 const bulkSetBannerStatus = async (req, res) => {
     const vendorId = req.vendorId;
-    const { bannerIds, status } = req.body;
+    const { status } = req.body;
     try {
-        const result = await bannerService.bulkSetBannerStatus(vendorId, req.user._id, bannerIds, status);
+        const decodedIds = req.body.bannerIds.map((id) => common.decodeId(id));
+        const result = await bannerService.bulkSetBannerStatus(vendorId, req.user._id, decodedIds, status);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+        const meta = {
+            ...result.meta,
+            results: result.meta.results.map((r) => ({ ...r, id: common.encodeId(r.id) }))
+        };
+        return common.sendSuccess(res, result.statusCode, result.message, meta);
     } catch (error) {
         logger.logException('bannerController: bulkSetBannerStatus - Exception while bulk updating banner status', { vendorId, error });
     }
@@ -181,13 +212,17 @@ const bulkSetBannerStatus = async (req, res) => {
 
 const bulkDeleteBanners = async (req, res) => {
     const vendorId = req.vendorId;
-    const { bannerIds } = req.body;
     try {
-        const result = await bannerService.bulkDeleteBanners(vendorId, req.user._id, bannerIds);
+        const decodedIds = req.body.bannerIds.map((id) => common.decodeId(id));
+        const result = await bannerService.bulkDeleteBanners(vendorId, req.user._id, decodedIds);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+        const meta = {
+            ...result.meta,
+            results: result.meta.results.map((r) => ({ ...r, id: common.encodeId(r.id) }))
+        };
+        return common.sendSuccess(res, result.statusCode, result.message, meta);
     } catch (error) {
         logger.logException('bannerController: bulkDeleteBanners - Exception while bulk deleting banners', { vendorId, error });
     }

@@ -4,6 +4,30 @@ const redisKeys = require('../utils/redisKeys');
 const logger = require('../utils/logger');
 const common = require('../utils/common');
 
+// Converts a Category mongoose doc (or the plain object shape that comes
+// back from a Redis cache hit) into a response-safe object with every
+// ObjectId field encoded via common.encodeId.
+const formatCategoryForResponse = (categoryDoc) => {
+    if (!categoryDoc) return categoryDoc;
+    const category = categoryDoc.toObject ? categoryDoc.toObject() : categoryDoc;
+
+    return {
+        ...category,
+        _id: category._id ? common.encodeId(category._id) : category._id,
+        vendorId: category.vendorId ? common.encodeId(category.vendorId) : category.vendorId,
+        parent_category_id: category.parent_category_id ? common.encodeId(category.parent_category_id) : category.parent_category_id,
+        image: category.image ? {
+            ...category.image,
+            imageAssetId: category.image.imageAssetId ? common.encodeId(category.image.imageAssetId) : category.image.imageAssetId,
+        } : category.image,
+        createdBy: category.createdBy ? common.encodeId(category.createdBy) : category.createdBy,
+        updatedBy: category.updatedBy ? common.encodeId(category.updatedBy) : category.updatedBy,
+        deletedBy: category.deletedBy ? common.encodeId(category.deletedBy) : category.deletedBy,
+        activeMarkedBy: category.activeMarkedBy ? common.encodeId(category.activeMarkedBy) : category.activeMarkedBy,
+        inActiveMarkeddBy: category.inActiveMarkeddBy ? common.encodeId(category.inActiveMarkeddBy) : category.inActiveMarkeddBy,
+    };
+};
+
 const addCategory = async (req, res) => {
     const vendorId = req.vendorId;
     try {
@@ -15,10 +39,15 @@ const addCategory = async (req, res) => {
         }
         const userId = req.user?._id;
 
+        const payload = { ...req.body };
+        if (payload.parent_category_id) {
+            payload.parent_category_id = common.decodeId(payload.parent_category_id);
+        }
+
         const category = await categoryService.addCategory(
             vendorId,
             userId,
-            req.body,
+            payload,
             req.file,
             websiteMasterData,
             companyMasterData
@@ -34,7 +63,7 @@ const addCategory = async (req, res) => {
 
 const updateCategory = async (req, res) => {
     const vendorId = req.vendorId;
-    const { category_id } = req.body;
+    let category_id;
     try {
         const websiteMasterData = req.websiteMasterData;
         const companyMasterData = req.companyMasterData;
@@ -44,11 +73,18 @@ const updateCategory = async (req, res) => {
         }
         const userId = req.user?._id;
 
+        category_id = common.decodeId(req.body.category_id);
+        const payload = { ...req.body };
+        delete payload.category_id;
+        if (payload.parent_category_id) {
+            payload.parent_category_id = common.decodeId(payload.parent_category_id);
+        }
+
         const categoryUpdate = await categoryService.updateCategory(
             vendorId,
             userId,
             category_id,
-            req.body,
+            payload,
             req.file,
             websiteMasterData,
             companyMasterData
@@ -66,7 +102,7 @@ const updateCategory = async (req, res) => {
 
 const deleteCategory = async (req, res) => {
     const vendorId = req.vendorId;
-    const { category_id } = req.body;
+    let category_id;
     try {
         const websiteMasterData = req.websiteMasterData;
         const companyMasterData = req.companyMasterData;
@@ -75,6 +111,7 @@ const deleteCategory = async (req, res) => {
             return common.sendError(res, validiyResult.statusCode, validiyResult.message)
         }
         const userId = req.user?._id;
+        category_id = common.decodeId(req.body.category_id);
         const result = await categoryService.softDeleteCategory(vendorId, userId, category_id);
 
         if (!result.isSuccess) {
@@ -102,7 +139,7 @@ const getCategories = async (req, res) => {
             3600
         );
 
-        return common.sendSuccess(res, 200, 'Categories fetched successfully', categories);
+        return common.sendSuccess(res, 200, 'Categories fetched successfully', categories.map(formatCategoryForResponse));
     } catch (error) {
         logger.logException('categoryController: getCategories - Exception while fetching categories', { vendorId, error });
     }
@@ -123,7 +160,7 @@ const getAdminCategories = async (req, res) => {
             3600
         );
 
-        return common.sendSuccess(res, 200, 'Categories fetched successfully', categories);
+        return common.sendSuccess(res, 200, 'Categories fetched successfully', categories.map(formatCategoryForResponse));
     } catch (error) {
         logger.logException('categoryController: getAdminCategories - Exception while fetching admin categories', { vendorId, error });
     }
@@ -183,15 +220,20 @@ const bulkUploadCategories = async (req, res) => {
 
 const bulkSetCategoryStatus = async (req, res) => {
     const vendorId = req.vendorId;
-    const { categoryIds, status } = req.body;
+    const { status } = req.body;
     try {
         const userId = req.user._id;
+        const decodedIds = req.body.categoryIds.map((id) => common.decodeId(id));
 
-        const result = await categoryService.bulkSetCategoryStatus(vendorId, userId, categoryIds, status);
+        const result = await categoryService.bulkSetCategoryStatus(vendorId, userId, decodedIds, status);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+        const meta = {
+            ...result.meta,
+            results: result.meta.results.map((r) => ({ ...r, id: common.encodeId(r.id) }))
+        };
+        return common.sendSuccess(res, result.statusCode, result.message, meta);
     } catch (error) {
         logger.logException('categoryController: bulkSetCategoryStatus - Exception while bulk updating category status', { vendorId, error });
     }
@@ -199,15 +241,19 @@ const bulkSetCategoryStatus = async (req, res) => {
 
 const bulkDeleteCategories = async (req, res) => {
     const vendorId = req.vendorId;
-    const { categoryIds } = req.body;
     try {
         const userId = req.user._id;
+        const decodedIds = req.body.categoryIds.map((id) => common.decodeId(id));
 
-        const result = await categoryService.bulkDeleteCategories(vendorId, userId, categoryIds);
+        const result = await categoryService.bulkDeleteCategories(vendorId, userId, decodedIds);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+        const meta = {
+            ...result.meta,
+            results: result.meta.results.map((r) => ({ ...r, id: common.encodeId(r.id) }))
+        };
+        return common.sendSuccess(res, result.statusCode, result.message, meta);
     } catch (error) {
         logger.logException('categoryController: bulkDeleteCategories - Exception while bulk deleting categories', { vendorId, error });
     }

@@ -308,19 +308,19 @@ const fetchAllAnnouncementsAdmin = async (vendorId) => {
     }
 };
 
-const fetchAnnouncementById = async (req, res) => {
-    const vendorId = req.vendorId;
-    const { id } = req.params;
+// Pre-existing bug fixed here: this used to be a stray copy of the
+// controller's getAnnouncementById (wrong (req, res) signature, calling
+// itself recursively) - never actually callable. Rewritten to match every
+// other fetchXById service in this file (vendorId, id) -> returnResult.
+const fetchAnnouncementById = async (vendorId, id) => {
     try {
-        const result = await announcementService.fetchAnnouncementById(vendorId, id);
-
-        if (!result.isSuccess) {
-            return common.sendError(res, result.statusCode, result.message);
+        const announcement = await Announcement.findOne({ _id: id, vendorId, status: { $ne: 'D' } });
+        if (!announcement) {
+            return common.returnResult(false, 404, 'Announcement not found');
         }
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta.announcement);
-    } catch (error) {
-        logger.logException('announcementController: getAnnouncementById - Exception while fetching announcement by ID', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to fetch announcement');
+        return common.returnResult(true, 200, 'Announcement fetched successfully', { announcement });
+    } catch (err) {
+        throw err;
     }
 };
 

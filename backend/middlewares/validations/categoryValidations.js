@@ -1,6 +1,10 @@
 const Joi = require("joi");
 
-const objectId = Joi.string().hex().length(24).message("must be a valid Mongo ObjectId");
+// Category ids are common.encodeId-encoded (see formatCategoryForResponse in
+// categoryController), never a raw hex ObjectId - so this is a loose
+// opaque-string check, not a hex/length one. Decoded via common.decodeId in
+// the controller before reaching the service.
+const objectId = Joi.string().trim().min(1).message("must be a valid id");
 
 // parent_category_id may legitimately arrive as an empty string / literal "null"
 // when sent via multipart/form-data (all fields are strings), so treat those as null.

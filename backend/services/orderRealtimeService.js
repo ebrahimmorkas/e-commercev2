@@ -1,5 +1,6 @@
 const realtimeService = require('./realtimeService');
 const logger = require('../utils/logger');
+const common = require('../utils/common');
 const { REALTIME_NOTIFICATION_EVENT } = require('../constants/abandonedCartConstants');
 const { REALTIME_USER_NOTIFICATION_EVENT } = require('../constants/realtimeConstants');
 const { REALTIME_MODULE_ORDERS, ORDER_NOTIFICATION_TYPES } = require('../constants/orderRealtimeConstants');
@@ -35,7 +36,12 @@ const notifyOrderChanged = (order, type) => {
             module: REALTIME_MODULE_ORDERS,
             type,
             data: {
-                orderId: order._id,
+                // Client-facing payload - encoded the same way the REST
+                // responses are (see orderController.js's
+                // formatOrderForResponse) so the two channels never diverge
+                // in id format. order.vendorId/order.userId below stay raw -
+                // they're server-internal socket-room routing, not sent here.
+                orderId: common.encodeId(order._id),
                 orderNumber: order.orderNumber,
                 currentStepCode: order.currentStepCode,
                 currentStepName: order.currentStepName,

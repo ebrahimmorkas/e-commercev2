@@ -1,9 +1,13 @@
 const Joi = require('joi');
 const { VALID_EMAIL_MODULES } = require('../../constants/emailModuleConstants');
 
-const objectId = () => Joi.string().hex().length(24).messages({
-    'string.hex': '{{#label}} must be a valid id.',
-    'string.length': '{{#label}} must be a valid id.'
+// Loose opaque-string check rather than hex/length - templateId here refers
+// to EmailTemplateMaster, whose ids are now common.encodeId-encoded (not raw
+// hex). Other id fields sharing this helper (currencyId/countryId/stateId
+// etc.) still hold raw ObjectIds for now - this check accepts both, since
+// it's a superset, not a narrowing.
+const objectId = () => Joi.string().trim().min(1).messages({
+    'string.min': '{{#label}} must be a valid id.',
 });
 
 // currencyId/orderCancellationNotAllowedAfterStep may legitimately arrive as

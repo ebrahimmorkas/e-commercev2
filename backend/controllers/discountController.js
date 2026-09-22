@@ -2,6 +2,54 @@ const discountService = require('../services/discountService');
 const logger = require('../utils/logger.js');
 const common = require('../utils/common.js');
 
+// Converts a Discount mongoose doc (or plain object) into a response-safe
+// object with every ObjectId field encoded via common.encodeId. `productIds`/
+// `categoryIds`/`userIds` are resolved server-side from an uploaded excel
+// file (see resolveGiveDiscountToTargets in discountService.js) and never
+// arrive from the client as ids, but they're still real ids once stored, so
+// they're encoded on the way out same as everything else. `variantIds`
+// (PRODUCT_VARIANTS_* giveDiscountTo options) isn't wired up yet
+// (discountService.js returns "not supported yet" for it) but is included
+// here too, for whenever it lands.
+const encodeIdArray = (ids) => (Array.isArray(ids) ? ids.map((id) => common.encodeId(id)) : ids);
+
+const formatDiscountForResponse = (discountDoc) => {
+  if (!discountDoc) return discountDoc;
+  const discount = discountDoc.toObject ? discountDoc.toObject() : discountDoc;
+
+  return {
+    ...discount,
+    _id: discount._id ? common.encodeId(discount._id) : discount._id,
+    vendorId: discount.vendorId ? common.encodeId(discount.vendorId) : discount.vendorId,
+    userIds: encodeIdArray(discount.userIds),
+    userGroupIds: encodeIdArray(discount.userGroupIds),
+    productIds: encodeIdArray(discount.productIds),
+    productGroupIds: encodeIdArray(discount.productGroupIds),
+    variantIds: encodeIdArray(discount.variantIds),
+    categoryIds: encodeIdArray(discount.categoryIds),
+    categoryGroupIds: encodeIdArray(discount.categoryGroupIds),
+    createdBy: discount.createdBy ? common.encodeId(discount.createdBy) : discount.createdBy,
+    updatedBy: discount.updatedBy ? common.encodeId(discount.updatedBy) : discount.updatedBy,
+    deletedBy: discount.deletedBy ? common.encodeId(discount.deletedBy) : discount.deletedBy,
+    inActiveMarkeddBy: discount.inActiveMarkeddBy ? common.encodeId(discount.inActiveMarkeddBy) : discount.inActiveMarkeddBy,
+    activeMarkedBy: discount.activeMarkedBy ? common.encodeId(discount.activeMarkedBy) : discount.activeMarkedBy,
+  };
+};
+
+// The only id-bearing fields that ever arrive directly from the client in a
+// create/update discount payload - productIds/categoryIds/userIds are
+// resolved server-side from an excel upload (see discountService.js), never
+// submitted as ids by the client.
+const decodeDiscountPayloadIds = (body) => {
+  const payload = { ...body };
+  ['productGroupIds', 'categoryGroupIds', 'userGroupIds'].forEach((field) => {
+    if (Array.isArray(payload[field])) {
+      payload[field] = payload[field].map((id) => common.decodeId(id));
+    }
+  });
+  return payload;
+};
+
 /**
  * Both websiteMaster (global) and companyMaster (vendor-specific) must have
  * isDiscountFeatureOn === true for discount actions to be allowed.
@@ -43,11 +91,9 @@ const getDiscountFeatureBlockReason = async (req) => {
 
 const createDiscount = async (req, res) => {
   const vendorId = req.vendorId;
-  // const userId = req.user._id;
-  const userId = '6a63443e263b29b8e59374eb';
+  const userId = req.user._id;
   try {
     const blockReason = await getDiscountFeatureBlockReason(req);
-    console.log(`Block reason is ${blockReason}`);
     if (blockReason) {
       return common.sendError(res, blockReason.statusCode, blockReason.message);
     }
@@ -66,13 +112,17 @@ const createDiscount = async (req, res) => {
     }
 
         const files = req.files || {};
-    const result = await discountService.createDiscount(vendorId, userId, req.body, files, req.companyMasterData);
+    const payload = decodeDiscountPayloadIds(req.body);
+    const result = await discountService.createDiscount(vendorId, userId, payload, files, req.companyMasterData);
 
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message, result.meta);
     }
 
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+        return common.sendSuccess(res, result.statusCode, result.message, {
+          ...result.meta,
+          data: formatDiscountForResponse(result.meta.data)
+        });
   } catch (error) {
     logger.logException('Error creating discount', { vendorId, error });
   }
@@ -81,21 +131,26 @@ const createDiscount = async (req, res) => {
 const updateDiscount = async (req, res) => {
   const vendorId = req.vendorId;
   const userId = req.user && req.user._id;
-  const discountId = req.params.id;
+  let discountId;
     try {
     const blockReason = await getDiscountFeatureBlockReason(req);
     if (blockReason) {
       return common.sendError(res, blockReason.statusCode, blockReason.message);
     }
 
+    discountId = common.decodeId(req.params.id);
     const files = req.files || {};
-    const result = await discountService.updateDiscount(vendorId, discountId, userId, req.body, files, req.companyMasterData);
+    const payload = decodeDiscountPayloadIds(req.body);
+    const result = await discountService.updateDiscount(vendorId, discountId, userId, payload, files, req.companyMasterData);
 
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message, result.meta);
     }
 
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+        return common.sendSuccess(res, result.statusCode, result.message, {
+          ...result.meta,
+          data: formatDiscountForResponse(result.meta.data)
+        });
   } catch (error) {
     logger.logException('Error updating discount', { vendorId, discountId, error });
   }
@@ -103,20 +158,21 @@ const updateDiscount = async (req, res) => {
 
 const getDiscountById = async (req, res) => {
   const vendorId = req.vendorId;
-  const discountId = req.params.id;
+  let discountId;
     try {
     const blockReason = await getDiscountFeatureBlockReason(req);
     if (blockReason) {
       return common.sendError(res, blockReason.statusCode, blockReason.message);
     }
 
+    discountId = common.decodeId(req.params.id);
     const result = await discountService.fetchDiscountById(vendorId, discountId);
 
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message);
     }
 
-    return common.sendSuccess(res, result.statusCode, result.message, result.meta.data);
+    return common.sendSuccess(res, result.statusCode, result.message, formatDiscountForResponse(result.meta.data));
   } catch (error) {
     logger.logException('Error fetching discount', { vendorId, discountId, error });
   }
@@ -136,7 +192,7 @@ const getAllDiscountsAdmin = async (req, res) => {
       return common.sendError(res, result.statusCode, result.message);
     }
 
-    return common.sendSuccess(res, result.statusCode, result.message, result.meta.data);
+    return common.sendSuccess(res, result.statusCode, result.message, result.meta.data.map(formatDiscountForResponse));
   } catch (error) {
     logger.logException('Error fetching discounts', { vendorId, error });
   }
@@ -156,7 +212,7 @@ const getActiveDiscounts = async (req, res) => {
       return common.sendError(res, result.statusCode, result.message);
     }
 
-    return common.sendSuccess(res, result.statusCode, result.message, result.meta.data);
+    return common.sendSuccess(res, result.statusCode, result.message, result.meta.data.map(formatDiscountForResponse));
   } catch (error) {
     logger.logException('Error fetching active discounts', { vendorId, error });
   }
@@ -165,13 +221,14 @@ const getActiveDiscounts = async (req, res) => {
 const deleteDiscount = async (req, res) => {
   const vendorId = req.vendorId;
   const userId = req.user && req.user._id;
-  const discountId = req.params.id;
+  let discountId;
     try {
     const blockReason = await getDiscountFeatureBlockReason(req);
     if (blockReason) {
       return common.sendError(res, blockReason.statusCode, blockReason.message);
     }
 
+    discountId = common.decodeId(req.params.id);
     const result = await discountService.deleteDiscount(vendorId, discountId, userId);
 
     if (!result.isSuccess) {
@@ -187,13 +244,18 @@ const deleteDiscount = async (req, res) => {
 const bulkSetDiscountStatus = async (req, res) => {
   const vendorId = req.vendorId;
   const userId = req.user._id;
-  const { discountIds, status } = req.body;
+  const { status } = req.body;
   try {
-    const result = await discountService.bulkSetDiscountStatus(vendorId, userId, discountIds, status);
+    const decodedIds = req.body.discountIds.map((id) => common.decodeId(id));
+    const result = await discountService.bulkSetDiscountStatus(vendorId, userId, decodedIds, status);
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message);
     }
-    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    const meta = {
+      ...result.meta,
+      results: result.meta.results.map((r) => ({ ...r, id: common.encodeId(r.id) }))
+    };
+    return common.sendSuccess(res, result.statusCode, result.message, meta);
   } catch (error) {
     logger.logException('discountController: bulkSetDiscountStatus - Exception while bulk updating discount status', { vendorId, error });
   }
@@ -202,13 +264,17 @@ const bulkSetDiscountStatus = async (req, res) => {
 const bulkDeleteDiscounts = async (req, res) => {
   const vendorId = req.vendorId;
   const userId = req.user._id;
-  const { discountIds } = req.body;
   try {
-    const result = await discountService.bulkDeleteDiscounts(vendorId, userId, discountIds);
+    const decodedIds = req.body.discountIds.map((id) => common.decodeId(id));
+    const result = await discountService.bulkDeleteDiscounts(vendorId, userId, decodedIds);
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message);
     }
-    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    const meta = {
+      ...result.meta,
+      results: result.meta.results.map((r) => ({ ...r, id: common.encodeId(r.id) }))
+    };
+    return common.sendSuccess(res, result.statusCode, result.message, meta);
   } catch (error) {
     logger.logException('discountController: bulkDeleteDiscounts - Exception while bulk deleting discounts', { vendorId, error });
   }

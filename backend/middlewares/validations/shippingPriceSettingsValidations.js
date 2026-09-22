@@ -1,9 +1,12 @@
 const Joi = require('joi');
 const { SHIPPING_PRICE_METHODS, VALID_SHIPPING_PRICE_METHODS, CATEGORY_CHARGE_MODES, CATEGORY_AGGREGATIONS } = require('../../constants/shippingPriceConstants');
 
-const objectId = () => Joi.string().hex().length(24).messages({
-    'string.hex': '{{#label}} must be a valid id.',
-    'string.length': '{{#label}} must be a valid id.'
+// These ids (categoryId/countryId/stateId/cityId/weightUnit) are
+// common.encodeId-encoded (see shippingPriceSettingsController), never a raw
+// hex ObjectId - so this is a loose opaque-string check, not a hex/length
+// one. Decoded via common.decodeId in the controller before reaching the service.
+const objectId = () => Joi.string().trim().min(1).messages({
+    'string.min': '{{#label}} must be a valid id.',
 });
 
 // A field only makes sense for one specific method - required when that

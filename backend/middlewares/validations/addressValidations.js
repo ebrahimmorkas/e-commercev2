@@ -1,6 +1,10 @@
 const Joi = require("joi");
 
-const objectId = Joi.string().hex().length(24).message("must be a valid Mongo ObjectId");
+// Ids (the address's own _id and country_id/state_id/city_id) are
+// common.encodeId-encoded, never raw hex ObjectIds - loose opaque-string
+// check, decoded via common.decodeId in addressController before reaching
+// the service.
+const objectId = Joi.string().trim().min(1).message("must be a valid id");
 
 const createAddressSchema = Joi.object({
   address_name: Joi.string().trim().min(2).max(50).required(),

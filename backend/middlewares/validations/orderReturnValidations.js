@@ -1,8 +1,10 @@
 const Joi = require('joi');
 
-const objectId = () => Joi.string().hex().length(24).messages({
-    'string.hex': '{{#label}} must be a valid id.',
-    'string.length': '{{#label}} must be a valid id.'
+// Ids here are common.encodeId-encoded (see orderReturnController.js's
+// formatReturnForResponse) - opaque-string check, decoded via
+// common.decodeId in the controller before reaching the service.
+const objectId = () => Joi.string().trim().min(1).messages({
+    'string.min': '{{#label}} must be a valid id.',
 });
 
 const orderIdParamSchema = Joi.object({

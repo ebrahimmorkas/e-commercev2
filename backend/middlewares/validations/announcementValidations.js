@@ -1,12 +1,13 @@
 const Announcement = require('../../models/Announcement');
 const common = require('../../utils/common');
 const logger = require('../../utils/logger');
-const mongoose = require('mongoose');
 const Joi = require('joi');
 
-const objectId = () => Joi.string().hex().length(24).messages({
-    'string.hex': '{{#label}} must be a valid id.',
-    'string.length': '{{#label}} must be a valid id.'
+// Announcement ids are common.encodeId-encoded (see formatAnnouncementForResponse
+// in announcementController), never a raw hex ObjectId - so this is a loose
+// opaque-string check, not a hex/length one.
+const objectId = () => Joi.string().trim().min(1).messages({
+    'string.min': '{{#label}} must be a valid id.',
 });
 
 // --- Bulk status / delete (multi-select checkbox actions) - the rest of
@@ -117,8 +118,9 @@ const validateDeleteAnnouncement = (req, res, next) => {
         logger.logInfo(0,1,`announcementValidation: validateDeleteAnnouncement - announcement ID not provided`);
         return common.sendError(res, 400, 'Validation failed', ['Announcement ID is required']);
     }
-    const mongoose = require('mongoose');
-    if (!mongoose.Types.ObjectId.isValid(announcement_id)) {
+    // announcement_id is common.encodeId-encoded, not a raw hex ObjectId -
+    // decoding actually happens in the controller, this just checks shape.
+    if (typeof announcement_id !== 'string' || announcement_id.trim().length === 0) {
         logger.logInfo(0,1,`announcementValidation: validateDeleteAnnouncement - Invalid announcement ID ${announcement_id}`);
         return common.sendError(res, 400, 'Validation failed', ['Invalid announcement ID']);
     }
@@ -131,7 +133,7 @@ const validateDeleteAnnouncement = (req, res, next) => {
 const validateUpdateAnnouncement = async (req, res, next) => {
     try {
         const vendorId = req.vendorId;
-        const { announcement_id } = req.body;
+        let { announcement_id } = req.body;
         const { name, heading, content, isActive, startDate, endDate, isDefault, precedence } = req.body;
         const errors = [];
 
@@ -139,9 +141,17 @@ const validateUpdateAnnouncement = async (req, res, next) => {
         if (!announcement_id) {
             return common.sendError(res, 400, 'Validation failed', ['Announcement ID is required']);
         }
-        if (!mongoose.Types.ObjectId.isValid(announcement_id)) {
+        // announcement_id is common.encodeId-encoded. Decoded here (not in the
+        // controller) because this middleware runs its own DB lookups keyed on
+        // the raw id below (uniqueness/existence checks) - req.body.announcement_id
+        // is reassigned to the decoded value so the controller (and the rest of
+        // this function) sees an already-raw id and never decodes it twice.
+        try {
+            announcement_id = common.decodeId(announcement_id);
+        } catch (decodeErr) {
             return common.sendError(res, 400, 'Validation failed', ['Invalid announcement ID']);
         }
+        req.body.announcement_id = announcement_id;
 
         // At least one field must be provided
         if (Object.keys(req.body).length === 0) {

@@ -2,10 +2,12 @@ const Joi = require('joi');
 
 const GROUP_TYPES = ["PRODUCT", "CATEGORY", "USER", "BRAND", "ORDER", "CUSTOM"];
 
-// members are raw Mongo ObjectIds of the referenced collection (Product/
-// Category/User/Brand/Order), same as every other admin list endpoint returns -
-// unlike Group's own _id, they are never passed through common.encodeId/decodeId.
-const memberIdSchema = Joi.string().trim().hex().length(24);
+// members are common.encodeId-encoded ids of the referenced collection
+// (Product/Category/User/Brand/Order), same as Group's own _id - every one
+// of those collections' own endpoints encodes its ids too as of this
+// rollout, so this is a loose opaque-string check, not hex/length(24).
+// Decoded via common.decodeId in the controller before reaching the service.
+const memberIdSchema = Joi.string().trim().min(1);
 
 // members is optional at the Joi level (rather than required) because an
 // excel-driven create/update omits it entirely - groupService enforces that

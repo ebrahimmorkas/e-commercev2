@@ -2,6 +2,29 @@ const reviewService = require('../services/reviewService');
 const logger = require('../utils/logger.js');
 const common = require('../utils/common.js');
 
+// Converts a Review mongoose doc (or a .lean() plain object, as
+// getReviewsByProductId's Redis-cached list returns) into a response-safe
+// object with every ObjectId field encoded via common.encodeId.
+const formatReviewForResponse = (reviewDoc) => {
+  if (!reviewDoc) return reviewDoc;
+  const review = reviewDoc.toObject ? reviewDoc.toObject() : reviewDoc;
+
+  return {
+    ...review,
+    _id: review._id ? common.encodeId(review._id) : review._id,
+    vendorId: review.vendorId ? common.encodeId(review.vendorId) : review.vendorId,
+    productId: review.productId ? common.encodeId(review.productId) : review.productId,
+    variantId: review.variantId ? common.encodeId(review.variantId) : review.variantId,
+    userId: review.userId ? common.encodeId(review.userId) : review.userId,
+    orderId: review.orderId ? common.encodeId(review.orderId) : review.orderId,
+    createdBy: review.createdBy ? common.encodeId(review.createdBy) : review.createdBy,
+    updatedBy: review.updatedBy ? common.encodeId(review.updatedBy) : review.updatedBy,
+    deletedBy: review.deletedBy ? common.encodeId(review.deletedBy) : review.deletedBy,
+    inActiveMarkeddBy: review.inActiveMarkeddBy ? common.encodeId(review.inActiveMarkeddBy) : review.inActiveMarkeddBy,
+    activeMarkedBy: review.activeMarkedBy ? common.encodeId(review.activeMarkedBy) : review.activeMarkedBy,
+  };
+};
+
 const createReview = async (req, res) => {
   try {
     const vendorId = req.vendorId;
@@ -38,7 +61,10 @@ const createReview = async (req, res) => {
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message);
     }
-    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    return common.sendSuccess(res, result.statusCode, result.message, {
+      ...result.meta,
+      review: formatReviewForResponse(result.meta.review)
+    });
   } catch (error) {
     logger.logException('Error creating review', { error });
   }
@@ -62,7 +88,10 @@ const getReviewsByProduct = async (req, res) => {
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message);
     }
-    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    return common.sendSuccess(res, result.statusCode, result.message, {
+      ...result.meta,
+      reviews: result.meta.reviews.map(formatReviewForResponse)
+    });
   } catch (error) {
     logger.logException('Error fetching reviews by product', { error });
   }
@@ -83,7 +112,10 @@ const getReviewById = async (req, res) => {
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message);
     }
-    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    return common.sendSuccess(res, result.statusCode, result.message, {
+      ...result.meta,
+      review: formatReviewForResponse(result.meta.review)
+    });
   } catch (error) {
     logger.logException('Error fetching review by id', { error });
   }
@@ -106,7 +138,10 @@ const updateReview = async (req, res) => {
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message);
     }
-    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    return common.sendSuccess(res, result.statusCode, result.message, {
+      ...result.meta,
+      review: formatReviewForResponse(result.meta.review)
+    });
   } catch (error) {
     logger.logException('Error updating review', { error });
   }

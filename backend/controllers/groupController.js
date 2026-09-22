@@ -14,11 +14,11 @@ const formatGroupForResponse = (groupDoc) => {
     ...group,
     _id: common.encodeId(group._id),
     vendorId: common.encodeId(group.vendorId),
-    // members are raw ids of the referenced collection (Product/Category/User/
-    // Brand/Order) - unlike Group's own _id, they're never encoded, since
-    // every admin list endpoint that produces them (get-products-admin,
-    // get-all-brands-admin, etc.) returns plain ids too.
-    members: group.members || [],
+    // members are ids of the referenced collection (Product/Category/User/
+    // Brand/Order) - now encoded like everywhere else, since every one of
+    // those collections' own endpoints encodes its ids too as of this
+    // rollout (Order's own encoding lands in a parallel task).
+    members: (group.members || []).map((id) => common.encodeId(id)),
     createdBy: group.createdBy ? common.encodeId(group.createdBy) : group.createdBy,
     updatedBy: group.updatedBy ? common.encodeId(group.updatedBy) : group.updatedBy,
     deletedBy: group.deletedBy ? common.encodeId(group.deletedBy) : group.deletedBy,
@@ -44,6 +44,7 @@ const createGroup = async (req, res) => {
     }
 
     const payload = { ...req.body };
+    if (payload.members) payload.members = payload.members.map((id) => common.decodeId(id));
     const files = req.files || {};
 
     const result = await groupService.createGroup(vendorId, userId, payload, files, req.companyMasterData);
@@ -145,6 +146,7 @@ const updateGroup = async (req, res) => {
 
     const payload = { ...req.body };
     delete payload.id;
+    if (payload.members) payload.members = payload.members.map((id) => common.decodeId(id));
     const files = req.files || {};
 
     const result = await groupService.updateGroup(vendorId, userId, groupId, payload, files, req.companyMasterData);

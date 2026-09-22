@@ -27,9 +27,19 @@ import theme from './features/Home/theme/theme';
 // standalone page load, not just via in-app pushState.
 // Anything that doesn't match one of these is 'not-found' (previously fell
 // through to 'home' silently - see NotFoundPage).
-const PRODUCT_PATH_RE = /^\/product\/([a-fA-F0-9]{24})$/;
-const CATEGORY_PATH_RE = /^\/category\/([a-fA-F0-9]{24})$/;
-const ORDER_DETAIL_PATH_RE = /^\/orders\/([a-fA-F0-9]{24})$/;
+// Product ids are also common.encodeId-encoded now (see productController.js's
+// formatProductForResponse) - same 43-char url-safe base64 shape as
+// CATEGORY_PATH_RE/ORDER_DETAIL_PATH_RE below, never raw hex.
+const PRODUCT_PATH_RE = /^\/product\/([A-Za-z0-9_-]{43})$/;
+// Category ids now come from the backend common.encodeId-encoded (AES-256-CBC
+// of a 24-char ObjectId hex string, base64url output) - always exactly 43
+// url-safe base64 characters, never raw hex. See categoryController.js's
+// formatCategoryForResponse.
+const CATEGORY_PATH_RE = /^\/category\/([A-Za-z0-9_-]{43})$/;
+// Order ids are also common.encodeId-encoded now (see orderController.js's
+// formatOrderForResponse) - same 43-char url-safe base64 shape as
+// CATEGORY_PATH_RE above, never raw hex.
+const ORDER_DETAIL_PATH_RE = /^\/orders\/([A-Za-z0-9_-]{43})$/;
 const parseRoute = () => {
   const path = window.location.pathname;
   if (path === '/' || path === '') return { type: 'home' };

@@ -5,9 +5,11 @@ const mongoose = require('mongoose');
 const fs = require('fs/promises');
 const Joi = require('joi');
 
-const objectId = () => Joi.string().hex().length(24).messages({
-    'string.hex': '{{#label}} must be a valid id.',
-    'string.length': '{{#label}} must be a valid id.'
+// Banner ids are common.encodeId-encoded (see formatBannerForResponse in
+// bannerController), never a raw hex ObjectId - so this is a loose
+// opaque-string check, not a hex/length one.
+const objectId = () => Joi.string().trim().min(1).messages({
+    'string.min': '{{#label}} must be a valid id.',
 });
 
 // --- Bulk status / delete (multi-select checkbox actions) - the rest of
@@ -143,15 +145,27 @@ const validateAddBanner = async (req, res, next) => {
 
 const validateDeleteBanner = (req, res, next) => {
     try {
-        const { bannerId } = req.body;
-        if (!bannerId) {
+        const { bannerId: encodedBannerId } = req.body;
+        if (!encodedBannerId) {
             logger.logInfo(0,1,'bannerValidations: validateDeleteBanner - Banner ID not provided');
             return common.sendError(res, 400, 'Validation failed', ['Banner ID is required']);
         }
-        if (!mongoose.Types.ObjectId.isValid(bannerId)) {
-            logger.logInfo(0,1,`bannerValidations: validateDeleteBanner - Invalid banner ID ${bannerId}`);
+        // Decode here (not in the controller) since this middleware runs
+        // first and needs the raw id for its own mongoose.Types.ObjectId
+        // check below - req.body.bannerId is reassigned to the decoded
+        // value so the controller uses it as-is, not double-decoded.
+        let bannerId;
+        try {
+            bannerId = common.decodeId(encodedBannerId);
+        } catch {
+            logger.logInfo(0,1,`bannerValidations: validateDeleteBanner - Invalid banner ID ${encodedBannerId}`);
             return common.sendError(res, 400, 'Validation failed', ['Invalid banner ID']);
         }
+        if (!mongoose.Types.ObjectId.isValid(bannerId)) {
+            logger.logInfo(0,1,`bannerValidations: validateDeleteBanner - Invalid banner ID ${encodedBannerId}`);
+            return common.sendError(res, 400, 'Validation failed', ['Invalid banner ID']);
+        }
+        req.body.bannerId = bannerId;
         next();
     } catch (err) {
         logger.logException('bannerValidations: validateDeleteBanner - Exception in validation middleware', { err });
@@ -161,18 +175,29 @@ const validateDeleteBanner = (req, res, next) => {
 const validateUpdateBanner = async (req, res, next) => {
     try {
         const vendorId = req.vendorId;
-        const { bannerId: bannerId, name, status, startDate, endDate, isDefault, precedence } = req.body;
+        const { bannerId: encodedBannerId, name, status, startDate, endDate, isDefault, precedence } = req.body;
         const errors = [];
 
-        // bannerId
-        if (!bannerId) {
+        // bannerId - decoded here (not in the controller) since this
+        // middleware needs the raw id for its own Banner.findOne lookup
+        // below; req.body.bannerId is reassigned so the controller uses it
+        // as-is, not double-decoded.
+        if (!encodedBannerId) {
             await cleanupTempFiles(req);
             return common.sendError(res, 400, 'Validation failed', ['Banner ID is required']);
+        }
+        let bannerId;
+        try {
+            bannerId = common.decodeId(encodedBannerId);
+        } catch {
+            await cleanupTempFiles(req);
+            return common.sendError(res, 400, 'Validation failed', ['Invalid banner ID']);
         }
         if (!mongoose.Types.ObjectId.isValid(bannerId)) {
             await cleanupTempFiles(req);
             return common.sendError(res, 400, 'Validation failed', ['Invalid banner ID']);
         }
+        req.body.bannerId = bannerId;
 
         const hasMediaFile = !!(req.files?.image?.[0] || req.files?.video?.[0]);
 

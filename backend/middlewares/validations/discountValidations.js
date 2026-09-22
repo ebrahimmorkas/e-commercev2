@@ -1,8 +1,10 @@
 const Joi = require('joi');
 
-const objectId = () => Joi.string().hex().length(24).messages({
-  'string.hex': '{{#label}} must be a valid id.',
-  'string.length': '{{#label}} must be a valid id.'
+// Discount ids (own _id and the group-id arrays submitted directly by the
+// client) are common.encodeId-encoded, never raw hex ObjectIds - loose
+// opaque-string check, decoded via common.decodeId in the controller.
+const objectId = () => Joi.string().trim().min(1).messages({
+  'string.min': '{{#label}} must be a valid id.',
 });
 
 // --- Bulk status / delete (multi-select checkbox actions) --------------------

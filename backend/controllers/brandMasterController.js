@@ -2,6 +2,26 @@ const brandMasterService = require('../services/brandMasterService');
 const logger = require('../utils/logger');
 const common = require('../utils/common');
 
+// Converts a BrandMaster mongoose doc (or the slimmer client-facing
+// projection from fetchAllBrandsClient) into a response-safe object with
+// every ObjectId field encoded via common.encodeId. Fields are guarded
+// since the client projection only carries _id + brandName + brandShortName.
+const formatBrandForResponse = (brandDoc) => {
+    if (!brandDoc) return brandDoc;
+    const brand = brandDoc.toObject ? brandDoc.toObject() : brandDoc;
+
+    return {
+        ...brand,
+        _id: brand._id ? common.encodeId(brand._id) : brand._id,
+        vendorId: brand.vendorId ? common.encodeId(brand.vendorId) : brand.vendorId,
+        createdBy: brand.createdBy ? common.encodeId(brand.createdBy) : brand.createdBy,
+        updatedBy: brand.updatedBy ? common.encodeId(brand.updatedBy) : brand.updatedBy,
+        deletedBy: brand.deletedBy ? common.encodeId(brand.deletedBy) : brand.deletedBy,
+        activeMarkedBy: brand.activeMarkedBy ? common.encodeId(brand.activeMarkedBy) : brand.activeMarkedBy,
+        inActiveMarkeddBy: brand.inActiveMarkeddBy ? common.encodeId(brand.inActiveMarkeddBy) : brand.inActiveMarkeddBy,
+    };
+};
+
 const addBrand = async (req, res) => {
     const vendorId = req.vendorId;
     try {
@@ -22,7 +42,7 @@ const addBrand = async (req, res) => {
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta.brand);
+        return common.sendSuccess(res, result.statusCode, result.message, formatBrandForResponse(result.meta.brand));
     } catch (error) {
         logger.logException('brandMasterController: addBrand - Exception while adding brand', { vendorId, error });
     }
@@ -30,7 +50,7 @@ const addBrand = async (req, res) => {
 
 const updateBrand = async (req, res) => {
     const vendorId = req.vendorId;
-    const { brandId } = req.body;
+    let brandId;
     try {
         const websiteMasterData = req.websiteMasterData;
         const companyMasterData = req.companyMasterData;
@@ -39,11 +59,15 @@ const updateBrand = async (req, res) => {
             return common.sendError(res, validityResult.statusCode, validityResult.message);
         }
 
-        const result = await brandMasterService.updateBrand(vendorId, brandId, req.body, req.user._id);
+        brandId = common.decodeId(req.body.brandId);
+        const payload = { ...req.body };
+        delete payload.brandId;
+
+        const result = await brandMasterService.updateBrand(vendorId, brandId, payload, req.user._id);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta.brand);
+        return common.sendSuccess(res, result.statusCode, result.message, formatBrandForResponse(result.meta.brand));
     } catch (error) {
         logger.logException('brandMasterController: updateBrand - Exception while updating brand', { vendorId, brandId, error });
     }
@@ -51,7 +75,7 @@ const updateBrand = async (req, res) => {
 
 const deleteBrand = async (req, res) => {
     const vendorId = req.vendorId;
-    const { brandId } = req.body;
+    let brandId;
     try {
         const websiteMasterData = req.websiteMasterData;
         const companyMasterData = req.companyMasterData;
@@ -60,6 +84,7 @@ const deleteBrand = async (req, res) => {
             return common.sendError(res, validityResult.statusCode, validityResult.message);
         }
 
+        brandId = common.decodeId(req.body.brandId);
         const result = await brandMasterService.softDeleteBrand(vendorId, brandId, req.user._id);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
@@ -84,7 +109,7 @@ const getAllBrandsAdmin = async (req, res) => {
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta.brands);
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta.brands.map(formatBrandForResponse));
     } catch (error) {
         logger.logException('brandMasterController: getAllBrandsAdmin - Exception while fetching brands', { vendorId, error });
     }
@@ -106,7 +131,7 @@ const getAllBrandsClient = async (req, res) => {
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta.brands);
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta.brands.map(formatBrandForResponse));
     } catch (error) {
         logger.logException('brandMasterController: getAllBrandsClient - Exception while fetching brands for client', { vendorId, error });
     }
@@ -114,13 +139,14 @@ const getAllBrandsClient = async (req, res) => {
 
 const getBrandById = async (req, res) => {
     const vendorId = req.vendorId;
-    const { id } = req.params;
+    let id;
     try {
+        id = common.decodeId(req.params.id);
         const result = await brandMasterService.fetchBrandById(vendorId, id);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta.brand);
+        return common.sendSuccess(res, result.statusCode, result.message, formatBrandForResponse(result.meta.brand));
     } catch (error) {
         logger.logException('brandMasterController: getBrandById - Exception while fetching brand by id', { vendorId, id, error });
     }
@@ -128,13 +154,21 @@ const getBrandById = async (req, res) => {
 
 const bulkSetBrandStatus = async (req, res) => {
     const vendorId = req.vendorId;
-    const { brandIds, status } = req.body;
+    const { status } = req.body;
     try {
-        const result = await brandMasterService.bulkSetBrandStatus(vendorId, req.user._id, brandIds, status);
+        const decodedIds = req.body.brandIds.map((id) => common.decodeId(id));
+        const result = await brandMasterService.bulkSetBrandStatus(vendorId, req.user._id, decodedIds, status);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+        // Re-encode ids before they leave the server - the caller only ever
+        // knows its brands by their encoded id, same as everywhere else on
+        // this controller.
+        const meta = {
+            ...result.meta,
+            results: result.meta.results.map((r) => ({ ...r, id: common.encodeId(r.id) }))
+        };
+        return common.sendSuccess(res, result.statusCode, result.message, meta);
     } catch (error) {
         logger.logException('brandMasterController: bulkSetBrandStatus - Exception while bulk updating brand status', { vendorId, error });
     }
@@ -142,13 +176,17 @@ const bulkSetBrandStatus = async (req, res) => {
 
 const bulkDeleteBrands = async (req, res) => {
     const vendorId = req.vendorId;
-    const { brandIds } = req.body;
     try {
-        const result = await brandMasterService.bulkDeleteBrands(vendorId, req.user._id, brandIds);
+        const decodedIds = req.body.brandIds.map((id) => common.decodeId(id));
+        const result = await brandMasterService.bulkDeleteBrands(vendorId, req.user._id, decodedIds);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+        const meta = {
+            ...result.meta,
+            results: result.meta.results.map((r) => ({ ...r, id: common.encodeId(r.id) }))
+        };
+        return common.sendSuccess(res, result.statusCode, result.message, meta);
     } catch (error) {
         logger.logException('brandMasterController: bulkDeleteBrands - Exception while bulk deleting brands', { vendorId, error });
     }

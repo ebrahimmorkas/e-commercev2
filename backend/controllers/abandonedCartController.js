@@ -2,6 +2,17 @@ const abandonedCartService = require('../services/abandonedCartService');
 const logger = require('../utils/logger.js');
 const common = require('../utils/common.js');
 
+// fetchAbandonedCartsForAdmin returns a bespoke shape (not a raw mongoose
+// doc) grouping one or more Cart documents by owner - encode every id it
+// carries: the primary cart's own _id, any other linked cart ids folded
+// into the same group, and the owning user's id.
+const formatAbandonedCartGroupForResponse = (group) => ({
+    ...group,
+    _id: group._id ? common.encodeId(group._id) : group._id,
+    linkedCartIds: Array.isArray(group.linkedCartIds) ? group.linkedCartIds.map((id) => common.encodeId(id)) : group.linkedCartIds,
+    userId: group.userId ? common.encodeId(group.userId) : group.userId,
+});
+
 /**
  * Both websiteMaster (global) and companyMaster (vendor-specific) must have
  * isAbondonedCartFeatureOn === true for the admin to view abandoned carts.
@@ -42,7 +53,7 @@ const getAllAbandonedCartsAdmin = async (req, res) => {
       return common.sendError(res, result.statusCode, result.message);
     }
 
-    return common.sendSuccess(res, result.statusCode, result.message, result.meta.data);
+    return common.sendSuccess(res, result.statusCode, result.message, result.meta.data.map(formatAbandonedCartGroupForResponse));
   } catch (error) {
     logger.logException('abandonedCartController: getAllAbandonedCartsAdmin - Exception while fetching abandoned carts', { vendorId, error });
   }

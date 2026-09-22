@@ -2,6 +2,46 @@ const freeCashService = require('../services/freeCashService');
 const logger = require('../utils/logger.js');
 const common = require('../utils/common.js');
 
+const encodeIdArray = (ids) => (Array.isArray(ids) ? ids.map((id) => common.encodeId(id)) : ids);
+
+// giveToUsers is resolved server-side from an uploaded excel file (see
+// resolveGiveFreeCashToTargets in freeCashService.js), never submitted by
+// the client as ids - but it's still real ids once stored, so it's encoded
+// on the way out same as everything else. userGroupIds/mainCategoryIds/
+// subCategoryIds ARE submitted directly by the client.
+const formatFreeCashForResponse = (freeCashDoc) => {
+  if (!freeCashDoc) return freeCashDoc;
+  const freeCash = freeCashDoc.toObject ? freeCashDoc.toObject() : freeCashDoc;
+
+  return {
+    ...freeCash,
+    _id: freeCash._id ? common.encodeId(freeCash._id) : freeCash._id,
+    vendorId: freeCash.vendorId ? common.encodeId(freeCash.vendorId) : freeCash.vendorId,
+    giveToUsers: encodeIdArray(freeCash.giveToUsers),
+    userGroupIds: encodeIdArray(freeCash.userGroupIds),
+    mainCategoryIds: encodeIdArray(freeCash.mainCategoryIds),
+    subCategoryIds: encodeIdArray(freeCash.subCategoryIds),
+    createdBy: freeCash.createdBy ? common.encodeId(freeCash.createdBy) : freeCash.createdBy,
+    updatedBy: freeCash.updatedBy ? common.encodeId(freeCash.updatedBy) : freeCash.updatedBy,
+    deletedBy: freeCash.deletedBy ? common.encodeId(freeCash.deletedBy) : freeCash.deletedBy,
+    inActiveMarkeddBy: freeCash.inActiveMarkeddBy ? common.encodeId(freeCash.inActiveMarkeddBy) : freeCash.inActiveMarkeddBy,
+    activeMarkedBy: freeCash.activeMarkedBy ? common.encodeId(freeCash.activeMarkedBy) : freeCash.activeMarkedBy,
+  };
+};
+
+// The only id-bearing fields that ever arrive directly from the client in a
+// create/update Free Cash payload - giveToUsers is resolved server-side
+// from an excel upload, never submitted as ids by the client.
+const decodeFreeCashPayloadIds = (body) => {
+  const payload = { ...body };
+  ['userGroupIds', 'mainCategoryIds', 'subCategoryIds'].forEach((field) => {
+    if (Array.isArray(payload[field])) {
+      payload[field] = payload[field].map((id) => common.decodeId(id));
+    }
+  });
+  return payload;
+};
+
 /**
  * Both websiteMaster (global) and companyMaster (vendor-specific) must have
  * isFreeCashFeatureOn === true for any Free Cash action to be allowed.
@@ -85,15 +125,19 @@ const createFreeCash = async (req, res) => {
     }
 
     const files = req.files || {};
+    const payload = decodeFreeCashPayloadIds(req.body);
     const result = await freeCashService.createFreeCash(
-      vendorId, userId, req.body, files, req.companyMasterData, req.websiteMasterData, req.companySettingsData
+      vendorId, userId, payload, files, req.companyMasterData, req.websiteMasterData, req.companySettingsData
     );
 
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message, result.meta);
     }
 
-    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    return common.sendSuccess(res, result.statusCode, result.message, {
+      ...result.meta,
+      data: formatFreeCashForResponse(result.meta.data)
+    });
   } catch (error) {
     logger.logException('freeCashController: createFreeCash - Exception while creating Free Cash', { vendorId, error });
   }
@@ -102,23 +146,28 @@ const createFreeCash = async (req, res) => {
 const updateFreeCash = async (req, res) => {
   const vendorId = req.vendorId;
   const userId = req.user && req.user._id;
-  const freeCashId = req.params.id;
+  let freeCashId;
   try {
     const blockReason = await getFreeCashFeatureBlockReason(req);
     if (blockReason) {
       return common.sendError(res, blockReason.statusCode, blockReason.message);
     }
 
+    freeCashId = common.decodeId(req.params.id);
     const files = req.files || {};
+    const payload = decodeFreeCashPayloadIds(req.body);
     const result = await freeCashService.updateFreeCash(
-      vendorId, freeCashId, userId, req.body, files, req.companyMasterData, req.websiteMasterData
+      vendorId, freeCashId, userId, payload, files, req.companyMasterData, req.websiteMasterData
     );
 
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message, result.meta);
     }
 
-    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    return common.sendSuccess(res, result.statusCode, result.message, {
+      ...result.meta,
+      data: formatFreeCashForResponse(result.meta.data)
+    });
   } catch (error) {
     logger.logException('freeCashController: updateFreeCash - Exception while updating Free Cash', { vendorId, freeCashId, error });
   }
@@ -126,20 +175,21 @@ const updateFreeCash = async (req, res) => {
 
 const getFreeCashById = async (req, res) => {
   const vendorId = req.vendorId;
-  const freeCashId = req.params.id;
+  let freeCashId;
   try {
     const blockReason = await getFreeCashFeatureBlockReason(req);
     if (blockReason) {
       return common.sendError(res, blockReason.statusCode, blockReason.message);
     }
 
+    freeCashId = common.decodeId(req.params.id);
     const result = await freeCashService.fetchFreeCashById(vendorId, freeCashId);
 
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message);
     }
 
-    return common.sendSuccess(res, result.statusCode, result.message, result.meta.data);
+    return common.sendSuccess(res, result.statusCode, result.message, formatFreeCashForResponse(result.meta.data));
   } catch (error) {
     logger.logException('freeCashController: getFreeCashById - Exception while fetching Free Cash', { vendorId, freeCashId, error });
   }
@@ -159,7 +209,7 @@ const getAllFreeCashAdmin = async (req, res) => {
       return common.sendError(res, result.statusCode, result.message);
     }
 
-    return common.sendSuccess(res, result.statusCode, result.message, result.meta.data);
+    return common.sendSuccess(res, result.statusCode, result.message, result.meta.data.map(formatFreeCashForResponse));
   } catch (error) {
     logger.logException('freeCashController: getAllFreeCashAdmin - Exception while fetching Free Cash list', { vendorId, error });
   }
@@ -168,13 +218,14 @@ const getAllFreeCashAdmin = async (req, res) => {
 const deleteFreeCash = async (req, res) => {
   const vendorId = req.vendorId;
   const userId = req.user && req.user._id;
-  const freeCashId = req.params.id;
+  let freeCashId;
   try {
     const blockReason = await getFreeCashFeatureBlockReason(req);
     if (blockReason) {
       return common.sendError(res, blockReason.statusCode, blockReason.message);
     }
 
+    freeCashId = common.decodeId(req.params.id);
     const result = await freeCashService.deleteFreeCash(vendorId, freeCashId, userId);
 
     if (!result.isSuccess) {
@@ -201,7 +252,8 @@ const revokeFreeCashForUser = async (req, res) => {
       return common.sendError(res, revokeBlockReason.statusCode, revokeBlockReason.message);
     }
 
-    const { userId: targetUserId, freeCashId } = req.body;
+    const targetUserId = common.decodeId(req.body.userId);
+    const freeCashId = common.decodeId(req.body.freeCashId);
     const result = await freeCashService.revokeFreeCashForUser(vendorId, targetUserId, freeCashId, adminUserId);
 
     if (!result.isSuccess) {
@@ -228,7 +280,7 @@ const revokeFreeCashForAllUsers = async (req, res) => {
       return common.sendError(res, revokeBlockReason.statusCode, revokeBlockReason.message);
     }
 
-    const { freeCashId } = req.body;
+    const freeCashId = common.decodeId(req.body.freeCashId);
     const result = await freeCashService.revokeFreeCashForAllUsers(vendorId, freeCashId, adminUserId);
 
     if (!result.isSuccess) {
@@ -244,13 +296,18 @@ const revokeFreeCashForAllUsers = async (req, res) => {
 const bulkSetFreeCashStatus = async (req, res) => {
   const vendorId = req.vendorId;
   const userId = req.user && req.user._id;
-  const { freeCashIds, status } = req.body;
+  const { status } = req.body;
   try {
-    const result = await freeCashService.bulkSetFreeCashStatus(vendorId, userId, freeCashIds, status);
+    const decodedIds = req.body.freeCashIds.map((id) => common.decodeId(id));
+    const result = await freeCashService.bulkSetFreeCashStatus(vendorId, userId, decodedIds, status);
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message);
     }
-    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    const meta = {
+      ...result.meta,
+      results: result.meta.results.map((r) => ({ ...r, id: common.encodeId(r.id) }))
+    };
+    return common.sendSuccess(res, result.statusCode, result.message, meta);
   } catch (error) {
     logger.logException('freeCashController: bulkSetFreeCashStatus - Exception while bulk updating Free Cash status', { vendorId, error });
   }
@@ -259,13 +316,17 @@ const bulkSetFreeCashStatus = async (req, res) => {
 const bulkDeleteFreeCash = async (req, res) => {
   const vendorId = req.vendorId;
   const userId = req.user && req.user._id;
-  const { freeCashIds } = req.body;
   try {
-    const result = await freeCashService.bulkDeleteFreeCash(vendorId, userId, freeCashIds);
+    const decodedIds = req.body.freeCashIds.map((id) => common.decodeId(id));
+    const result = await freeCashService.bulkDeleteFreeCash(vendorId, userId, decodedIds);
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message);
     }
-    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    const meta = {
+      ...result.meta,
+      results: result.meta.results.map((r) => ({ ...r, id: common.encodeId(r.id) }))
+    };
+    return common.sendSuccess(res, result.statusCode, result.message, meta);
   } catch (error) {
     logger.logException('freeCashController: bulkDeleteFreeCash - Exception while bulk deleting Free Cash', { vendorId, error });
   }

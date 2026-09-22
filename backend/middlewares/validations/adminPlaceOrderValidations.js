@@ -6,9 +6,11 @@ const {
     MAX_LINE_ITEM_QUANTITY
 } = require('../../constants/adminPlaceOrderConstants');
 
-const objectId = () => Joi.string().trim().hex().length(24).messages({
-    'string.hex': '{{#label}} must be a valid id.',
-    'string.length': '{{#label}} must be a valid id.',
+// Ids here are common.encodeId-encoded (see orderController.js's
+// formatOrderForResponse and the shared pattern used across this rollout) -
+// opaque-string check, not raw hex/length.
+const objectId = () => Joi.string().trim().min(1).messages({
+    'string.min': '{{#label}} must be a valid id.',
     'string.empty': '{{#label}} is required.'
 });
 

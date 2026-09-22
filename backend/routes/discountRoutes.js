@@ -22,6 +22,10 @@ const discountExcelFields = createBulkUploader({
 // Admin-only management routes
 router.post(
   '/add-discount',
+  authenticate,
+  vendorDetection,
+  ensureVendorDataCached,
+  authorize('admin'),
   checkModuleAssigned('DISCOUNT'),
   discountExcelFields,
   discountController.createDiscount

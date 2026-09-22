@@ -1,8 +1,10 @@
 const Joi = require('joi');
 
-const objectId = () => Joi.string().hex().length(24).messages({
-    'string.hex': '{{#label}} must be a valid id.',
-    'string.length': '{{#label}} must be a valid id.'
+// Ids are common.encodeId-encoded (see productController.js's
+// decodeProductPayloadIds/formatProductForResponse), never raw hex
+// ObjectIds - so this is a loose opaque-string check, not a hex/length one.
+const objectId = () => Joi.string().trim().min(1).messages({
+    'string.min': '{{#label}} must be a valid id.',
 });
 
 // --- description entry (matches descriptionEntrySchema in Product.js) -------

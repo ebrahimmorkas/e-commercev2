@@ -1,7 +1,16 @@
 const authService = require('../services/authService');
-const { sendSuccess, sendError, checkFeatureOnOrOff } = require('../utils/common');
+const { sendSuccess, sendError, checkFeatureOnOrOff, encodeId } = require('../utils/common');
 const { logInfo, logException } = require('../utils/logger');
 const { accessTokenCookieOptions, refreshTokenCookieOptions, guestCartCookieOptions, knownUserIdCookieOptions } = require('../utils/cookieOptions');
+
+// authService's register/login/refresh all return the same minimal
+// { _id, name, username, email, [role] } shape - only _id needs encoding.
+// Returns a NEW object rather than mutating the input, since login() still
+// needs the original raw user._id for the knownUserId cookie/logging below.
+const formatAuthUserForResponse = (user) => {
+    if (!user) return user;
+    return { ...user, _id: user._id ? encodeId(user._id) : user._id };
+};
 
 const getDeviceMeta = (req) => ({
     userAgent: req.headers['user-agent'] || 'unknown',
@@ -101,7 +110,7 @@ const register = async (req, res) => {
         }
 
         logInfo(1, 0, newUser.message, { userId: newUser.meta.user._id });
-        return sendSuccess(res, newUser.statusCode, newUser.message, newUser.meta.user);
+        return sendSuccess(res, newUser.statusCode, newUser.message, formatAuthUserForResponse(newUser.meta.user));
     } catch (err) {
         logException('Error while registering user', err);
         // Must always respond - a catch that only logs leaves the client spinning.
@@ -164,7 +173,7 @@ const login = async (req, res) => {
         }
 
         logInfo(1, 0, 'User logged in successfully', { userId: user._id });
-        return sendSuccess(res, loginUser.statusCode, loginUser.message, { user, accessToken });
+        return sendSuccess(res, loginUser.statusCode, loginUser.message, { user: formatAuthUserForResponse(user), accessToken });
     } catch (err) {
         logException('Error while logging in user', err);
     }
@@ -192,7 +201,7 @@ const refreshToken = async (req, res) => {
         }
 
         logInfo(1, 0, result.message, {});
-        return sendSuccess(res, result.statusCode, result.message, { accessToken, user });
+        return sendSuccess(res, result.statusCode, result.message, { accessToken, user: formatAuthUserForResponse(user) });
     } catch (err) {
         res.clearCookie('refreshToken', refreshTokenCookieOptions);
         logException('Error while refreshing access token', err);
