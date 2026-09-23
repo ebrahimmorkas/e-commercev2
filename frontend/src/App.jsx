@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useSessionStorageState } from './hooks/useSessionStorageState';
 import AnnouncementsPage from './admin/features/anoucements/pages/AnnouncementsPage';
 import CategoriesPage from './admin/masters/category/pages/CategoriesPage';
 import BrandsPage from './admin/masters/brand/pages/BrandsPage';
@@ -31,7 +31,7 @@ function App() {
   const { isAuthenticated, isLoading, user, logout } = useAuth();
   const { assignedCodes } = useAssignedModules(isAuthenticated);
   const navItems = filterNavItemsByAssignedModules(DEFAULT_NAV_ITEMS, assignedCodes);
-  const [activePage, setActivePage] = useState('announcements');
+  const [activePage, setActivePage] = useSessionStorageState('ecom.admin.activePage', 'announcements');
 
   // The hardcoded initial 'announcements' page may not be assigned to this
   // vendor - fall back to the first section that actually is, once

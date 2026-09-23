@@ -125,6 +125,7 @@ const createDiscount = async (req, res) => {
         });
   } catch (error) {
     logger.logException('Error creating discount', { vendorId, error });
+    return common.sendError(res, 500, 'Something went wrong. Please try again.');
   }
 };
 
@@ -153,6 +154,7 @@ const updateDiscount = async (req, res) => {
         });
   } catch (error) {
     logger.logException('Error updating discount', { vendorId, discountId, error });
+    return common.sendError(res, 500, 'Something went wrong. Please try again.');
   }
 };
 
@@ -175,6 +177,7 @@ const getDiscountById = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message, formatDiscountForResponse(result.meta.data));
   } catch (error) {
     logger.logException('Error fetching discount', { vendorId, discountId, error });
+    return common.sendError(res, 500, 'Something went wrong. Please try again.');
   }
 };
 
@@ -195,6 +198,7 @@ const getAllDiscountsAdmin = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message, result.meta.data.map(formatDiscountForResponse));
   } catch (error) {
     logger.logException('Error fetching discounts', { vendorId, error });
+    return common.sendError(res, 500, 'Something went wrong. Please try again.');
   }
 };
 
@@ -215,6 +219,7 @@ const getActiveDiscounts = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message, result.meta.data.map(formatDiscountForResponse));
   } catch (error) {
     logger.logException('Error fetching active discounts', { vendorId, error });
+    return common.sendError(res, 500, 'Something went wrong. Please try again.');
   }
 };
 
@@ -238,6 +243,7 @@ const deleteDiscount = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message);
   } catch (error) {
     logger.logException('Error deleting discount', { vendorId, discountId, error });
+    return common.sendError(res, 500, 'Something went wrong. Please try again.');
   }
 };
 
@@ -258,6 +264,7 @@ const bulkSetDiscountStatus = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message, meta);
   } catch (error) {
     logger.logException('discountController: bulkSetDiscountStatus - Exception while bulk updating discount status', { vendorId, error });
+    return common.sendError(res, 500, 'Something went wrong. Please try again.');
   }
 };
 
@@ -277,6 +284,7 @@ const bulkDeleteDiscounts = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message, meta);
   } catch (error) {
     logger.logException('discountController: bulkDeleteDiscounts - Exception while bulk deleting discounts', { vendorId, error });
+    return common.sendError(res, 500, 'Something went wrong. Please try again.');
   }
 };
 
