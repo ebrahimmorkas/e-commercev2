@@ -142,7 +142,8 @@ const ProductForm = ({ mode = 'add', initialDraft, lookups, products = [], onSub
   const recommendedProductOptions = useMemo(
     () =>
       products
-        .filter((p) => p._id !== draft._id)
+        // Only active products can be recommended - the backend rejects I/D ones.
+        .filter((p) => p._id !== draft._id && p.status === 'A')
         .map((p) => ({ value: String(p._id), label: `${p.name}${p.productCode ? ` (${p.productCode})` : ''}` })),
     [products, draft._id]
   );

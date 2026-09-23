@@ -360,15 +360,22 @@ const validateRecommendedProducts = async ({ recommendedProducts, vendorId }) =>
             return common.returnResult(true, 200, 'All Good');
         }
 
+        // Fetched regardless of status so an Inactive/Deleted product gets a clear
+        // message instead of being reported as "not found".
         const existing = await Product.find(
-            { _id: { $in: recommendedProducts }, vendorId, status: 'A' },
-            { _id: 1 }
+            { _id: { $in: recommendedProducts }, vendorId },
+            { _id: 1, status: 1 }
         ).lean();
-        const existingIds = new Set(existing.map(doc => doc._id.toString()));
+        const statusById = new Map(existing.map(doc => [doc._id.toString(), doc.status]));
 
-        const missing = recommendedProducts.filter(id => !existingIds.has(id.toString()));
+        const missing = recommendedProducts.filter(id => !statusById.has(id.toString()));
         if (missing.length > 0) {
             return common.returnResult(false, 400, `One or more recommended products not found: ${missing.join(', ')}`);
+        }
+
+        const notActive = recommendedProducts.filter(id => statusById.get(id.toString()) !== 'A');
+        if (notActive.length > 0) {
+            return common.returnResult(false, 400, "Products with status I and D can't be added in recommended products list");
         }
 
         return common.returnResult(true, 200, 'All Good');
@@ -1576,6 +1583,20 @@ const fetchProductByIdForAdmin = async (vendorId, productId) => {
         }
 
         const shaped = shapeProductForResponse(product.toObject(), true, null, false);
+
+        // The edit form only offers Active products, and saving rejects I/D ones,
+        // so a recommended product that has since gone Inactive/Deleted is
+        // dropped here - otherwise the admin could never save this product.
+        const recommendedIds = shaped.recommendedProducts || [];
+        if (recommendedIds.length > 0) {
+            const active = await Product.find(
+                { _id: { $in: recommendedIds }, vendorId, status: 'A' },
+                { _id: 1 }
+            ).lean();
+            const activeIds = new Set(active.map(doc => doc._id.toString()));
+            shaped.recommendedProducts = recommendedIds.filter(recId => activeIds.has(recId.toString()));
+        }
+
         return common.returnResult(true, 200, 'Product fetched successfully', { product: shaped });
     } catch (err) {
         throw err;
