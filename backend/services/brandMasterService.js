@@ -29,21 +29,23 @@ const addBrand = async (vendorId, brandData, userId) => {
         const brandName = brandData.brandName.trim();
         const brandShortName = brandData.brandShortName ? brandData.brandShortName.trim() : null;
 
+        // Case-insensitive, same collation as the unique index ("nike" = "Nike").
         const nameExists = await BrandMaster.exists({
             vendorId,
             brandName,
             status: { $ne: 'D' }
-        });
+        }).collation(BrandMaster.BRAND_NAME_COLLATION);
         if (nameExists) {
             return common.returnResult(false, 409, `Brand "${brandName}" already exists.`);
         }
 
         if (brandShortName) {
+            // Case-insensitive, same collation as the unique index ("ucb" = "UCB").
             const shortNameExists = await BrandMaster.exists({
                 vendorId,
                 brandShortName,
                 status: { $ne: 'D' }
-            });
+            }).collation(BrandMaster.BRAND_NAME_COLLATION);
             if (shortNameExists) {
                 return common.returnResult(false, 409, `Brand short name "${brandShortName}" already exists.`);
             }
@@ -76,12 +78,13 @@ const updateBrand = async (vendorId, brandId, updateData, userId) => {
 
         if (brandName !== undefined) {
             const trimmedName = brandName.trim();
+            // Case-insensitive, same collation as the unique index ("nike" = "Nike").
             const nameExists = await BrandMaster.exists({
                 vendorId,
                 brandName: trimmedName,
                 status: { $ne: 'D' },
                 _id: { $ne: brandId }
-            });
+            }).collation(BrandMaster.BRAND_NAME_COLLATION);
             if (nameExists) {
                 return common.returnResult(false, 409, `Brand "${trimmedName}" already exists.`);
             }
@@ -91,12 +94,13 @@ const updateBrand = async (vendorId, brandId, updateData, userId) => {
         if (brandShortName !== undefined) {
             const trimmedShortName = brandShortName ? brandShortName.trim() : null;
             if (trimmedShortName) {
+                // Case-insensitive, same collation as the unique index ("ucb" = "UCB").
                 const shortNameExists = await BrandMaster.exists({
                     vendorId,
                     brandShortName: trimmedShortName,
                     status: { $ne: 'D' },
                     _id: { $ne: brandId }
-                });
+                }).collation(BrandMaster.BRAND_NAME_COLLATION);
                 if (shortNameExists) {
                     return common.returnResult(false, 409, `Brand short name "${trimmedShortName}" already exists.`);
                 }
@@ -109,7 +113,7 @@ const updateBrand = async (vendorId, brandId, updateData, userId) => {
                 brand.activeMarkedBy = userId;
                 brand.activeMarkedDate = new Date();
             } else if (status === 'I') {
-                brand.inActiveMarkeddBy = userId;
+                brand.inActiveMarkedBy = userId;
                 brand.inactiveMarkedDate = new Date();
             }
             brand.status = status;
@@ -157,7 +161,7 @@ const setBrandStatusForBulk = async (vendorId, userId, brandId, status) => {
             brand.activeMarkedBy = userId;
             brand.activeMarkedDate = new Date();
         } else {
-            brand.inActiveMarkeddBy = userId;
+            brand.inActiveMarkedBy = userId;
             brand.inactiveMarkedDate = new Date();
         }
         brand.status = status;

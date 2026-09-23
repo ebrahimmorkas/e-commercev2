@@ -20,9 +20,8 @@ const decodeLocationFields = (body) => {
 // Converts a User mongoose doc (or the plain-object projections
 // userService builds by hand) into a response-safe object with every
 // ObjectId field encoded via common.encodeId. Fields are guarded since
-// most projections only ever carry _id - note User.js's audit fields use
-// non-standard names (updated_by snake_case, inActiveMarkedBy single-d)
-// unlike the rest of the app's inActiveMarkeddBy.
+// most projections only ever carry _id - note User.js's updated_by is
+// snake_case, unlike the rest of the app's updatedBy.
 const formatUserForResponse = (userDoc) => {
     if (!userDoc) return userDoc;
     const user = userDoc.toObject ? userDoc.toObject() : userDoc;

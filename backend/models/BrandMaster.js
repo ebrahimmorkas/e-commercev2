@@ -37,7 +37,7 @@ const brandMasterSchema = mongoose.Schema({
         type: mongoose.Types.ObjectId,
         index: true
     },
-    inActiveMarkeddBy: {
+    inActiveMarkedBy: {
         type: mongoose.Types.ObjectId,
         default: null,
         index: true
@@ -59,12 +59,30 @@ const brandMasterSchema = mongoose.Schema({
 });
 
 // Two different vendors may both create a brand named "Nike" - uniqueness is
-// scoped per vendor, not global.
-brandMasterSchema.index({ vendorId: 1, brandName: 1 }, { unique: true });
+// scoped per vendor, not global - case-insensitive ("Nike" and "nike" are the
+// same brand, like product names), and only among brands that aren't
+// soft-deleted, matching brandMasterService's duplicate check (status $ne 'D'),
+// so deleting "Nike" lets a new "Nike" be created. $in because partial
+// indexes can't use $ne. Mongoose won't change an existing index's options -
+// after editing either index here run `node scripts/migrateBrandIndexes.js`.
+const LIVE_BRAND = { status: { $in: ['A', 'I'] } };
+// Used by both unique indexes; exported so brandMasterService's duplicate
+// checks compare names and short names exactly the way the indexes do.
+const BRAND_NAME_COLLATION = { locale: 'en', strength: 2 };
+brandMasterSchema.index(
+    { vendorId: 1, brandName: 1 },
+    { unique: true, collation: BRAND_NAME_COLLATION, partialFilterExpression: LIVE_BRAND }
+);
 
-// Same scoping as brandName, but sparse - brandShortName is optional
-// (default null), and sparse keeps the index from rejecting more than one
-// brand per vendor with no short name set.
-brandMasterSchema.index({ vendorId: 1, brandShortName: 1 }, { unique: true, sparse: true });
+// Same scoping as brandName - also case-insensitive ("UCB" = "ucb") - but only
+// for brands that HAVE a short name and aren't soft-deleted, matching
+// brandMasterService's duplicate check (status $ne 'D'). A partial filter, not `sparse`: sparse on a compound index
+// still indexes every doc (vendorId is always present), so brands with no
+// short name (null) collided. $type because partial indexes can't use $ne.
+brandMasterSchema.index(
+    { vendorId: 1, brandShortName: 1 },
+    { unique: true, collation: BRAND_NAME_COLLATION, partialFilterExpression: { brandShortName: { $type: 'string' }, ...LIVE_BRAND } }
+);
 
 module.exports = mongoose.model('BrandMaster', brandMasterSchema);
+module.exports.BRAND_NAME_COLLATION = BRAND_NAME_COLLATION;

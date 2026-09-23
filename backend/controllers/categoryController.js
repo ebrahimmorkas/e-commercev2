@@ -24,7 +24,7 @@ const formatCategoryForResponse = (categoryDoc) => {
         updatedBy: category.updatedBy ? common.encodeId(category.updatedBy) : category.updatedBy,
         deletedBy: category.deletedBy ? common.encodeId(category.deletedBy) : category.deletedBy,
         activeMarkedBy: category.activeMarkedBy ? common.encodeId(category.activeMarkedBy) : category.activeMarkedBy,
-        inActiveMarkeddBy: category.inActiveMarkeddBy ? common.encodeId(category.inActiveMarkeddBy) : category.inActiveMarkeddBy,
+        inActiveMarkedBy: category.inActiveMarkedBy ? common.encodeId(category.inActiveMarkedBy) : category.inActiveMarkedBy,
     };
 };
 

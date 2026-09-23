@@ -17,7 +17,7 @@ const formatModuleForResponse = (moduleDoc) => {
         updatedBy: module.updatedBy ? common.encodeId(module.updatedBy) : module.updatedBy,
         deletedBy: module.deletedBy ? common.encodeId(module.deletedBy) : module.deletedBy,
         activeMarkedBy: module.activeMarkedBy ? common.encodeId(module.activeMarkedBy) : module.activeMarkedBy,
-        inActiveMarkeddBy: module.inActiveMarkeddBy ? common.encodeId(module.inActiveMarkeddBy) : module.inActiveMarkeddBy,
+        inActiveMarkedBy: module.inActiveMarkedBy ? common.encodeId(module.inActiveMarkedBy) : module.inActiveMarkedBy,
     };
 };
 

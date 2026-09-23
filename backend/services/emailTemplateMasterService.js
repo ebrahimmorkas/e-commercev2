@@ -160,7 +160,7 @@ const updateTemplate = async (vendorId, templateId, updateData, userId, companyM
                 template.activeMarkedBy = userId;
                 template.activeMarkedDate = new Date();
             } else if (status === 'I') {
-                template.inActiveMarkeddBy = userId;
+                template.inActiveMarkedBy = userId;
                 template.inactiveMarkedDate = new Date();
                 await removeTemplateAssignments(vendorId, templateId);
             }
@@ -245,7 +245,7 @@ const setTemplateStatus = async (vendorId, templateId, status, userId) => {
             template.activeMarkedBy = userId;
             template.activeMarkedDate = new Date();
         } else {
-            template.inActiveMarkeddBy = userId;
+            template.inActiveMarkedBy = userId;
             template.inactiveMarkedDate = new Date();
             await removeTemplateAssignments(vendorId, templateId);
         }

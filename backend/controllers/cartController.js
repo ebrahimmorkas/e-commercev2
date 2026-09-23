@@ -13,7 +13,7 @@ const common = require('../utils/common');
 // instead of by a fixed per-model field list.
 const ID_FIELD_NAMES = new Set([
     '_id', 'vendorId', 'userId', 'possibleUserId', 'createdBy', 'updatedBy',
-    'deletedBy', 'activeMarkedBy', 'inActiveMarkedBy', 'inActiveMarkeddBy',
+    'deletedBy', 'activeMarkedBy', 'inActiveMarkedBy',
     'productId', 'variantId', 'sizeId', 'discountId', 'freeCashId',
     'userFreeCashId', 'taxId'
 ]);

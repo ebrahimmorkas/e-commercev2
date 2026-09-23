@@ -18,7 +18,7 @@ const formatBrandForResponse = (brandDoc) => {
         updatedBy: brand.updatedBy ? common.encodeId(brand.updatedBy) : brand.updatedBy,
         deletedBy: brand.deletedBy ? common.encodeId(brand.deletedBy) : brand.deletedBy,
         activeMarkedBy: brand.activeMarkedBy ? common.encodeId(brand.activeMarkedBy) : brand.activeMarkedBy,
-        inActiveMarkeddBy: brand.inActiveMarkeddBy ? common.encodeId(brand.inActiveMarkeddBy) : brand.inActiveMarkeddBy,
+        inActiveMarkedBy: brand.inActiveMarkedBy ? common.encodeId(brand.inActiveMarkedBy) : brand.inActiveMarkedBy,
     };
 };
 

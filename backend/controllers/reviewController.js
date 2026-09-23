@@ -20,7 +20,7 @@ const formatReviewForResponse = (reviewDoc) => {
     createdBy: review.createdBy ? common.encodeId(review.createdBy) : review.createdBy,
     updatedBy: review.updatedBy ? common.encodeId(review.updatedBy) : review.updatedBy,
     deletedBy: review.deletedBy ? common.encodeId(review.deletedBy) : review.deletedBy,
-    inActiveMarkeddBy: review.inActiveMarkeddBy ? common.encodeId(review.inActiveMarkeddBy) : review.inActiveMarkeddBy,
+    inActiveMarkedBy: review.inActiveMarkedBy ? common.encodeId(review.inActiveMarkedBy) : review.inActiveMarkedBy,
     activeMarkedBy: review.activeMarkedBy ? common.encodeId(review.activeMarkedBy) : review.activeMarkedBy,
   };
 };

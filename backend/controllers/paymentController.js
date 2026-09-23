@@ -20,7 +20,7 @@ const formatTransactionForResponse = (txnDoc) => {
         updatedBy: encodeIfPresent(txn.updatedBy),
         deletedBy: encodeIfPresent(txn.deletedBy),
         activeMarkedBy: encodeIfPresent(txn.activeMarkedBy),
-        inActiveMarkeddBy: encodeIfPresent(txn.inActiveMarkeddBy),
+        inActiveMarkedBy: encodeIfPresent(txn.inActiveMarkedBy),
     };
 };
 

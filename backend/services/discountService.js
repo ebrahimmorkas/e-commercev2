@@ -786,7 +786,7 @@ const updateDiscount = async (vendorId, discountId, userId, payload, files, comp
         existingDiscount.activeMarkedBy = userId;
         existingDiscount.activeMarkedDate = new Date();
       } else if (payload.status === 'I') {
-        existingDiscount.inActiveMarkeddBy = userId;
+        existingDiscount.inActiveMarkedBy = userId;
         existingDiscount.inActiveMarkedDate = new Date();
       }
       existingDiscount.status = payload.status;
@@ -818,7 +818,7 @@ const setDiscountStatusForBulk = async (vendorId, userId, discountId, status) =>
       discount.activeMarkedBy = userId;
       discount.activeMarkedDate = new Date();
     } else {
-      discount.inActiveMarkeddBy = userId;
+      discount.inActiveMarkedBy = userId;
       discount.inActiveMarkedDate = new Date();
     }
     discount.status = status;

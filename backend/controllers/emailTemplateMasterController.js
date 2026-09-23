@@ -17,7 +17,7 @@ const formatTemplateForResponse = (templateDoc) => {
         updatedBy: template.updatedBy ? common.encodeId(template.updatedBy) : template.updatedBy,
         deletedBy: template.deletedBy ? common.encodeId(template.deletedBy) : template.deletedBy,
         activeMarkedBy: template.activeMarkedBy ? common.encodeId(template.activeMarkedBy) : template.activeMarkedBy,
-        inActiveMarkeddBy: template.inActiveMarkeddBy ? common.encodeId(template.inActiveMarkeddBy) : template.inActiveMarkeddBy,
+        inActiveMarkedBy: template.inActiveMarkedBy ? common.encodeId(template.inActiveMarkedBy) : template.inActiveMarkedBy,
     };
 };
 

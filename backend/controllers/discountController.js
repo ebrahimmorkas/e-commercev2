@@ -31,7 +31,7 @@ const formatDiscountForResponse = (discountDoc) => {
     createdBy: discount.createdBy ? common.encodeId(discount.createdBy) : discount.createdBy,
     updatedBy: discount.updatedBy ? common.encodeId(discount.updatedBy) : discount.updatedBy,
     deletedBy: discount.deletedBy ? common.encodeId(discount.deletedBy) : discount.deletedBy,
-    inActiveMarkeddBy: discount.inActiveMarkeddBy ? common.encodeId(discount.inActiveMarkeddBy) : discount.inActiveMarkeddBy,
+    inActiveMarkedBy: discount.inActiveMarkedBy ? common.encodeId(discount.inActiveMarkedBy) : discount.inActiveMarkedBy,
     activeMarkedBy: discount.activeMarkedBy ? common.encodeId(discount.activeMarkedBy) : discount.activeMarkedBy,
   };
 };

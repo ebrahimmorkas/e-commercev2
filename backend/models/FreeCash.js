@@ -143,7 +143,7 @@ const freeCashSchema = new mongoose.Schema(
             type: mongoose.Types.ObjectId,
             index: true
         },
-        inActiveMarkeddBy: {
+        inActiveMarkedBy: {
             type: mongoose.Types.ObjectId,
             default: null,
             index: true

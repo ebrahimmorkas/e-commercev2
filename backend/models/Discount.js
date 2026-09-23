@@ -309,7 +309,7 @@ const discountSchema = new mongoose.Schema(
     },
 
     // NOTE: name kept exactly as specified in the project's standard-fields list.
-    inActiveMarkeddBy: {
+    inActiveMarkedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       default: null,

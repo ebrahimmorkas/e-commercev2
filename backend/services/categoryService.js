@@ -248,7 +248,7 @@ const addCategory = async (vendorId, userId, data, file, websiteMasterData, comp
             categoryData.activeMarkedBy = userId;
             categoryData.activeMarkedDate = now;
         } else if (status === 'I') {
-            categoryData.inActiveMarkeddBy = userId;
+            categoryData.inActiveMarkedBy = userId;
             categoryData.inactiveMarkedDate = now;
         }
 
@@ -335,13 +335,13 @@ const updateCategory = async (vendorId, userId, categoryId, data, file, websiteM
                 }
             } else if (status === 'I') {
                 category.status = 'I';
-                category.inActiveMarkeddBy = userId;
+                category.inActiveMarkedBy = userId;
                 category.inactiveMarkedDate = now;
 
                 if (descendantIds.length > 0) {
                     await Category.updateMany(
                         { _id: { $in: descendantIds } },
-                        { $set: { status: 'I', inActiveMarkeddBy: userId, inactiveMarkedDate: now } }
+                        { $set: { status: 'I', inActiveMarkedBy: userId, inactiveMarkedDate: now } }
                     );
                 }
             }
@@ -501,12 +501,12 @@ const setCategoryStatusForBulk = async (vendorId, userId, categoryId, status) =>
             }
         } else {
             category.status = 'I';
-            category.inActiveMarkeddBy = userId;
+            category.inActiveMarkedBy = userId;
             category.inactiveMarkedDate = now;
             if (descendantIds.length > 0) {
                 await Category.updateMany(
                     { _id: { $in: descendantIds } },
-                    { $set: { status: 'I', inActiveMarkeddBy: userId, inactiveMarkedDate: now } }
+                    { $set: { status: 'I', inActiveMarkedBy: userId, inactiveMarkedDate: now } }
                 );
             }
         }
@@ -771,7 +771,7 @@ const bulkUploadCategories = async (vendorId, userId, excelBuffer, zipBuffer, we
                     categoryData.activeMarkedBy = userId;
                     categoryData.activeMarkedDate = now;
                 } else {
-                    categoryData.inActiveMarkeddBy = userId;
+                    categoryData.inActiveMarkedBy = userId;
                     categoryData.inactiveMarkedDate = now;
                 }
 

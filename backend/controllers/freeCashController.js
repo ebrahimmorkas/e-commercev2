@@ -24,7 +24,7 @@ const formatFreeCashForResponse = (freeCashDoc) => {
     createdBy: freeCash.createdBy ? common.encodeId(freeCash.createdBy) : freeCash.createdBy,
     updatedBy: freeCash.updatedBy ? common.encodeId(freeCash.updatedBy) : freeCash.updatedBy,
     deletedBy: freeCash.deletedBy ? common.encodeId(freeCash.deletedBy) : freeCash.deletedBy,
-    inActiveMarkeddBy: freeCash.inActiveMarkeddBy ? common.encodeId(freeCash.inActiveMarkeddBy) : freeCash.inActiveMarkeddBy,
+    inActiveMarkedBy: freeCash.inActiveMarkedBy ? common.encodeId(freeCash.inActiveMarkedBy) : freeCash.inActiveMarkedBy,
     activeMarkedBy: freeCash.activeMarkedBy ? common.encodeId(freeCash.activeMarkedBy) : freeCash.activeMarkedBy,
   };
 };

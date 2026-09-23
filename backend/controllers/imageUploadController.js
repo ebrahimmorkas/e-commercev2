@@ -20,7 +20,7 @@ const formatImageForResponse = (imageDoc) => {
         updatedBy: image.updatedBy ? common.encodeId(image.updatedBy) : image.updatedBy,
         deletedBy: image.deletedBy ? common.encodeId(image.deletedBy) : image.deletedBy,
         activeMarkedBy: image.activeMarkedBy ? common.encodeId(image.activeMarkedBy) : image.activeMarkedBy,
-        inActiveMarkeddBy: image.inActiveMarkeddBy ? common.encodeId(image.inActiveMarkeddBy) : image.inActiveMarkeddBy,
+        inActiveMarkedBy: image.inActiveMarkedBy ? common.encodeId(image.inActiveMarkedBy) : image.inActiveMarkedBy,
     };
 };
 

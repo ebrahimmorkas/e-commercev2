@@ -121,7 +121,7 @@ const taxMasterSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         index: true
     },
-    inActiveMarkeddBy: {
+    inActiveMarkedBy: {
         type: mongoose.Schema.Types.ObjectId,
         default: null,
         index: true

@@ -553,7 +553,7 @@ const updateFreeCash = async (vendorId, freeCashId, userId, payload, files, comp
         existingFreeCash.activeMarkedBy = userId;
         existingFreeCash.activeMarkedDate = new Date();
       } else if (payload.status === 'I') {
-        existingFreeCash.inActiveMarkeddBy = userId;
+        existingFreeCash.inActiveMarkedBy = userId;
         existingFreeCash.inactiveMarkedDate = new Date();
       }
       existingFreeCash.status = payload.status;
@@ -590,7 +590,7 @@ const setFreeCashStatusForBulk = async (vendorId, userId, freeCashId, status) =>
       freeCash.activeMarkedBy = userId;
       freeCash.activeMarkedDate = new Date();
     } else {
-      freeCash.inActiveMarkeddBy = userId;
+      freeCash.inActiveMarkedBy = userId;
       freeCash.inactiveMarkedDate = new Date();
     }
     freeCash.status = status;
