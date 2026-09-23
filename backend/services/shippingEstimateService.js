@@ -107,7 +107,9 @@ const buildEstimateLineItems = async (cart) => {
                     if (!liveSize) continue;
                     lineItems.push({
                         quantity: sizeEntry.quantity,
-                        amount: liveSize.price * sizeEntry.quantity,
+                        // The cart's own price (bulk tier price when one applies), so
+                        // the "free above" threshold sees what the customer actually pays.
+                        amount: sizeEntry.unitPrice * sizeEntry.quantity,
                         shippingType: liveSize.shipping?.type || null,
                         shippingValue: liveSize.shipping?.type === 'CUSTOM' ? liveSize.shipping.value : null,
                         mainCategoryId: liveProduct.mainCategory,
