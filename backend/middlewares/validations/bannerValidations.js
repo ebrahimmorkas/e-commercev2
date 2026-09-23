@@ -34,7 +34,7 @@ const cleanupTempFiles = async (req) => {
         try {
             await fs.unlink(p);
         } catch (err) {
-            if (err.code !== 'ENOENT') logger.logException('bannerValidations: cleanupTempFiles - Exception while deleting temp file', err);
+            if (err.code !== 'ENOENT') logger.logWarning('bannerValidations: cleanupTempFiles - Exception while deleting temp file', err);
         }
     }));
 };

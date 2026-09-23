@@ -25,7 +25,7 @@ class StorageService {
         try {
             return await this.getProvider().upload(fileBuffer, options);
         } catch (err) {
-            logger.logException('storageService - upload: Exception while uploading file', err);
+            logger.logWarning('storageService - upload: Exception while uploading file', err);
             throw err;
         }
     }
@@ -34,7 +34,7 @@ class StorageService {
         try {
             return await this.getProvider().delete(publicId);
         } catch (err) {
-            logger.logException('storageService - delete: Exception while deleting file', err);
+            logger.logWarning('storageService - delete: Exception while deleting file', err);
             throw err;
         }
     }

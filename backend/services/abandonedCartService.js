@@ -58,7 +58,7 @@ const notifyCartRecovered = (vendorId, cart) => {
             data: { cartId: cart._id }
         });
     } catch (err) {
-        logger.logException('Exception in abandonedCartService.notifyCartRecovered', { vendorId, cartId: cart?._id, error: err });
+        logger.logWarning('Exception in abandonedCartService.notifyCartRecovered', { vendorId, cartId: cart?._id, error: err });
     }
 };
 
@@ -227,7 +227,7 @@ const scanAndFlagAbandonedCarts = async () => {
             logger.logInfo(1, 0, 'Abandoned cart scan flagged carts', { count: flaggedCount });
         }
     } catch (err) {
-        logger.logException('Exception in abandonedCartService.scanAndFlagAbandonedCarts', { error: err });
+        logger.logWarning('Exception in abandonedCartService.scanAndFlagAbandonedCarts', { error: err });
     }
 };
 

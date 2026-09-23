@@ -140,6 +140,10 @@ app.get('/flush-redis', async (req, res) => {
 });
 // End of dummy to be removed
 
+// Must stay after every route: turns anything thrown outside a controller's
+// try/catch into an ErrorLog + the error-page 500 (or a 4xx for bad input).
+app.use(require('./middlewares/errorHandler'));
+
 realtimeService.init(httpServer);
 abandonedCartService.startAbandonedCartScanner();
 

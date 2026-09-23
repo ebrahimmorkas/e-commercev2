@@ -45,11 +45,8 @@ const checkModuleAssigned = (code) => {
             req.moduleAssignment = assignment;
             next();
         } catch (error) {
+            // Answers the request with a 500 + error reference itself.
             logger.logException('Exception in checkModuleAssigned middleware', error);
-            return res.status(500).json({
-                success: false,
-                message: 'Failed to verify module assignment'
-            });
         }
     };
 };

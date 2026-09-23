@@ -16,6 +16,16 @@ const errorLogSchema = new mongoose.Schema({
         required: true,
         trim: true
     },
+    // ERROR = logException(): the request failed and the customer/admin was
+    // shown the error page with this record's requestId as the reference.
+    // WARNING = logWarning(): something went wrong but the request carried on
+    // (e.g. an invoice email failed after the order was placed).
+    severity: {
+        type: String,
+        enum: ['ERROR', 'WARNING'],
+        default: 'ERROR',
+        index: true
+    },
     errorName: {
         type: String,
         default: null

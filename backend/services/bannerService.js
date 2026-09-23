@@ -37,7 +37,7 @@ const cleanupTempFile = async (filePath) => {
     try {
         await fs.unlink(filePath);
     } catch (err) {
-        if (err.code !== 'ENOENT') logger.logException('bannerService - cleanupTempFile: Exception while deleting temp file', err);
+        if (err.code !== 'ENOENT') logger.logWarning('bannerService - cleanupTempFile: Exception while deleting temp file', err);
     }
 };
 

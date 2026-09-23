@@ -112,7 +112,7 @@ const discardUploadedImages = async (imageAssetIds, userId) => {
         try {
             await imageUploadService.deleteImage({ imageId, userId });
         } catch (err) {
-            logger.logException('productService - discardUploadedImages: could not remove an orphaned image', { imageId, error: err });
+            logger.logWarning('productService - discardUploadedImages: could not remove an orphaned image', { imageId, error: err });
         }
     }
 };

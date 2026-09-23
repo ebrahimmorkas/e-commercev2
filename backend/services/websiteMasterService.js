@@ -12,7 +12,7 @@ const fetchWebsiteMasterData = async () => {
         logger.logInfo(1,0,`Website Master data fetched succesfully`);
         return websiteMasterData;
     } catch (err) {
-        logger.logException(`Exception while fetching the website master data from DB in service`, {err})
+        logger.logWarning(`Exception while fetching the website master data from DB in service`, {err})
         return null;
     }
 

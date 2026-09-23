@@ -54,7 +54,7 @@ const authenticateSocket = async (socket, next) => {
         socket.data.role = user.role;
         next();
     } catch (err) {
-        logger.logException('Exception in realtimeService socket authentication', { error: err });
+        logger.logWarning('Exception in realtimeService socket authentication', { error: err });
         next(new Error('Authentication required'));
     }
 };
@@ -87,7 +87,7 @@ const init = (httpServer) => {
         logger.logInfo(1, 0, 'Realtime (socket.io) server initialized');
         return io;
     } catch (err) {
-        logger.logException('Exception initializing realtimeService', { error: err });
+        logger.logWarning('Exception initializing realtimeService', { error: err });
         return null;
     }
 };
@@ -101,7 +101,7 @@ const emitToVendorAdmins = (vendorId, event, payload) => {
         io.to(adminRoom(vendorId)).emit(event, payload);
         return true;
     } catch (err) {
-        logger.logException('Exception in realtimeService.emitToVendorAdmins', { vendorId, event, error: err });
+        logger.logWarning('Exception in realtimeService.emitToVendorAdmins', { vendorId, event, error: err });
         return false;
     }
 };
@@ -115,7 +115,7 @@ const emitToUser = (vendorId, userId, event, payload) => {
         io.to(userRoom(vendorId, userId)).emit(event, payload);
         return true;
     } catch (err) {
-        logger.logException('Exception in realtimeService.emitToUser', { vendorId, userId, event, error: err });
+        logger.logWarning('Exception in realtimeService.emitToUser', { vendorId, userId, event, error: err });
         return false;
     }
 };

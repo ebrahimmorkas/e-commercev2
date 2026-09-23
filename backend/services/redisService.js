@@ -29,7 +29,7 @@ class RedisService {
     try {
       return JSON.parse(data);
     } catch (err) {
-      logger.logException("Invalid JSON in Redis", { key, data });
+      logger.logWarning("Invalid JSON in Redis", { key, data });
       return null;
     }
   }
@@ -54,7 +54,7 @@ class RedisService {
 
       return this.safeParse(data, key);
     } catch (err) {
-      logger.logException("Redis GET error", { key, err });
+      logger.logWarning("Redis GET error", { key, err });
       return null;
     }
   }
@@ -76,7 +76,7 @@ class RedisService {
 
       return true;
     } catch (err) {
-      logger.logException("Redis SET error", { key, err });
+      logger.logWarning("Redis SET error", { key, err });
       return false;
     }
   }
@@ -96,7 +96,7 @@ class RedisService {
 
       return true;
     } catch (err) {
-      logger.logException("Redis DEL error", { key, err });
+      logger.logWarning("Redis DEL error", { key, err });
       return false;
     }
   }
@@ -118,7 +118,7 @@ class RedisService {
       const result = await client.set(key, '1', { NX: true, PX: ttlSeconds * 1000 });
       return result !== null;
     } catch (err) {
-      logger.logException("Redis acquireLock error", { key, err });
+      logger.logWarning("Redis acquireLock error", { key, err });
       return false;
     }
   }
@@ -134,7 +134,7 @@ class RedisService {
 
       await client.del(key);
     } catch (err) {
-      logger.logException("Redis releaseLock error", { key, err });
+      logger.logWarning("Redis releaseLock error", { key, err });
     }
   }
 
@@ -160,12 +160,12 @@ class RedisService {
 
       return freshData;
     } catch (err) {
-      logger.logException("Redis getOrSet error", { key, err });
+      logger.logWarning("Redis getOrSet error", { key, err });
 
       try {
         return await fetchFunction();
       } catch (fetchErr) {
-        logger.logException("Fallback fetch failed", { key, fetchErr });
+        logger.logWarning("Fallback fetch failed", { key, fetchErr });
         throw fetchErr;
       }
     }

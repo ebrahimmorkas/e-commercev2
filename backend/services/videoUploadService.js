@@ -125,7 +125,7 @@ const cleanupTempFile = async (filePath) => {
     try {
         if (filePath) await fs.unlink(filePath);
     } catch (err) {
-        if (err.code !== 'ENOENT') logger.logException('videoUploadService - cleanupTempFile: Exception while deleting temp file', err);
+        if (err.code !== 'ENOENT') logger.logWarning('videoUploadService - cleanupTempFile: Exception while deleting temp file', err);
     }
 };
 

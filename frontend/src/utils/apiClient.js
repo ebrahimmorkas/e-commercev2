@@ -54,13 +54,32 @@ export const clearSessionHint = () => {
  * Carries the HTTP status and any field-level `errors` array the backend sent.
  */
 export class ApiError extends Error {
-  constructor(message, statusCode, errors = null) {
+  constructor(message, statusCode, errors = null, reference = null) {
     super(message);
     this.name = 'ApiError';
     this.statusCode = statusCode;
     this.errors = errors;
+    // The backend's error reference (ErrorLog.requestId) on an unexpected server error.
+    this.reference = reference;
   }
 }
+
+// Notified when the backend reports an unexpected server error - a 500 sent by
+// its logException() with data.errorReference (backend/utils/logger.js).
+// ServerErrorScreen subscribes to this to show the full-page error.
+let serverErrorHandler = null;
+export const onServerError = (handler) => {
+  serverErrorHandler = handler;
+};
+
+// Returns the error reference and tells ServerErrorScreen when the response is
+// one of logException()'s 500s; null for any other failure.
+const reportServerError = (status, payload) => {
+  const reference = status >= 500 ? payload?.data?.errorReference : null;
+  if (!reference) return null;
+  serverErrorHandler?.({ reference, message: payload?.message || null, details: payload?.data?.errorDetails || null });
+  return reference;
+};
 
 // Endpoints that must never trigger a refresh-and-retry: refreshing on a failed
 // login/register makes no sense (there's no session yet), and retrying the
@@ -149,7 +168,8 @@ export const apiRequest = async (path, { method = 'GET', body, auth = true, head
 
   if (!response.ok || !payload?.success) {
     const message = payload?.message || `Request failed with status ${response.status}`;
-    throw new ApiError(message, response.status, payload?.errors || null);
+    const reference = reportServerError(response.status, payload);
+    throw new ApiError(message, response.status, payload?.errors || null, reference);
   }
 
   return payload.data;
@@ -196,7 +216,8 @@ export const apiDownload = async (path, { auth = true, _isRetry = false } = {}) 
     } catch {
       // Non-JSON error body; fall back to the status text below
     }
-    throw new ApiError(payload?.message || `Request failed with status ${response.status}`, response.status, payload?.errors || null);
+    const reference = reportServerError(response.status, payload);
+    throw new ApiError(payload?.message || `Request failed with status ${response.status}`, response.status, payload?.errors || null, reference);
   }
 
   const disposition = response.headers.get('Content-Disposition') || '';

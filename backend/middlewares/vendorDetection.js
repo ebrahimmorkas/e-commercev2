@@ -15,11 +15,8 @@ const vendorDetection = async (req, res, next) => {
         req.vendorData = vendor;
         next();
     } catch (error) {
+        // Answers the request with a 500 + error reference itself.
         logger.logException("Exception in vendorDetection middleware", error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error during vendor detection'
-        });
     }
 };
 

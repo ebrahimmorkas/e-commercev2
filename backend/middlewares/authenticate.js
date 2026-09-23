@@ -1,7 +1,7 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const { sendError } = require("../utils/common");
-const { logException } = require("../utils/logger");
+const { logException, logWarning } = require("../utils/logger");
 
 const authenticate = async (req, res, next) => {
   try {
@@ -40,10 +40,8 @@ const authenticate = async (req, res, next) => {
 
     next();
   } catch (error) {
+    // Answers the request with a 500 + error reference itself, so it never hangs.
     logException("Exception in authenticate middleware", error);
-    // Never leave the request hanging if something unexpected throws (e.g. a
-    // DB error while loading the user) - the caller would wait forever.
-    if (!res.headersSent) sendError(res, 500, "Something went wrong. Please try again.");
   }
 };
 
@@ -104,7 +102,8 @@ authenticate.optional = async (req, res, next) => {
 
     next();
   } catch (error) {
-    logException("Exception in authenticate.optional middleware", error);
+    // The request carries on as a guest, so this must not answer it.
+    logWarning("Exception in authenticate.optional middleware", error);
     next();
   }
 };

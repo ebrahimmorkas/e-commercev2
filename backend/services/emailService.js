@@ -390,7 +390,7 @@ const retryFailedEmails = async ({ maxAgeMinutes = 60, limit = 50 } = {}) => {
                 companySettingsData,
                 isDefaultTemplate: failedLog.isDefaultTemplate
             }).catch((err) => {
-                logger.logException('Retry attempt threw while resending a failed email', { emailLogId: failedLog._id, err });
+                logger.logWarning('Retry attempt threw while resending a failed email', { emailLogId: failedLog._id, err });
                 return null;
             });
 

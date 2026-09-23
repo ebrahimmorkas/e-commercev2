@@ -57,7 +57,7 @@ const notifyOrderChanged = (order, type) => {
             realtimeService.emitToUser(order.vendorId, order.userId, REALTIME_USER_NOTIFICATION_EVENT, notification);
         }
     } catch (err) {
-        logger.logException('Exception in orderRealtimeService.notifyOrderChanged', { orderId: order?._id, type, error: err });
+        logger.logWarning('Exception in orderRealtimeService.notifyOrderChanged', { orderId: order?._id, type, error: err });
     }
 };
 

@@ -27,7 +27,8 @@ const createMemoryUploader = ({ maxSizeMB = 5, allowedTypes = ALLOWED_IMAGE_TYPE
             if (extValid && mimeValid) {
                 cb(null, true);
             } else {
-                cb(new Error(`Only ${allowedTypes.source.replace(/\|/g, ', ')} files are allowed`));
+                // status 400: the uploader's mistake, not a server error (see errorHandler.js).
+            cb(Object.assign(new Error(`Only ${allowedTypes.source.replace(/\|/g, ', ')} files are allowed`), { status: 400 }));
             }
         };
 

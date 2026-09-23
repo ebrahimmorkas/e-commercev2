@@ -5,12 +5,17 @@ const CityMaster = require('../models/CityMaster');
 const CountryMaster = require('../models/CountryMaster');
 
 const sendSuccess = (res, statusCode, message, data = null) => {
+  // Same guard as sendError - never answer a request twice.
+  if (res.headersSent) return;
   const payload = { success: true, message };
   if (data !== null) payload.data = data;
   return res.status(statusCode).json(payload);
 };
 
 const sendError = (res, statusCode, message, errors = null) => {
+  // logException() may already have answered this request with a 500 (error
+  // page + reference) - a second response would throw ERR_HTTP_HEADERS_SENT.
+  if (res.headersSent) return;
   const payload = { success: false, message };
   if (errors) payload.errors = errors;
   return res.status(statusCode).json(payload);

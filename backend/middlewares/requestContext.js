@@ -12,7 +12,9 @@ const als = new AsyncLocalStorage();
 const requestContext = (req, res, next) => {
     const requestId = crypto.randomUUID();
     res.setHeader('X-Request-Id', requestId);
-    als.run({ req, requestId }, () => next());
+    // res is kept too so logException() can answer a failed request itself
+    // (a 500 carrying requestId as the error reference) - see utils/logger.js.
+    als.run({ req, res, requestId }, () => next());
 };
 
 const getRequestContext = () => als.getStore() || null;

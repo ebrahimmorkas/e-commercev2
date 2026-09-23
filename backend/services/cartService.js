@@ -1437,7 +1437,7 @@ const restoreStockForOrder = async (cartId) => {
             await adjustSizeStock(item.productId, item.variantId, item.sizeId, item.quantity, false);
         }
     } catch (err) {
-        logger.logException('Exception in restoreStockForOrder', { cartId, error: err });
+        logger.logWarning('Exception in restoreStockForOrder', { cartId, error: err });
     }
 };
 

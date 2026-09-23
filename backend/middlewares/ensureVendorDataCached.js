@@ -55,11 +55,8 @@ const ensureVendorDataCached = async (req, res, next) => {
         next();
 
     } catch (error) {
+        // Answers the request with a 500 + error reference itself.
         logger.logException("Exception in ensuredVendorDataCached middleware", error);
-        return res.status(500).json({
-            success: false,
-            message: 'Failed to load vendor configuration'
-        });
     }
 };
 

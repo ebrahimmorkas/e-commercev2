@@ -18,7 +18,7 @@ const upload = (fileBuffer, { folder } = {}) => {
                 },
                 (error, result) => {
                     if (error) {
-                        logger.logException('cloudinaryStorage - upload: Exception while uploading image to Cloudinary', error);
+                        logger.logWarning('cloudinaryStorage - upload: Exception while uploading image to Cloudinary', error);
                         return reject(error);
                     }
                     resolve({ url: result.secure_url, publicId: result.public_id });
@@ -27,7 +27,7 @@ const upload = (fileBuffer, { folder } = {}) => {
 
             streamifier.createReadStream(fileBuffer).pipe(uploadStream);
         } catch (err) {
-            logger.logException('cloudinaryStorage - upload: Exception while initiating upload stream', err);
+            logger.logWarning('cloudinaryStorage - upload: Exception while initiating upload stream', err);
             reject(err);
         }
     });
@@ -43,7 +43,7 @@ const deleteImage = async (publicId) => {
         logger.logInfo(1,0,'Image deleted from Cloudinary', { publicId, result });
         return result;
     } catch (err) {
-        logger.logException('cloudinaryStorage - deleteImage: Exception while deleting image from Cloudinary', err);
+        logger.logWarning('cloudinaryStorage - deleteImage: Exception while deleting image from Cloudinary', err);
         throw err;
     }
 };

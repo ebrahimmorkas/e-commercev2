@@ -158,12 +158,12 @@ const formatProductForResponse = (productDoc) => {
 // MongoDB duplicate-key error that slipped past a service pre-check (two
 // admins saving the same name/SKU at once) into a clean 409.
 const handleError = (res, message, error, context = {}) => {
-    logger.logException(message, { ...context, error });
-    if (res.headersSent) return;
-    if (error && error.code === 11000) {
-        return common.sendError(res, 409, 'Another product already uses one of these values (name, SKU, barcode or code). Please change it and try again.');
+    // Answered BEFORE logging: logException() sends its own 500 (error page)
+    // unless the request was already answered.
+    if (error && error.code === 11000 && !res.headersSent) {
+        common.sendError(res, 409, 'Another product already uses one of these values (name, SKU, barcode or code). Please change it and try again.');
     }
-    return common.sendError(res, 500, 'Something went wrong. Please try again.');
+    logger.logException(message, { ...context, error });
 };
 
 const createProduct = async (req, res) => {

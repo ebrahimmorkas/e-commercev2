@@ -115,7 +115,7 @@ const loginUser = async ({ identifier, password }, deviceMeta, vendorId, guestCa
             try {
                 cartMergeResult = await cartService.mergeGuestCartIntoUserCart(vendorId, user._id, guestCartId, locationContext, companyMasterData, websiteMasterData);
             } catch (mergeErr) {
-                logger.logException('Guest cart merge failed during login', { userId: user._id, guestCartId, mergeErr });
+                logger.logWarning('Guest cart merge failed during login', { userId: user._id, guestCartId, mergeErr });
             }
         }
 

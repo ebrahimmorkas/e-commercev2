@@ -350,13 +350,13 @@ const tryIssueInvoiceForOrder = async (order, context) => {
     try {
         issued = await issueInvoiceForOrder(order, context);
     } catch (err) {
-        logger.logException('invoiceService: could not issue invoice while placing order', { orderId: order._id, error: err });
+        logger.logWarning('invoiceService: could not issue invoice while placing order', { orderId: order._id, error: err });
         return null;
     }
 
     if (issued.isSuccess && issued.statusCode === 201) {
         emailInvoiceToCustomer(order, issued.meta.invoice, context).catch((err) => {
-            logger.logException('invoiceService: invoice email failed', { orderId: order._id, error: err });
+            logger.logWarning('invoiceService: invoice email failed', { orderId: order._id, error: err });
         });
     }
     return issued;
@@ -404,7 +404,7 @@ const voidInvoiceForOrder = async (order, reason) => {
 /** Never throws - a cancellation must not fail because of a problem with the invoice. */
 const tryVoidInvoiceForOrder = (order, reason) =>
     voidInvoiceForOrder(order, reason).catch((err) => {
-        logger.logException('invoiceService: could not void invoice for cancelled order', { orderId: order._id, error: err });
+        logger.logWarning('invoiceService: could not void invoice for cancelled order', { orderId: order._id, error: err });
         return null;
     });
 
@@ -451,7 +451,7 @@ const refreshInvoiceForOrder = async (order, { companySettingsData } = {}) => {
 /** Never throws - an order edit must not fail because of a problem with the invoice. */
 const tryRefreshInvoiceForOrder = (order, context) =>
     refreshInvoiceForOrder(order, context).catch((err) => {
-        logger.logException('invoiceService: could not refresh invoice after order edit', { orderId: order._id, error: err });
+        logger.logWarning('invoiceService: could not refresh invoice after order edit', { orderId: order._id, error: err });
         return null;
     });
 

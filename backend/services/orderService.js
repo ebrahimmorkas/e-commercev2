@@ -475,7 +475,7 @@ const notifyOrderStatusChange = async (order, companyMasterData, websiteMasterDa
             companySettingsData,
             isDefaultTemplate
         }).catch((err) => {
-            logger.logException('Order status change email threw while sending', { orderId: order._id, stepCode: order.currentStepCode, err });
+            logger.logWarning('Order status change email threw while sending', { orderId: order._id, stepCode: order.currentStepCode, err });
             return null;
         });
 
