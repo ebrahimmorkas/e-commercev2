@@ -4,6 +4,7 @@ import { RadioGroup } from '../../../../components/common/Radio';
 import Switch from '../../../../components/common/Switch';
 import { DISCOUNT_TYPE_OPTIONS } from '../constants';
 import theme from '../theme/theme';
+import { useStoreCurrency } from '../../../currency/useStoreCurrency';
 
 /**
  * @param {Object} props.draft
@@ -11,6 +12,8 @@ import theme from '../theme/theme';
  * @param {string[]} props.allowedDiscountTypes - companyMaster.allowedDiscountTypes (empty = all allowed)
  */
 const BasicDetailsStep = ({ draft, onChange, allowedDiscountTypes = [] }) => {
+  // Amounts are entered in the store currency (Company Settings).
+  const { symbol } = useStoreCurrency();
   const set = (patch) => onChange({ ...draft, ...patch });
 
   const discountTypeOptions =
@@ -70,7 +73,7 @@ const BasicDetailsStep = ({ draft, onChange, allowedDiscountTypes = [] }) => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <InputField
-          label={draft.discountType === 'PERCENTAGE' ? 'Discount Value (%)' : 'Discount Value (₹)'}
+          label={draft.discountType === 'PERCENTAGE' ? 'Discount Value (%)' : `Discount Value (${symbol})`}
           name="discountValue"
           type="number"
           min={0}

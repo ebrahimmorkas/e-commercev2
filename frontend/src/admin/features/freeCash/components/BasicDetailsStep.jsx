@@ -2,12 +2,15 @@ import InputField from '../../../../components/common/InputField';
 import TextArea from '../../../../components/common/TextArea';
 import Switch from '../../../../components/common/Switch';
 import theme from '../theme/theme';
+import { useStoreCurrency } from '../../../currency/useStoreCurrency';
 
 /**
  * @param {Object} props.draft
  * @param {(patch: Object) => void} props.onChange
  */
 const BasicDetailsStep = ({ draft, onChange }) => {
+  // Amounts are entered in the store currency (Company Settings).
+  const { symbol } = useStoreCurrency();
   const set = (patch) => onChange({ ...draft, ...patch });
 
   return (
@@ -24,7 +27,7 @@ const BasicDetailsStep = ({ draft, onChange }) => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <InputField
-          label="Free Cash Amount (₹)"
+          label={`Free Cash Amount (${symbol})`}
           name="freeCashAmount"
           type="number"
           min={0}
@@ -34,7 +37,7 @@ const BasicDetailsStep = ({ draft, onChange }) => {
           required
         />
         <InputField
-          label="Max Usage Per Order (₹)"
+          label={`Max Usage Per Order (${symbol})`}
           name="maxCashUsagePerOrder"
           type="number"
           min={0}
@@ -48,7 +51,7 @@ const BasicDetailsStep = ({ draft, onChange }) => {
       </p>
 
       <InputField
-        label="Valid Above Amount (₹)"
+        label={`Valid Above Amount (${symbol})`}
         name="validAbove"
         type="number"
         min={0}

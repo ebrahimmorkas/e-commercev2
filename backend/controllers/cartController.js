@@ -160,7 +160,11 @@ const applyDiscounts = async (req, res) => {
             ...req.body,
             discountIds: (req.body.discountIds || []).map((id) => common.decodeId(id))
         };
-        const result = await cartService.applyDiscountsToCart(vendorId, req.cartOwner, userId, req.companyMasterData, req.websiteMasterData, payload);
+        // The shopper's country only formats amounts in messages ("Add items worth X more").
+        const result = await cartService.applyDiscountsToCart(
+            vendorId, req.cartOwner, userId, req.companyMasterData, req.websiteMasterData, payload,
+            req.cookies?.Country || req.user?.country || null, req.companySettingsData
+        );
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
@@ -194,7 +198,8 @@ const applyFreeCash = async (req, res) => {
             freeCashIds: (req.body.freeCashIds || []).map((id) => common.decodeId(id))
         };
         const result = await cartService.applyFreeCashToCart(
-            vendorId, req.cartOwner, userId, req.companyMasterData, req.websiteMasterData, req.companySettingsData, payload
+            vendorId, req.cartOwner, userId, req.companyMasterData, req.websiteMasterData, req.companySettingsData, payload,
+            req.cookies?.Country || req.user?.country || null
         );
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message, deepEncodeIds(result.meta));

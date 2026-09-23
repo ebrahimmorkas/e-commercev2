@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const RefreshToken = require('../models/RefreshToken');
 const common = require('../utils/common');
+const userLocationService = require('./userLocationService');
 require('dotenv').config({ quiet: true });
 
 const SALT_ROUNDS = Number(process.env.SALT_ROUNDS);
@@ -39,6 +40,11 @@ const createUserByAdmin = async (vendorId, adminUserId, userData, websiteMasterD
         }
 
         const { name, username, email, phone_no, whatsapp_no, password, country, state, city } = userData;
+
+        const locationResult = await userLocationService.validateUserLocation({ countryId: country, stateId: state, cityId: city }, companyMasterData);
+        if (!locationResult.isSuccess) {
+            return locationResult;
+        }
 
         // whatsapp_no is optional and has its own unique index (vendorId_1_whatsapp_no_1) -
         // must be pre-checked here too, or a duplicate slips past this check and only
@@ -96,11 +102,25 @@ const fetchUserByIdAdmin = async (vendorId, userId) => {
 // authProvider/googleId are intentionally out of scope here: status has its
 // own bulk-status endpoint above, and password/role changes need their own
 // deliberate flows rather than sliding in through a generic profile update.
-const updateUserByAdmin = async (vendorId, adminUserId, targetUserId, updateData) => {
+const updateUserByAdmin = async (vendorId, adminUserId, targetUserId, updateData, companyMasterData) => {
     try {
         const user = await User.findOne({ _id: targetUserId, vendorId, role: 'user', status: { $ne: 'D' } });
         if (!user) {
             return common.returnResult(false, 404, 'Customer not found');
+        }
+
+        // Changing any part of the location re-checks the whole resulting
+        // country -> state -> city chain (a new country invalidates the old state).
+        const locationTouched = ['country', 'state', 'city'].some((field) => updateData[field] !== undefined);
+        if (locationTouched) {
+            const locationResult = await userLocationService.validateUserLocation({
+                countryId: updateData.country !== undefined ? updateData.country : user.country,
+                stateId: updateData.state !== undefined ? updateData.state : user.state,
+                cityId: updateData.city !== undefined ? updateData.city : user.city
+            }, companyMasterData);
+            if (!locationResult.isSuccess) {
+                return locationResult;
+            }
         }
 
         const duplicateOr = [];

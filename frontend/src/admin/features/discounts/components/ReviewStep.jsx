@@ -2,6 +2,7 @@ import Dropdown from '../../../../components/common/DropDown';
 import Badge from '../../../../components/common/Badge';
 import { GIVE_DISCOUNT_TO_CONFIG, DISCOUNT_FLOW_OPTIONS, STATUS_OPTIONS } from '../constants';
 import theme from '../theme/theme';
+import { useStoreCurrency } from '../../../currency/useStoreCurrency';
 
 const Row = ({ label, value }) => (
   <div className="flex justify-between gap-4 py-1.5 text-sm border-b border-gray-100 last:border-0">
@@ -15,6 +16,8 @@ const Row = ({ label, value }) => (
  * @param {boolean} props.isEdit
  */
 const ReviewStep = ({ draft, onChange, isEdit = false }) => {
+  // Amounts are in the store currency (Company Settings).
+  const { formatMoney } = useStoreCurrency();
   const set = (patch) => onChange({ ...draft, ...patch });
   const flow = DISCOUNT_FLOW_OPTIONS.find((f) => f.value === draft.discountFlow);
   const giveDiscountToLabel = GIVE_DISCOUNT_TO_CONFIG[draft.giveDiscountTo]?.label || draft.giveDiscountTo;
@@ -36,7 +39,7 @@ const ReviewStep = ({ draft, onChange, isEdit = false }) => {
         <p className={`text-sm font-medium mb-2 ${theme.text.heading}`}>{draft.name || 'Untitled discount'}</p>
         <div className="flex flex-wrap gap-1.5 mb-3">
           <Badge variant={theme.badge.default} size="sm">
-            {draft.discountType === 'PERCENTAGE' ? `${draft.discountValue || 0}% off` : `₹${draft.discountValue || 0} off`}
+            {draft.discountType === 'PERCENTAGE' ? `${draft.discountValue || 0}% off` : `${formatMoney(draft.discountValue || 0)} off`}
           </Badge>
           <Badge variant={theme.badge[draft.discountFlow === 'MIN_QTY' ? 'minQty' : draft.discountFlow.toLowerCase()] || 'gray'} size="sm">
             {flow?.label}
@@ -50,7 +53,7 @@ const ReviewStep = ({ draft, onChange, isEdit = false }) => {
         {draft.discountFlow !== 'ONGOING' && <Row label="End Date" value={draft.endDate || '—'} />}
         {draft.discountFlow === 'MIN_QTY' && <Row label="Minimum Quantity" value={draft.minimumQuantity || '—'} />}
         {draft.discountFlow === 'COUPON' && <Row label="Coupon Code" value={draft.couponCode || '—'} />}
-        {draft.discountFlow !== 'MIN_QTY' && <Row label="Minimum Cart Value" value={`₹${draft.discountValidAboveAmount || 0}`} />}
+        {draft.discountFlow !== 'MIN_QTY' && <Row label="Minimum Cart Value" value={formatMoney(draft.discountValidAboveAmount || 0)} />}
         <Row label="Precedence" value={draft.precedence} />
         {draft.isDiscountOpenForSpecificDays && <Row label="Active Days" value={draft.specificDays.join(', ') || '—'} />}
         {draft.isDiscountOpenForSpecificHours && <Row label="Active Hours" value={`${draft.specificHoursStartTime} – ${draft.specificHoursEndTime}`} />}

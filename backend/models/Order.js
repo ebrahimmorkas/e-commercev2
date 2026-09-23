@@ -439,6 +439,21 @@ const orderSchema = new mongoose.Schema(
             default: 2
         },
 
+        // Every amount on this order is in currencyCode. Prices are entered in
+        // the store currency (storeCurrencyCode) and converted at exchangeRate
+        // (currencyCode units per 1 store unit) when the order was placed - see
+        // services/currencyService.js. Locked here so products added later
+        // (Edit Order) convert at the same rate. 1 = no conversion.
+        exchangeRate: {
+            type: Number,
+            default: 1,
+            min: 0
+        },
+        storeCurrencyCode: {
+            type: String,
+            default: null
+        },
+
         // Required on normal orders. Admin-placed orders may carry a saved
         // address, a free-text address (adminEnteredAddress), or neither. An
         // admin may also replace a customer order's address with a typed one

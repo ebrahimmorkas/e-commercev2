@@ -12,6 +12,21 @@ const freeCashService = require('./freeCashService');
 const abandonedCartService = require('./abandonedCartService');
 const bulkPricing = require('../utils/bulkPricing');
 const taxCalculationService = require('./taxCalculationService');
+const currencyService = require('./currencyService');
+
+// Formats a store-currency amount for a shopper's message, in the currency
+// they see prices in (their country's, converted). Falls back to the plain
+// number if the store currency isn't configured - a message never fails the request.
+const resolveMoneyFormatter = async (countryId, companyMasterData, companySettingsData) => {
+    try {
+        const currencyResult = await currencyService.resolveCustomerCurrency({ countryId, companyMasterData, companySettingsData });
+        return currencyResult.isSuccess
+            ? currencyService.buildMoneyFormatter(currencyResult.meta)
+            : (amount) => String(Math.round(amount * 100) / 100);
+    } catch (err) {
+        throw err;
+    }
+};
 
 /*
 |--------------------------------------------------------------------------
@@ -620,7 +635,7 @@ const mergeGuestCartIntoUserCart = async (vendorId, userId, guestCartId, locatio
 // see applyFreeCashToCart). discountAmount itself is still computed off
 // the raw matched line-item totals below, only the eligibility gate uses
 // the reduced amount.
-const resolveDiscountEligibility = (discount, cart, userId, subtotal, availableForThreshold, totalQuantity, productCategoryMap) => {
+const resolveDiscountEligibility = (discount, cart, userId, subtotal, availableForThreshold, totalQuantity, productCategoryMap, formatMoney) => {
     if (discount.isDiscountForceClosed) {
         return { eligible: false, reason: discount.forceClosedReason || 'This discount is currently closed.' };
     }
@@ -645,7 +660,7 @@ const resolveDiscountEligibility = (discount, cart, userId, subtotal, availableF
     }
 
     if (discount.discountValidAboveAmount > 0 && availableForThreshold < discount.discountValidAboveAmount) {
-        return { eligible: false, reason: `Add items worth ₹${discount.discountValidAboveAmount - availableForThreshold} more to unlock this discount.` };
+        return { eligible: false, reason: `Add items worth ${formatMoney(discount.discountValidAboveAmount - availableForThreshold)} more to unlock this discount.` };
     }
 
     if (discount.isMinimumDiscountQuantityDiscount && totalQuantity < discount.minimumQuantity) {
@@ -704,7 +719,8 @@ const resolveDiscountEligibility = (discount, cart, userId, subtotal, availableF
     return { eligible: true, discountAmount };
 };
 
-const applyDiscountsToCart = async (vendorId, cartOwner, userId, companyMasterData, websiteMasterData, payload) => {
+// countryId + companySettingsData only format amounts in messages (shopper's currency).
+const applyDiscountsToCart = async (vendorId, cartOwner, userId, companyMasterData, websiteMasterData, payload, countryId = null, companySettingsData = null) => {
     try {
         const featureCheck = await common.checkFeatureOnOrOff(vendorId, websiteMasterData, companyMasterData, 'isDiscountFeatureOn', 'isDiscountFeatureOn');
         if (!featureCheck.isSuccess) {
@@ -715,6 +731,7 @@ const applyDiscountsToCart = async (vendorId, cartOwner, userId, companyMasterDa
         if (!cart || cart.products.length === 0) {
             return common.returnResult(false, 400, 'Your cart is empty.');
         }
+        const formatMoney = await resolveMoneyFormatter(countryId, companyMasterData, companySettingsData);
 
         // A Free Cash already applied with canBeUsedWithOtherDiscounts false
         // blocks discounts entirely, not just a specific one.
@@ -750,7 +767,7 @@ const applyDiscountsToCart = async (vendorId, cartOwner, userId, companyMasterDa
         const rejected = [];
 
         for (const discount of candidates) {
-            const result = resolveDiscountEligibility(discount, cart, userId, subtotal, availableForThreshold, totalQuantity, productCategoryMap);
+            const result = resolveDiscountEligibility(discount, cart, userId, subtotal, availableForThreshold, totalQuantity, productCategoryMap, formatMoney);
             if (result.eligible) {
                 applied.push({ discountId: discount._id, discountName: discount.name, discountAmount: Math.round(result.discountAmount * 100) / 100 });
             } else {
@@ -871,7 +888,8 @@ const resolveEligibleUserFreeCash = async (vendorId, userId, cart, productCatego
     return validGrants;
 };
 
-const applyFreeCashToCart = async (vendorId, cartOwner, userId, companyMasterData, websiteMasterData, companySettingsData, payload) => {
+// countryId only formats amounts in messages (shopper's currency).
+const applyFreeCashToCart = async (vendorId, cartOwner, userId, companyMasterData, websiteMasterData, companySettingsData, payload, countryId = null) => {
     try {
         if (!userId) {
             return common.returnResult(false, 401, 'Please log in to use Free Cash.');
@@ -884,6 +902,7 @@ const applyFreeCashToCart = async (vendorId, cartOwner, userId, companyMasterDat
         if (!companySettingsData || companySettingsData.isFreeCashFeatureOn !== true) {
             return common.returnResult(false, 403, 'Free Cash is not enabled for this store.');
         }
+        const formatMoney = await resolveMoneyFormatter(countryId, companyMasterData, companySettingsData);
 
         const cart = await Cart.findOne({ vendorId, status: 'A', ...ownerFilter(cartOwner) });
         if (!cart || cart.products.length === 0) {
@@ -933,7 +952,7 @@ const applyFreeCashToCart = async (vendorId, cartOwner, userId, companyMasterDat
             }
 
             if (fc.validAbove > 0 && runningAvailable < fc.validAbove) {
-                rejected.push({ freeCashId, freeCashName: fc.freeCashName, reason: `Add items worth ₹${fc.validAbove - runningAvailable} more to unlock this Free Cash.` });
+                rejected.push({ freeCashId, freeCashName: fc.freeCashName, reason: `Add items worth ${formatMoney(fc.validAbove - runningAvailable)} more to unlock this Free Cash.` });
                 continue;
             }
 

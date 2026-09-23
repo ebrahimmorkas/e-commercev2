@@ -2,7 +2,6 @@ const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const Address = require('../models/Address');
 const User = require('../models/User');
-const CurrencyMaster = require('../models/CurrencyMaster');
 const OrderStepMaster = require('../models/OrderStepMaster');
 const Product = require('../models/Product');
 const Cart = require('../models/Cart');
@@ -16,6 +15,7 @@ const commissionService = require('./commissionService');
 const invoiceService = require('./invoiceService');
 const adminPlaceOrderService = require('./adminPlaceOrderService');
 const addressService = require('./addressService');
+const currencyService = require('./currencyService');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
 const {
@@ -57,37 +57,6 @@ const resolveOrderNumber = async ({ vendorId, orderNumber, companySettingsData }
         }
 
         return common.returnResult(true, 200, 'All Good', { orderNumber: normalizedOrderNumber });
-    } catch (err) {
-        throw err;
-    }
-};
-
-/*
-|--------------------------------------------------------------------------
-| CURRENCY
-|--------------------------------------------------------------------------
-| Precedence: the logged-in user's own country's currency, falling back to
-| the vendor's own base currency (CompanySettings.currencyId) when the
-| user's country has no CurrencyMaster configured, or the user has no
-| country on file at all.
-*/
-const resolveOrderCurrency = async (userCountryId, companySettingsData) => {
-    try {
-        let currency = null;
-
-        if (userCountryId && mongoose.Types.ObjectId.isValid(userCountryId)) {
-            currency = await CurrencyMaster.findOne({ country_id: userCountryId, status: 'A' });
-        }
-
-        if (!currency && companySettingsData?.currencyId) {
-            currency = await CurrencyMaster.findOne({ _id: companySettingsData.currencyId, status: 'A' });
-        }
-
-        if (!currency) {
-            return { error: 'Store currency is not configured. Please contact support.' };
-        }
-
-        return { currency };
     } catch (err) {
         throw err;
     }
@@ -187,12 +156,14 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
             return common.returnResult(false, 500, 'Order workflow is misconfigured for this store (no starting step). Please contact support.');
         }
 
-        // --- Currency ---
-        const currencyResult = await resolveOrderCurrency(userCountryId, companySettingsData);
-        if (currencyResult.error) {
-            return common.returnResult(false, 500, currencyResult.error);
+        // --- Currency: the customer's own country's, converted from the store
+        // currency at the current rate (else the store currency) - the same one
+        // the storefront showed them (currencyService.resolveCustomerCurrency).
+        const currencyResult = await currencyService.resolveCustomerCurrency({ countryId: userCountryId, companyMasterData, companySettingsData });
+        if (!currencyResult.isSuccess) {
+            return common.returnResult(false, currencyResult.statusCode, currencyResult.message);
         }
-        const currency = currencyResult.currency;
+        const currencyMeta = currencyResult.meta;
 
         // --- Order number (auto or vendor-configured manual) ---
         const orderNumberResult = await resolveOrderNumber({ vendorId, orderNumber, companySettingsData });
@@ -241,16 +212,30 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
             return common.returnResult(false, checkoutResult.statusCode, checkoutResult.message);
         }
 
-        const { cart, eligibleLineItems, eligibleSubtotal, shippingBreakdown, ineligibleItems } = checkoutResult.meta;
+        const { cart, eligibleLineItems, shippingBreakdown, ineligibleItems } = checkoutResult.meta;
 
         // Manual (CUSTOM) shipping: the admin enters the price after the order
         // is placed, so shipping stays null and the total excludes it (including
         // any per-product custom charge checkout added) until then.
         const isShippingPending = shippingBreakdown?.isShippingPending === true;
-        const shippingAmount = isShippingPending ? null : checkoutResult.meta.shippingAmount;
-        const grandTotal = isShippingPending
-            ? Math.round((checkoutResult.meta.grandTotal - checkoutResult.meta.shippingAmount) * 100) / 100
-            : checkoutResult.meta.grandTotal;
+
+        // Checkout priced everything in the store currency; the order is saved
+        // (and charged) in the customer's currency - every amount converted once,
+        // here, at the rate saved on the order.
+        const currencyFields = currencyService.buildOrderCurrencyFields(currencyMeta);
+        const { exchangeRate, currencyDecimalPlaces } = currencyFields;
+        const toOrderCurrency = (amount) => currencyService.convertAmount(amount, exchangeRate, currencyDecimalPlaces);
+        const roundOrder = (amount) => Math.round(amount * 10 ** currencyDecimalPlaces) / 10 ** currencyDecimalPlaces;
+
+        currencyService.convertLines(eligibleLineItems, exchangeRate, currencyDecimalPlaces);
+        const orderSubtotal = roundOrder(eligibleLineItems.reduce((sum, item) => sum + item.amount, 0));
+        const orderTaxAmount = roundOrder(eligibleLineItems.reduce((sum, item) => sum + item.taxBreakdown.reduce((s, t) => s + t.taxAmount, 0), 0));
+        const orderDiscountAmount = toOrderCurrency(cart.totalDiscountAmount);
+        const orderFreeCashAmount = toOrderCurrency(cart.totalFreeCashAmount);
+        const shippingAmount = isShippingPending ? null : toOrderCurrency(checkoutResult.meta.shippingAmount);
+        // Same formula as checkoutCart: deductions can never take the items below zero.
+        const orderDeductions = Math.min(orderDiscountAmount + orderFreeCashAmount, orderSubtotal);
+        const grandTotal = roundOrder(orderSubtotal - orderDeductions + orderTaxAmount + (shippingAmount || 0));
 
         const orderItems = eligibleLineItems.map((item) => ({
             productId: item.productId,
@@ -302,25 +287,21 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
                 isManualUpdate: false
             }],
             items: orderItems,
-            subtotal: eligibleSubtotal,
-            totalDiscountAmount: cart.totalDiscountAmount,
-            totalTaxAmount: cart.totalTaxAmount,
-            totalFreeCashAmount: cart.totalFreeCashAmount,
+            subtotal: orderSubtotal,
+            totalDiscountAmount: orderDiscountAmount,
+            totalTaxAmount: orderTaxAmount,
+            totalFreeCashAmount: orderFreeCashAmount,
             shippingAmount,
             shippingPriceBreakdown: shippingBreakdown ? {
                 method: shippingBreakdown.method,
-                customAmount: shippingBreakdown.customAmount,
-                companyAmount: shippingBreakdown.companyAmount,
+                customAmount: toOrderCurrency(shippingBreakdown.customAmount),
+                companyAmount: toOrderCurrency(shippingBreakdown.companyAmount),
                 isShippingPending,
                 isFreeAboveApplied: shippingBreakdown.isFreeAboveApplied === true
             } : null,
             additionalCharges: 0,
             grandTotal,
-            currencyId: currency._id,
-            currencyCode: currency.short_name,
-            currencySymbol: currency.symbol,
-            currencySymbolPosition: currency.symbol_position,
-            currencyDecimalPlaces: currency.decimal_places,
+            ...currencyFields,
             shippingAddressId: shippingAddress._id,
             shippingAddressSnapshot: shippingSnapshotResult.snapshot,
             billingAddressId: billingAddress ? billingAddress._id : null,
@@ -1087,7 +1068,6 @@ const fetchOrderStepOptions = async (vendorId, orderId) => {
 
 module.exports = {
     resolveOrderNumber,
-    resolveOrderCurrency,
     buildAddressSnapshot,
     createOrderFromCart,
     advanceOrderStep,

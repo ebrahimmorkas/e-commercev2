@@ -2,6 +2,7 @@ import Badge from '../../../../components/common/Badge';
 import SectionCard from './SectionCard';
 import { SparkleCheckIcon, SwatchIcon } from './icons';
 import theme from '../theme/theme';
+import { useStoreCurrency } from '../../../currency/useStoreCurrency';
 
 const ColorDot = ({ color }) => (
   <span className="w-3 h-3 rounded-full border border-black/10 flex-shrink-0" style={{ backgroundColor: color || '#d1d5db' }} aria-hidden="true" />
@@ -12,6 +13,8 @@ const ColorDot = ({ color }) => (
  * ProductForm.validateDraft() - this is purely a final glance.
  */
 const ReviewStep = ({ draft }) => {
+  // Prices are entered in the store currency (Company Settings).
+  const { formatMoney } = useStoreCurrency();
   const totalSizes = draft.variants.reduce((sum, v) => sum + v.sizes.length, 0);
   const totalStock = draft.variants.reduce((sum, v) => sum + v.sizes.reduce((s, sz) => s + (Number(sz.stock) || 0), 0), 0);
 
@@ -61,7 +64,7 @@ const ReviewStep = ({ draft }) => {
                       <span className="text-gray-400">SKU {size.sku || '—'}</span>
                     </span>
                     <span className="text-gray-500 font-medium tabular-nums">
-                      ₹{size.price || 0} · Stock {size.stock ?? 0}
+                      {formatMoney(size.price || 0)} · Stock {size.stock ?? 0}
                     </span>
                   </li>
                 ))}

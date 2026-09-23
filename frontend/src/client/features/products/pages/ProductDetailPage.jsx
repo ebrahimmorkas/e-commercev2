@@ -6,6 +6,7 @@ import QuantityStepper from '../components/QuantityStepper';
 import ProductCard from '../components/ProductCard';
 import Spinner from '../../../../components/common/Spinner/Spinner';
 import StatusErrorPage from '../../../components/errors/StatusErrorPage';
+import { useCurrency } from '../../../currency/useCurrency';
 
 const pickDefaultVariant = (variants) => variants.find((v) => v.isDefaultVariant) || variants[0] || null;
 const pickDefaultSize = (variant) =>
@@ -20,6 +21,7 @@ const formatPolicy = (label, policy) => {
 };
 
 const BulkPricingTable = ({ bulkPricing }) => {
+  const { formatMoney } = useCurrency();
   if (!bulkPricing?.length) return null;
   return (
     <div className={`mt-6 rounded-xl overflow-hidden ${theme.card.bulkBackground}`}>
@@ -39,7 +41,7 @@ const BulkPricingTable = ({ bulkPricing }) => {
               <td className={`px-4 py-2 ${theme.card.bulkText}`}>
                 {tier.minimumQuantity} - {tier.maximumQuantity}
               </td>
-              <td className={`px-4 py-2 font-semibold ${theme.card.price}`}>₹{tier.price}</td>
+              <td className={`px-4 py-2 font-semibold ${theme.card.price}`}>{formatMoney(tier.price)}</td>
             </tr>
           ))}
         </tbody>
@@ -75,6 +77,7 @@ const ProductDetailPage = ({
   onProductClick,
   onRecommendedAddToCart,
 }) => {
+  const { formatMoney } = useCurrency();
   const { product, loading, error, statusCode, reload } = useStorefrontProductDetail(productId);
   const { products: recommendedProducts } = useRecommendedProducts(product?.recommendedProducts);
   const [selectedVariantId, setSelectedVariantId] = useState(null);
@@ -252,10 +255,10 @@ const ProductDetailPage = ({
           )}
 
           <div className="mt-6 flex items-baseline gap-2">
-            <span className={`text-2xl font-bold ${theme.card.price}`}>₹{selectedSize?.price ?? '—'}</span>
+            <span className={`text-2xl font-bold ${theme.card.price}`}>{typeof selectedSize?.price === 'number' ? formatMoney(selectedSize.price) : '—'}</span>
             {discountPct && (
               <>
-                <span className="text-base text-slate-400 line-through">₹{selectedSize.cancelledPrice}</span>
+                <span className="text-base text-slate-400 line-through">{formatMoney(selectedSize.cancelledPrice)}</span>
                 <span className="text-sm font-semibold text-green-600">{discountPct}% off</span>
               </>
             )}

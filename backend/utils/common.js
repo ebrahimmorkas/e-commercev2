@@ -190,6 +190,17 @@ const decodeId = (encodedId) => {
   }
 };
 
+// decodeId for ids a client sends in a form (e.g. a signup country picked from
+// a dropdown): a tampered/garbage value returns null instead of throwing, so
+// the caller can answer with a plain 400 rather than a server error.
+const tryDecodeId = (encodedId) => {
+  try {
+    return encodedId ? decodeId(encodedId) : null;
+  } catch (err) {
+    return null;
+  }
+};
+
 const SECRET_ENCRYPTION_ALGORITHM = 'aes-256-gcm';
 
 // IMPORTANT: set CREDENTIALS_ENCRYPTION_KEY in .env before deploying (64 hex
@@ -513,6 +524,7 @@ module.exports = {
   getDefault,
   encodeId,
   decodeId,
+  tryDecodeId,
   encryptSecret,
   decryptSecret,
   checkWhetherDocumentExists

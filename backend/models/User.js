@@ -63,6 +63,10 @@ const userSchema = mongoose.Schema({
         default: "user",
         required: true,
     },
+    // country/state/city hold CountryMaster/StateMaster/CityMaster ids (as
+    // strings), picked from the vendor's allowed countries - see
+    // services/userLocationService.js. Older accounts held typed names;
+    // scripts/migrateUserLocationsToIds.js converts those.
     country: {
         type: String,
         required: true,

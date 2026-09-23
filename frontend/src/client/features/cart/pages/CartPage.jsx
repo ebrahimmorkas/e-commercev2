@@ -9,8 +9,8 @@ import { useShippingEstimate } from '../hooks/useShippingEstimate';
 import { formatShippingEstimate, shippingAmountForTotal } from '../utils/formatShipping';
 import { useTaxEstimate, taxAmountForTotal } from '../hooks/useTaxEstimate';
 import TaxEstimateRows from '../components/TaxEstimateRows';
+import { useCurrency } from '../../../currency/useCurrency';
 
-const formatMoney = (amount) => `₹${(amount ?? 0).toLocaleString('en-IN')}`;
 
 // item.sizeName is only the size's category (e.g. "Clothing Size") - the
 // actual value the shopper picked (e.g. "S") lives separately in
@@ -20,7 +20,10 @@ const formatSize = (item) => (item.labelValue ? `${item.sizeName}: ${item.labelV
 // Stacks (name+details, then controls) on narrow screens where a single
 // row can't fit product info + stepper + total + remove without wrapping
 // text mid-word; reverts to one row from `sm` up.
-const CartLineItem = ({ item, onIncrement, onDecrement, onSetQuantity, onRemove }) => (
+const CartLineItem = ({ item, onIncrement, onDecrement, onSetQuantity, onRemove }) => {
+  // unitPrice/originalUnitPrice are in the store currency.
+  const { formatMoney } = useCurrency();
+  return (
   <div className={`flex flex-col sm:flex-row sm:items-center gap-3 py-4 border-b last:border-b-0 ${theme.card.border}`}>
     <div className="min-w-0 flex-1">
       <h3 className={`text-sm font-semibold truncate ${theme.card.name}`}>{item.productName}</h3>
@@ -69,7 +72,8 @@ const CartLineItem = ({ item, onIncrement, onDecrement, onSetQuantity, onRemove 
       </button>
     </div>
   </div>
-);
+  );
+};
 
 /**
  * Storefront cart view: full line-item list with quantity/remove controls
@@ -109,6 +113,7 @@ const CartPage = ({
   onAddressChange,
   reload,
 }) => {
+  const { formatMoney } = useCurrency();
   const [addressModalOpen, setAddressModalOpen] = useState(false);
   const itemCount = lineItems.reduce((sum, item) => sum + item.quantity, 0);
   const { estimate: shippingEstimate } = useShippingEstimate({

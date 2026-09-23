@@ -38,6 +38,13 @@ export const getProductOptions = (productId) => apiRequest(`${BASE}/products/${p
 export const placeOrder = (data) => apiRequest(`${BASE}/place-order`, { method: 'POST', body: data });
 
 /**
+ * The currency the order will be in: the customer's (userId) or, without one, a walk-in's store currency.
+ * @param {string} [userId]
+ * @returns {Promise<{ currency: Object, storeCurrency: Object, exchangeRate: number, isConverted: boolean }>}
+ */
+export const getOrderCurrency = (userId) => apiRequest(`${BASE}/currency${toQuery({ userId })}`);
+
+/**
  * Live tax preview - nothing is saved.
  * @param {Object} data - { isWalkInCustomer, userId?, addressId?, applyTax?, applyBulkPricing, items }
  * @returns {Promise<{ lines, taxes, totalTaxAmount, isTaxOff, isStoreLocation, isLocationMissing }>}
@@ -55,5 +62,6 @@ export default {
   getProductOptions,
   placeOrder,
   previewTax,
+  getOrderCurrency,
   getCompanyMasterData,
 };

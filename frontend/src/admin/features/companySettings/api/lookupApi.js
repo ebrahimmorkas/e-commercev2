@@ -18,9 +18,13 @@ export const getWeights = () => apiRequest('/weights/get-weights');
 
 export const getLocationTaxBundle = () => apiRequest('/location-tax-bundle/get-location-tax-bundle');
 
+/** Every active currency, for the Store Currency dropdown - { currencies: [{ _id, code, name, symbol }] }. */
+export const getCurrencies = () => apiRequest('/currency/currencies');
+
 export default {
   getCompanyMasterData,
   getAdminCategories,
   getWeights,
   getLocationTaxBundle,
+  getCurrencies,
 };

@@ -201,7 +201,8 @@ const createOrder = async (req, res) => {
         const result = await orderService.createOrderFromCart(
             vendorId,
             userId,
-            req.user.country || null,
+            // Same country the storefront showed prices for (currencyController).
+            req.cookies?.Country || req.user.country || null,
             req.companyMasterData,
             req.websiteMasterData,
             req.companySettingsData,

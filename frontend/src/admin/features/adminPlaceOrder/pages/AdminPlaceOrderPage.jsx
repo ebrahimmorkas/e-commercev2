@@ -15,6 +15,7 @@ import * as api from '../api/adminPlaceOrderApi';
 import { bulkUnitPrice } from '../../../../utils/bulkPricing';
 import { useTaxPreview } from '../hooks/useTaxPreview';
 import TaxPreviewRow from '../components/TaxPreviewRow';
+import { useOrderCurrency } from '../hooks/useOrderCurrency';
 
 // Mirror backend/middlewares/validations/adminPlaceOrderValidations.js so the
 // form rejects what the API would reject, before a round-trip.
@@ -101,7 +102,6 @@ const buildValidationSchema = (isWalkIn) => ({
   },
 });
 
-const formatMoney = (value) => Number(value).toFixed(2);
 
 // A line's quantity is edited as text in the table; these read it back.
 const lineQuantity = (line) => {
@@ -130,8 +130,10 @@ const isTaxAllowed = (values) => !(values.isWalkIn && !values.applyTax);
 /**
  * Summary card with a live, server-calculated tax preview (or the admin's typed
  * tax) - a component of its own so the preview hook can use the Form's values.
+ * Every amount is in the order currency (`money` from useOrderCurrency).
  */
-const OrderSummaryCard = ({ values, items, subtotal, discountValue, shippingValue }) => {
+const OrderSummaryCard = ({ values, items, subtotal, discountValue, shippingValue, money }) => {
+  const { formatMoney } = money;
   const taxAllowed = isTaxAllowed(values);
   const isManual = taxAllowed && values.isTaxManual;
   const itemsValid = items.length > 0 && !items.some((line) => lineQuantityError(line));
@@ -207,6 +209,12 @@ const AdminPlaceOrderPage = () => {
   const [submitting, setSubmitting] = useState(false);
   // Read by the Form's schema/render, which sit outside the Form's own state.
   const [isWalkIn, setIsWalkIn] = useState(false);
+  // The picked customer, mirrored out of the Form for the order currency below.
+  const [customerUserId, setCustomerUserId] = useState('');
+  const money = useOrderCurrency(customerUserId, isWalkIn);
+  const { formatMoney } = money;
+  // A line's amount in the order currency (store unit price converted, x quantity - as the backend does).
+  const orderLineAmount = (line, bulk) => money.lineAmount(lineUnitPrice(line, bulk), lineQuantity(line));
   // Mirrors values.applyBulkPricing for the items table columns, which are built outside the Form.
   const [applyBulkPricing, setApplyBulkPricing] = useState(false);
   // Bumped after a successful order so the Form remounts with empty values.
@@ -344,11 +352,11 @@ const AdminPlaceOrderPage = () => {
       align: 'right',
       render: (row) => {
         const price = lineUnitPrice(row, applyBulkPricing);
-        if (price === row.unitPrice) return formatMoney(row.unitPrice);
+        if (price === row.unitPrice) return formatMoney(money.toOrder(row.unitPrice));
         return (
           <div>
-            <div className="font-medium text-gray-900">{formatMoney(price)}</div>
-            <div className="text-xs text-gray-400"><span className="line-through">{formatMoney(row.unitPrice)}</span> <span className="text-emerald-600">Bulk price</span></div>
+            <div className="font-medium text-gray-900">{formatMoney(money.toOrder(price))}</div>
+            <div className="text-xs text-gray-400"><span className="line-through">{formatMoney(money.toOrder(row.unitPrice))}</span> <span className="text-emerald-600">Bulk price</span></div>
           </div>
         );
       },
@@ -378,7 +386,7 @@ const AdminPlaceOrderPage = () => {
         );
       },
     },
-    { key: 'amount', label: 'Amount', align: 'right', render: (row) => formatMoney(lineUnitPrice(row, applyBulkPricing) * lineQuantity(row)) },
+    { key: 'amount', label: 'Amount', align: 'right', render: (row) => formatMoney(orderLineAmount(row, applyBulkPricing)) },
   ];
 
   const itemActions = [
@@ -390,7 +398,8 @@ const AdminPlaceOrderPage = () => {
   ];
 
   const handleSubmit = async (values) => {
-    const subtotal = items.reduce((sum, line) => sum + lineUnitPrice(line, values.applyBulkPricing) * lineQuantity(line), 0);
+    // Discount/shipping/tax are typed in the order currency - compared against the converted subtotal.
+    const subtotal = items.reduce((sum, line) => sum + orderLineAmount(line, values.applyBulkPricing), 0);
     const discount = values.discount.trim() ? Number(values.discount) : 0;
     const shipping = values.shipping.trim() ? Number(values.shipping) : 0;
 
@@ -448,6 +457,7 @@ const AdminPlaceOrderPage = () => {
       setLineError('');
       setItemsError('');
       setIsWalkIn(false);
+      setCustomerUserId('');
       setApplyBulkPricing(false);
       setFormKey((key) => key + 1);
       loadProducts();
@@ -488,6 +498,7 @@ const AdminPlaceOrderPage = () => {
             const handleWalkInToggle = (e) => {
               const checked = e.target.checked;
               setIsWalkIn(checked);
+              setCustomerUserId('');
               setFieldValue('isWalkIn', checked);
               // The two modes never share a customer: drop whichever one is being left.
               ['searchField', 'userId', 'addressId', 'addressText', 'wName', 'wPhone', 'wWhatsapp', 'wEmail', 'wAddress'].forEach((field) => setFieldValue(field, ''));
@@ -501,6 +512,7 @@ const AdminPlaceOrderPage = () => {
             const handleSearchFieldChange = (value) => {
               setFieldValue('searchField', value);
               setFieldValue('userId', '');
+              setCustomerUserId('');
               setFieldValue('addressId', '');
               setAddresses([]);
               loadUsers(value);
@@ -508,6 +520,7 @@ const AdminPlaceOrderPage = () => {
 
             const handleUserChange = (value) => {
               setFieldValue('userId', value);
+              setCustomerUserId(value || '');
               setFieldValue('addressId', '');
               loadAddresses(value);
             };
@@ -549,11 +562,11 @@ const AdminPlaceOrderPage = () => {
             const allowOutOfStock = productOptions?.allowOutOfStockProductsAdding === true;
             const sizeOptions = (selectedVariant?.sizes || []).map((size) => ({
               value: size.sizeId,
-              label: `${size.sizeName} - ${formatMoney(size.price)}${size.isOutOfStock ? ' (out of stock)' : ` (${size.stock} in stock)`}`,
+              label: `${size.sizeName} - ${formatMoney(money.toOrder(size.price))}${size.isOutOfStock ? ' (out of stock)' : ` (${size.stock} in stock)`}`,
               disabled: !size.isSelectable,
             }));
 
-            const subtotal = items.reduce((sum, line) => sum + lineUnitPrice(line, values.applyBulkPricing) * lineQuantity(line), 0);
+            const subtotal = items.reduce((sum, line) => sum + orderLineAmount(line, values.applyBulkPricing), 0);
             const discountValue = MONEY_PATTERN.test(values.discount.trim()) ? Number(values.discount) : 0;
             const shippingValue = MONEY_PATTERN.test(values.shipping.trim()) ? Number(values.shipping) : 0;
 
@@ -722,7 +735,7 @@ const AdminPlaceOrderPage = () => {
                             showError={false}
                           />
                           <div className="text-sm text-gray-600 pb-2">
-                            {selectedSize ? <>Unit price: <span className="font-semibold">{formatMoney(selectedSize.price)}</span></> : null}
+                            {selectedSize ? <>Unit price: <span className="font-semibold">{formatMoney(money.toOrder(selectedSize.price))}</span></> : null}
                           </div>
                           <Button type="button" variant="secondary" onClick={() => addItem(values, setFieldValue)} disabled={!values.sizeId}>
                             Add item
@@ -778,11 +791,11 @@ const AdminPlaceOrderPage = () => {
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div>
-                            <InputField label="Discount amount" name="discount" type="number" placeholder="0.00" value={values.discount} onChange={handleChange('discount')} onBlur={handleBlur('discount')} showError={false} />
+                            <InputField label={`Discount amount${money.code ? ` (${money.code})` : ''}`} name="discount" type="number" placeholder="0.00" value={values.discount} onChange={handleChange('discount')} onBlur={handleBlur('discount')} showError={false} />
                             {textError('discount')}
                           </div>
                           <div>
-                            <InputField label="Shipping amount" name="shipping" type="number" placeholder="0.00" value={values.shipping} onChange={handleChange('shipping')} onBlur={handleBlur('shipping')} showError={false} />
+                            <InputField label={`Shipping amount${money.code ? ` (${money.code})` : ''}`} name="shipping" type="number" placeholder="0.00" value={values.shipping} onChange={handleChange('shipping')} onBlur={handleBlur('shipping')} showError={false} />
                             {textError('shipping')}
                           </div>
                         </div>
@@ -801,7 +814,7 @@ const AdminPlaceOrderPage = () => {
                             <p className="mt-1 ml-6 text-sm text-gray-500">Type one tax total for the whole order instead of the automatically calculated tax.</p>
                             {values.isTaxManual && (
                               <div className="mt-2 ml-6 max-w-xs">
-                                <InputField label="Tax amount" name="manualTax" type="number" placeholder="0.00" value={values.manualTax} onChange={handleChange('manualTax')} onBlur={handleBlur('manualTax')} required showError={false} />
+                                <InputField label={`Tax amount${money.code ? ` (${money.code})` : ''}`} name="manualTax" type="number" placeholder="0.00" value={values.manualTax} onChange={handleChange('manualTax')} onBlur={handleBlur('manualTax')} required showError={false} />
                                 {textError('manualTax')}
                               </div>
                             )}
@@ -815,10 +828,10 @@ const AdminPlaceOrderPage = () => {
                       </div>
                     </Card>
 
-                    <OrderSummaryCard values={values} items={items} subtotal={subtotal} discountValue={discountValue} shippingValue={shippingValue} />
+                    <OrderSummaryCard values={values} items={items} subtotal={subtotal} discountValue={discountValue} shippingValue={shippingValue} money={money} />
 
                     <div className="flex justify-end gap-3">
-                      <Button type="button" variant="ghost" onClick={() => { handleReset(); setIsWalkIn(false); setApplyBulkPricing(false); setItems([]); setUsers([]); setAddresses([]); setProductOptions(null); setLineError(''); setItemsError(''); }} disabled={submitting}>
+                      <Button type="button" variant="ghost" onClick={() => { handleReset(); setIsWalkIn(false); setCustomerUserId(''); setApplyBulkPricing(false); setItems([]); setUsers([]); setAddresses([]); setProductOptions(null); setLineError(''); setItemsError(''); }} disabled={submitting}>
                         Reset
                       </Button>
                       <Button type="submit" variant="primary" loading={submitting}>

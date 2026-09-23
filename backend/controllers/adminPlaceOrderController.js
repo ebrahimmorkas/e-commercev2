@@ -167,6 +167,21 @@ const getProductOptions = async (req, res) => {
     }
 };
 
+const getOrderCurrency = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        const result = await adminPlaceOrderService.fetchOrderCurrency(
+            vendorId, req.websiteMasterData, req.companyMasterData, req.companySettingsData, decodeIfPresent(req.query.userId)
+        );
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('adminPlaceOrderController: getOrderCurrency - Exception while fetching order currency', { vendorId, error });
+    }
+};
+
 const previewTax = async (req, res) => {
     const vendorId = req.vendorId;
     try {
@@ -236,6 +251,7 @@ module.exports = {
     getCategories,
     getProducts,
     getProductOptions,
+    getOrderCurrency,
     previewTax,
     placeOrder
 };

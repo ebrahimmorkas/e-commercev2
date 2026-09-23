@@ -8,6 +8,7 @@ import Spinner from '../../../../components/common/Spinner';
 import { useEditOrderProducts } from '../hooks/useEditOrderProducts';
 import { formatOrderMoney } from '../utils/formatOrder';
 import { bulkUnitPrice } from '../../../../utils/bulkPricing';
+import { convertAmount } from '../../../../utils/money';
 import { previewAddProductsTax } from '../api/orderAdminApi';
 import { useTaxPreview } from '../../adminPlaceOrder/hooks/useTaxPreview';
 import TaxPreviewRow from '../../adminPlaceOrder/components/TaxPreviewRow';
@@ -35,6 +36,12 @@ const FIELD_GRID = 'grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-3';
  * @param {boolean} submitting
  */
 const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
+  // Product prices come in the store currency; the order is in its own
+  // currency, converted at the rate locked on it when placed (backend
+  // orderEditService) - unit price first, then x quantity, like the backend.
+  const orderDecimals = order.currencyDecimalPlaces ?? 2;
+  const toOrder = (storeAmount) => convertAmount(storeAmount, order.exchangeRate || 1, orderDecimals);
+  const toOrderLine = (storeUnitPrice, quantity) => Math.round(toOrder(storeUnitPrice) * quantity * 10 ** orderDecimals) / 10 ** orderDecimals;
   const picker = useEditOrderProducts();
   const [mainCategory, setMainCategory] = useState('');
   const [subCategory, setSubCategory] = useState('');
@@ -63,7 +70,7 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
   const productOptionsList = picker.products.map((p) => ({ value: p._id, label: p.productCode ? `${p.name} (${p.productCode})` : p.name }));
   const sizeOptions = (selectedVariant?.sizes || []).map((size) => ({
     value: size.sizeId,
-    label: `${size.sizeName} - ${formatOrderMoney(order, size.price)}${size.isOutOfStock ? ' (out of stock)' : ` (${size.stock} in stock)`}`,
+    label: `${size.sizeName} - ${formatOrderMoney(order, toOrder(size.price))}${size.isOutOfStock ? ' (out of stock)' : ` (${size.stock} in stock)`}`,
     disabled: !size.isSelectable,
   }));
 
@@ -152,7 +159,7 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
   const bulkPricingOn = picker.isBulkPricingFeatureOn && applyBulkPricing;
   const lineUnitPrice = (line) => (bulkPricingOn ? bulkUnitPrice(line.unitPrice, line.bulkPricing, lineQuantity(line)) : line.unitPrice);
 
-  const addedSubtotal = items.reduce((sum, line) => sum + lineUnitPrice(line) * (lineQuantityError(line) ? 0 : lineQuantity(line)), 0);
+  const addedSubtotal = items.reduce((sum, line) => sum + (lineQuantityError(line) ? 0 : toOrderLine(lineUnitPrice(line), lineQuantity(line))), 0);
 
   // Server-calculated tax for the lines being added (only when it is auto-calculated).
   const itemsValid = items.length > 0 && !items.some((line) => lineQuantityError(line));
@@ -260,7 +267,7 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
         <div className="text-sm text-gray-600 pb-2 min-w-0 wrap-break-word">
           {selectedSize ? (
             <>
-              Unit price: <span className="font-semibold">{formatOrderMoney(order, selectedSize.price)}</span>
+              Unit price: <span className="font-semibold">{formatOrderMoney(order, toOrder(selectedSize.price))}</span>
             </>
           ) : null}
         </div>
@@ -297,11 +304,11 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
                 <div className="min-w-0 flex-1 basis-40">
                   <p className="font-medium text-gray-900 wrap-break-word">{line.productName}</p>
                   <p className="text-xs text-gray-500 wrap-break-word">
-                    {line.variantName} / {line.sizeName} · {formatOrderMoney(order, unitPrice)} each
+                    {line.variantName} / {line.sizeName} · {formatOrderMoney(order, toOrder(unitPrice))} each
                     {unitPrice !== line.unitPrice && (
                       <>
                         {' '}
-                        <span className="line-through text-gray-400">{formatOrderMoney(order, line.unitPrice)}</span>{' '}
+                        <span className="line-through text-gray-400">{formatOrderMoney(order, toOrder(line.unitPrice))}</span>{' '}
                         <span className="text-emerald-600">Bulk price</span>
                       </>
                     )}
@@ -330,7 +337,7 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
                 </div>
                 <div className="flex items-center gap-2 shrink-0 pt-1.5">
                   <span className="font-semibold text-gray-900 whitespace-nowrap">
-                    {formatOrderMoney(order, error ? 0 : unitPrice * lineQuantity(line))}
+                    {formatOrderMoney(order, error ? 0 : toOrderLine(unitPrice, lineQuantity(line)))}
                   </span>
                   <Button type="button" variant={theme.button.ghost} size="sm" onClick={() => removeItem(line.key)} disabled={submitting}>
                     Remove
@@ -379,7 +386,8 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
           {isTaxManual && (
             <div className="mt-2 ml-6 w-40">
               <InputField
-                label="Tax amount"
+                // Typed in the order's own currency.
+                label={`Tax amount${order.currencyCode ? ` (${order.currencyCode})` : ''}`}
                 name="manualTax"
                 type="number"
                 placeholder="0.00"

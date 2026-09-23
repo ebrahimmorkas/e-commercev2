@@ -3,6 +3,7 @@ import InputField from '../../../../components/common/InputField';
 import DatePicker from '../../../../components/common/DatePicker';
 import { DISCOUNT_FLOW_OPTIONS } from '../constants';
 import theme from '../theme/theme';
+import { useStoreCurrency } from '../../../currency/useStoreCurrency';
 
 const pad = (n) => String(n).padStart(2, '0');
 // Formats using local calendar fields, not toISOString() - a UTC conversion
@@ -15,6 +16,8 @@ const toDateInputValue = (date) => (date ? `${date.getFullYear()}-${pad(date.get
  * @param {string[]} props.allowedFeatureTypes - companyMaster.allowedDiscountFeatureTypes (empty = all allowed)
  */
 const TimingStep = ({ draft, onChange, allowedFeatureTypes = [] }) => {
+  // Amounts are entered in the store currency (Company Settings).
+  const { symbol } = useStoreCurrency();
   const set = (patch) => onChange({ ...draft, ...patch });
 
   const flowOptions =
@@ -94,7 +97,7 @@ const TimingStep = ({ draft, onChange, allowedFeatureTypes = [] }) => {
       {!isMinQty && (
         <div>
           <InputField
-            label="Minimum Cart Value For This Discount (₹)"
+            label={`Minimum Cart Value For This Discount (${symbol})`}
             name="discountValidAboveAmount"
             type="number"
             min={0}

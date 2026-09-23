@@ -54,7 +54,19 @@ const knownUserIdCookieOptions = {
     path: '/'
 };
 
+// The logged-in customer's own Country/State/City ids (User.country/state/city),
+// set on login/refresh and cleared on logout. Read server-side only (currency,
+// tax, shipping, location exclusions - see cartController.buildLocationContext).
+const locationCookieOptions = {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
+    maxAge: 365 * 24 * 60 * 60 * 1000, // 1 year
+    path: '/'
+};
+
 module.exports = {
+    locationCookieOptions,
     accessTokenCookieOptions,
     refreshTokenCookieOptions,
     guestCartCookieOptions,

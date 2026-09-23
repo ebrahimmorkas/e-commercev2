@@ -40,10 +40,8 @@ const buildValidationSchema = () => ({
     required: false,
     validations: [(v) => (!v.trim() || PHONE_PATTERN.test(v.trim()) ? true : 'Enter a valid WhatsApp number (10-14 digits, optional leading +)')],
   },
-  // Hold the selected CountryMaster/StateMaster/CityMaster _id while the form
-  // is open - resolved back to their display names at submit time, since
-  // User.country/state/city are plain strings (same free-text fields
-  // self-registration writes - see client/features/auth/components/AuthModal.jsx).
+  // The selected CountryMaster/StateMaster/CityMaster ids - saved as-is on
+  // User.country/state/city (same as self-registration's dropdowns).
   country: { required: true },
   state: { required: true },
   city: { required: true },
@@ -51,6 +49,10 @@ const buildValidationSchema = () => ({
 
 const findOptionByLabel = (options, label) =>
   options.find((o) => o.label.trim().toLowerCase() === (label || '').trim().toLowerCase());
+
+// The customer's saved location is an id (matching the dropdown values); an
+// account from before that change still holds a typed name, matched by label.
+const findOption = (options, saved) => options.find((o) => o.value === saved) || findOptionByLabel(options, saved);
 
 /**
  * Edit form for an existing customer - name/username/email/phone/whatsapp/
@@ -74,11 +76,11 @@ const CustomerForm = ({ initialValues = {}, lookups, onSubmit, onCancel, submitt
   const { countryOptions, getStateOptions, getCityOptions } = lookups;
 
   const resolved = useMemo(() => {
-    const countryOption = findOptionByLabel(countryOptions, initialValues.country);
+    const countryOption = findOption(countryOptions, initialValues.country);
     const countryId = countryOption?.value || '';
-    const stateOption = countryId ? findOptionByLabel(getStateOptions(countryId), initialValues.state) : null;
+    const stateOption = countryId ? findOption(getStateOptions(countryId), initialValues.state) : null;
     const stateId = stateOption?.value || '';
-    const cityOption = stateId ? findOptionByLabel(getCityOptions(countryId, stateId), initialValues.city) : null;
+    const cityOption = stateId ? findOption(getCityOptions(countryId, stateId), initialValues.city) : null;
     const cityId = cityOption?.value || '';
     return { countryId, stateId, cityId };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -96,17 +98,17 @@ const CustomerForm = ({ initialValues = {}, lookups, onSubmit, onCancel, submitt
   };
 
   const handleFormSubmit = async (values) => {
-    const stateOptions = getStateOptions(values.country);
-    const cityOptions = getCityOptions(values.country, values.state);
-
+    // The picked location ids are saved as-is (backend validates the
+    // country -> state -> city chain and turns them into the customer's
+    // Country/State/City cookies for currency, tax and shipping).
     const payload = {
       name: values.name.trim(),
       username: values.username.trim().toLowerCase(),
       email: values.email.trim().toLowerCase(),
       phone_no: values.phone_no.trim(),
-      country: countryOptions.find((o) => o.value === values.country)?.label || '',
-      state: stateOptions.find((o) => o.value === values.state)?.label || '',
-      city: cityOptions.find((o) => o.value === values.city)?.label || '',
+      country: values.country,
+      state: values.state,
+      city: values.city,
     };
     if (values.whatsapp_no?.trim()) payload.whatsapp_no = values.whatsapp_no.trim();
 

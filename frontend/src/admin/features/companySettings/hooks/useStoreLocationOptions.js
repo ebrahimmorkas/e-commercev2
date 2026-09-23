@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getLocationTaxBundle } from '../api/lookupApi';
+import { getLocationTaxBundle, getCurrencies } from '../api/lookupApi';
 
 /**
- * Dropdown options for the Store Country / State / City fields, from the same
+ * Dropdown options for the Store Currency and Store Country / State / City fields - locations from the same
  * location bundle the Shipping tab uses (only the countries the vendor serves,
  * CompanyMaster.allowedCountries). States narrow to the chosen country and
  * cities to the chosen state.
@@ -12,6 +12,7 @@ import { getLocationTaxBundle } from '../api/lookupApi';
  */
 export const useStoreLocationOptions = (countryId, stateId) => {
   const [bundle, setBundle] = useState({ countries: [], states: [], cities: [] });
+  const [currencies, setCurrencies] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -20,10 +21,20 @@ export const useStoreLocationOptions = (countryId, stateId) => {
         if (!cancelled && result) setBundle(result);
       })
       .catch(() => {});
+    getCurrencies()
+      .then((result) => {
+        if (!cancelled) setCurrencies(result?.currencies || []);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, []);
+
+  const currencyOptions = useMemo(
+    () => currencies.map((currency) => ({ value: String(currency._id), label: `${currency.name} (${currency.code}, ${currency.symbol})` })),
+    [currencies]
+  );
 
   const countryOptions = useMemo(
     () => (bundle.countries || []).map((country) => ({ value: String(country._id), label: country.country_name })),
@@ -41,7 +52,7 @@ export const useStoreLocationOptions = (countryId, stateId) => {
     return (stateGroup?.cities || []).map((city) => ({ value: String(city._id), label: city.city_name }));
   }, [bundle, countryId, stateId]);
 
-  return { countryOptions, stateOptions, cityOptions };
+  return { countryOptions, stateOptions, cityOptions, currencyOptions };
 };
 
 export default useStoreLocationOptions;

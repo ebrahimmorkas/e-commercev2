@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import theme from '../../Home/theme/theme';
 import QuantityStepper from './QuantityStepper';
+import { useCurrency } from '../../../currency/useCurrency';
 
-const formatPrice = (product) => {
-  if (product.priceRange) return `₹${product.priceRange.min} - ₹${product.priceRange.max}`;
-  if (typeof product.price === 'number') return `₹${product.price}`;
+// Prices arrive in the store currency; formatMoney converts to the shopper's.
+const formatPrice = (product, formatMoney) => {
+  if (product.priceRange) return `${formatMoney(product.priceRange.min)} - ${formatMoney(product.priceRange.max)}`;
+  if (typeof product.price === 'number') return formatMoney(product.price);
   return 'Price on request';
 };
 
@@ -36,6 +38,7 @@ const ProductThumb = ({ src, alt }) => {
 };
 
 const BulkPricing = ({ bulkPricing }) => {
+  const { formatMoney } = useCurrency();
   if (!bulkPricing?.length) return null;
   const deal = bestBulkTier(bulkPricing);
   const moreTiers = bulkPricing.length - 1;
@@ -44,7 +47,7 @@ const BulkPricing = ({ bulkPricing }) => {
     <div className={`${theme.card.bulkWrapperLayout} ${theme.card.bulkBackground}`}>
       <p className={`${theme.card.bulkLabelLayout} ${theme.card.bulkLabel}`}>Bulk Pricing</p>
       <p className={`${theme.card.bulkTextLayout} ${theme.card.bulkText}`}>
-        Buy {deal.minimumQuantity}+ at ₹{deal.price}/unit
+        Buy {deal.minimumQuantity}+ at {formatMoney(deal.price)}/unit
         {moreTiers > 0 && ` · ${moreTiers} more tier${moreTiers > 1 ? 's' : ''}`}
       </p>
     </div>
@@ -67,6 +70,7 @@ const BulkPricing = ({ bulkPricing }) => {
  * @param {Function} [props.onOpen] - Called with the product when the row (outside the Add to Cart control) is clicked, to open its detail page.
  */
 const ProductListItem = ({ product, quantity = 0, onAddToCart, onIncrement, onDecrement, onSetQuantity, onOpen }) => {
+  const { formatMoney } = useCurrency();
   return (
     <div
       role={onOpen ? 'button' : undefined}
@@ -82,7 +86,7 @@ const ProductListItem = ({ product, quantity = 0, onAddToCart, onIncrement, onDe
         <p className={`${theme.card.categoryLayout} ${theme.card.category}`}>{product.category}</p>
         <h3 className={`${theme.card.nameLayout} ${theme.card.name} truncate`}>{product.name}</h3>
         <p className={`${theme.card.priceLayout} ${theme.card.price}`}>
-          {formatPrice(product)}
+          {formatPrice(product, formatMoney)}
           {product.unit && <span className={theme.card.unit}> / {product.unit}</span>}
         </p>
         <BulkPricing bulkPricing={product.bulkPricing} />

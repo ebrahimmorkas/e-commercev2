@@ -48,10 +48,8 @@ const validationSchema = {
       (v) => (PASSWORD_PATTERN.test(v) ? true : 'Password must contain at least one uppercase letter, one lowercase letter and one number'),
     ],
   },
-  // Hold the selected CountryMaster/StateMaster/CityMaster _id while the form
-  // is open - resolved back to their display names at submit time, since
-  // User.country/state/city are plain strings (same free-text fields
-  // self-registration writes - see client/features/auth/components/AuthModal.jsx).
+  // The selected CountryMaster/StateMaster/CityMaster ids - saved as-is on
+  // User.country/state/city (same as self-registration's dropdowns).
   country: { required: true },
   state: { required: true },
   city: { required: true },
@@ -83,21 +81,17 @@ const AddUserForm = ({ lookups, onSubmit, onCancel, submitting = false }) => {
   const { countryOptions, getStateOptions, getCityOptions } = lookups;
 
   const handleFormSubmit = async (values) => {
-    const stateOptions = getStateOptions(values.country);
-    const cityOptions = getCityOptions(values.country, values.state);
-
     const payload = {
       name: values.name.trim(),
       username: values.username.trim().toLowerCase(),
       email: values.email.trim().toLowerCase(),
       phone_no: values.phone_no.trim(),
       password: values.password,
-      // Store the picked location's display name, not its ObjectId - the
-      // dropdowns only exist to restrict choices to this vendor's
-      // allowedCountries; the field itself stays a plain name string.
-      country: countryOptions.find((o) => o.value === values.country)?.label || '',
-      state: stateOptions.find((o) => o.value === values.state)?.label || '',
-      city: cityOptions.find((o) => o.value === values.city)?.label || '',
+      // The picked location ids - the backend validates the chain and they
+      // become the customer's Country/State/City cookies (currency, tax, shipping).
+      country: values.country,
+      state: values.state,
+      city: values.city,
     };
     if (values.whatsapp_no?.trim()) payload.whatsapp_no = values.whatsapp_no.trim();
 

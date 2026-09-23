@@ -11,6 +11,8 @@ const common = require('../utils/common');
 const logger = require('../utils/logger');
 const bulkPricing = require('../utils/bulkPricing');
 const taxCalculationService = require('./taxCalculationService');
+const currencyService = require('./currencyService');
+const userLocationService = require('./userLocationService');
 const { PAYMENT_METHODS } = require('../constants/paymentGatewayConstants');
 const { ORDER_NOTIFICATION_TYPES } = require('../constants/orderRealtimeConstants');
 const { notifyOrderChanged } = require('./orderRealtimeService');
@@ -464,6 +466,34 @@ const applyAdminOrderTax = async ({ lines, taxLocation, isTaxOff, isTaxManual, m
     }
 };
 
+// Currency of an admin order: the customer's own country's (converted from the
+// store currency, like a storefront order); walk-ins always the store's.
+const resolveAdminOrderCurrency = async ({ isWalkIn, user, companyMasterData, companySettingsData }) => {
+    try {
+        const countryId = isWalkIn ? null : userLocationService.extractUserLocation(user).countryId;
+        return await currencyService.resolveCustomerCurrency({ countryId, companyMasterData, companySettingsData });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Prices store-currency lines into the order currency and taxes them. Auto tax
+// is worked out on the store-currency amounts and converted with the lines; a
+// manually typed tax is already in the order currency, so it is split across
+// the lines after they are converted. Shared with orderEditService.js.
+const priceAdminOrderLines = async ({ lines, taxLocation, isTaxOff, isTaxManual, manualTaxAmount, exchangeRate, decimalPlaces }) => {
+    try {
+        if (isTaxManual && !isTaxOff) {
+            currencyService.convertLines(lines, exchangeRate, decimalPlaces);
+            return taxCalculationService.applyManualTax(lines, manualTaxAmount);
+        }
+        await applyAdminOrderTax({ lines, taxLocation, isTaxOff, isTaxManual: false });
+        return currencyService.convertLines(lines, exchangeRate, decimalPlaces);
+    } catch (err) {
+        throw err;
+    }
+};
+
 // What the tax preview returns for a set of priced lines.
 const buildTaxPreview = (lines, taxLocation, isTaxOff) => {
     try {
@@ -489,6 +519,39 @@ const buildTaxPreview = (lines, taxLocation, isTaxOff) => {
     }
 };
 
+// The currency the Place Order page shows (and the admin types amounts in)
+// for the chosen customer - or, with no userId, a walk-in's store currency.
+const fetchOrderCurrency = async (vendorId, websiteMasterData, companyMasterData, companySettingsData, userId) => {
+    try {
+        const featureCheck = await checkFeatureOn(vendorId, websiteMasterData, companyMasterData);
+        if (!featureCheck.isSuccess) {
+            return common.returnResult(false, featureCheck.statusCode, featureCheck.message);
+        }
+
+        let user = null;
+        if (userId) {
+            user = await User.findOne({ _id: userId, vendorId, role: 'user', status: 'A' }).select('_id country').lean();
+            if (!user) {
+                return common.returnResult(false, 404, 'User not found.');
+            }
+        }
+
+        const currencyResult = await resolveAdminOrderCurrency({ isWalkIn: !userId, user, companyMasterData, companySettingsData });
+        if (!currencyResult.isSuccess) {
+            return common.returnResult(false, currencyResult.statusCode, currencyResult.message);
+        }
+        const { currency, storeCurrency, exchangeRate, isConverted } = currencyResult.meta;
+        return common.returnResult(true, 200, 'Currency fetched successfully', {
+            currency: currencyService.shapeCurrency(currency),
+            storeCurrency: currencyService.shapeCurrency(storeCurrency),
+            exchangeRate,
+            isConverted
+        });
+    } catch (err) {
+        throw err;
+    }
+};
+
 // Live preview of the auto-calculated tax on the Place Order page.
 const previewPlaceOrderTax = async (vendorId, websiteMasterData, companyMasterData, companySettingsData, payload) => {
     try {
@@ -501,8 +564,9 @@ const previewPlaceOrderTax = async (vendorId, websiteMasterData, companyMasterDa
         const isWalkIn = isWalkInCustomer === true;
 
         let savedAddress = null;
+        let user = null;
         if (!isWalkIn) {
-            const user = await User.findOne({ _id: userId, vendorId, role: 'user', status: 'A' }).select('_id').lean();
+            user = await User.findOne({ _id: userId, vendorId, role: 'user', status: 'A' }).select('_id country').lean();
             if (!user) {
                 return common.returnResult(false, 404, 'User not found.');
             }
@@ -525,11 +589,25 @@ const previewPlaceOrderTax = async (vendorId, websiteMasterData, companyMasterDa
             return common.returnResult(false, 400, lineResult.error);
         }
 
+        const currencyResult = await resolveAdminOrderCurrency({ isWalkIn, user, companyMasterData, companySettingsData });
+        if (!currencyResult.isSuccess) {
+            return common.returnResult(false, currencyResult.statusCode, currencyResult.message);
+        }
+        const currencyShape = currencyService.shapeCurrency(currencyResult.meta.currency);
+
+        // Amounts come back in the customer's currency - the one the order will be in.
         const isTaxOff = isWalkIn && applyTax === false;
         const taxLocation = resolveAdminOrderTaxLocation({ savedAddress, companySettingsData });
-        await applyAdminOrderTax({ lines: lineResult.lines, taxLocation, isTaxOff, isTaxManual: false });
+        await priceAdminOrderLines({
+            lines: lineResult.lines, taxLocation, isTaxOff, isTaxManual: false,
+            exchangeRate: currencyResult.meta.exchangeRate, decimalPlaces: currencyShape.decimalPlaces
+        });
 
-        return common.returnResult(true, 200, 'Tax preview calculated successfully', buildTaxPreview(lineResult.lines, taxLocation, isTaxOff));
+        return common.returnResult(true, 200, 'Tax preview calculated successfully', {
+            ...buildTaxPreview(lineResult.lines, taxLocation, isTaxOff),
+            currency: currencyShape,
+            exchangeRate: currencyResult.meta.exchangeRate
+        });
     } catch (err) {
         throw err;
     }
@@ -612,12 +690,14 @@ const placeOrderOnBehalfOfUser = async (vendorId, adminUserId, websiteMasterData
             return common.returnResult(false, 500, 'Order workflow is misconfigured for this store (no starting step). Please contact support.');
         }
 
-        // --- Currency: the customer's country, falling back to the store's (walk-ins: the store's) ---
-        const currencyResult = await orderService.resolveOrderCurrency(user ? user.country : null, companySettingsData);
-        if (currencyResult.error) {
-            return common.returnResult(false, 500, currencyResult.error);
+        // --- Currency: the customer's own country's, converted from the store
+        // currency (walk-ins: the store's). The admin types discount, shipping
+        // and a manual tax in this currency. ---
+        const currencyResult = await resolveAdminOrderCurrency({ isWalkIn, user, companyMasterData, companySettingsData });
+        if (!currencyResult.isSuccess) {
+            return common.returnResult(false, currencyResult.statusCode, currencyResult.message);
         }
-        const currency = currencyResult.currency;
+        const currencyFields = currencyService.buildOrderCurrencyFields(currencyResult.meta);
 
         // --- Lines, tax, totals ---
         const bulkPricingResult = await resolveApplyBulkPricing(vendorId, applyBulkPricing, websiteMasterData, companyMasterData);
@@ -635,7 +715,10 @@ const placeOrderOnBehalfOfUser = async (vendorId, adminUserId, websiteMasterData
         // typed-in address, no address), else not at all. The admin can instead
         // enter the tax by hand, or switch it off entirely for a walk-in order.
         const taxLocation = resolveAdminOrderTaxLocation({ savedAddress, companySettingsData });
-        await applyAdminOrderTax({ lines, taxLocation, isTaxOff, isTaxManual: isTaxManual === true, manualTaxAmount });
+        await priceAdminOrderLines({
+            lines, taxLocation, isTaxOff, isTaxManual: isTaxManual === true, manualTaxAmount,
+            exchangeRate: currencyFields.exchangeRate, decimalPlaces: currencyFields.currencyDecimalPlaces
+        });
 
         const subtotal = round2(lines.reduce((sum, line) => sum + line.amount, 0));
         const totalTaxAmount = round2(lines.reduce((sum, line) => sum + line.taxBreakdown.reduce((s, t) => s + t.taxAmount, 0), 0));
@@ -708,11 +791,7 @@ const placeOrderOnBehalfOfUser = async (vendorId, adminUserId, websiteMasterData
             shippingAmount: shipping,
             additionalCharges: 0,
             grandTotal,
-            currencyId: currency._id,
-            currencyCode: currency.short_name,
-            currencySymbol: currency.symbol,
-            currencySymbolPosition: currency.symbol_position,
-            currencyDecimalPlaces: currency.decimal_places,
+            ...currencyFields,
             shippingAddressId: savedAddress ? savedAddress._id : null,
             shippingAddressSnapshot: addressSnapshot,
             adminEnteredAddress: isWalkIn ? null : (addressText || null),
@@ -764,6 +843,7 @@ module.exports = {
     fetchActiveProducts,
     fetchProductOptions,
     previewPlaceOrderTax,
+    fetchOrderCurrency,
     placeOrderOnBehalfOfUser,
     restoreStockForAdminOrder,
     // shared with orderEditService.js
@@ -774,6 +854,8 @@ module.exports = {
     resolveApplyBulkPricing,
     resolveAdminOrderTaxLocation,
     applyAdminOrderTax,
+    priceAdminOrderLines,
+    resolveAdminOrderCurrency,
     buildTaxPreview,
     deductStockForLine,
     restoreDeductedStock

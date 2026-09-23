@@ -66,6 +66,14 @@ const resolveTaxLocation = async (order, companySettingsData) => {
     }
 };
 
+// Added products convert from the store currency at the rate locked on the
+// order when it was placed, so they match the lines already on it (orders
+// from before multi-currency have rate 1).
+const orderRateFields = (order) => ({
+    exchangeRate: order.exchangeRate || 1,
+    decimalPlaces: typeof order.currencyDecimalPlaces === 'number' ? order.currencyDecimalPlaces : 2
+});
+
 // Loads an order that can still be edited, plus the lines already on it.
 // Orders placed before Order.items existed keep their lines only on the linked
 // cart (legacyItems) - those are saved onto the order with the first addition.
@@ -115,8 +123,11 @@ const previewAddProductsTax = async (vendorId, orderId, payload, companyMasterDa
             return common.returnResult(false, 400, lineResult.error);
         }
 
+        // Amounts come back in the order's own currency.
         const taxLocation = await resolveTaxLocation(order, companySettingsData);
-        await adminPlaceOrderService.applyAdminOrderTax({ lines: lineResult.lines, taxLocation, isTaxOff: orderIsUntaxed, isTaxManual: false });
+        await adminPlaceOrderService.priceAdminOrderLines({
+            lines: lineResult.lines, taxLocation, isTaxOff: orderIsUntaxed, isTaxManual: false, ...orderRateFields(order)
+        });
 
         return common.returnResult(true, 200, 'Tax preview calculated successfully', adminPlaceOrderService.buildTaxPreview(lineResult.lines, taxLocation, orderIsUntaxed));
     } catch (err) {
@@ -170,10 +181,11 @@ const addProductsToOrder = async (vendorId, adminUserId, orderId, payload, compa
         }
         const lines = lineResult.lines;
 
-        // Untaxed orders stay untaxed; otherwise the admin's typed total or the location's taxes.
+        // Untaxed orders stay untaxed; otherwise the admin's typed total (in the
+        // order's currency) or the location's taxes - lines priced in the order's currency.
         const taxLocation = await resolveTaxLocation(order, companySettingsData);
-        await adminPlaceOrderService.applyAdminOrderTax({
-            lines, taxLocation, isTaxOff: orderIsUntaxed, isTaxManual: isTaxManual === true, manualTaxAmount
+        await adminPlaceOrderService.priceAdminOrderLines({
+            lines, taxLocation, isTaxOff: orderIsUntaxed, isTaxManual: isTaxManual === true, manualTaxAmount, ...orderRateFields(order)
         });
 
         // Reserve stock line by line; undo everything if any line loses a race.

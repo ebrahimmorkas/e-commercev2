@@ -14,6 +14,7 @@ import DiscountForm from '../components/DiscountForm';
 import { mapApiDiscountToDraft } from '../utils/discountDraft';
 import { GIVE_DISCOUNT_TO_CONFIG, DISCOUNT_FLOW_OPTIONS } from '../constants';
 import theme from '../theme/theme';
+import { useStoreCurrency } from '../../../currency/useStoreCurrency';
 
 const PlusIcon = () => (
   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -41,9 +42,11 @@ const flowLabel = (doc) => {
   return DISCOUNT_FLOW_OPTIONS.find((f) => f.value === flow)?.label || flow;
 };
 
-const valueLabel = (doc) => (doc.discountType === 'PERCENTAGE' ? `${doc.discountValue}% off` : `₹${doc.discountValue} off`);
+const valueLabel = (doc, formatMoney) => (doc.discountType === 'PERCENTAGE' ? `${doc.discountValue}% off` : `${formatMoney(doc.discountValue)} off`);
 
 const DiscountsPage = () => {
+  // Amounts are in the store currency (Company Settings).
+  const { formatMoney } = useStoreCurrency();
   const {
     discounts, loading, error, mutating, createDiscount, editDiscount, removeDiscount, toggleStatus, fetchDiscountById,
     bulkToggleStatus, bulkRemoveDiscounts,
@@ -181,7 +184,7 @@ const DiscountsPage = () => {
       {
         key: 'discountValue',
         label: 'Value',
-        render: (row) => <span className="tabular-nums">{valueLabel(row)}</span>,
+        render: (row) => <span className="tabular-nums">{valueLabel(row, formatMoney)}</span>,
       },
       {
         key: 'flow',
@@ -221,7 +224,7 @@ const DiscountsPage = () => {
         ),
       },
     ],
-    [mutating, toggleStatus]
+    [mutating, toggleStatus, formatMoney]
   );
 
   const actions = [
@@ -318,7 +321,7 @@ const DiscountsPage = () => {
                     />
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                    <Badge variant={theme.badge.default} size="sm">{valueLabel(discount)}</Badge>
+                    <Badge variant={theme.badge.default} size="sm">{valueLabel(discount, formatMoney)}</Badge>
                     <Badge variant="gray" size="sm">{flowLabel(discount)}</Badge>
                   </div>
                   <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">

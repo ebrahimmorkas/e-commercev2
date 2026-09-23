@@ -140,6 +140,11 @@ const placeOrderSchema = Joi.object({
     remarks: Joi.string().trim().max(500).allow('', null).label('Remarks')
 });
 
+// Place Order's currency: the chosen customer's, or (no userId) a walk-in's.
+const orderCurrencyQuerySchema = Joi.object({
+    userId: objectId().label('User')
+});
+
 // Live tax preview for the Place Order page - the same customer/address/tax
 // inputs placeOrderSchema takes, so the preview prices exactly what the order will.
 const taxPreviewSchema = Joi.object({
@@ -181,6 +186,7 @@ module.exports = {
     productIdParamSchema,
     placeOrderSchema,
     taxPreviewSchema,
+    orderCurrencyQuerySchema,
     orderLineItemSchema,
     money
 };

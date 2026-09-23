@@ -8,6 +8,28 @@ const imageUploadService = require('./imageUploadService');
 const CountryMaster = require('../models/CountryMaster');
 const StateMaster = require('../models/StateMaster');
 const CityMaster = require('../models/CityMaster');
+const CurrencyMaster = require('../models/CurrencyMaster');
+
+// The store currency (every price is entered in it - see currencyService.js)
+// must be an active currency, and can be changed but never cleared: orders
+// can't be placed without one.
+const validateStoreCurrency = async (data, existingSettings = null) => {
+    try {
+        if (data.currencyId === undefined) return null;
+        if (!data.currencyId) {
+            return existingSettings?.currencyId
+                ? common.returnResult(false, 400, 'The store currency cannot be removed - choose another currency instead.')
+                : null;
+        }
+        const currency = await CurrencyMaster.findOne({ _id: data.currencyId, status: 'A' }).select('_id').lean();
+        if (!currency) {
+            return common.returnResult(false, 400, 'The selected store currency is not available.');
+        }
+        return null;
+    } catch (err) {
+        throw err;
+    }
+};
 
 // Every field a vendor is allowed to set directly through create/update -
 // deliberately excludes vendorId, companyLogo/paymentScanner/partnerCertificate
@@ -182,6 +204,11 @@ const createCompanySettings = async (vendorId, userId, data, files, companyMaste
             return storeLocationFailure;
         }
 
+        const storeCurrencyFailure = await validateStoreCurrency(data);
+        if (storeCurrencyFailure) {
+            return storeCurrencyFailure;
+        }
+
         const settingsData = { vendorId };
         for (const field of SIMPLE_FIELDS) {
             if (data[field] !== undefined) {
@@ -253,6 +280,11 @@ const updateCompanySettings = async (vendorId, userId, data, files, companyMaste
         const storeLocationFailure = await validateStoreLocation(data, companyMasterData, settings);
         if (storeLocationFailure) {
             return storeLocationFailure;
+        }
+
+        const storeCurrencyFailure = await validateStoreCurrency(data, settings);
+        if (storeCurrencyFailure) {
+            return storeCurrencyFailure;
         }
 
         for (const field of SIMPLE_FIELDS) {

@@ -156,7 +156,8 @@ const createOrderFromFavorites = async (req, res) => {
     const result = await favoriteService.createOrderFromFavorites(
       vendorId,
       userId,
-      req.user.country || null,
+      // Same country the storefront showed prices for (currencyController).
+      req.cookies?.Country || req.user.country || null,
       locationContext,
       req.companyMasterData,
       req.websiteMasterData,

@@ -1,7 +1,37 @@
 const authService = require('../services/authService');
-const { sendSuccess, sendError, checkFeatureOnOrOff, encodeId } = require('../utils/common');
-const { logInfo, logException } = require('../utils/logger');
-const { accessTokenCookieOptions, refreshTokenCookieOptions, guestCartCookieOptions, knownUserIdCookieOptions } = require('../utils/cookieOptions');
+const { sendSuccess, sendError, checkFeatureOnOrOff, encodeId, tryDecodeId } = require('../utils/common');
+const { logInfo, logException, logWarning } = require('../utils/logger');
+const { accessTokenCookieOptions, refreshTokenCookieOptions, guestCartCookieOptions, knownUserIdCookieOptions, locationCookieOptions } = require('../utils/cookieOptions');
+
+const LOCATION_COOKIES = { countryId: 'Country', stateId: 'State', cityId: 'City' };
+
+// Shoppers only: the account's own country/state/city ids become the
+// Country/State/City cookies every location-aware feature reads (currency,
+// tax, shipping, location exclusions). A pre-migration account with a typed
+// name has no ids, so its cookies are cleared instead of holding junk.
+const setLocationCookies = (res, user, location) => {
+    try {
+        if (user?.role !== 'user') return;
+        Object.entries(LOCATION_COOKIES).forEach(([key, cookieName]) => {
+            if (location?.[key]) {
+                res.cookie(cookieName, location[key], locationCookieOptions);
+            } else {
+                res.clearCookie(cookieName, locationCookieOptions);
+            }
+        });
+    } catch (err) {
+        // Never fails the login/refresh it's part of.
+        logWarning('authController: setLocationCookies - Exception while setting location cookies', err);
+    }
+};
+
+const clearLocationCookies = (res) => {
+    try {
+        Object.values(LOCATION_COOKIES).forEach((cookieName) => res.clearCookie(cookieName, locationCookieOptions));
+    } catch (err) {
+        logWarning('authController: clearLocationCookies - Exception while clearing location cookies', err);
+    }
+};
 
 // authService's register/login/refresh all return the same minimal
 // { _id, name, username, email, [role] } shape - only _id needs encoding.
@@ -90,6 +120,7 @@ const register = async (req, res) => {
             return sendError(res, 403, 'You have exceeded the number of users allowed');
         }
 
+        // Country/State/City come from the signup dropdowns as encoded ids.
         const newUser = await authService.registerUser({
             vendorId,
             name,
@@ -98,11 +129,11 @@ const register = async (req, res) => {
             phone_no,
             whatsapp_no,
             password,
-            country,
-            state,
-            city,
+            country: tryDecodeId(country),
+            state: tryDecodeId(state),
+            city: tryDecodeId(city),
             ...taxDetails
-        });
+        }, companyMasterData);
 
         if(!newUser.isSuccess) {
             logInfo(0, 1, newUser.message);
@@ -168,6 +199,7 @@ const login = async (req, res) => {
         if (user.role === 'user') {
             res.cookie('knownUserId', user._id.toString(), knownUserIdCookieOptions);
         }
+        setLocationCookies(res, user, loginUser.meta.location);
 
         if (guestCartId && loginUser.meta.cartMerged) {
             res.clearCookie('guestCartId', guestCartCookieOptions);
@@ -200,6 +232,8 @@ const refreshToken = async (req, res) => {
         if (newRefreshToken) {
             res.cookie('refreshToken', newRefreshToken, refreshTokenCookieOptions);
         }
+        // Keeps the location cookies in step with the account (e.g. after an admin edit).
+        setLocationCookies(res, user, result.meta.location);
 
         logInfo(1, 0, result.message, {});
         return sendSuccess(res, result.statusCode, result.message, { accessToken, user: formatAuthUserForResponse(user) });
@@ -215,6 +249,7 @@ const incomingRefreshToken = req.cookies?.refreshToken;
         const result = await authService.logoutUser(incomingRefreshToken);
 
         res.clearCookie('refreshToken', refreshTokenCookieOptions);
+        clearLocationCookies(res);
 
         if (!result.isSuccess) {
             logInfo(0, 1, result.message);
@@ -234,6 +269,7 @@ const logoutAll = async (req, res) => {
         const result = await authService.logoutAllDevices(incomingRefreshToken);
 
         res.clearCookie('refreshToken', refreshTokenCookieOptions);
+        clearLocationCookies(res);
 
         if (!result.isSuccess) {
             logInfo(0, 1, result.message);

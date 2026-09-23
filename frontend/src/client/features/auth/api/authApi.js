@@ -23,6 +23,13 @@ export const register = (data) => apiRequest('/auth/register', { method: 'POST',
 export const getRegistrationConfig = () => apiRequest('/auth/registration-config', { auth: false });
 
 /**
+ * Public - the countries this store serves, with their states and cities, for
+ * the signup Country/State/City dropdowns (same bundle the admin forms use).
+ * @returns {Promise<{ countries: Array, states: Array, cities: Array }>}
+ */
+export const getSignupLocations = () => apiRequest('/location-tax-bundle/get-location-tax-bundle', { auth: false });
+
+/**
  * @param {string} identifier - username, email, or phone number
  * @param {string} password
  * @returns {Promise<{ user: Object, accessToken: string }>}
@@ -38,4 +45,4 @@ export const refreshToken = () => apiRequest('/auth/refresh-token', { method: 'P
 
 export const logout = () => apiRequest('/auth/logout', { method: 'POST', auth: false });
 
-export default { register, getRegistrationConfig, login, refreshToken, logout };
+export default { register, getRegistrationConfig, getSignupLocations, login, refreshToken, logout };

@@ -1,6 +1,21 @@
 const userService = require('../services/userService');
 const logger = require('../utils/logger');
 const common = require('../utils/common');
+const mongoose = require('mongoose');
+
+// country/state/city hold location ids (encoded like every other id so they
+// match the location-bundle dropdown values); a pre-migration typed name is
+// returned as-is.
+const encodeLocationValue = (value) => (value && mongoose.Types.ObjectId.isValid(value) ? common.encodeId(value) : value);
+
+// Location ids arrive encoded from the Add User / Edit Customer dropdowns.
+const decodeLocationFields = (body) => {
+    const decoded = { ...body };
+    ['country', 'state', 'city'].forEach((field) => {
+        if (decoded[field] !== undefined) decoded[field] = common.tryDecodeId(decoded[field]);
+    });
+    return decoded;
+};
 
 // Converts a User mongoose doc (or the plain-object projections
 // userService builds by hand) into a response-safe object with every
@@ -21,6 +36,9 @@ const formatUserForResponse = (userDoc) => {
         deletedBy: user.deletedBy ? common.encodeId(user.deletedBy) : user.deletedBy,
         activeMarkedBy: user.activeMarkedBy ? common.encodeId(user.activeMarkedBy) : user.activeMarkedBy,
         inActiveMarkedBy: user.inActiveMarkedBy ? common.encodeId(user.inActiveMarkedBy) : user.inActiveMarkedBy,
+        country: encodeLocationValue(user.country),
+        state: encodeLocationValue(user.state),
+        city: encodeLocationValue(user.city),
     };
 };
 
@@ -40,7 +58,7 @@ const getAllUsersAdmin = async (req, res) => {
 const createUserByAdmin = async (req, res) => {
     const vendorId = req.vendorId;
     try {
-        const result = await userService.createUserByAdmin(vendorId, req.user._id, req.body, req.websiteMasterData, req.companyMasterData);
+        const result = await userService.createUserByAdmin(vendorId, req.user._id, decodeLocationFields(req.body), req.websiteMasterData, req.companyMasterData);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
@@ -70,7 +88,7 @@ const updateUserByAdmin = async (req, res) => {
     let id;
     try {
         id = common.decodeId(req.params.id);
-        const result = await userService.updateUserByAdmin(vendorId, req.user._id, id, req.body);
+        const result = await userService.updateUserByAdmin(vendorId, req.user._id, id, decodeLocationFields(req.body), req.companyMasterData);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }

@@ -8,6 +8,7 @@ import AdminAuthProvider from './admin/features/login/context/AuthProvider'
 import ClientAuthProvider from './client/features/auth/context/AuthProvider'
 import RealtimeProvider from './admin/realtime/RealtimeProvider'
 import ClientRealtimeProvider from './client/realtime/ClientRealtimeProvider'
+import CurrencyProvider from './client/currency/CurrencyProvider'
 import ServerErrorScreen from './components/common/ServerErrorScreen'
 
 // No router yet - the admin panel lives behind /admin, everything else is
@@ -25,9 +26,11 @@ const Root = () =>
     </AdminAuthProvider>
   ) : (
     <ClientAuthProvider>
-      <ClientRealtimeProvider>
-        <ClientApp />
-      </ClientRealtimeProvider>
+      <CurrencyProvider>
+        <ClientRealtimeProvider>
+          <ClientApp />
+        </ClientRealtimeProvider>
+      </CurrencyProvider>
     </ClientAuthProvider>
   )
 

@@ -15,6 +15,7 @@ import ProductForm from '../components/ProductForm';
 import { mapApiProductToDraft } from '../utils/productDraft';
 import { filterBySearch } from '../../../../utils/searchFilter';
 import theme from '../theme/theme';
+import { useStoreCurrency } from '../../../currency/useStoreCurrency';
 
 const PlusIcon = () => (
   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -75,12 +76,12 @@ const thumbnailOf = (product) => {
   return defaultSize?.image?.url || null;
 };
 
-const priceRangeOf = (product) => {
+const priceRangeOf = (product, formatMoney) => {
   const prices = allSizes(product).map((s) => s.price).filter((p) => typeof p === 'number');
   if (prices.length === 0) return '—';
   const min = Math.min(...prices);
   const max = Math.max(...prices);
-  return min === max ? `₹${min}` : `₹${min} - ₹${max}`;
+  return min === max ? formatMoney(min) : `${formatMoney(min)} - ${formatMoney(max)}`;
 };
 
 const stockOf = (product) => allSizes(product).reduce((sum, s) => sum + (s.stock || 0), 0);
@@ -113,6 +114,8 @@ const Thumbnail = ({ product, size = 'w-10 h-10' }) => {
 };
 
 const ProductsPage = () => {
+  // Prices are in the store currency (Company Settings).
+  const { formatMoney } = useStoreCurrency();
   const {
     products, loading, error, mutating, createProduct, editProduct, removeProduct, toggleStatus, cloneProduct, fetchProductById,
     bulkToggleStatus, bulkRemoveProducts, bulkCloneProducts,
@@ -327,7 +330,7 @@ const ProductsPage = () => {
       {
         key: 'price',
         label: 'Price',
-        render: (row) => <span className="tabular-nums">{priceRangeOf(row)}</span>,
+        render: (row) => <span className="tabular-nums">{priceRangeOf(row, formatMoney)}</span>,
       },
       {
         key: 'stock',
@@ -346,7 +349,7 @@ const ProductsPage = () => {
         ),
       },
     ],
-    [categoryNameById, mutating, toggleStatus]
+    [categoryNameById, mutating, toggleStatus, formatMoney]
   );
 
   const noMatchesState = (
@@ -511,7 +514,7 @@ const ProductsPage = () => {
                         <Badge variant="blue" size="sm">{(product.variants || []).length} variant{(product.variants || []).length === 1 ? '' : 's'}</Badge>
                       </div>
                       <div className="flex items-center justify-between mt-2 text-sm">
-                        <span className={`font-medium tabular-nums ${theme.text.heading}`}>{priceRangeOf(product)}</span>
+                        <span className={`font-medium tabular-nums ${theme.text.heading}`}>{priceRangeOf(product, formatMoney)}</span>
                         <span className={`tabular-nums ${theme.text.muted}`}>Stock {stockOf(product)}</span>
                       </div>
                     </div>

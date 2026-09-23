@@ -104,6 +104,7 @@ app.use('/api/states', stateMasterRoutes);
 app.use('/api/cities', cityMasterRoutes);
 app.use('/api/taxes', taxMasterRoutes);
 app.use('/api/location-tax-bundle', locationTaxBundleRoutes);
+app.use('/api/currency', require('./routes/currencyRoutes'));
 app.use('/api/cart', cartRoutes);
 
 // Private Routes

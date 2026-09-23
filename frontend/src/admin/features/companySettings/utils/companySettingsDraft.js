@@ -1,10 +1,10 @@
 /**
  * Every field on the CompanySettings form, keyed to its draft shape - mirrors
- * SIMPLE_FIELDS in backend/services/companySettingsService.js (currencyId is
- * intentionally omitted: there's no CurrencyMaster admin/list endpoint yet
- * for a dropdown to read from).
+ * SIMPLE_FIELDS in backend/services/companySettingsService.js. currencyId is
+ * the store currency every price is entered in (dropdown from /currency/currencies).
  */
 export const emptyDraft = () => ({
+  currencyId: '',
   storeCountryId: '',
   storeStateId: '',
   storeCityId: '',
@@ -90,6 +90,7 @@ export const emptyDraft = () => ({
  * them with a new File on submit if the admin picks one.
  */
 export const mapApiSettingsToDraft = (doc) => ({
+  currencyId: doc.currencyId ? String(doc.currencyId) : '',
   storeCountryId: doc.storeCountryId ? String(doc.storeCountryId) : '',
   storeStateId: doc.storeStateId ? String(doc.storeStateId) : '',
   storeCityId: doc.storeCityId ? String(doc.storeCityId) : '',

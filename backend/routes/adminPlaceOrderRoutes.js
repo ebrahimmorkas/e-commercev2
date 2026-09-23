@@ -14,7 +14,8 @@ const {
     productsQuerySchema,
     productIdParamSchema,
     placeOrderSchema,
-    taxPreviewSchema
+    taxPreviewSchema,
+    orderCurrencyQuerySchema
 } = require('../middlewares/validations/adminPlaceOrderValidations');
 
 // Admin only, and only for vendors with the ADMIN_PLACE_ORDER module assigned.
@@ -28,6 +29,9 @@ router.get('/users/:userId/addresses', ...adminContext, validate(userIdParamSche
 router.get('/categories', ...adminContext, adminPlaceOrderController.getCategories);
 router.get('/products', ...adminContext, validate(productsQuerySchema, 'query'), adminPlaceOrderController.getProducts);
 router.get('/products/:productId/options', ...adminContext, validate(productIdParamSchema, 'params'), adminPlaceOrderController.getProductOptions);
+
+// --- Currency the page shows / the admin types amounts in (customer's, or walk-in store currency) ---
+router.get('/currency', ...adminContext, validate(orderCurrencyQuerySchema, 'query'), adminPlaceOrderController.getOrderCurrency);
 
 // --- Live tax preview (nothing is saved) ---
 router.post('/tax-preview', ...adminContext, validate(taxPreviewSchema, 'body'), adminPlaceOrderController.previewTax);

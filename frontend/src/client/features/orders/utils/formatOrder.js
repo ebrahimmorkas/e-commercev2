@@ -1,3 +1,5 @@
+import { formatCurrencyAmount } from '../../../../utils/money';
+
 // Mirrors backend/constants/orderStepConstants.js's RESERVED_STEP_CODES/
 // TERMINAL_STEP_CODES - just the two used for the cancel-button UI gate.
 // The backend is still the authority: cancelOrder re-validates cutoff step,
@@ -11,14 +13,13 @@ export const isOrderCancellable = (order) =>
 // Order snapshots its own currency at creation time (currencySymbol/
 // currencySymbolPosition/currencyDecimalPlaces) so historical orders always
 // render with the currency they were actually placed in.
-export const formatOrderMoney = (order, amount) => {
-  const value = (amount ?? 0).toLocaleString('en-IN', {
-    minimumFractionDigits: order?.currencyDecimalPlaces ?? 2,
-    maximumFractionDigits: order?.currencyDecimalPlaces ?? 2,
+export const formatOrderMoney = (order, amount) =>
+  formatCurrencyAmount(amount, {
+    code: order?.currencyCode,
+    symbol: order?.currencySymbol || '',
+    symbolPosition: order?.currencySymbolPosition,
+    decimalPlaces: order?.currencyDecimalPlaces ?? 2,
   });
-  const symbol = order?.currencySymbol || '';
-  return order?.currencySymbolPosition === 'SUFFIX' ? `${value}${symbol}` : `${symbol}${value}`;
-};
 
 // Shipping row text for a placed order. Orders placed from the storefront
 // carry a shippingPriceBreakdown (see backend Order model); admin-placed ones

@@ -8,8 +8,8 @@ import { useShippingEstimate } from '../../cart/hooks/useShippingEstimate';
 import { formatShippingEstimate, shippingAmountForTotal } from '../../cart/utils/formatShipping';
 import { useTaxEstimate, taxAmountForTotal } from '../../cart/hooks/useTaxEstimate';
 import TaxEstimateRows from '../../cart/components/TaxEstimateRows';
+import { useCurrency } from '../../../currency/useCurrency';
 
-const formatMoney = (amount) => `₹${(amount ?? 0).toLocaleString('en-IN')}`;
 
 /**
  * Address selection + order placement. POSTs to /api/orders/place-order,
@@ -26,6 +26,8 @@ const formatMoney = (amount) => `₹${(amount ?? 0).toLocaleString('en-IN')}`;
  * @param {Function} onPlaced - Called with the new order's _id on success.
  */
 const CheckoutPage = ({ lineItems = [], subtotal = 0, cartLoading, initialAddressId = null, onBack, onPlaced }) => {
+  // Amounts here are in the store currency; shown in the shopper's (the one the order is charged in).
+  const { formatMoney } = useCurrency();
   const [selectedAddressId, setSelectedAddressId] = useState(initialAddressId);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState('');

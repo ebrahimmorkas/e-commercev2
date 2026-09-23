@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import Modal from '../../../../components/common/Modal/Modal';
 import { useAuth } from '../hooks/useAuth';
 import { getRegistrationConfig } from '../api/authApi';
+import { useSignupLocations } from '../hooks/useSignupLocations';
 import { useToast } from '../../../../components/common/Toast';
 import htmLogo from '../../../../assets/htm_logo.jpeg';
 
@@ -28,10 +29,10 @@ const EMPTY_REGISTER_FORM = {
  * /api/auth/register then immediately logs in with the same credentials,
  * since the register response doesn't include a token (see authApi.js).
  *
- * country/state/city are plain free-text fields here (not the
- * country_id/state_id/city_id ObjectId refs the address book uses) -
- * backend/models/User.js stores them as unvalidated strings, unlike
- * Address's real CountryMaster/StateMaster/CityMaster foreign keys.
+ * country/state/city are dropdowns of the countries this store serves; the
+ * account stores their ids, and login turns them into the Country/State/City
+ * cookies that decide the shopper's currency, tax and shipping (backend
+ * services/userLocationService.js + authController.setLocationCookies).
  */
 const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
   const { login, register } = useAuth();
@@ -45,6 +46,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
   // Settings choice). Off until the API says otherwise, and stays off if the call fails,
   // so a config hiccup can never block signup.
   const [taxRegistrationEnabled, setTaxRegistrationEnabled] = useState(false);
+  const locations = useSignupLocations(isOpen && mode === 'register', registerForm.country, registerForm.state);
 
   useEffect(() => {
     if (!isOpen || mode !== 'register') return undefined;
@@ -251,34 +253,47 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
             maxLength={14}
             disabled={loading}
           />
-          <div className="grid grid-cols-3 gap-3">
-            <input
-              type="text"
-              placeholder="Country"
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <select
+              aria-label="Country"
               value={registerForm.country}
-              onChange={(e) => setRegisterForm((f) => ({ ...f, country: e.target.value }))}
-              className={inputClass}
+              // A new country invalidates the state and city chosen under the old one.
+              onChange={(e) => setRegisterForm((f) => ({ ...f, country: e.target.value, state: '', city: '' }))}
+              className={`${inputClass} bg-white`}
               required
-              disabled={loading}
-            />
-            <input
-              type="text"
-              placeholder="State"
+              disabled={loading || locations.loading}
+            >
+              <option value="">{locations.loading ? 'Loading...' : 'Country'}</option>
+              {locations.countryOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            <select
+              aria-label="State"
               value={registerForm.state}
-              onChange={(e) => setRegisterForm((f) => ({ ...f, state: e.target.value }))}
-              className={inputClass}
+              onChange={(e) => setRegisterForm((f) => ({ ...f, state: e.target.value, city: '' }))}
+              className={`${inputClass} bg-white`}
               required
-              disabled={loading}
-            />
-            <input
-              type="text"
-              placeholder="City"
+              disabled={loading || !registerForm.country}
+            >
+              <option value="">State</option>
+              {locations.stateOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            <select
+              aria-label="City"
               value={registerForm.city}
               onChange={(e) => setRegisterForm((f) => ({ ...f, city: e.target.value }))}
-              className={inputClass}
+              className={`${inputClass} bg-white`}
               required
-              disabled={loading}
-            />
+              disabled={loading || !registerForm.state}
+            >
+              <option value="">City</option>
+              {locations.cityOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
           </div>
           {taxRegistrationEnabled && (
             <div className="space-y-3">

@@ -14,11 +14,29 @@ import { useStoreLocationOptions } from '../hooks/useStoreLocationOptions';
  */
 const GeneralInfoSection = ({ draft, onChange, errors = {} }) => {
   const set = (patch) => onChange(patch);
-  const { countryOptions, stateOptions, cityOptions } = useStoreLocationOptions(draft.storeCountryId, draft.storeStateId);
+  const { countryOptions, stateOptions, cityOptions, currencyOptions } = useStoreLocationOptions(draft.storeCountryId, draft.storeStateId);
 
   return (
     <div className="space-y-6">
       <div>
+        <h3 className={`text-sm font-semibold ${theme.text.heading}`}>Store Currency</h3>
+        <p className={`text-xs ${theme.text.muted} mt-0.5`}>
+          Every price, shipping charge, discount and free cash amount is entered in this currency. Customers from another country you serve see prices converted to their own currency.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-3">
+          <Dropdown
+            label="Store Currency"
+            name="currencyId"
+            placeholder={currencyOptions.length ? 'Select a currency' : 'No currencies available'}
+            options={currencyOptions}
+            value={draft.currencyId}
+            onChange={(value) => set({ currencyId: value || draft.currencyId })}
+            searchable
+          />
+        </div>
+      </div>
+
+      <div className="pt-4 border-t border-gray-100">
         <h3 className={`text-sm font-semibold ${theme.text.heading}`}>Store Location</h3>
         <p className={`text-xs ${theme.text.muted} mt-0.5`}>
           Used to work out tax whenever the customer&apos;s location is unknown - walk-in sales, admin orders with a typed-in address, and cart estimates for visitors with no location. Leave the country empty to charge no tax in those cases.

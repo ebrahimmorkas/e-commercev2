@@ -15,6 +15,7 @@ import FreeCashForm from '../components/FreeCashForm';
 import { mapApiFreeCashToDraft } from '../utils/freeCashDraft';
 import { GIVE_FREE_CASH_TO_CONFIG } from '../constants';
 import theme from '../theme/theme';
+import { useStoreCurrency } from '../../../currency/useStoreCurrency';
 
 const PlusIcon = () => (
   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -48,6 +49,8 @@ const windowLabel = (row) => (row.startDate || row.endDate
   : '—');
 
 const FreeCashPage = () => {
+  // Amounts are in the store currency (Company Settings).
+  const { formatMoney } = useStoreCurrency();
   const {
     freeCashList, loading, error, mutating,
     createFreeCash, editFreeCash, removeFreeCash, toggleStatus, fetchFreeCashById,
@@ -207,7 +210,7 @@ const FreeCashPage = () => {
       {
         key: 'freeCashAmount',
         label: 'Amount',
-        render: (row) => <span className="tabular-nums">₹{row.freeCashAmount}</span>,
+        render: (row) => <span className="tabular-nums">{formatMoney(row.freeCashAmount)}</span>,
       },
       {
         key: 'window',
@@ -218,7 +221,7 @@ const FreeCashPage = () => {
         key: 'validAbove',
         label: 'Valid Above',
         align: 'center',
-        render: (row) => <span className="tabular-nums">₹{row.validAbove ?? 0}</span>,
+        render: (row) => <span className="tabular-nums">{formatMoney(row.validAbove ?? 0)}</span>,
       },
       {
         key: 'status',
@@ -237,7 +240,7 @@ const FreeCashPage = () => {
         ),
       },
     ],
-    [mutating, toggleStatus]
+    [mutating, toggleStatus, formatMoney]
   );
 
   const actions = [
@@ -335,7 +338,7 @@ const FreeCashPage = () => {
                     />
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                    <Badge variant={theme.badge.default} size="sm">₹{freeCash.freeCashAmount}</Badge>
+                    <Badge variant={theme.badge.default} size="sm">{formatMoney(freeCash.freeCashAmount)}</Badge>
                     <Badge variant="gray" size="sm">{windowLabel(freeCash)}</Badge>
                   </div>
                   <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">

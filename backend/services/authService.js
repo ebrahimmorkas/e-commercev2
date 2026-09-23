@@ -4,6 +4,7 @@ const RefreshToken = require('../models/RefreshToken');
 const { generateAccessToken, generateRefreshToken, verifyRefreshToken, hashToken } = require('../utils/token');
 const common = require('../utils/common');
 const cartService = require('./cartService');
+const userLocationService = require('./userLocationService');
 const logger = require('../utils/logger');
 require('dotenv').config({ quiet: true });
 
@@ -18,8 +19,14 @@ const getUserCount = async (vendorId) => {
     }
 };
 
-const registerUser = async ({ vendorId, name, username, email, phone_no, whatsapp_no, password, country, state, city, isTaxRegistered, businessFullName, trn }) => {
+const registerUser = async ({ vendorId, name, username, email, phone_no, whatsapp_no, password, country, state, city, isTaxRegistered, businessFullName, trn }, companyMasterData) => {
     try {
+        // country/state/city are ids picked from the vendor's allowed countries.
+        const locationResult = await userLocationService.validateUserLocation({ countryId: country, stateId: state, cityId: city }, companyMasterData);
+        if (!locationResult.isSuccess) {
+            return locationResult;
+        }
+
         const existingUser = await User.findOne({
             vendorId,
             $or: [{ username }, { email }, { phone_no }]
@@ -113,7 +120,12 @@ const loginUser = async ({ identifier, password }, deviceMeta, vendorId, guestCa
         let cartMergeResult = null;
         if (guestCartId) {
             try {
-                cartMergeResult = await cartService.mergeGuestCartIntoUserCart(vendorId, user._id, guestCartId, locationContext, companyMasterData, websiteMasterData);
+                // The browser's location cookies, else the account's own location.
+                const userLocation = userLocationService.extractUserLocation(user);
+                const mergeLocation = locationContext?.countryId
+                    ? locationContext
+                    : { ...locationContext, countryId: userLocation.countryId, stateId: userLocation.stateId, cityId: userLocation.cityId };
+                cartMergeResult = await cartService.mergeGuestCartIntoUserCart(vendorId, user._id, guestCartId, mergeLocation, companyMasterData, websiteMasterData);
             } catch (mergeErr) {
                 logger.logWarning('Guest cart merge failed during login', { userId: user._id, guestCartId, mergeErr });
             }
@@ -121,6 +133,8 @@ const loginUser = async ({ identifier, password }, deviceMeta, vendorId, guestCa
 
         return common.returnResult(true, 200, `Login Success`, { accessToken, refreshToken,
             user: { _id: user._id, name: user.name, username: user.username, email: user.email, role: user.role },
+            // For the Country/State/City cookies (authController) - never sent to the client.
+            location: userLocationService.extractUserLocation(user),
             cartMerged: !!(cartMergeResult && cartMergeResult.isSuccess)
         });
     } catch (err) {
@@ -274,7 +288,9 @@ const refreshAccessToken = async (incomingRefreshToken, deviceMeta) => {
             // null when this request did not rotate - the controller must then leave the
             // browser's cookie alone.
             refreshToken: newRefreshToken,
-            user: { _id: user._id, name: user.name, username: user.username, email: user.email, role: user.role }
+            user: { _id: user._id, name: user.name, username: user.username, email: user.email, role: user.role },
+            // Re-sets the Country/State/City cookies (authController) - never sent to the client.
+            location: userLocationService.extractUserLocation(user)
         });
     } catch (err) {
         // Rotation is a single atomic update, so a failure here can never leave the session
