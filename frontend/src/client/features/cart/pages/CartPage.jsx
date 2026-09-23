@@ -20,7 +20,7 @@ const formatSize = (item) => (item.labelValue ? `${item.sizeName}: ${item.labelV
 // Stacks (name+details, then controls) on narrow screens where a single
 // row can't fit product info + stepper + total + remove without wrapping
 // text mid-word; reverts to one row from `sm` up.
-const CartLineItem = ({ item, onIncrement, onDecrement, onRemove }) => (
+const CartLineItem = ({ item, onIncrement, onDecrement, onSetQuantity, onRemove }) => (
   <div className={`flex flex-col sm:flex-row sm:items-center gap-3 py-4 border-b last:border-b-0 ${theme.card.border}`}>
     <div className="min-w-0 flex-1">
       <h3 className={`text-sm font-semibold truncate ${theme.card.name}`}>{item.productName}</h3>
@@ -45,6 +45,7 @@ const CartLineItem = ({ item, onIncrement, onDecrement, onRemove }) => (
           inStock
           onIncrement={() => onIncrement(item.sizeId)}
           onDecrement={() => onDecrement(item.sizeId)}
+          onSetQuantity={(quantity) => onSetQuantity?.(item.sizeId, quantity)}
         />
       </div>
 
@@ -84,6 +85,7 @@ const CartLineItem = ({ item, onIncrement, onDecrement, onRemove }) => (
  * @param {Function} props.onBack - Called to return to shopping.
  * @param {Function} props.onIncrementItem - Called with a sizeId.
  * @param {Function} props.onDecrementItem - Called with a sizeId.
+ * @param {Function} [props.onSetItemQuantity] - Called with a sizeId and a typed quantity.
  * @param {Function} props.onRemoveItem - Called with a sizeId.
  * @param {Function} [props.onCheckout] - Called when "Proceed to Checkout" is clicked.
  * @param {boolean} [props.isAuthenticated] - Saved addresses (and so changing the delivery address) need a login.
@@ -99,6 +101,7 @@ const CartPage = ({
   onBack,
   onIncrementItem,
   onDecrementItem,
+  onSetItemQuantity,
   onRemoveItem,
   onCheckout,
   isAuthenticated = false,
@@ -208,6 +211,7 @@ const CartPage = ({
                 item={item}
                 onIncrement={onIncrementItem}
                 onDecrement={onDecrementItem}
+                onSetQuantity={onSetItemQuantity}
                 onRemove={onRemoveItem}
               />
             ))}

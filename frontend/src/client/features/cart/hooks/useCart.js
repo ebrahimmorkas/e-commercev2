@@ -57,12 +57,12 @@ export const useCart = () => {
     return result.cart;
   }, []);
 
-  // Shared by increment/decrement: looks up the line item's productId/
-  // variantId by sizeId and PUTs the new quantity. Quantity 0 (or below) is
+  // Sets a line's exact quantity (typed into the stepper, or +/-): looks up
+  // the line item's productId/variantId by sizeId and PUTs it. Quantity 0 is
   // handled server-side as a removal (backend/services/cartService.js
-  // updateCartItemQuantity), so decrementing to 0 needs no separate call.
-  const changeItemQuantity = useCallback(
-    async (sizeId, delta) => {
+  // updateCartItemQuantity), so going to 0 needs no separate call.
+  const setItemQuantity = useCallback(
+    async (sizeId, quantity) => {
       const line = lineItemBySizeId.get(sizeId);
       if (!line) return null;
 
@@ -70,12 +70,21 @@ export const useCart = () => {
         productId: line.productId,
         variantId: line.variantId,
         sizeId: line.sizeId,
-        quantity: Math.max(line.quantity + delta, 0),
+        quantity: Math.max(quantity, 0),
       });
       setCart(result.cart);
       return result.cart;
     },
     [lineItemBySizeId]
+  );
+
+  const changeItemQuantity = useCallback(
+    (sizeId, delta) => {
+      const line = lineItemBySizeId.get(sizeId);
+      if (!line) return null;
+      return setItemQuantity(sizeId, line.quantity + delta);
+    },
+    [lineItemBySizeId, setItemQuantity]
   );
 
   const incrementItem = useCallback((sizeId) => changeItemQuantity(sizeId, 1), [changeItemQuantity]);
@@ -118,6 +127,7 @@ export const useCart = () => {
     addToCart,
     incrementItem,
     decrementItem,
+    setItemQuantity,
     removeItem,
     checkout,
   };

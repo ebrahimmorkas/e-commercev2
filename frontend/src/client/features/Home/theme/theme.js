@@ -106,6 +106,8 @@ const theme = {
     stepperButtonLeft: 'rounded-l-lg',
     stepperButtonRight: 'rounded-r-lg disabled:opacity-40 disabled:cursor-not-allowed',
     stepperCountLayout: 'text-sm font-semibold min-w-6 text-center',
+    // The typeable quantity between − and + (inherits the button's text color).
+    stepperInputLayout: 'w-12 min-w-0 bg-transparent text-sm font-semibold text-center rounded outline-none focus:bg-white/25 focus:ring-2 focus:ring-black/20',
   },
   // Layout-only classes for ProductListItem - shares theme.card's colors
   // (background/border/shadow, text, button, stepper, etc.) so a list row

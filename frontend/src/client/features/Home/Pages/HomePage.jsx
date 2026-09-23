@@ -36,8 +36,9 @@ const FloatingGems = () => (
  * @param {Object} [props.cartItems] - Map of cart-item id -> quantity, keyed by each product's default size id.
  * @param {Function} [props.onIncrementItem] - Called with a cart-item id to increase its quantity.
  * @param {Function} [props.onDecrementItem] - Called with a cart-item id to decrease (or remove) its quantity.
+ * @param {Function} [props.onSetItemQuantity] - Called with a cart-item id and a typed quantity.
  */
-const HomePage = ({ onAddToCart, onProductClick, cartItems = {}, onIncrementItem, onDecrementItem }) => {
+const HomePage = ({ onAddToCart, onProductClick, cartItems = {}, onIncrementItem, onDecrementItem, onSetItemQuantity }) => {
   const { products, loading, error, reload } = useStorefrontProducts();
   const { banner, loading: bannerLoading } = useStorefrontBanner();
 
@@ -143,6 +144,7 @@ const HomePage = ({ onAddToCart, onProductClick, cartItems = {}, onIncrementItem
                   onOpen={onProductClick}
                   onIncrement={() => onIncrementItem?.(itemId)}
                   onDecrement={() => onDecrementItem?.(itemId)}
+                  onSetQuantity={(quantity) => onSetItemQuantity?.(itemId, quantity)}
                 />
               );
             })}

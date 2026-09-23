@@ -104,7 +104,11 @@ const updateCartItem = async (req, res) => {
         };
         const result = await cartService.updateCartItemQuantity(vendorId, req.cartOwner, req.companyMasterData, req.websiteMasterData, req.companySettingsData, payload);
         if (!result.isSuccess) {
-            return common.sendError(res, result.statusCode, result.message);
+            // Over stock: tell the storefront how many are left so it can use that instead.
+            const stockError = result.meta?.availableStock !== undefined
+                ? [{ field: 'quantity', message: result.message, availableStock: result.meta.availableStock }]
+                : null;
+            return common.sendError(res, result.statusCode, result.message, stockError);
         }
         return common.sendSuccess(res, result.statusCode, result.message, deepEncodeIds(result.meta));
     } catch (error) {

@@ -19,6 +19,7 @@ const CategoryProductsPage = ({
   onAddToCart,
   onIncrementItem,
   onDecrementItem,
+  onSetItemQuantity,
   onGoHome,
 }) => {
   const { products, categoryName, loading, error, statusCode, reload } = useStorefrontProductsByCategory(categoryId);
@@ -62,6 +63,7 @@ const CategoryProductsPage = ({
                   onOpen={onProductClick}
                   onIncrement={() => onIncrementItem?.(itemId)}
                   onDecrement={() => onDecrementItem?.(itemId)}
+                  onSetQuantity={(quantity) => onSetItemQuantity?.(itemId, quantity)}
                 />
               );
             })}

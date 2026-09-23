@@ -65,9 +65,10 @@ const BulkPricing = ({ bulkPricing }) => {
  * @param {Function} [props.onAddToCart]
  * @param {Function} [props.onIncrement]
  * @param {Function} [props.onDecrement]
+ * @param {(quantity: number) => void} [props.onSetQuantity] - A quantity typed into the stepper.
  * @param {Function} [props.onOpen] - Called with the product when the card (outside the Add to Cart control) is clicked, to open its detail page.
  */
-const ProductCard = ({ product, quantity = 0, onAddToCart, onIncrement, onDecrement, onOpen }) => {
+const ProductCard = ({ product, quantity = 0, onAddToCart, onIncrement, onDecrement, onSetQuantity, onOpen }) => {
   const { ref, onMouseMove, onMouseLeave } = useTilt3D({ max: 6, scale: 1.02 });
 
   return (
@@ -100,6 +101,7 @@ const ProductCard = ({ product, quantity = 0, onAddToCart, onIncrement, onDecrem
             onAdd={() => onAddToCart?.(product)}
             onIncrement={onIncrement}
             onDecrement={onDecrement}
+            onSetQuantity={onSetQuantity}
           />
         </div>
       </div>

@@ -1,10 +1,19 @@
+import { useRef, useState } from 'react';
 import theme from '../../Home/theme/theme';
 
+const MAX_TYPED_QUANTITY = 100000;
+
 /**
- * Add to Cart control shared by the product card and the detail page.
- * Renders a plain "Add to Cart" button while the item isn't in the cart yet;
- * once it is (quantity > 0), swaps to a −/+ stepper so the shopper can adjust
- * or remove it (decrementing to 0 removes it) without leaving the page.
+ * Add to Cart control shared by the product card, list row, detail page and
+ * cart page. Renders a plain "Add to Cart" button while the item isn't in the
+ * cart yet; once it is (quantity > 0), swaps to − [quantity] + so the shopper
+ * can adjust or remove it without leaving the page.
+ *
+ * The quantity is a text field: the shopper can type the exact amount, saved
+ * on Enter or when the field loses focus (so typing "12" never saves "1"
+ * first). Typing 0 removes the item; leaving it empty puts the old quantity
+ * back. Stock is enforced by the backend - see App.jsx handleSetItemQuantity,
+ * which falls back to the available stock with a message.
  *
  * @param {Object} props
  * @param {number} props.quantity - Current quantity of this item in the cart (0 = not added yet).
@@ -14,6 +23,7 @@ import theme from '../../Home/theme/theme';
  * @param {Function} props.onAdd
  * @param {Function} props.onIncrement
  * @param {Function} props.onDecrement
+ * @param {(quantity: number) => void} [props.onSetQuantity] - Typed quantity; without it the field is read-only.
  */
 const QuantityStepper = ({
   quantity,
@@ -23,11 +33,29 @@ const QuantityStepper = ({
   onAdd,
   onIncrement,
   onDecrement,
+  onSetQuantity,
 }) => {
+  // What the shopper is typing - null while the field isn't being edited, so
+  // the field otherwise always shows the cart's real quantity.
+  const [draft, setDraft] = useState(null);
+  // Set by Escape so the blur that follows discards the draft instead of saving it.
+  const cancelRef = useRef(false);
+
   const heightClass = theme.card.buttonHeight[size] ?? theme.card.buttonHeight.md;
+  // Product cards open the product on click - controls inside must not.
   const stop = (fn) => (e) => {
     e.stopPropagation();
     fn?.();
+  };
+
+  const commitDraft = () => {
+    const text = cancelRef.current ? '' : (draft ?? '').trim();
+    cancelRef.current = false;
+    setDraft(null);
+    if (!text) return; // empty -> keep the current quantity
+    const next = Math.min(Number.parseInt(text, 10), MAX_TYPED_QUANTITY);
+    if (Number.isNaN(next) || next === quantity) return;
+    onSetQuantity?.(next);
   };
 
   if (!inStock) {
@@ -40,7 +68,7 @@ const QuantityStepper = ({
 
   if (quantity > 0) {
     return (
-      <div className={`${theme.card.stepperLayout} ${theme.card.button}`}>
+      <div className={`${theme.card.stepperLayout} ${theme.card.button}`} onClick={(e) => e.stopPropagation()}>
         <button
           type="button"
           onClick={stop(onDecrement)}
@@ -49,7 +77,33 @@ const QuantityStepper = ({
         >
           −
         </button>
-        <span className={theme.card.stepperCountLayout}>{quantity}</span>
+        {onSetQuantity ? (
+          <input
+            type="text"
+            inputMode="numeric"
+            aria-label="Quantity"
+            maxLength={6}
+            value={draft ?? String(quantity)}
+            onFocus={(e) => {
+              setDraft(String(quantity));
+              e.target.select();
+            }}
+            // Digits only - no signs, decimals or letters.
+            onChange={(e) => setDraft(e.target.value.replace(/\D/g, ''))}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') e.currentTarget.blur();
+              if (e.key === 'Escape') {
+                cancelRef.current = true;
+                e.currentTarget.blur();
+              }
+            }}
+            onBlur={commitDraft}
+            className={theme.card.stepperInputLayout}
+          />
+        ) : (
+          <span className={theme.card.stepperCountLayout}>{quantity}</span>
+        )}
         <button
           type="button"
           onClick={stop(onIncrement)}

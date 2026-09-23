@@ -60,6 +60,7 @@ const BulkPricingTable = ({ bulkPricing }) => {
  * @param {Object} [props.cartItems] - Map of cart-item id (size id) -> quantity.
  * @param {Function} [props.onIncrementItem] - Called with a cart-item id to increase its quantity.
  * @param {Function} [props.onDecrementItem] - Called with a cart-item id to decrease (or remove) its quantity.
+ * @param {Function} [props.onSetItemQuantity] - Called with a cart-item id and a typed quantity.
  * @param {Function} [props.onProductClick] - Called with a recommended product's card shape when it's opened.
  * @param {Function} [props.onRecommendedAddToCart] - Called with a recommended product's card shape on its own Add to Cart.
  */
@@ -70,6 +71,7 @@ const ProductDetailPage = ({
   cartItems = {},
   onIncrementItem,
   onDecrementItem,
+  onSetItemQuantity,
   onProductClick,
   onRecommendedAddToCart,
 }) => {
@@ -278,6 +280,7 @@ const ProductDetailPage = ({
               onAdd={() => onAddToCart?.({ product, variant: selectedVariant, size: selectedSize })}
               onIncrement={() => onIncrementItem?.(selectedSize.id)}
               onDecrement={() => onDecrementItem?.(selectedSize.id)}
+              onSetQuantity={(quantity) => onSetItemQuantity?.(selectedSize.id, quantity)}
             />
           </div>
 
@@ -327,6 +330,7 @@ const ProductDetailPage = ({
                   onOpen={onProductClick}
                   onIncrement={() => onIncrementItem?.(itemId)}
                   onDecrement={() => onDecrementItem?.(itemId)}
+                  onSetQuantity={(quantity) => onSetItemQuantity?.(itemId, quantity)}
                 />
               );
             })}

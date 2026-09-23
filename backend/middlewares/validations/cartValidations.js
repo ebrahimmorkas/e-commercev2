@@ -22,7 +22,8 @@ const updateCartItemSchema = Joi.object({
     // "remove this item", matching how most storefront cart UIs let you
     // hit the minus button down to zero instead of forcing a separate
     // remove action.
-    quantity: Joi.number().integer().min(0).required().label('Quantity')
+    // 0 removes the item. Capped so a typed-in quantity can't be absurd.
+    quantity: Joi.number().integer().min(0).max(100000).required().label('Quantity')
 });
 
 const removeCartItemSchema = Joi.object({

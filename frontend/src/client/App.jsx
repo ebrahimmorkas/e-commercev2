@@ -111,6 +111,7 @@ const ClientApp = () => {
     addToCart,
     incrementItem: incrementCartItem,
     decrementItem: decrementCartItem,
+    setItemQuantity: setCartItemQuantity,
     removeItem: removeCartItemFromHook,
   } = useCart();
   const [route, setRoute] = useState(parseRoute);
@@ -190,6 +191,27 @@ const ClientApp = () => {
     }
   };
 
+  // A quantity typed into the stepper. Over stock, the backend says how many
+  // are left (errors[0].availableStock) - the line is set to that instead,
+  // with a message; out of stock entirely just shows the error.
+  const handleSetItemQuantity = async (itemId, quantity) => {
+    try {
+      await setCartItemQuantity(itemId, quantity);
+    } catch (err) {
+      const availableStock = err.errors?.[0]?.availableStock;
+      if (typeof availableStock !== 'number' || availableStock <= 0) {
+        toast.error(err.message || 'Could not update cart');
+        return;
+      }
+      try {
+        await setCartItemQuantity(itemId, availableStock);
+        toast.warning(`Only ${availableStock} in stock - quantity set to ${availableStock}.`);
+      } catch (retryErr) {
+        toast.error(retryErr.message || 'Could not update cart');
+      }
+    }
+  };
+
   const handleRemoveItem = async (itemId) => {
     try {
       await removeCartItemFromHook(itemId);
@@ -247,6 +269,7 @@ const ClientApp = () => {
             onAddToCart={handleDetailAddToCart}
             onIncrementItem={handleIncrementItem}
             onDecrementItem={handleDecrementItem}
+            onSetItemQuantity={handleSetItemQuantity}
             onProductClick={handleProductClick}
             onRecommendedAddToCart={handleAddToCart}
           />
@@ -259,6 +282,7 @@ const ClientApp = () => {
             onProductClick={handleProductClick}
             onIncrementItem={handleIncrementItem}
             onDecrementItem={handleDecrementItem}
+            onSetItemQuantity={handleSetItemQuantity}
             onGoHome={goHome}
           />
         )}
@@ -271,6 +295,7 @@ const ClientApp = () => {
             onBack={goHome}
             onIncrementItem={handleIncrementItem}
             onDecrementItem={handleDecrementItem}
+            onSetItemQuantity={handleSetItemQuantity}
             onRemoveItem={handleRemoveItem}
             onCheckout={handleCheckoutClick}
             isAuthenticated={isAuthenticated}
@@ -308,6 +333,7 @@ const ClientApp = () => {
             onAddToCart={handleAddToCart}
             onIncrementItem={handleIncrementItem}
             onDecrementItem={handleDecrementItem}
+            onSetItemQuantity={handleSetItemQuantity}
           />
         )}
         {route.type === 'not-found' && <NotFoundPage onGoHome={goHome} />}

@@ -63,9 +63,10 @@ const BulkPricing = ({ bulkPricing }) => {
  * @param {Function} [props.onAddToCart]
  * @param {Function} [props.onIncrement]
  * @param {Function} [props.onDecrement]
+ * @param {(quantity: number) => void} [props.onSetQuantity] - A quantity typed into the stepper.
  * @param {Function} [props.onOpen] - Called with the product when the row (outside the Add to Cart control) is clicked, to open its detail page.
  */
-const ProductListItem = ({ product, quantity = 0, onAddToCart, onIncrement, onDecrement, onOpen }) => {
+const ProductListItem = ({ product, quantity = 0, onAddToCart, onIncrement, onDecrement, onSetQuantity, onOpen }) => {
   return (
     <div
       role={onOpen ? 'button' : undefined}
@@ -94,6 +95,7 @@ const ProductListItem = ({ product, quantity = 0, onAddToCart, onIncrement, onDe
           onAdd={() => onAddToCart?.(product)}
           onIncrement={onIncrement}
           onDecrement={onDecrement}
+            onSetQuantity={onSetQuantity}
         />
       </div>
     </div>

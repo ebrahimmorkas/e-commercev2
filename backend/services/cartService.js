@@ -268,14 +268,17 @@ const updateCartItemQuantity = async (vendorId, cartOwner, companyMasterData, we
         if (!allowOutOfStock && resolved.size.stock < quantity) {
             const variantName = resolved.variant.displayName || resolved.variant.color || 'Default';
 
+        // availableStock lets the storefront set the quantity to what's left
+        // when the shopper typed more than that (see cartController.updateCartItem).
         if (resolved.size.stock === 0) {
             return common.returnResult(
                 false,
                 400,
-                `${variantName} - ${resolved.size.sizeName} is out of stock.`
+                `${variantName} - ${resolved.size.sizeName} is out of stock.`,
+                { availableStock: 0 }
             );
         }
-            return common.returnResult(false, 400, `Only ${resolved.size.stock} unit(s) of this size are in stock.`);
+            return common.returnResult(false, 400, `Only ${resolved.size.stock} unit(s) of this size are in stock.`, { availableStock: resolved.size.stock });
         }
 
         sizeEntry.quantity = quantity;
