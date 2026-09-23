@@ -482,6 +482,45 @@ const getEditOrderProductOptions = async (req, res) => {
     }
 };
 
+const decodeOrderLineItems = (items) => (items || []).map((item) => ({
+    ...item,
+    productId: decodeIfPresent(item.productId),
+    variantId: decodeIfPresent(item.variantId),
+    sizeId: decodeIfPresent(item.sizeId),
+}));
+
+const previewAddProductsTax = async (req, res) => {
+    const vendorId = req.vendorId;
+    let id;
+    try {
+        id = common.decodeId(req.params.id);
+        const validityResult = await checkOrderEditingOn(req);
+        if (!validityResult.isSuccess) {
+            return common.sendError(res, validityResult.statusCode, validityResult.message);
+        }
+        const payload = { items: decodeOrderLineItems(req.body.items), applyBulkPricing: req.body.applyBulkPricing };
+        const result = await orderEditService.previewAddProductsTax(
+            vendorId, id, payload, req.companyMasterData, req.websiteMasterData, req.companySettingsData
+        );
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        const meta = result.meta;
+        return common.sendSuccess(res, result.statusCode, result.message, {
+            ...meta,
+            lines: meta.lines.map((line) => ({
+                ...line,
+                productId: encodeIfPresent(line.productId),
+                variantId: encodeIfPresent(line.variantId),
+                sizeId: encodeIfPresent(line.sizeId),
+            })),
+            taxes: meta.taxes.map((tax) => ({ ...tax, taxId: encodeIfPresent(tax.taxId) })),
+        });
+    } catch (error) {
+        logger.logException('orderController: previewAddProductsTax - Exception while previewing tax', { vendorId, id, error });
+    }
+};
+
 const addProductsToOrder = async (req, res) => {
     const vendorId = req.vendorId;
     let id;
@@ -491,14 +530,14 @@ const addProductsToOrder = async (req, res) => {
         if (!validityResult.isSuccess) {
             return common.sendError(res, validityResult.statusCode, validityResult.message);
         }
-        const items = (req.body.items || []).map((item) => ({
-            ...item,
-            productId: decodeIfPresent(item.productId),
-            variantId: decodeIfPresent(item.variantId),
-            sizeId: decodeIfPresent(item.sizeId),
-        }));
+        const payload = {
+            items: decodeOrderLineItems(req.body.items),
+            applyBulkPricing: req.body.applyBulkPricing,
+            isTaxManual: req.body.isTaxManual,
+            manualTaxAmount: req.body.manualTaxAmount
+        };
         const result = await orderEditService.addProductsToOrder(
-            vendorId, req.user._id, id, items, req.body.applyBulkPricing, req.companyMasterData, req.websiteMasterData, req.companySettingsData
+            vendorId, req.user._id, id, payload, req.companyMasterData, req.websiteMasterData, req.companySettingsData
         );
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
@@ -611,6 +650,7 @@ module.exports = {
     getEditOrderProducts,
     getEditOrderProductOptions,
     addProductsToOrder,
+    previewAddProductsTax,
     getOrderUserAddresses,
     updateOrderShippingAddress,
     updateOrderShippingPrice,

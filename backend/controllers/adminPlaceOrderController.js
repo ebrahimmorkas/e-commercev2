@@ -167,6 +167,42 @@ const getProductOptions = async (req, res) => {
     }
 };
 
+const previewTax = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        const payload = {
+            ...req.body,
+            userId: decodeIfPresent(req.body.userId),
+            addressId: decodeIfPresent(req.body.addressId),
+            items: (req.body.items || []).map((item) => ({
+                ...item,
+                productId: decodeIfPresent(item.productId),
+                variantId: decodeIfPresent(item.variantId),
+                sizeId: decodeIfPresent(item.sizeId),
+            })),
+        };
+        const result = await adminPlaceOrderService.previewPlaceOrderTax(
+            vendorId, req.websiteMasterData, req.companyMasterData, req.companySettingsData, payload
+        );
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        const meta = result.meta;
+        return common.sendSuccess(res, result.statusCode, result.message, {
+            ...meta,
+            lines: meta.lines.map((line) => ({
+                ...line,
+                productId: encodeIfPresent(line.productId),
+                variantId: encodeIfPresent(line.variantId),
+                sizeId: encodeIfPresent(line.sizeId),
+            })),
+            taxes: meta.taxes.map((tax) => ({ ...tax, taxId: encodeIfPresent(tax.taxId) })),
+        });
+    } catch (error) {
+        logger.logException('adminPlaceOrderController: previewTax - Exception while previewing tax', { vendorId, error });
+    }
+};
+
 const placeOrder = async (req, res) => {
     const vendorId = req.vendorId;
     try {
@@ -200,5 +236,6 @@ module.exports = {
     getCategories,
     getProducts,
     getProductOptions,
+    previewTax,
     placeOrder
 };

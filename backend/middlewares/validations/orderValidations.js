@@ -1,4 +1,5 @@
 const Joi = require('joi');
+const { money } = require('./adminPlaceOrderValidations');
 
 // Order-related ids are common.encodeId-encoded (see formatOrderForResponse
 // in orderController.js), never raw hex ObjectIds - opaque-string check,
@@ -43,16 +44,31 @@ const setShippingAddressSchema = Joi.object({
     .messages({ 'object.missing': 'Choose a saved address or enter a new address.', 'object.xor': 'Provide either a saved address or a new address, not both.' });
 
 // Products an admin adds to an already-placed order. Same fields as Place Order's items.
+const addOrderProductItemsSchema = Joi.array().items(
+    Joi.object({
+        productId: objectId().required().label('Product'),
+        variantId: objectId().required().label('Variant'),
+        sizeId: objectId().required().label('Size'),
+        quantity: Joi.number().integer().min(1).max(100000).required().label('Quantity')
+    })
+).min(1).max(50).required().label('Items');
+
 const addOrderProductsSchema = Joi.object({
-    items: Joi.array().items(
-        Joi.object({
-            productId: objectId().required().label('Product'),
-            variantId: objectId().required().label('Variant'),
-            sizeId: objectId().required().label('Size'),
-            quantity: Joi.number().integer().min(1).max(100000).required().label('Quantity')
-        })
-    ).min(1).max(50).required().label('Items'),
+    items: addOrderProductItemsSchema,
     // Same "Apply Bulk Pricing" choice as Place Order - off means normal price.
+    applyBulkPricing: Joi.boolean().default(false).label('Apply bulk pricing'),
+    // Same "Enter tax manually" choice as Place Order: one tax total for the added products.
+    isTaxManual: Joi.boolean().default(false).label('Enter tax manually'),
+    manualTaxAmount: Joi.when('isTaxManual', {
+        is: true,
+        then: money().required().label('Tax amount'),
+        otherwise: Joi.forbidden().messages({ 'any.unknown': 'Tax amount is only allowed when "Enter tax manually" is ticked.' })
+    })
+});
+
+// Live tax preview for the products being added (nothing is saved).
+const addOrderProductsTaxPreviewSchema = Joi.object({
+    items: addOrderProductItemsSchema,
     applyBulkPricing: Joi.boolean().default(false).label('Apply bulk pricing')
 });
 
@@ -68,5 +84,6 @@ module.exports = {
     cancelOrderSchema,
     setShippingPriceSchema,
     setShippingAddressSchema,
-    addOrderProductsSchema
+    addOrderProductsSchema,
+    addOrderProductsTaxPreviewSchema
 };

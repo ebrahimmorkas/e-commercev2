@@ -13,6 +13,8 @@ import EmptyState from '../../../../components/common/EmptyState';
 import { useToast } from '../../../../components/common/Toast';
 import * as api from '../api/adminPlaceOrderApi';
 import { bulkUnitPrice } from '../../../../utils/bulkPricing';
+import { useTaxPreview } from '../hooks/useTaxPreview';
+import TaxPreviewRow from '../components/TaxPreviewRow';
 
 // Mirror backend/middlewares/validations/adminPlaceOrderValidations.js so the
 // form rejects what the API would reject, before a round-trip.
@@ -47,6 +49,8 @@ const EMPTY_VALUES = {
   wAddress: '',
   applyTax: true,
   applyBulkPricing: false,
+  isTaxManual: false,
+  manualTax: '',
   mainCategory: '',
   subCategory: '',
   productId: '',
@@ -91,6 +95,7 @@ const buildValidationSchema = (isWalkIn) => ({
       }),
   discount: moneyRule('Discount'),
   shipping: moneyRule('Shipping amount'),
+  manualTax: moneyRule('Tax amount'),
   remarks: {
     validations: [(v) => (v.trim().length <= MAX_REMARKS_LENGTH ? true : `Remarks cannot exceed ${MAX_REMARKS_LENGTH} characters`)],
   },
@@ -117,6 +122,64 @@ const lineQuantityError = (line) => {
 // Preview of what "Apply Bulk Pricing" charges - the backend re-prices on submit.
 const lineUnitPrice = (line, applyBulkPricing) =>
   applyBulkPricing ? bulkUnitPrice(line.unitPrice, line.bulkPricing, lineQuantity(line)) : line.unitPrice;
+
+// "Enter tax manually" is offered whenever the order is taxed at all - a
+// walk-in sale with "Apply tax" unticked has no tax to enter.
+const isTaxAllowed = (values) => !(values.isWalkIn && !values.applyTax);
+
+/**
+ * Summary card with a live, server-calculated tax preview (or the admin's typed
+ * tax) - a component of its own so the preview hook can use the Form's values.
+ */
+const OrderSummaryCard = ({ values, items, subtotal, discountValue, shippingValue }) => {
+  const taxAllowed = isTaxAllowed(values);
+  const isManual = taxAllowed && values.isTaxManual;
+  const itemsValid = items.length > 0 && !items.some((line) => lineQuantityError(line));
+  const hasCustomer = values.isWalkIn || !!values.userId;
+
+  // Only asked for when the tax is actually auto-calculated.
+  const request = taxAllowed && !isManual && itemsValid && hasCustomer
+    ? {
+        isWalkInCustomer: values.isWalkIn,
+        ...(values.isWalkIn
+          ? { applyTax: values.applyTax }
+          : { userId: values.userId, ...(values.addressId ? { addressId: values.addressId } : {}) }),
+        applyBulkPricing: values.applyBulkPricing,
+        items: items.map((line) => ({ productId: line.productId, variantId: line.variantId, sizeId: line.sizeId, quantity: lineQuantity(line) })),
+      }
+    : null;
+  const { preview, loading, error } = useTaxPreview(api.previewTax, request);
+
+  const manualAmount = MONEY_PATTERN.test(values.manualTax.trim()) ? Number(values.manualTax) : 0;
+  const taxValue = !taxAllowed ? 0 : isManual ? manualAmount : preview?.totalTaxAmount || 0;
+  const estimatedTotal = Math.max(0, subtotal - discountValue) + shippingValue + taxValue;
+
+  return (
+    <Card title={<span className="font-bold">Summary</span>}>
+      <dl className="text-sm space-y-1 max-w-sm ml-auto">
+        <div className="flex justify-between"><dt className="text-gray-600">Subtotal</dt><dd>{formatMoney(subtotal)}</dd></div>
+        <div className="flex justify-between"><dt className="text-gray-600">Discount</dt><dd>- {formatMoney(discountValue)}</dd></div>
+        <div className="flex justify-between"><dt className="text-gray-600">Shipping</dt><dd>{formatMoney(shippingValue)}</dd></div>
+        <TaxPreviewRow
+          preview={preview}
+          loading={loading}
+          error={error}
+          isManual={isManual}
+          manualAmount={manualAmount}
+          isTaxOff={!taxAllowed}
+          hasItems={itemsValid}
+          formatMoney={formatMoney}
+        />
+        <div className="flex justify-between font-bold pt-2 border-t border-gray-200">
+          <dt>Estimated total</dt><dd>{formatMoney(estimatedTotal)}</dd>
+        </div>
+      </dl>
+      <p className="mt-2 text-xs text-right text-gray-400">
+        Tax is confirmed when the order is placed. Payment is Cash on Delivery.
+      </p>
+    </Card>
+  );
+};
 
 /**
  * Admin places an order on behalf of one customer, or for a walk-in ("User out
@@ -343,6 +406,11 @@ const AdminPlaceOrderPage = () => {
       toast.error('Discount cannot be greater than the order subtotal.');
       return;
     }
+    const isTaxManual = isTaxAllowed(values) && values.isTaxManual;
+    if (isTaxManual && !values.manualTax.trim()) {
+      toast.error('Enter the tax amount, or untick "Enter tax manually".');
+      return;
+    }
 
     const payload = {
       items: items.map((line) => ({ productId: line.productId, variantId: line.variantId, sizeId: line.sizeId, quantity: lineQuantity(line) })),
@@ -350,6 +418,10 @@ const AdminPlaceOrderPage = () => {
       discountAmount: discount,
       applyBulkPricing: isBulkPricingFeatureOn && values.applyBulkPricing,
     };
+    if (isTaxManual) {
+      payload.isTaxManual = true;
+      payload.manualTaxAmount = Number(values.manualTax);
+    }
     if (values.remarks.trim()) payload.remarks = values.remarks.trim();
 
     if (values.isWalkIn) {
@@ -420,6 +492,8 @@ const AdminPlaceOrderPage = () => {
               // The two modes never share a customer: drop whichever one is being left.
               ['searchField', 'userId', 'addressId', 'addressText', 'wName', 'wPhone', 'wWhatsapp', 'wEmail', 'wAddress'].forEach((field) => setFieldValue(field, ''));
               setFieldValue('applyTax', true);
+              setFieldValue('isTaxManual', false);
+              setFieldValue('manualTax', '');
               setUsers([]);
               setAddresses([]);
             };
@@ -482,7 +556,6 @@ const AdminPlaceOrderPage = () => {
             const subtotal = items.reduce((sum, line) => sum + lineUnitPrice(line, values.applyBulkPricing) * lineQuantity(line), 0);
             const discountValue = MONEY_PATTERN.test(values.discount.trim()) ? Number(values.discount) : 0;
             const shippingValue = MONEY_PATTERN.test(values.shipping.trim()) ? Number(values.shipping) : 0;
-            const estimatedTotal = Math.max(0, subtotal - discountValue) + shippingValue;
 
             const canPickProducts = values.isWalkIn || !!values.userId;
 
@@ -520,7 +593,19 @@ const AdminPlaceOrderPage = () => {
                           {textError('wAddress')}
                         </div>
                         <div>
-                          <Checkbox name="applyTax" label="Apply tax" checked={values.applyTax} onChange={handleChange('applyTax')} />
+                          <Checkbox
+                            name="applyTax"
+                            label="Apply tax"
+                            checked={values.applyTax}
+                            onChange={(e) => {
+                              handleChange('applyTax')(e);
+                              // No tax at all - nothing left to enter by hand.
+                              if (!e.target.checked) {
+                                setFieldValue('isTaxManual', false);
+                                setFieldValue('manualTax', '');
+                              }
+                            }}
+                          />
                           <p className="mt-1 ml-6 text-sm text-gray-500">Taxes are worked out using the store's own country and state. Untick for a tax-free sale.</p>
                         </div>
                       </>
@@ -671,7 +756,7 @@ const AdminPlaceOrderPage = () => {
                       </div>
                     </Card>
 
-                    <Card title={<span className="font-bold">3. Delivery, discount and shipping</span>} subtitle="Everything here is optional">
+                    <Card title={<span className="font-bold">3. Delivery, discount, shipping and tax</span>} subtitle="Everything here is optional">
                       <div className="space-y-4">
                         {!values.isWalkIn && !values.addressId && (
                           <div>
@@ -702,6 +787,27 @@ const AdminPlaceOrderPage = () => {
                           </div>
                         </div>
 
+                        {isTaxAllowed(values) && (
+                          <div>
+                            <Checkbox
+                              name="isTaxManual"
+                              label="Enter tax manually"
+                              checked={values.isTaxManual}
+                              onChange={(e) => {
+                                setFieldValue('isTaxManual', e.target.checked);
+                                if (!e.target.checked) setFieldValue('manualTax', '');
+                              }}
+                            />
+                            <p className="mt-1 ml-6 text-sm text-gray-500">Type one tax total for the whole order instead of the automatically calculated tax.</p>
+                            {values.isTaxManual && (
+                              <div className="mt-2 ml-6 max-w-xs">
+                                <InputField label="Tax amount" name="manualTax" type="number" placeholder="0.00" value={values.manualTax} onChange={handleChange('manualTax')} onBlur={handleBlur('manualTax')} required showError={false} />
+                                {textError('manualTax')}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         <div>
                           <TextArea label="Remarks (optional)" name="remarks" placeholder="Internal note about this order" value={values.remarks} onChange={handleChange('remarks')} onBlur={handleBlur('remarks')} rows={2} maxLength={MAX_REMARKS_LENGTH} showError={false} />
                           {textError('remarks')}
@@ -709,19 +815,7 @@ const AdminPlaceOrderPage = () => {
                       </div>
                     </Card>
 
-                    <Card title={<span className="font-bold">Summary</span>}>
-                      <dl className="text-sm space-y-1 max-w-sm ml-auto">
-                        <div className="flex justify-between"><dt className="text-gray-600">Subtotal</dt><dd>{formatMoney(subtotal)}</dd></div>
-                        <div className="flex justify-between"><dt className="text-gray-600">Discount</dt><dd>- {formatMoney(discountValue)}</dd></div>
-                        <div className="flex justify-between"><dt className="text-gray-600">Shipping</dt><dd>{formatMoney(shippingValue)}</dd></div>
-                        <div className="flex justify-between font-bold pt-2 border-t border-gray-200">
-                          <dt>Estimated total</dt><dd>{formatMoney(estimatedTotal)}</dd>
-                        </div>
-                      </dl>
-                      <p className="mt-2 text-xs text-right text-gray-400">
-                        {values.isWalkIn && !values.applyTax ? 'No tax will be added.' : 'Applicable taxes are added when the order is placed.'} Payment is Cash on Delivery.
-                      </p>
-                    </Card>
+                    <OrderSummaryCard values={values} items={items} subtotal={subtotal} discountValue={discountValue} shippingValue={shippingValue} />
 
                     <div className="flex justify-end gap-3">
                       <Button type="button" variant="ghost" onClick={() => { handleReset(); setIsWalkIn(false); setApplyBulkPricing(false); setItems([]); setUsers([]); setAddresses([]); setProductOptions(null); setLineError(''); setItemsError(''); }} disabled={submitting}>

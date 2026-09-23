@@ -95,8 +95,20 @@ export const getEditProductOptions = (productId) => apiRequest(`${BASE}/admin/ed
  * @param {Array<{ productId: string, variantId: string, sizeId: string, quantity: number }>} items
  * @returns {Promise<{ order: Object }>}
  */
-export const addProductsToOrder = (id, items, applyBulkPricing = false) =>
-  apiRequest(`${BASE}/admin/${id}/add-products`, { method: 'POST', body: { items, applyBulkPricing } });
+export const addProductsToOrder = (id, items, applyBulkPricing = false, manualTaxAmount = null) =>
+  apiRequest(`${BASE}/admin/${id}/add-products`, {
+    method: 'POST',
+    // manualTaxAmount set = "Enter tax manually": one tax total for the added products.
+    body: manualTaxAmount === null ? { items, applyBulkPricing } : { items, applyBulkPricing, isTaxManual: true, manualTaxAmount },
+  });
+
+/**
+ * Live tax preview for products about to be added to an order - nothing is saved.
+ * @param {{ orderId: string, items: Array, applyBulkPricing: boolean }} request
+ * @returns {Promise<{ lines, taxes, totalTaxAmount, isTaxOff, isStoreLocation, isLocationMissing }>}
+ */
+export const previewAddProductsTax = ({ orderId, items, applyBulkPricing }) =>
+  apiRequest(`${BASE}/admin/${orderId}/add-products/tax-preview`, { method: 'POST', body: { items, applyBulkPricing } });
 
 /**
  * @param {string} id
@@ -121,4 +133,4 @@ export const downloadInvoiceAdmin = (id) => apiDownload(`${BASE}/admin/${id}/inv
  */
 export const downloadCreditNoteAdmin = (id) => apiDownload(`${BASE}/admin/${id}/invoice?type=credit-note`);
 
-export default { getAllOrdersAdmin, getOrderByIdAdmin, getOrderStepOptions, advanceOrderStep, setOrderShippingPrice, updateOrderShippingPrice, getOrderUserAddresses, updateOrderShippingAddress, getEditCategories, getEditProducts, getEditProductOptions, addProductsToOrder, assignDeliveryAgent, downloadInvoiceAdmin, downloadCreditNoteAdmin };
+export default { getAllOrdersAdmin, getOrderByIdAdmin, getOrderStepOptions, advanceOrderStep, setOrderShippingPrice, updateOrderShippingPrice, getOrderUserAddresses, updateOrderShippingAddress, getEditCategories, getEditProducts, getEditProductOptions, addProductsToOrder, previewAddProductsTax, assignDeliveryAgent, downloadInvoiceAdmin, downloadCreditNoteAdmin };

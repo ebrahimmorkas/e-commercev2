@@ -8,9 +8,13 @@ import Spinner from '../../../../components/common/Spinner';
 import { useEditOrderProducts } from '../hooks/useEditOrderProducts';
 import { formatOrderMoney } from '../utils/formatOrder';
 import { bulkUnitPrice } from '../../../../utils/bulkPricing';
+import { previewAddProductsTax } from '../api/orderAdminApi';
+import { useTaxPreview } from '../../adminPlaceOrder/hooks/useTaxPreview';
+import TaxPreviewRow from '../../adminPlaceOrder/components/TaxPreviewRow';
 import theme from '../theme/theme';
 
 const MAX_QUANTITY = 100000;
+const MONEY_PATTERN = /^\d+(\.\d{1,2})?$/;
 
 // Grid whose cells wrap by the container's width (the modal is narrower than the viewport, so
 // fixed sm:grid-cols-3 columns were too tight and let neighbouring text overlap).
@@ -26,7 +30,7 @@ const FIELD_GRID = 'grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-3';
  * are left as they are.
  *
  * @param {Object} order - The order being edited (currency + existing items).
- * @param {Function} onSubmit - (items: [{ productId, variantId, sizeId, quantity }], applyBulkPricing: boolean) => Promise<boolean>
+ * @param {Function} onSubmit - (items: [{ productId, variantId, sizeId, quantity }], applyBulkPricing: boolean, manualTaxAmount: number|null) => Promise<boolean>
  * @param {Function} onCancel
  * @param {boolean} submitting
  */
@@ -42,6 +46,14 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
   const [lineError, setLineError] = useState('');
   const [submitError, setSubmitError] = useState('');
   const [applyBulkPricing, setApplyBulkPricing] = useState(false);
+  const [isTaxManual, setIsTaxManual] = useState(false);
+  const [manualTax, setManualTax] = useState('');
+
+  // A walk-in sale placed with tax switched off stays untaxed (backend orderEditService).
+  const orderIsUntaxed = !!order.isWalkInCustomer && (order.items || []).every((line) => !(line.taxBreakdown || []).length);
+  const isManual = !orderIsUntaxed && isTaxManual;
+  const manualTaxValid = MONEY_PATTERN.test(manualTax.trim());
+  const manualAmount = manualTaxValid ? Number(manualTax) : 0;
 
   const variants = picker.productOptions?.variants || [];
   const selectedVariant = variants.find((v) => v.variantId === variantId) || null;
@@ -142,6 +154,19 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
 
   const addedSubtotal = items.reduce((sum, line) => sum + lineUnitPrice(line) * (lineQuantityError(line) ? 0 : lineQuantity(line)), 0);
 
+  // Server-calculated tax for the lines being added (only when it is auto-calculated).
+  const itemsValid = items.length > 0 && !items.some((line) => lineQuantityError(line));
+  const taxRequest = itemsValid && !orderIsUntaxed && !isManual
+    ? {
+        orderId: order._id,
+        applyBulkPricing: bulkPricingOn,
+        items: items.map((line) => ({ productId: line.productId, variantId: line.variantId, sizeId: line.sizeId, quantity: lineQuantity(line) })),
+      }
+    : null;
+  const taxPreview = useTaxPreview(previewAddProductsTax, taxRequest);
+  const addedTax = orderIsUntaxed ? 0 : isManual ? manualAmount : taxPreview.preview?.totalTaxAmount || 0;
+  const money = (value) => formatOrderMoney(order, value);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (items.length === 0) {
@@ -152,10 +177,15 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
       setSubmitError('Fix the quantities marked in red first.');
       return;
     }
+    if (isManual && !manualTaxValid) {
+      setSubmitError('Enter the tax amount (up to 2 decimals), or untick "Enter tax manually".');
+      return;
+    }
     setSubmitError('');
     await onSubmit(
       items.map((line) => ({ productId: line.productId, variantId: line.variantId, sizeId: line.sizeId, quantity: lineQuantity(line) })),
-      bulkPricingOn
+      bulkPricingOn,
+      isManual ? manualAmount : null
     );
   };
 
@@ -309,12 +339,64 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
               </div>
             );
           })}
-          <div className="flex justify-between px-3 py-2 text-sm font-semibold text-gray-900 bg-gray-50">
-            <span>Added subtotal (tax is added automatically)</span>
-            <span>{formatOrderMoney(order, addedSubtotal)}</span>
-          </div>
+          <dl className="px-3 py-2 text-sm space-y-1 bg-gray-50">
+            <div className="flex justify-between">
+              <dt className="text-gray-600">Added subtotal</dt>
+              <dd>{money(addedSubtotal)}</dd>
+            </div>
+            <TaxPreviewRow
+              preview={taxPreview.preview}
+              loading={taxPreview.loading}
+              error={taxPreview.error}
+              isManual={isManual}
+              manualAmount={manualAmount}
+              isTaxOff={orderIsUntaxed}
+              hasItems={itemsValid}
+              formatMoney={money}
+              label="Added tax"
+            />
+            <div className="flex justify-between font-semibold text-gray-900 pt-1 border-t border-gray-200">
+              <dt>Order total goes up by</dt>
+              <dd>{money(addedSubtotal + addedTax)}</dd>
+            </div>
+          </dl>
         </div>
       )}
+      {!orderIsUntaxed && items.length > 0 && (
+        <div>
+          <Checkbox
+            name="isTaxManual"
+            label="Enter tax manually"
+            checked={isTaxManual}
+            onChange={(e) => {
+              setIsTaxManual(e.target.checked);
+              if (!e.target.checked) setManualTax('');
+              setSubmitError('');
+            }}
+            disabled={submitting}
+          />
+          <p className="mt-1 ml-6 text-xs text-gray-500">Type one tax total for the added products instead of the automatically calculated tax.</p>
+          {isTaxManual && (
+            <div className="mt-2 ml-6 w-40">
+              <InputField
+                label="Tax amount"
+                name="manualTax"
+                type="number"
+                placeholder="0.00"
+                value={manualTax}
+                onChange={(e) => {
+                  setManualTax(e.target.value);
+                  setSubmitError('');
+                }}
+                className="w-full min-w-0"
+                disabled={submitting}
+                showError={false}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       {submitError && (
         <p className={`text-sm ${theme.text.error}`} role="alert">
           {submitError}
@@ -322,7 +404,7 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
       )}
 
       <p className="text-xs text-gray-400">
-        New products are priced at today&apos;s price (or their bulk price, if ticked above) and taxed like any other item. The order total goes up by their subtotal plus tax; the existing discount and shipping price are not changed (use Edit Shipping Price for that).
+        New products are priced at today&apos;s price (or their bulk price, if ticked above) and taxed like any other item (or with the tax you enter). The order total goes up by their subtotal plus tax; the existing discount and shipping price are not changed (use Edit Shipping Price for that).
       </p>
       <div className="flex justify-end gap-2">
         <Button type="button" variant={theme.button.ghost} onClick={onCancel} disabled={submitting}>

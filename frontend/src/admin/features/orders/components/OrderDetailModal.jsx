@@ -113,8 +113,8 @@ const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
     return success;
   };
 
-  const handleAddProducts = async (items, applyBulkPricing) => {
-    const success = await addProducts(items, applyBulkPricing);
+  const handleAddProducts = async (items, applyBulkPricing, manualTaxAmount) => {
+    const success = await addProducts(items, applyBulkPricing, manualTaxAmount);
     if (success) {
       setActiveForm(null);
       onChanged?.();

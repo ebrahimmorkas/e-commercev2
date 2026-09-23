@@ -17,7 +17,8 @@ const {
     cancelOrderSchema,
     setShippingPriceSchema,
     setShippingAddressSchema,
-    addOrderProductsSchema
+    addOrderProductsSchema,
+    addOrderProductsTaxPreviewSchema
 } = require('../middlewares/validations/orderValidations');
 
 const vendorContext = [authenticate, vendorDetection, ensureVendorDataCached, checkModuleAssigned('ORDERS')];
@@ -117,6 +118,16 @@ router.put(
 router.get('/admin/edit/categories', ...vendorContext, authorize('admin'), orderController.getEditOrderCategories);
 router.get('/admin/edit/products', ...vendorContext, authorize('admin'), validate(productsQuerySchema, 'query'), orderController.getEditOrderProducts);
 router.get('/admin/edit/products/:productId/options', ...vendorContext, authorize('admin'), validate(productIdParamSchema, 'params'), orderController.getEditOrderProductOptions);
+
+// Live tax preview for the products being added (nothing is saved).
+router.post(
+    '/admin/:id/add-products/tax-preview',
+    ...vendorContext,
+    authorize('admin'),
+    validate(orderIdParamSchema, 'params'),
+    validate(addOrderProductsTaxPreviewSchema, 'body'),
+    orderController.previewAddProductsTax
+);
 
 router.post(
     '/admin/:id/add-products',

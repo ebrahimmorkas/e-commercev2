@@ -1,7 +1,6 @@
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
 const Discount = require('../models/Discount');
-const TaxMaster = require('../models/TaxMaster');
 const FreeCash = require('../models/FreeCash');
 const UserFreeCash = require('../models/UserFreeCash');
 const redisService = require('./redisService');
@@ -12,6 +11,7 @@ const shippingPriceCalculationService = require('./shippingPriceCalculationServi
 const freeCashService = require('./freeCashService');
 const abandonedCartService = require('./abandonedCartService');
 const bulkPricing = require('../utils/bulkPricing');
+const taxCalculationService = require('./taxCalculationService');
 
 /*
 |--------------------------------------------------------------------------
@@ -1251,47 +1251,14 @@ const checkoutCart = async (vendorId, cartOwner, userId, locationContext, compan
 
         const eligibleSubtotal = eligibleLineItems.reduce((sum, i) => sum + i.amount, 0);
 
-        // Tax: resolve each eligible line item's applicable TaxMaster docs
-        // for the user's country/state (fallback to the country-wide
-        // default when no state-specific tax exists), aggregated by taxId.
-        const allTaxIds = [...new Set(eligibleLineItems.flatMap((i) => i.taxIds.map((id) => id.toString())))];
-        const taxDocs = allTaxIds.length > 0
-            ? await TaxMaster.find({ _id: { $in: allTaxIds }, status: 'A' })
-            : [];
-        const taxDocMap = new Map(taxDocs.map((t) => [t._id.toString(), t]));
-
-        const taxTotals = new Map();
-        for (const item of eligibleLineItems) {
-            for (const taxId of item.taxIds) {
-                const taxDoc = taxDocMap.get(taxId.toString());
-                if (!taxDoc) continue;
-                // Country/state applicability check.
-                if (locationContext.countryId && taxDoc.countryId.toString() !== locationContext.countryId.toString()) continue;
-                if (taxDoc.stateId && locationContext.stateId && taxDoc.stateId.toString() !== locationContext.stateId.toString()) continue;
-
-                const taxAmount = taxDoc.taxType === 'percentage'
-                    ? item.amount * (taxDoc.totalRate / 100)
-                    : taxDoc.totalRate;
-                const roundedTaxAmount = Math.round(taxAmount * 100) / 100;
-
-                item.taxBreakdown.push({
-                    taxId: taxDoc._id,
-                    taxName: taxDoc.name,
-                    taxRate: taxDoc.totalRate,
-                    taxAmount: roundedTaxAmount
-                });
-
-                const existing = taxTotals.get(taxDoc._id.toString());
-                if (existing) {
-                    existing.taxAmount += taxAmount;
-                } else {
-                    taxTotals.set(taxDoc._id.toString(), { taxId: taxDoc._id, taxName: taxDoc.name, taxRate: taxDoc.totalRate, taxAmount });
-                }
-            }
-        }
-
-        cart.taxes = Array.from(taxTotals.values()).map((t) => ({ ...t, taxAmount: Math.round(t.taxAmount * 100) / 100 }));
-        cart.totalTaxAmount = Math.round(cart.taxes.reduce((sum, t) => sum + t.taxAmount, 0) * 100) / 100;
+        // Tax: the delivery location's taxes (the chosen shipping address when
+        // an order is being placed), or the store's own location when it is
+        // unknown - never every tax on the product.
+        const taxLocation = taxCalculationService.resolveTaxLocationContext(locationContext, companySettingsData);
+        await taxCalculationService.applyTaxesToLines(eligibleLineItems, taxLocation);
+        const taxSummary = taxCalculationService.summarizeTaxes(eligibleLineItems);
+        cart.taxes = taxSummary.taxes;
+        cart.totalTaxAmount = taxSummary.totalTaxAmount;
 
         // Re-validate previously-applied Free Cash is still active, not
         // revoked/expired, and still has enough remaining balance - same

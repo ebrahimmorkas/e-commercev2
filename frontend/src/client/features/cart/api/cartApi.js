@@ -41,6 +41,14 @@ export const removeCartItem = ({ productId, variantId, sizeId }) =>
 export const getShippingEstimate = (addressId) =>
   apiRequest(`/cart/shipping-estimate${addressId ? `?addressId=${encodeURIComponent(addressId)}` : ''}`);
 
+/**
+ * Tax estimate for the current cart - same addressId/location rules as
+ * getShippingEstimate, falling back to the store's own location.
+ * @returns {Promise<{ totalTaxAmount: number, taxes: Array, isStoreLocation: boolean, deliveringTo: Object|null }>}
+ */
+export const getTaxEstimate = (addressId) =>
+  apiRequest(`/cart/tax-estimate${addressId ? `?addressId=${encodeURIComponent(addressId)}` : ''}`);
+
 export const checkoutCart = () => apiRequest('/cart/checkout-cart', { method: 'POST' });
 
 export default {
@@ -50,4 +58,5 @@ export default {
   removeCartItem,
   checkoutCart,
   getShippingEstimate,
+  getTaxEstimate,
 };

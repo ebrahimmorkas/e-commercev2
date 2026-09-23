@@ -26,6 +26,7 @@ const companySettingsFieldsSchema = {
     currencyId: nullableObjectId().label('Currency'),
     storeCountryId: nullableObjectId().label('Store country'),
     storeStateId: nullableObjectId().label('Store state'),
+    storeCityId: nullableObjectId().label('Store city'),
     adminName: Joi.string().trim().min(2).max(100).label('Admin name'),
     adminWhatsappNumber: Joi.string().trim().pattern(phonePattern).allow('', null).label('Admin WhatsApp number'),
     adminPhoneNumber: Joi.string().trim().pattern(phonePattern).allow('', null).label('Admin phone number'),

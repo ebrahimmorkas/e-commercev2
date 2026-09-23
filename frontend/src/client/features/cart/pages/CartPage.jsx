@@ -7,6 +7,8 @@ import Spinner from '../../../../components/common/Spinner/Spinner';
 import EmptyState from '../../../../components/common/EmptyState/EmptyState';
 import { useShippingEstimate } from '../hooks/useShippingEstimate';
 import { formatShippingEstimate, shippingAmountForTotal } from '../utils/formatShipping';
+import { useTaxEstimate, taxAmountForTotal } from '../hooks/useTaxEstimate';
+import TaxEstimateRows from '../components/TaxEstimateRows';
 
 const formatMoney = (amount) => `₹${(amount ?? 0).toLocaleString('en-IN')}`;
 
@@ -107,6 +109,11 @@ const CartPage = ({
   const [addressModalOpen, setAddressModalOpen] = useState(false);
   const itemCount = lineItems.reduce((sum, item) => sum + item.quantity, 0);
   const { estimate: shippingEstimate } = useShippingEstimate({
+    addressId,
+    refreshKey: `${itemCount}:${subtotal}`,
+    skip: lineItems.length === 0,
+  });
+  const { estimate: taxEstimate } = useTaxEstimate({
     addressId,
     refreshKey: `${itemCount}:${subtotal}`,
     skip: lineItems.length === 0,
@@ -221,11 +228,12 @@ const CartPage = ({
             {shippingEstimate?.isShippingPending && (
               <p className="mt-1 text-xs text-slate-500">Shipping price will be manually calculated by admin.</p>
             )}
+            <TaxEstimateRows estimate={taxEstimate} formatMoney={formatMoney} />
             <div className="mt-2 pt-3 border-t border-slate-200 flex justify-between text-base font-bold text-slate-900">
-              <span>{shippingEstimate ? 'Estimated total' : 'Subtotal'}</span>
-              <span>{formatMoney(subtotal + shippingAmountForTotal(shippingEstimate))}</span>
+              <span>{shippingEstimate || taxEstimate ? 'Estimated total' : 'Subtotal'}</span>
+              <span>{formatMoney(subtotal + shippingAmountForTotal(shippingEstimate) + taxAmountForTotal(taxEstimate))}</span>
             </div>
-            <p className="mt-1 text-xs text-slate-400">Taxes and discounts calculated at checkout.</p>
+            <p className="mt-1 text-xs text-slate-400">Discounts are applied at checkout. Tax is confirmed for your delivery address when the order is placed.</p>
             <button
               type="button"
               onClick={onCheckout}

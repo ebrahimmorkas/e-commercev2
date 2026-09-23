@@ -1,10 +1,8 @@
-const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const Address = require('../models/Address');
 const User = require('../models/User');
 const Category = require('../models/Category');
 const Product = require('../models/Product');
-const TaxMaster = require('../models/TaxMaster');
 const OrderStepMaster = require('../models/OrderStepMaster');
 const categoryService = require('./categoryService');
 const commissionService = require('./commissionService');
@@ -12,6 +10,7 @@ const invoiceService = require('./invoiceService');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
 const bulkPricing = require('../utils/bulkPricing');
+const taxCalculationService = require('./taxCalculationService');
 const { PAYMENT_METHODS } = require('../constants/paymentGatewayConstants');
 const { ORDER_NOTIFICATION_TYPES } = require('../constants/orderRealtimeConstants');
 const { notifyOrderChanged } = require('./orderRealtimeService');
@@ -433,42 +432,108 @@ const resolveOrderLines = async (vendorId, items, allowOutOfStock, isBulkPricing
     }
 };
 
-// Same country/state applicability rules as cartService.checkoutCart, run
-// against the chosen saved address if there is one, otherwise the customer's
-// own profile location.
-const applyTaxes = async (lines, locationContext) => {
+// Tax location for an admin order: the chosen saved address when there is
+// one; otherwise (walk-in, typed-in address, or no address at all) the store's
+// own location from CompanySettings. Shared with orderEditService.js.
+const resolveAdminOrderTaxLocation = ({ savedAddress, companySettingsData }) => {
     try {
-        const allTaxIds = [...new Set(lines.flatMap((line) => line.taxIds.map((id) => id.toString())))];
-        const taxDocs = allTaxIds.length > 0
-            ? await TaxMaster.find({ _id: { $in: allTaxIds }, status: 'A' })
-            : [];
-        const taxDocMap = new Map(taxDocs.map((t) => [t._id.toString(), t]));
-
-        for (const line of lines) {
-            for (const taxId of line.taxIds) {
-                const taxDoc = taxDocMap.get(taxId.toString());
-                if (!taxDoc) continue;
-                if (locationContext.countryId && taxDoc.countryId.toString() !== locationContext.countryId.toString()) continue;
-                if (taxDoc.stateId && locationContext.stateId && taxDoc.stateId.toString() !== locationContext.stateId.toString()) continue;
-
-                const taxAmount = taxDoc.taxType === 'percentage'
-                    ? line.amount * (taxDoc.totalRate / 100)
-                    : taxDoc.totalRate;
-
-                line.taxBreakdown.push({
-                    taxId: taxDoc._id,
-                    taxName: taxDoc.name,
-                    taxRate: taxDoc.totalRate,
-                    taxAmount: round2(taxAmount)
-                });
-            }
-        }
+        const addressLocation = savedAddress
+            ? { countryId: savedAddress.country_id, stateId: savedAddress.state_id, cityId: savedAddress.city_id, zipCode: savedAddress.pincode }
+            : null;
+        return taxCalculationService.resolveTaxLocationContext(addressLocation, companySettingsData);
     } catch (err) {
         throw err;
     }
 };
 
-const toValidObjectId = (value) => (value && mongoose.Types.ObjectId.isValid(value) ? value : null);
+// Fills every line's taxBreakdown for an admin order: nothing when tax is
+// switched off, the admin's typed total split across the lines when
+// "Enter tax manually" is ticked, otherwise the location's auto taxes.
+const applyAdminOrderTax = async ({ lines, taxLocation, isTaxOff, isTaxManual, manualTaxAmount }) => {
+    try {
+        if (isTaxOff) {
+            lines.forEach((line) => { line.taxBreakdown = []; });
+            return lines;
+        }
+        if (isTaxManual) {
+            return taxCalculationService.applyManualTax(lines, manualTaxAmount);
+        }
+        return await taxCalculationService.applyTaxesToLines(lines, taxLocation);
+    } catch (err) {
+        throw err;
+    }
+};
+
+// What the tax preview returns for a set of priced lines.
+const buildTaxPreview = (lines, taxLocation, isTaxOff) => {
+    try {
+        const { taxes, totalTaxAmount } = taxCalculationService.summarizeTaxes(lines);
+        return {
+            lines: lines.map((line) => ({
+                productId: line.productId,
+                variantId: line.variantId,
+                sizeId: line.sizeId,
+                unitPrice: line.unitPrice,
+                amount: line.amount,
+                taxAmount: taxCalculationService.lineTaxAmount(line)
+            })),
+            taxes,
+            totalTaxAmount,
+            isTaxOff: isTaxOff === true,
+            // true = taxed at the store's location; false with no country = no tax (store location not set).
+            isStoreLocation: !isTaxOff && taxLocation.isStoreLocation && !!taxLocation.countryId,
+            isLocationMissing: !isTaxOff && !taxLocation.countryId
+        };
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Live preview of the auto-calculated tax on the Place Order page.
+const previewPlaceOrderTax = async (vendorId, websiteMasterData, companyMasterData, companySettingsData, payload) => {
+    try {
+        const featureCheck = await checkFeatureOn(vendorId, websiteMasterData, companyMasterData);
+        if (!featureCheck.isSuccess) {
+            return common.returnResult(false, featureCheck.statusCode, featureCheck.message);
+        }
+
+        const { userId, isWalkInCustomer, addressId, applyTax, applyBulkPricing, items } = payload;
+        const isWalkIn = isWalkInCustomer === true;
+
+        let savedAddress = null;
+        if (!isWalkIn) {
+            const user = await User.findOne({ _id: userId, vendorId, role: 'user', status: 'A' }).select('_id').lean();
+            if (!user) {
+                return common.returnResult(false, 404, 'User not found.');
+            }
+            if (addressId) {
+                savedAddress = await Address.findOne({ _id: addressId, userId, vendorId, status: 'A' });
+                if (!savedAddress) {
+                    return common.returnResult(false, 404, 'Selected address not found for this user.');
+                }
+            }
+        }
+
+        const bulkPricingResult = await resolveApplyBulkPricing(vendorId, applyBulkPricing, websiteMasterData, companyMasterData);
+        if (!bulkPricingResult.isSuccess) {
+            return common.returnResult(false, bulkPricingResult.statusCode, bulkPricingResult.message);
+        }
+
+        // Preview only - stock is re-checked (and reserved) when the order is placed.
+        const lineResult = await resolveOrderLines(vendorId, items, true, bulkPricingResult.meta.isBulkPricingOn);
+        if (lineResult.error) {
+            return common.returnResult(false, 400, lineResult.error);
+        }
+
+        const isTaxOff = isWalkIn && applyTax === false;
+        const taxLocation = resolveAdminOrderTaxLocation({ savedAddress, companySettingsData });
+        await applyAdminOrderTax({ lines: lineResult.lines, taxLocation, isTaxOff, isTaxManual: false });
+
+        return common.returnResult(true, 200, 'Tax preview calculated successfully', buildTaxPreview(lineResult.lines, taxLocation, isTaxOff));
+    } catch (err) {
+        throw err;
+    }
+};
 
 const placeOrderOnBehalfOfUser = async (vendorId, adminUserId, websiteMasterData, companyMasterData, companySettingsData, payload) => {
     try {
@@ -481,8 +546,12 @@ const placeOrderOnBehalfOfUser = async (vendorId, adminUserId, websiteMasterData
             return common.returnResult(false, featureCheck.statusCode, featureCheck.message);
         }
 
-        const { userId, isWalkInCustomer, walkInCustomer, applyTax, applyBulkPricing, items, shippingAmount, discountAmount, addressId, addressText, orderNumber, remarks } = payload;
+        const { userId, isWalkInCustomer, walkInCustomer, applyTax, applyBulkPricing, isTaxManual, manualTaxAmount, items, shippingAmount, discountAmount, addressId, addressText, orderNumber, remarks } = payload;
         const isWalkIn = isWalkInCustomer === true;
+        const isTaxOff = isWalkIn && applyTax === false;
+        if (isTaxOff && isTaxManual === true) {
+            return common.returnResult(false, 400, 'Tax cannot be entered manually when "Apply tax" is switched off.');
+        }
         const allowOutOfStock = companySettingsData?.allowOutOfStockProductsAdding === true;
 
         // Walk-in (cash counter) orders have no User at all.
@@ -562,20 +631,11 @@ const placeOrderOnBehalfOfUser = async (vendorId, adminUserId, websiteMasterData
         }
         const lines = lineResult.lines;
 
-        // Walk-ins are taxed as if sold at the store: its own country/state
-        // (CompanySettings), or no location filtering if those aren't set yet.
-        // The admin can switch tax off entirely for a walk-in order.
-        let locationContext;
-        if (isWalkIn) {
-            locationContext = { countryId: companySettingsData?.storeCountryId || null, stateId: companySettingsData?.storeStateId || null, cityId: null, zipCode: null };
-        } else if (savedAddress) {
-            locationContext = { countryId: savedAddress.country_id, stateId: savedAddress.state_id, cityId: savedAddress.city_id, zipCode: savedAddress.pincode };
-        } else {
-            locationContext = { countryId: toValidObjectId(user.country), stateId: toValidObjectId(user.state), cityId: toValidObjectId(user.city), zipCode: null };
-        }
-        if (!(isWalkIn && applyTax === false)) {
-            await applyTaxes(lines, locationContext);
-        }
+        // Taxed at the saved address, else at the store's own location (walk-in,
+        // typed-in address, no address), else not at all. The admin can instead
+        // enter the tax by hand, or switch it off entirely for a walk-in order.
+        const taxLocation = resolveAdminOrderTaxLocation({ savedAddress, companySettingsData });
+        await applyAdminOrderTax({ lines, taxLocation, isTaxOff, isTaxManual: isTaxManual === true, manualTaxAmount });
 
         const subtotal = round2(lines.reduce((sum, line) => sum + line.amount, 0));
         const totalTaxAmount = round2(lines.reduce((sum, line) => sum + line.taxBreakdown.reduce((s, t) => s + t.taxAmount, 0), 0));
@@ -617,7 +677,7 @@ const placeOrderOnBehalfOfUser = async (vendorId, adminUserId, websiteMasterData
             quantity: line.quantity,
             lineAmount: line.amount,
             taxBreakdown: line.taxBreakdown,
-            lineTaxAmount: round2(line.taxBreakdown.reduce((sum, t) => sum + t.taxAmount, 0)),
+            lineTaxAmount: taxCalculationService.lineTaxAmount(line),
             stockDeductedQuantity: line.stockDeductedQuantity
         }));
 
@@ -703,6 +763,7 @@ module.exports = {
     fetchCategories,
     fetchActiveProducts,
     fetchProductOptions,
+    previewPlaceOrderTax,
     placeOrderOnBehalfOfUser,
     restoreStockForAdminOrder,
     // shared with orderEditService.js
@@ -711,7 +772,9 @@ module.exports = {
     loadProductOptions,
     resolveOrderLines,
     resolveApplyBulkPricing,
-    applyTaxes,
+    resolveAdminOrderTaxLocation,
+    applyAdminOrderTax,
+    buildTaxPreview,
     deductStockForLine,
     restoreDeductedStock
 };

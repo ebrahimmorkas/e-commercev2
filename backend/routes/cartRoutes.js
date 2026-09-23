@@ -34,6 +34,9 @@ router.delete('/remove-free-cash', ...cartAccess, cartController.removeFreeCash)
 
 router.get('/shipping-estimate', ...cartAccess, validate(shippingEstimateQuerySchema, 'query'), cartController.getShippingEstimate);
 
+// Same query (optional addressId) as the shipping estimate.
+router.get('/tax-estimate', ...cartAccess, validate(shippingEstimateQuerySchema, 'query'), cartController.getTaxEstimate);
+
 router.post('/checkout-cart', ...cartAccess, cartController.checkoutCart);
 
 module.exports = router;

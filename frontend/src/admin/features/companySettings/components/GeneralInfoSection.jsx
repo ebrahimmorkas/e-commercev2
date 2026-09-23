@@ -1,7 +1,9 @@
 import InputField from '../../../../components/common/InputField';
+import Dropdown from '../../../../components/common/DropDown';
 import FileUpload from '../../../../components/common/FileUpload';
 import Avatar from '../../../../components/common/Avatar';
 import theme from '../theme/theme';
+import { useStoreLocationOptions } from '../hooks/useStoreLocationOptions';
 
 /**
  * Admin contact details, company identity (name + logo) and social links.
@@ -12,10 +14,53 @@ import theme from '../theme/theme';
  */
 const GeneralInfoSection = ({ draft, onChange, errors = {} }) => {
   const set = (patch) => onChange(patch);
+  const { countryOptions, stateOptions, cityOptions } = useStoreLocationOptions(draft.storeCountryId, draft.storeStateId);
 
   return (
     <div className="space-y-6">
       <div>
+        <h3 className={`text-sm font-semibold ${theme.text.heading}`}>Store Location</h3>
+        <p className={`text-xs ${theme.text.muted} mt-0.5`}>
+          Used to work out tax whenever the customer&apos;s location is unknown - walk-in sales, admin orders with a typed-in address, and cart estimates for visitors with no location. Leave the country empty to charge no tax in those cases.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-3">
+          <Dropdown
+            label="Store Country"
+            name="storeCountryId"
+            placeholder={countryOptions.length ? 'Select a country' : 'No countries available'}
+            options={countryOptions}
+            value={draft.storeCountryId}
+            // A new country invalidates the state and city picked under the old one.
+            onChange={(value) => set({ storeCountryId: value || '', storeStateId: '', storeCityId: '' })}
+            clearable
+            searchable
+          />
+          <Dropdown
+            label="Store State"
+            name="storeStateId"
+            placeholder={draft.storeCountryId ? 'Select a state' : 'Select a country first'}
+            options={stateOptions}
+            value={draft.storeStateId}
+            onChange={(value) => set({ storeStateId: value || '', storeCityId: '' })}
+            disabled={!draft.storeCountryId}
+            clearable
+            searchable
+          />
+          <Dropdown
+            label="Store City"
+            name="storeCityId"
+            placeholder={draft.storeStateId ? 'Select a city' : 'Select a state first'}
+            options={cityOptions}
+            value={draft.storeCityId}
+            onChange={(value) => set({ storeCityId: value || '' })}
+            disabled={!draft.storeStateId}
+            clearable
+            searchable
+          />
+        </div>
+      </div>
+
+      <div className="pt-4 border-t border-gray-100">
         <h3 className={`text-sm font-semibold ${theme.text.heading}`}>Admin Contact</h3>
         <p className={`text-xs ${theme.text.muted} mt-0.5`}>Shown internally and used for order/system notifications.</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">

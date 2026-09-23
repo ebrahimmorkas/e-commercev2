@@ -32,6 +32,7 @@ const formatCompanySettingsForResponse = (doc) => {
         currencyId: settings.currencyId ? common.encodeId(settings.currencyId) : settings.currencyId,
         storeCountryId: settings.storeCountryId ? common.encodeId(settings.storeCountryId) : settings.storeCountryId,
         storeStateId: settings.storeStateId ? common.encodeId(settings.storeStateId) : settings.storeStateId,
+        storeCityId: settings.storeCityId ? common.encodeId(settings.storeCityId) : settings.storeCityId,
         companyLogo: encodeNestedImage(settings.companyLogo),
         paymentScanner: encodeNestedImage(settings.paymentScanner),
         partnerCertificate: encodeNestedImage(settings.partnerCertificate),
@@ -44,13 +45,14 @@ const formatCompanySettingsForResponse = (doc) => {
     };
 };
 
-// currencyId/storeCountryId/storeStateId are dropdown-sourced FK fields -
+// currencyId/storeCountryId/storeStateId/storeCityId are dropdown-sourced FK fields -
 // decode when present (both create and update send them optionally).
 const decodeCompanySettingsRefFields = (payload) => {
     const decoded = { ...payload };
     if (decoded.currencyId) decoded.currencyId = common.decodeId(decoded.currencyId);
     if (decoded.storeCountryId) decoded.storeCountryId = common.decodeId(decoded.storeCountryId);
     if (decoded.storeStateId) decoded.storeStateId = common.decodeId(decoded.storeStateId);
+    if (decoded.storeCityId) decoded.storeCityId = common.decodeId(decoded.storeCityId);
     return decoded;
 };
 

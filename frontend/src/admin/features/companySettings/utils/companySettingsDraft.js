@@ -5,6 +5,10 @@
  * for a dropdown to read from).
  */
 export const emptyDraft = () => ({
+  storeCountryId: '',
+  storeStateId: '',
+  storeCityId: '',
+
   adminName: '',
   adminEmail: '',
   adminWhatsappNumber: '',
@@ -86,6 +90,10 @@ export const emptyDraft = () => ({
  * them with a new File on submit if the admin picks one.
  */
 export const mapApiSettingsToDraft = (doc) => ({
+  storeCountryId: doc.storeCountryId ? String(doc.storeCountryId) : '',
+  storeStateId: doc.storeStateId ? String(doc.storeStateId) : '',
+  storeCityId: doc.storeCityId ? String(doc.storeCityId) : '',
+
   adminName: doc.adminName || '',
   adminEmail: doc.adminEmail || '',
   adminWhatsappNumber: doc.adminWhatsappNumber || '',

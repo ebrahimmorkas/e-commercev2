@@ -5,13 +5,16 @@ const redisKeys = require('../utils/redisKeys');
 const logger = require('../utils/logger');
 const common = require('../utils/common');
 const imageUploadService = require('./imageUploadService');
+const CountryMaster = require('../models/CountryMaster');
+const StateMaster = require('../models/StateMaster');
+const CityMaster = require('../models/CityMaster');
 
 // Every field a vendor is allowed to set directly through create/update -
 // deliberately excludes vendorId, companyLogo/paymentScanner/partnerCertificate
 // (handled separately as file uploads) and emailTemplateAssignments (owned by
 // the dedicated assign/unassign endpoints above).
 const SIMPLE_FIELDS = [
-    'currencyId', 'storeCountryId', 'storeStateId', 'adminName', 'adminWhatsappNumber', 'adminPhoneNumber', 'adminAddress',
+    'currencyId', 'storeCountryId', 'storeStateId', 'storeCityId', 'adminName', 'adminWhatsappNumber', 'adminPhoneNumber', 'adminAddress',
     'adminCity', 'adminState', 'adminPincode', 'adminEmail', 'companyName', 'instagramId',
     'facebookId', 'privacyPolicy', 'cancelPolicy', 'termsAndConditions', 'aboutUs',
     'showAnnouncements', 'isAnnouncementRotationOn', 'showBanners', 'isBannerRotationOn',
@@ -104,6 +107,55 @@ const normalizeFreeCashReturnFields = (target) => {
     }
 };
 
+// Store country/state/city (the tax location when a customer's is unknown -
+// see taxCalculationService.js) must be a consistent, active chain the vendor
+// serves: country in CompanyMaster.allowedCountries, state inside that
+// country, city inside that state. A state/city needs its parent set.
+// Checked against the values the document will END UP with, so a partial
+// update can't leave a state pointing at a different country.
+const validateStoreLocation = async (data, companyMasterData, existingSettings = null) => {
+    try {
+        const pick = (field) => (data[field] !== undefined ? data[field] : (existingSettings ? existingSettings[field] : null)) || null;
+        const countryId = pick('storeCountryId');
+        const stateId = pick('storeStateId');
+        const cityId = pick('storeCityId');
+
+        if (!countryId && (stateId || cityId)) {
+            return common.returnResult(false, 400, 'Select a store country before choosing a store state or city.');
+        }
+        if (!stateId && cityId) {
+            return common.returnResult(false, 400, 'Select a store state before choosing a store city.');
+        }
+        if (!countryId) {
+            return null;
+        }
+
+        const allowedCountryIds = (companyMasterData?.allowedCountries || []).map((id) => id.toString());
+        if (!allowedCountryIds.includes(countryId.toString())) {
+            return common.returnResult(false, 400, 'The selected store country is not one of the countries your store serves.');
+        }
+        const country = await CountryMaster.findOne({ _id: countryId, status: 'A' }).select('_id').lean();
+        if (!country) {
+            return common.returnResult(false, 400, 'The selected store country is not available.');
+        }
+        if (stateId) {
+            const state = await StateMaster.findOne({ _id: stateId, country_id: countryId, status: 'A' }).select('_id').lean();
+            if (!state) {
+                return common.returnResult(false, 400, 'The selected store state does not belong to the selected store country.');
+            }
+        }
+        if (cityId) {
+            const city = await CityMaster.findOne({ _id: cityId, state_id: stateId, status: 'A' }).select('_id').lean();
+            if (!city) {
+                return common.returnResult(false, 400, 'The selected store city does not belong to the selected store state.');
+            }
+        }
+        return null;
+    } catch (err) {
+        throw err;
+    }
+};
+
 const invalidateCompanySettingsCache = async (vendorId) => {
     try {
         await redisService.del(redisKeys.companySettings(vendorId));
@@ -123,6 +175,11 @@ const createCompanySettings = async (vendorId, userId, data, files, companyMaste
         const entitlementFailure = await checkPaymentDetailsEntitlements(vendorId, data, files, companyMasterData, websiteMasterData);
         if (entitlementFailure) {
             return entitlementFailure;
+        }
+
+        const storeLocationFailure = await validateStoreLocation(data, companyMasterData);
+        if (storeLocationFailure) {
+            return storeLocationFailure;
         }
 
         const settingsData = { vendorId };
@@ -191,6 +248,11 @@ const updateCompanySettings = async (vendorId, userId, data, files, companyMaste
         const entitlementFailure = await checkPaymentDetailsEntitlements(vendorId, data, files, companyMasterData, websiteMasterData, settings);
         if (entitlementFailure) {
             return entitlementFailure;
+        }
+
+        const storeLocationFailure = await validateStoreLocation(data, companyMasterData, settings);
+        if (storeLocationFailure) {
+            return storeLocationFailure;
         }
 
         for (const field of SIMPLE_FIELDS) {

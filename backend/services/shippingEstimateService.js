@@ -7,6 +7,7 @@ const CityMaster = require('../models/CityMaster');
 const common = require('../utils/common');
 const addressService = require('./addressService');
 const shippingPriceCalculationService = require('./shippingPriceCalculationService');
+const taxCalculationService = require('./taxCalculationService');
 const { SHIPPING_PRICE_METHODS } = require('../constants/shippingPriceConstants');
 
 // Which part of the delivery location each location-based method prices off.
@@ -114,7 +115,9 @@ const buildEstimateLineItems = async (cart) => {
                         shippingValue: liveSize.shipping?.type === 'CUSTOM' ? liveSize.shipping.value : null,
                         mainCategoryId: liveProduct.mainCategory,
                         subCategoryId: liveProduct.subCategory,
-                        weight: liveSize.weight || null
+                        weight: liveSize.weight || null,
+                        taxIds: liveProduct.taxIds || [],
+                        taxBreakdown: []
                     });
                 }
             }
@@ -181,6 +184,44 @@ const getShippingEstimate = async ({ vendorId, cartOwner, userId, addressId, coo
     }
 };
 
+/*
+| Tax ESTIMATE for the cart/checkout pages, against the same delivery location
+| the shipping estimate uses (chosen address, default address, browsing
+| location), falling back to the store's location when none is known. The
+| final tax is recomputed against the real shipping address when the order is
+| placed (cartService.checkoutCart via orderService.createOrderFromCart).
+*/
+const getTaxEstimate = async ({ vendorId, cartOwner, userId, addressId, cookieLocation, companySettingsData }) => {
+    try {
+        const cart = await Cart.findOne({ vendorId, status: 'A', ...ownerFilter(cartOwner) });
+        if (!cart || cart.products.length === 0) {
+            return common.returnResult(true, 200, 'Cart is empty', { totalTaxAmount: 0, taxes: [], isStoreLocation: false, deliveringTo: null });
+        }
+
+        const locationResult = await resolveDeliveryLocation({ vendorId, userId, addressId, cookieLocation });
+        if (!locationResult.isSuccess) {
+            return locationResult;
+        }
+        const { locationContext, deliveringTo } = locationResult.meta;
+
+        const lineItems = await buildEstimateLineItems(cart);
+        const taxLocation = taxCalculationService.resolveTaxLocationContext(locationContext, companySettingsData);
+        await taxCalculationService.applyTaxesToLines(lineItems, taxLocation);
+        const { taxes, totalTaxAmount } = taxCalculationService.summarizeTaxes(lineItems);
+
+        return common.returnResult(true, 200, 'Tax estimate calculated successfully', {
+            totalTaxAmount,
+            taxes,
+            // true = priced at the store's location because the customer's is unknown.
+            isStoreLocation: taxLocation.isStoreLocation && !!taxLocation.countryId,
+            deliveringTo
+        });
+    } catch (err) {
+        throw err;
+    }
+};
+
 module.exports = {
-    getShippingEstimate
+    getShippingEstimate,
+    getTaxEstimate
 };

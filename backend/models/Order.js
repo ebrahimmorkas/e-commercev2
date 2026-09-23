@@ -67,10 +67,12 @@ const orderStatusHistorySchema = new mongoose.Schema(
 // placed must never alter what a past order is shown to have charged.
 const orderItemTaxSchema = new mongoose.Schema(
     {
+        // null for a manually-entered tax (taxName 'Manual tax') - see
+        // services/taxCalculationService.js applyManualTax.
         taxId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "TaxMaster",
-            required: true
+            default: null
         },
         taxName: {
             type: String,

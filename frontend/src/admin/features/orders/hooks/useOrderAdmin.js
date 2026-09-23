@@ -148,10 +148,10 @@ export const useOrderAdmin = (orderId) => {
     }
   };
 
-  const addProducts = async (items, applyBulkPricing = false) => {
+  const addProducts = async (items, applyBulkPricing = false, manualTaxAmount = null) => {
     setMutating(true);
     try {
-      await addProductsToOrder(orderId, items, applyBulkPricing);
+      await addProductsToOrder(orderId, items, applyBulkPricing, manualTaxAmount);
       await refreshOrderSilently();
       toast.success('Products added to the order');
       return true;

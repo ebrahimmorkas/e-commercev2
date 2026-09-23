@@ -6,6 +6,8 @@ import AddressPicker from '../../address/components/AddressPicker';
 import { placeOrder } from '../api/ordersApi';
 import { useShippingEstimate } from '../../cart/hooks/useShippingEstimate';
 import { formatShippingEstimate, shippingAmountForTotal } from '../../cart/utils/formatShipping';
+import { useTaxEstimate, taxAmountForTotal } from '../../cart/hooks/useTaxEstimate';
+import TaxEstimateRows from '../../cart/components/TaxEstimateRows';
 
 const formatMoney = (amount) => `₹${(amount ?? 0).toLocaleString('en-IN')}`;
 
@@ -30,6 +32,12 @@ const CheckoutPage = ({ lineItems = [], subtotal = 0, cartLoading, initialAddres
   // Re-priced whenever the shopper picks a different saved address (location-based
   // methods depend on it). The final amount is still recomputed server-side at placement.
   const { estimate: shippingEstimate } = useShippingEstimate({
+    addressId: selectedAddressId,
+    refreshKey: `${lineItems.length}:${subtotal}`,
+    skip: lineItems.length === 0,
+  });
+  // Tax for the selected address - the same one the order will be taxed at.
+  const { estimate: taxEstimate } = useTaxEstimate({
     addressId: selectedAddressId,
     refreshKey: `${lineItems.length}:${subtotal}`,
     skip: lineItems.length === 0,
@@ -119,11 +127,12 @@ const CheckoutPage = ({ lineItems = [], subtotal = 0, cartLoading, initialAddres
           {shippingEstimate?.isShippingPending && (
             <p className="mt-1 text-xs text-slate-400">Shipping price will be manually calculated by admin.</p>
           )}
+          <TaxEstimateRows estimate={taxEstimate} formatMoney={formatMoney} />
           <div className="mt-2 pt-3 border-t border-slate-200 flex justify-between text-base font-bold text-slate-900">
             <span>Estimated total</span>
-            <span>{formatMoney(subtotal + shippingAmountForTotal(shippingEstimate))}</span>
+            <span>{formatMoney(subtotal + shippingAmountForTotal(shippingEstimate) + taxAmountForTotal(taxEstimate))}</span>
           </div>
-          <p className="mt-1 text-xs text-slate-400">Final taxes/discounts are calculated when the order is placed.</p>
+          <p className="mt-1 text-xs text-slate-400">Final discounts are applied when the order is placed.</p>
           <button
             type="button"
             onClick={handlePlaceOrder}

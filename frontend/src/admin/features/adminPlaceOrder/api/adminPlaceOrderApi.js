@@ -37,6 +37,13 @@ export const getProductOptions = (productId) => apiRequest(`${BASE}/products/${p
  */
 export const placeOrder = (data) => apiRequest(`${BASE}/place-order`, { method: 'POST', body: data });
 
+/**
+ * Live tax preview - nothing is saved.
+ * @param {Object} data - { isWalkInCustomer, userId?, addressId?, applyTax?, applyBulkPricing, items }
+ * @returns {Promise<{ lines, taxes, totalTaxAmount, isTaxOff, isStoreLocation, isLocationMissing }>}
+ */
+export const previewTax = (data) => apiRequest(`${BASE}/tax-preview`, { method: 'POST', body: data });
+
 export const getCompanyMasterData = () => apiRequest('/company-master/get-company-master-data');
 
 export default {
@@ -47,5 +54,6 @@ export default {
   getProducts,
   getProductOptions,
   placeOrder,
+  previewTax,
   getCompanyMasterData,
 };

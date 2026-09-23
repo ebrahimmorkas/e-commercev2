@@ -286,8 +286,36 @@ const checkoutCart = async (req, res) => {
     }
 };
 
+const getTaxEstimate = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        // Same location sources as getShippingEstimate above.
+        const cookieLocation = {
+            countryId: req.cookies?.Country || null,
+            stateId: req.cookies?.State || null,
+            cityId: req.cookies?.City || null,
+            zipCode: req.cookies?.zip_code || null
+        };
+        const result = await shippingEstimateService.getTaxEstimate({
+            vendorId,
+            cartOwner: req.cartOwner,
+            userId: req.user ? req.user._id : null,
+            addressId: req.query.addressId ? common.decodeId(req.query.addressId) : null,
+            cookieLocation,
+            companySettingsData: req.companySettingsData
+        });
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, deepEncodeIds(result.meta));
+    } catch (error) {
+        logger.logException('cartController: getTaxEstimate - Exception while estimating tax', { vendorId, error });
+    }
+};
+
 module.exports = {
     getShippingEstimate,
+    getTaxEstimate,
     addToCart,
     updateCartItem,
     removeCartItem,

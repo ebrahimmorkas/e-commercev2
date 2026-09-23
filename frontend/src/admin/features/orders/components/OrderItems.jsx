@@ -82,7 +82,7 @@ const OrderItemRow = ({ item, order }) => (
       {item.taxBreakdown?.length > 0 && (
         <div className="mt-1 text-[11px] text-gray-400 space-y-0.5">
           {item.taxBreakdown.map((tax) => (
-            <p key={tax.taxId}>
+            <p key={tax.taxId || tax.taxName}>
               {tax.taxName}: {formatOrderMoney(order, tax.taxAmount)}
             </p>
           ))}

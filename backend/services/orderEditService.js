@@ -1,10 +1,9 @@
-const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const Address = require('../models/Address');
-const User = require('../models/User');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
 const adminPlaceOrderService = require('./adminPlaceOrderService');
+const taxCalculationService = require('./taxCalculationService');
 const commissionService = require('./commissionService');
 const invoiceService = require('./invoiceService');
 const orderService = require('./orderService');
@@ -13,7 +12,6 @@ const { RESERVED_STEP_CODES, TERMINAL_STEP_CODES } = require('../constants/order
 const { notifyOrderChanged } = require('./orderRealtimeService');
 
 const round2 = (value) => Math.round(value * 100) / 100;
-const toValidObjectId = (value) => (value && mongoose.Types.ObjectId.isValid(value) ? value : null);
 
 // An order stops being editable once it is finalized, cancelled or rejected,
 // and once a payment has been taken (the total would no longer match what was
@@ -54,26 +52,73 @@ const fetchProductOptionsForEdit = async (vendorId, companySettingsData, product
 };
 
 // Where the order is going, for working out which taxes apply to the new
-// lines: its saved address if it still has one, otherwise the customer's own
-// profile location (same fallback Place Order uses). Walk-ins use the store's.
+// lines - same rule as Place Order: its saved address if it still has one,
+// otherwise (walk-in, typed-in address, no address) the store's own location.
 const resolveTaxLocation = async (order, companySettingsData) => {
     try {
-        if (order.isWalkInCustomer) {
-            return { countryId: companySettingsData?.storeCountryId || null, stateId: companySettingsData?.storeStateId || null, cityId: null, zipCode: null };
+        let savedAddress = null;
+        if (!order.isWalkInCustomer && order.shippingAddressId) {
+            savedAddress = await Address.findById(order.shippingAddressId);
         }
-        if (order.shippingAddressId) {
-            const address = await Address.findById(order.shippingAddressId);
-            if (address) {
-                return { countryId: address.country_id, stateId: address.state_id, cityId: address.city_id, zipCode: address.pincode };
-            }
+        return adminPlaceOrderService.resolveAdminOrderTaxLocation({ savedAddress, companySettingsData });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Loads an order that can still be edited, plus the lines already on it.
+// Orders placed before Order.items existed keep their lines only on the linked
+// cart (legacyItems) - those are saved onto the order with the first addition.
+const loadEditableOrder = async (vendorId, orderId) => {
+    try {
+        const order = await Order.findOne({ _id: orderId, vendorId, status: { $ne: 'D' } });
+        if (!order) {
+            return common.returnResult(false, 404, 'Order not found.');
         }
-        const user = order.userId ? await User.findById(order.userId) : null;
-        return {
-            countryId: toValidObjectId(user?.country),
-            stateId: toValidObjectId(user?.state),
-            cityId: toValidObjectId(user?.city),
-            zipCode: null
-        };
+        if (EDIT_BLOCKED_STEP_CODES.includes(order.currentStepCode) || order.cancelledAt) {
+            return common.returnResult(false, 400, 'This order has been finalized, cancelled or rejected and can no longer be edited.');
+        }
+        if (!EDITABLE_PAYMENT_STATUSES.includes(order.payment?.status || 'PENDING')) {
+            return common.returnResult(false, 409, 'Payment has already been made for this order, so it can no longer be edited.');
+        }
+
+        const hasStoredItems = order.items && order.items.length > 0;
+        const legacyItems = hasStoredItems ? [] : await orderService.deriveLegacyOrderItems(order);
+        const existingLines = hasStoredItems ? order.items : legacyItems;
+        // An order that was placed without tax (a walk-in sale with tax switched off) stays untaxed.
+        const orderIsUntaxed = order.isWalkInCustomer && existingLines.every((item) => !(item.taxBreakdown || []).length);
+
+        return common.returnResult(true, 200, 'All Good', { order, legacyItems, existingLines, orderIsUntaxed });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Live preview of the auto-calculated tax on the products being added.
+const previewAddProductsTax = async (vendorId, orderId, payload, companyMasterData, websiteMasterData, companySettingsData) => {
+    try {
+        const { items, applyBulkPricing } = payload;
+        const orderResult = await loadEditableOrder(vendorId, orderId);
+        if (!orderResult.isSuccess) {
+            return orderResult;
+        }
+        const { order, orderIsUntaxed } = orderResult.meta;
+
+        const bulkPricingResult = await adminPlaceOrderService.resolveApplyBulkPricing(vendorId, applyBulkPricing, websiteMasterData, companyMasterData);
+        if (!bulkPricingResult.isSuccess) {
+            return common.returnResult(false, bulkPricingResult.statusCode, bulkPricingResult.message);
+        }
+
+        // Preview only - stock is re-checked (and reserved) when the products are added.
+        const lineResult = await adminPlaceOrderService.resolveOrderLines(vendorId, items, true, bulkPricingResult.meta.isBulkPricingOn);
+        if (lineResult.error) {
+            return common.returnResult(false, 400, lineResult.error);
+        }
+
+        const taxLocation = await resolveTaxLocation(order, companySettingsData);
+        await adminPlaceOrderService.applyAdminOrderTax({ lines: lineResult.lines, taxLocation, isTaxOff: orderIsUntaxed, isTaxManual: false });
+
+        return common.returnResult(true, 200, 'Tax preview calculated successfully', adminPlaceOrderService.buildTaxPreview(lineResult.lines, taxLocation, orderIsUntaxed));
     } catch (err) {
         throw err;
     }
@@ -90,28 +135,22 @@ const resolveTaxLocation = async (order, companySettingsData) => {
 | Shipping Price). The order itself is updated in ONE conditional write, so an
 | order that was paid / cancelled / finalized in the meantime is never changed.
 */
-const addProductsToOrder = async (vendorId, adminUserId, orderId, items, applyBulkPricing, companyMasterData, websiteMasterData, companySettingsData) => {
+const addProductsToOrder = async (vendorId, adminUserId, orderId, payload, companyMasterData, websiteMasterData, companySettingsData) => {
     try {
-        const order = await Order.findOne({ _id: orderId, vendorId, status: { $ne: 'D' } });
-        if (!order) {
-            return common.returnResult(false, 404, 'Order not found.');
+        const { items, applyBulkPricing, isTaxManual, manualTaxAmount } = payload;
+        const orderResult = await loadEditableOrder(vendorId, orderId);
+        if (!orderResult.isSuccess) {
+            return orderResult;
         }
-        if (EDIT_BLOCKED_STEP_CODES.includes(order.currentStepCode) || order.cancelledAt) {
-            return common.returnResult(false, 400, 'This order has been finalized, cancelled or rejected and can no longer be edited.');
+        // Once a product is added the order has its own items, which would hide
+        // legacy cart-only lines - so they are saved onto the order together with the new ones.
+        const { order, legacyItems, existingLines, orderIsUntaxed } = orderResult.meta;
+        if (orderIsUntaxed && isTaxManual === true) {
+            return common.returnResult(false, 400, 'This order was placed without tax, so tax cannot be entered for the added products.');
         }
-        if (!EDITABLE_PAYMENT_STATUSES.includes(order.payment?.status || 'PENDING')) {
-            return common.returnResult(false, 409, 'Payment has already been made for this order, so it can no longer be edited.');
-        }
-
-        // Orders placed before Order.items existed keep their lines only on the linked
-        // cart. Once a product is added the order has its own items, which would hide
-        // those original lines - so they are saved onto the order together with the new ones.
-        const hasStoredItems = order.items && order.items.length > 0;
-        const legacyItems = hasStoredItems ? [] : await orderService.deriveLegacyOrderItems(order);
 
         // The same product/variant/size can't appear twice on an order (returns and
         // exchanges are matched per line), so an item already on it can't be added again.
-        const existingLines = hasStoredItems ? order.items : legacyItems;
         const existingKeys = new Set(existingLines.map((item) => `${item.productId}:${item.variantId}:${item.sizeId}`));
         for (const item of items) {
             if (existingKeys.has(`${item.productId}:${item.variantId}:${item.sizeId}`)) {
@@ -131,12 +170,11 @@ const addProductsToOrder = async (vendorId, adminUserId, orderId, items, applyBu
         }
         const lines = lineResult.lines;
 
-        // An order that was placed without tax (a walk-in sale with tax switched off) stays untaxed.
-        const orderIsUntaxed = order.isWalkInCustomer && existingLines.every((item) => !(item.taxBreakdown || []).length);
-        if (!orderIsUntaxed) {
-            const locationContext = await resolveTaxLocation(order, companySettingsData);
-            await adminPlaceOrderService.applyTaxes(lines, locationContext);
-        }
+        // Untaxed orders stay untaxed; otherwise the admin's typed total or the location's taxes.
+        const taxLocation = await resolveTaxLocation(order, companySettingsData);
+        await adminPlaceOrderService.applyAdminOrderTax({
+            lines, taxLocation, isTaxOff: orderIsUntaxed, isTaxManual: isTaxManual === true, manualTaxAmount
+        });
 
         // Reserve stock line by line; undo everything if any line loses a race.
         const deductions = [];
@@ -162,7 +200,7 @@ const addProductsToOrder = async (vendorId, adminUserId, orderId, items, applyBu
             quantity: line.quantity,
             lineAmount: line.amount,
             taxBreakdown: line.taxBreakdown,
-            lineTaxAmount: round2(line.taxBreakdown.reduce((sum, t) => sum + t.taxAmount, 0)),
+            lineTaxAmount: taxCalculationService.lineTaxAmount(line),
             stockDeductedQuantity: line.stockDeductedQuantity
         }));
         const addedSubtotal = round2(newItems.reduce((sum, item) => sum + item.lineAmount, 0));
@@ -231,5 +269,6 @@ module.exports = {
     fetchCategoriesForEdit,
     fetchProductsForEdit,
     fetchProductOptionsForEdit,
+    previewAddProductsTax,
     addProductsToOrder
 };
