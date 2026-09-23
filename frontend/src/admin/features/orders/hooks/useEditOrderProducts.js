@@ -15,6 +15,7 @@ export const useEditOrderProducts = () => {
   const [products, setProducts] = useState([]);
   const [productOptions, setProductOptions] = useState(null);
   const [isCategoryNestingAllowed, setIsCategoryNestingAllowed] = useState(true);
+  const [isBulkPricingFeatureOn, setIsBulkPricingFeatureOn] = useState(false);
   const [loading, setLoading] = useState(true);
   const toast = useToast();
 
@@ -34,6 +35,7 @@ export const useEditOrderProducts = () => {
       setCategories(categoriesRes.status === 'fulfilled' && Array.isArray(categoriesRes.value) ? categoriesRes.value : []);
       setProducts(productsRes.status === 'fulfilled' && Array.isArray(productsRes.value) ? productsRes.value : []);
       setIsCategoryNestingAllowed(masterRes.status === 'fulfilled' && masterRes.value ? !!masterRes.value.isCategoryNestingAllowed : true);
+      setIsBulkPricingFeatureOn(masterRes.status === 'fulfilled' && masterRes.value ? !!masterRes.value.isBulkPricingFeatureOn : false);
       setLoading(false);
     });
     return () => {
@@ -56,7 +58,7 @@ export const useEditOrderProducts = () => {
 
   const clearProductOptions = useCallback(() => setProductOptions(null), []);
 
-  return { loading, categories, products, productOptions, isCategoryNestingAllowed, loadProducts, loadProductOptions, clearProductOptions };
+  return { loading, categories, products, productOptions, isCategoryNestingAllowed, isBulkPricingFeatureOn, loadProducts, loadProductOptions, clearProductOptions };
 };
 
 export default useEditOrderProducts;

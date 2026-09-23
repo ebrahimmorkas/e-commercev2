@@ -22,11 +22,25 @@ const cartSizeSchema = new mongoose.Schema(
             maxlength: 100
         },
 
-        // Price of one unit of this exact size
+        // Price of one unit of this exact size - the bulk tier price when a
+        // bulk pricing tier applies at this quantity, else the normal price
         unitPrice: {
             type: Number,
             required: true,
             min: 0
+        },
+
+        // The size's normal price, kept so the cart can show it struck
+        // through next to unitPrice when a bulk tier applied
+        originalUnitPrice: {
+            type: Number,
+            default: null,
+            min: 0
+        },
+
+        isBulkPriceApplied: {
+            type: Boolean,
+            default: false
         },
 
         labelValue: {

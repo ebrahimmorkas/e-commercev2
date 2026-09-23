@@ -498,7 +498,7 @@ const addProductsToOrder = async (req, res) => {
             sizeId: decodeIfPresent(item.sizeId),
         }));
         const result = await orderEditService.addProductsToOrder(
-            vendorId, req.user._id, id, items, req.companyMasterData, req.companySettingsData
+            vendorId, req.user._id, id, items, req.body.applyBulkPricing, req.companyMasterData, req.websiteMasterData, req.companySettingsData
         );
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);

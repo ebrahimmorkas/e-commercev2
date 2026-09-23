@@ -147,7 +147,8 @@ const login = async (req, res) => {
             vendorId,
             guestCartId,
             locationContext,
-            req.companyMasterData
+            req.companyMasterData,
+            req.websiteMasterData
         );
 
         if(!loginUser.isSuccess) {

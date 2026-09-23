@@ -90,7 +90,7 @@ const resolveTaxLocation = async (order, companySettingsData) => {
 | Shipping Price). The order itself is updated in ONE conditional write, so an
 | order that was paid / cancelled / finalized in the meantime is never changed.
 */
-const addProductsToOrder = async (vendorId, adminUserId, orderId, items, companyMasterData, companySettingsData) => {
+const addProductsToOrder = async (vendorId, adminUserId, orderId, items, applyBulkPricing, companyMasterData, websiteMasterData, companySettingsData) => {
     try {
         const order = await Order.findOne({ _id: orderId, vendorId, status: { $ne: 'D' } });
         if (!order) {
@@ -120,7 +120,12 @@ const addProductsToOrder = async (vendorId, adminUserId, orderId, items, company
         }
 
         const allowOutOfStock = companySettingsData?.allowOutOfStockProductsAdding === true;
-        const lineResult = await adminPlaceOrderService.resolveOrderLines(vendorId, items, allowOutOfStock);
+        const bulkPricingResult = await adminPlaceOrderService.resolveApplyBulkPricing(vendorId, applyBulkPricing, websiteMasterData, companyMasterData);
+        if (!bulkPricingResult.isSuccess) {
+            return common.returnResult(false, bulkPricingResult.statusCode, bulkPricingResult.message);
+        }
+
+        const lineResult = await adminPlaceOrderService.resolveOrderLines(vendorId, items, allowOutOfStock, bulkPricingResult.meta.isBulkPricingOn);
         if (lineResult.error) {
             return common.returnResult(false, 400, lineResult.error);
         }

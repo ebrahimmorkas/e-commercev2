@@ -95,8 +95,8 @@ export const getEditProductOptions = (productId) => apiRequest(`${BASE}/admin/ed
  * @param {Array<{ productId: string, variantId: string, sizeId: string, quantity: number }>} items
  * @returns {Promise<{ order: Object }>}
  */
-export const addProductsToOrder = (id, items) =>
-  apiRequest(`${BASE}/admin/${id}/add-products`, { method: 'POST', body: { items } });
+export const addProductsToOrder = (id, items, applyBulkPricing = false) =>
+  apiRequest(`${BASE}/admin/${id}/add-products`, { method: 'POST', body: { items, applyBulkPricing } });
 
 /**
  * @param {string} id

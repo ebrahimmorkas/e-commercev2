@@ -12,6 +12,7 @@ import Spinner from '../../../../components/common/Spinner';
 import EmptyState from '../../../../components/common/EmptyState';
 import { useToast } from '../../../../components/common/Toast';
 import * as api from '../api/adminPlaceOrderApi';
+import { bulkUnitPrice } from '../../../../utils/bulkPricing';
 
 // Mirror backend/middlewares/validations/adminPlaceOrderValidations.js so the
 // form rejects what the API would reject, before a round-trip.
@@ -45,6 +46,7 @@ const EMPTY_VALUES = {
   wEmail: '',
   wAddress: '',
   applyTax: true,
+  applyBulkPricing: false,
   mainCategory: '',
   subCategory: '',
   productId: '',
@@ -112,6 +114,10 @@ const lineQuantityError = (line) => {
   return '';
 };
 
+// Preview of what "Apply Bulk Pricing" charges - the backend re-prices on submit.
+const lineUnitPrice = (line, applyBulkPricing) =>
+  applyBulkPricing ? bulkUnitPrice(line.unitPrice, line.bulkPricing, lineQuantity(line)) : line.unitPrice;
+
 /**
  * Admin places an order on behalf of one customer, or for a walk-in ("User out
  * of System") customer typed in by hand. Gated by the ADMIN_PLACE_ORDER module
@@ -138,6 +144,8 @@ const AdminPlaceOrderPage = () => {
   const [submitting, setSubmitting] = useState(false);
   // Read by the Form's schema/render, which sit outside the Form's own state.
   const [isWalkIn, setIsWalkIn] = useState(false);
+  // Mirrors values.applyBulkPricing for the items table columns, which are built outside the Form.
+  const [applyBulkPricing, setApplyBulkPricing] = useState(false);
   // Bumped after a successful order so the Form remounts with empty values.
   const [formKey, setFormKey] = useState(0);
 
@@ -165,6 +173,7 @@ const AdminPlaceOrderPage = () => {
   }, []);
 
   const isCategoryNestingAllowed = companyMaster ? !!companyMaster.isCategoryNestingAllowed : true;
+  const isBulkPricingFeatureOn = !!companyMaster?.isBulkPricingFeatureOn;
 
   const loadUsers = async (searchField) => {
     setUsers([]);
@@ -234,6 +243,7 @@ const AdminPlaceOrderPage = () => {
         sizeName: size.sizeName,
         sku: size.sku,
         unitPrice: size.price,
+        bulkPricing: size.bulkPricing || [],
         stock: size.stock,
         allowOutOfStock,
         quantityText: String(quantity),
@@ -265,7 +275,21 @@ const AdminPlaceOrderPage = () => {
       ),
     },
     { key: 'variant', label: 'Variant / Size', render: (row) => `${row.variantName} / ${row.sizeName}` },
-    { key: 'unitPrice', label: 'Unit price', align: 'right', render: (row) => formatMoney(row.unitPrice) },
+    {
+      key: 'unitPrice',
+      label: 'Unit price',
+      align: 'right',
+      render: (row) => {
+        const price = lineUnitPrice(row, applyBulkPricing);
+        if (price === row.unitPrice) return formatMoney(row.unitPrice);
+        return (
+          <div>
+            <div className="font-medium text-gray-900">{formatMoney(price)}</div>
+            <div className="text-xs text-gray-400"><span className="line-through">{formatMoney(row.unitPrice)}</span> <span className="text-emerald-600">Bulk price</span></div>
+          </div>
+        );
+      },
+    },
     {
       key: 'quantity',
       label: 'Qty',
@@ -291,7 +315,7 @@ const AdminPlaceOrderPage = () => {
         );
       },
     },
-    { key: 'amount', label: 'Amount', align: 'right', render: (row) => formatMoney(row.unitPrice * lineQuantity(row)) },
+    { key: 'amount', label: 'Amount', align: 'right', render: (row) => formatMoney(lineUnitPrice(row, applyBulkPricing) * lineQuantity(row)) },
   ];
 
   const itemActions = [
@@ -303,7 +327,7 @@ const AdminPlaceOrderPage = () => {
   ];
 
   const handleSubmit = async (values) => {
-    const subtotal = items.reduce((sum, line) => sum + line.unitPrice * lineQuantity(line), 0);
+    const subtotal = items.reduce((sum, line) => sum + lineUnitPrice(line, values.applyBulkPricing) * lineQuantity(line), 0);
     const discount = values.discount.trim() ? Number(values.discount) : 0;
     const shipping = values.shipping.trim() ? Number(values.shipping) : 0;
 
@@ -324,6 +348,7 @@ const AdminPlaceOrderPage = () => {
       items: items.map((line) => ({ productId: line.productId, variantId: line.variantId, sizeId: line.sizeId, quantity: lineQuantity(line) })),
       shippingAmount: shipping,
       discountAmount: discount,
+      applyBulkPricing: isBulkPricingFeatureOn && values.applyBulkPricing,
     };
     if (values.remarks.trim()) payload.remarks = values.remarks.trim();
 
@@ -351,6 +376,7 @@ const AdminPlaceOrderPage = () => {
       setLineError('');
       setItemsError('');
       setIsWalkIn(false);
+      setApplyBulkPricing(false);
       setFormKey((key) => key + 1);
       loadProducts();
     } catch (err) {
@@ -453,7 +479,7 @@ const AdminPlaceOrderPage = () => {
               disabled: !size.isSelectable,
             }));
 
-            const subtotal = items.reduce((sum, line) => sum + line.unitPrice * lineQuantity(line), 0);
+            const subtotal = items.reduce((sum, line) => sum + lineUnitPrice(line, values.applyBulkPricing) * lineQuantity(line), 0);
             const discountValue = MONEY_PATTERN.test(values.discount.trim()) ? Number(values.discount) : 0;
             const shippingValue = MONEY_PATTERN.test(values.shipping.trim()) ? Number(values.shipping) : 0;
             const estimatedTotal = Math.max(0, subtotal - discountValue) + shippingValue;
@@ -619,6 +645,21 @@ const AdminPlaceOrderPage = () => {
                         </div>
                         {lineError && <p className="text-sm text-red-600" role="alert">{lineError}</p>}
 
+                        {isBulkPricingFeatureOn && (
+                          <div>
+                            <Checkbox
+                              name="applyBulkPricing"
+                              label="Apply Bulk Pricing"
+                              checked={values.applyBulkPricing}
+                              onChange={(e) => {
+                                setFieldValue('applyBulkPricing', e.target.checked);
+                                setApplyBulkPricing(e.target.checked);
+                              }}
+                            />
+                            <p className="mt-1 ml-6 text-sm text-gray-500">Charge each item its bulk pricing tier price for the quantity ordered. Untick to charge the normal price.</p>
+                          </div>
+                        )}
+
                         <Table
                           columns={itemColumns}
                           data={items}
@@ -683,7 +724,7 @@ const AdminPlaceOrderPage = () => {
                     </Card>
 
                     <div className="flex justify-end gap-3">
-                      <Button type="button" variant="ghost" onClick={() => { handleReset(); setIsWalkIn(false); setItems([]); setUsers([]); setAddresses([]); setProductOptions(null); setLineError(''); setItemsError(''); }} disabled={submitting}>
+                      <Button type="button" variant="ghost" onClick={() => { handleReset(); setIsWalkIn(false); setApplyBulkPricing(false); setItems([]); setUsers([]); setAddresses([]); setProductOptions(null); setLineError(''); setItemsError(''); }} disabled={submitting}>
                         Reset
                       </Button>
                       <Button type="submit" variant="primary" loading={submitting}>

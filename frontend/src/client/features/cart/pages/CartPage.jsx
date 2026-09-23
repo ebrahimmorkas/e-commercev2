@@ -25,7 +25,15 @@ const CartLineItem = ({ item, onIncrement, onDecrement, onRemove }) => (
       <p className="mt-0.5 text-xs text-slate-500 truncate">
         {item.variantName} · {formatSize(item)}
       </p>
-      <p className={`mt-1 text-sm font-bold ${theme.card.price}`}>{formatMoney(item.unitPrice)}</p>
+      <p className="mt-1 flex flex-wrap items-baseline gap-x-2 text-sm">
+        <span className={`font-bold ${theme.card.price}`}>{formatMoney(item.unitPrice)}</span>
+        {item.isBulkPriceApplied && item.originalUnitPrice > item.unitPrice && (
+          <>
+            <span className="text-xs text-slate-400 line-through">{formatMoney(item.originalUnitPrice)}</span>
+            <span className="text-xs font-semibold text-emerald-600">Bulk price</span>
+          </>
+        )}
+      </p>
     </div>
 
     <div className="flex items-center justify-between sm:justify-end gap-3 sm:shrink-0">

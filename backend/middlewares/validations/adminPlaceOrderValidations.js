@@ -92,6 +92,10 @@ const placeOrderSchema = Joi.object({
         otherwise: Joi.forbidden().messages({ 'any.unknown': 'Apply tax is only allowed for a walk-in customer.' })
     }),
 
+    // Bulk pricing tiers are only used when the admin ticks "Apply Bulk
+    // Pricing" - otherwise every line is charged the size's normal price.
+    applyBulkPricing: Joi.boolean().default(false).label('Apply bulk pricing'),
+
     items: Joi.array()
         .items(orderLineItemSchema)
         .min(1)

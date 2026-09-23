@@ -11,6 +11,7 @@ const commissionService = require('./commissionService');
 const invoiceService = require('./invoiceService');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
+const bulkPricing = require('../utils/bulkPricing');
 const { PAYMENT_METHODS } = require('../constants/paymentGatewayConstants');
 const { ORDER_NOTIFICATION_TYPES } = require('../constants/orderRealtimeConstants');
 const { notifyOrderChanged } = require('./orderRealtimeService');
@@ -229,6 +230,11 @@ const loadProductOptions = async (vendorId, companySettingsData, productId) => {
                         sizeName: size.sizeName,
                         sku: size.sku,
                         price: size.price,
+                        // Combined product -> variant -> size tiers, so Place
+                        // Order can preview the price "Apply Bulk Pricing" gives.
+                        bulkPricing: bulkPricing.resolveEffectiveBulkPricing(product, variant, size)
+                            .map(({ minimumQuantity, maximumQuantity, price }) => ({ minimumQuantity, maximumQuantity, price }))
+                            .sort((a, b) => a.minimumQuantity - b.minimumQuantity),
                         stock: size.stock,
                         isOutOfStock: size.stock <= 0,
                         isSelectable: allowOutOfStock || size.stock > 0
@@ -352,7 +358,27 @@ const restoreStockForAdminOrder = async (order) => {
 // Resolves each requested line against the live catalogue: product, variant
 // and size must all be active, and unless the vendor allows out-of-stock
 // adding, the size must have enough stock. Price is always the live size price.
-const resolveOrderLines = async (vendorId, items, allowOutOfStock) => {
+// The admin's "Apply Bulk Pricing" tick (Place Order and Edit Order). Unticked
+// -> normal price. Ticked while the feature is off for this vendor -> refused,
+// rather than silently charging the normal price.
+const resolveApplyBulkPricing = async (vendorId, applyBulkPricing, websiteMasterData, companyMasterData) => {
+    try {
+        if (applyBulkPricing !== true) {
+            return common.returnResult(true, 200, 'All Good', { isBulkPricingOn: false });
+        }
+        const isBulkPricingOn = await bulkPricing.isBulkPricingActive(vendorId, websiteMasterData, companyMasterData);
+        if (!isBulkPricingOn) {
+            return common.returnResult(false, 403, 'Bulk Pricing is not enabled for your plan, so it cannot be applied to this order.');
+        }
+        return common.returnResult(true, 200, 'All Good', { isBulkPricingOn: true });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// isBulkPricingOn comes from resolveApplyBulkPricing - true only when the
+// admin ticked "Apply Bulk Pricing" and the feature is on.
+const resolveOrderLines = async (vendorId, items, allowOutOfStock, isBulkPricingOn = false) => {
     try {
         const seen = new Set();
         const lines = [];
@@ -382,6 +408,9 @@ const resolveOrderLines = async (vendorId, items, allowOutOfStock) => {
                 return { error: `"${product.name}" - ${variantName} - ${size.sizeName} has only ${size.stock} in stock.` };
             }
 
+            // Same quantity-based bulk pricing the customer gets in the cart.
+            const { unitPrice } = bulkPricing.resolveUnitPrice(product, variant, size, item.quantity, isBulkPricingOn);
+
             lines.push({
                 productId: product._id,
                 variantId: variant._id,
@@ -391,9 +420,9 @@ const resolveOrderLines = async (vendorId, items, allowOutOfStock) => {
                 sizeName: size.sizeName,
                 sku: size.sku,
                 taxIds: product.taxIds || [],
-                unitPrice: size.price,
+                unitPrice,
                 quantity: item.quantity,
-                amount: round2(size.price * item.quantity),
+                amount: round2(unitPrice * item.quantity),
                 taxBreakdown: []
             });
         }
@@ -452,7 +481,7 @@ const placeOrderOnBehalfOfUser = async (vendorId, adminUserId, websiteMasterData
             return common.returnResult(false, featureCheck.statusCode, featureCheck.message);
         }
 
-        const { userId, isWalkInCustomer, walkInCustomer, applyTax, items, shippingAmount, discountAmount, addressId, addressText, orderNumber, remarks } = payload;
+        const { userId, isWalkInCustomer, walkInCustomer, applyTax, applyBulkPricing, items, shippingAmount, discountAmount, addressId, addressText, orderNumber, remarks } = payload;
         const isWalkIn = isWalkInCustomer === true;
         const allowOutOfStock = companySettingsData?.allowOutOfStockProductsAdding === true;
 
@@ -522,7 +551,12 @@ const placeOrderOnBehalfOfUser = async (vendorId, adminUserId, websiteMasterData
         const currency = currencyResult.currency;
 
         // --- Lines, tax, totals ---
-        const lineResult = await resolveOrderLines(vendorId, items, allowOutOfStock);
+        const bulkPricingResult = await resolveApplyBulkPricing(vendorId, applyBulkPricing, websiteMasterData, companyMasterData);
+        if (!bulkPricingResult.isSuccess) {
+            return common.returnResult(false, bulkPricingResult.statusCode, bulkPricingResult.message);
+        }
+
+        const lineResult = await resolveOrderLines(vendorId, items, allowOutOfStock, bulkPricingResult.meta.isBulkPricingOn);
         if (lineResult.error) {
             return common.returnResult(false, 400, lineResult.error);
         }
@@ -676,6 +710,7 @@ module.exports = {
     loadActiveProducts,
     loadProductOptions,
     resolveOrderLines,
+    resolveApplyBulkPricing,
     applyTaxes,
     deductStockForLine,
     restoreDeductedStock

@@ -18,6 +18,10 @@ export const flattenCartLineItems = (cart) => {
           sizeName: size.sizeName,
           labelValue: size.labelValue || null,
           unitPrice: size.unitPrice,
+          // Set server-side when a bulk pricing tier applies at this quantity
+          // (backend/utils/bulkPricing.js) - unitPrice is then the tier price.
+          originalUnitPrice: size.originalUnitPrice ?? null,
+          isBulkPriceApplied: size.isBulkPriceApplied === true,
           quantity: size.quantity,
           sku: size.sku,
         });

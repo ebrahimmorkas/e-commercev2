@@ -102,7 +102,7 @@ const updateCartItem = async (req, res) => {
             variantId: common.decodeId(req.body.variantId),
             sizeId: common.decodeId(req.body.sizeId)
         };
-        const result = await cartService.updateCartItemQuantity(vendorId, req.cartOwner, req.companySettingsData, payload);
+        const result = await cartService.updateCartItemQuantity(vendorId, req.cartOwner, req.companyMasterData, req.websiteMasterData, req.companySettingsData, payload);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
@@ -137,7 +137,7 @@ const getCart = async (req, res) => {
     const vendorId = req.vendorId;
     try {
         const locationContext = buildLocationContext(req);
-        const result = await cartService.getCart(vendorId, req.cartOwner, locationContext);
+        const result = await cartService.getCart(vendorId, req.cartOwner, locationContext, req.companyMasterData, req.websiteMasterData);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }

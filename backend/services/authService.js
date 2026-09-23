@@ -61,7 +61,7 @@ const registerUser = async ({ vendorId, name, username, email, phone_no, whatsap
     }
 };
 
-const loginUser = async ({ identifier, password }, deviceMeta, vendorId, guestCartId, locationContext, companyMasterData) => {
+const loginUser = async ({ identifier, password }, deviceMeta, vendorId, guestCartId, locationContext, companyMasterData, websiteMasterData) => {
     try {
         if (!vendorId) {
             // Vendor detection fails
@@ -113,7 +113,7 @@ const loginUser = async ({ identifier, password }, deviceMeta, vendorId, guestCa
         let cartMergeResult = null;
         if (guestCartId) {
             try {
-                cartMergeResult = await cartService.mergeGuestCartIntoUserCart(vendorId, user._id, guestCartId, locationContext, companyMasterData);
+                cartMergeResult = await cartService.mergeGuestCartIntoUserCart(vendorId, user._id, guestCartId, locationContext, companyMasterData, websiteMasterData);
             } catch (mergeErr) {
                 logger.logException('Guest cart merge failed during login', { userId: user._id, guestCartId, mergeErr });
             }

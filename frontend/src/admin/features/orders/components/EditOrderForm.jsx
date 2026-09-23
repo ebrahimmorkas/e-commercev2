@@ -3,9 +3,11 @@ import Button from '../../../../components/common/Buttons';
 import Dropdown from '../../../../components/common/DropDown';
 import InputField from '../../../../components/common/InputField';
 import CategoryPathPicker from '../../../../components/common/CategoryPathPicker';
+import Checkbox from '../../../../components/common/Checkbox';
 import Spinner from '../../../../components/common/Spinner';
 import { useEditOrderProducts } from '../hooks/useEditOrderProducts';
 import { formatOrderMoney } from '../utils/formatOrder';
+import { bulkUnitPrice } from '../../../../utils/bulkPricing';
 import theme from '../theme/theme';
 
 const MAX_QUANTITY = 100000;
@@ -17,13 +19,14 @@ const FIELD_GRID = 'grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-3';
 /**
  * Edit Order: add more products to an order that has already been placed. The
  * picker is the one Place Order uses (category -> product -> variant -> size ->
- * quantity). Added lines are priced at the live price and taxed like any other
+ * quantity). Added lines are priced at the live price (or their bulk pricing
+ * tier price when "Apply Bulk Pricing" is ticked) and taxed like any other
  * line; the order's total grows by their subtotal plus tax (backend
  * orderEditService.addProductsToOrder). Existing items, discount and shipping
  * are left as they are.
  *
  * @param {Object} order - The order being edited (currency + existing items).
- * @param {Function} onSubmit - (items: [{ productId, variantId, sizeId, quantity }]) => Promise<boolean>
+ * @param {Function} onSubmit - (items: [{ productId, variantId, sizeId, quantity }], applyBulkPricing: boolean) => Promise<boolean>
  * @param {Function} onCancel
  * @param {boolean} submitting
  */
@@ -38,6 +41,7 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
   const [items, setItems] = useState([]);
   const [lineError, setLineError] = useState('');
   const [submitError, setSubmitError] = useState('');
+  const [applyBulkPricing, setApplyBulkPricing] = useState(false);
 
   const variants = picker.productOptions?.variants || [];
   const selectedVariant = variants.find((v) => v.variantId === variantId) || null;
@@ -103,6 +107,7 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
         variantName: selectedVariant.variantName,
         sizeName: selectedSize.sizeName,
         unitPrice: selectedSize.price,
+        bulkPricing: selectedSize.bulkPricing || [],
         stock: selectedSize.stock,
         allowOutOfStock,
         quantityText: String(qty),
@@ -131,7 +136,11 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
 
   const removeItem = (key) => setItems((current) => current.filter((line) => line.key !== key));
 
-  const addedSubtotal = items.reduce((sum, line) => sum + line.unitPrice * (lineQuantityError(line) ? 0 : lineQuantity(line)), 0);
+  // Preview of what "Apply Bulk Pricing" charges - the backend re-prices on submit.
+  const bulkPricingOn = picker.isBulkPricingFeatureOn && applyBulkPricing;
+  const lineUnitPrice = (line) => (bulkPricingOn ? bulkUnitPrice(line.unitPrice, line.bulkPricing, lineQuantity(line)) : line.unitPrice);
+
+  const addedSubtotal = items.reduce((sum, line) => sum + lineUnitPrice(line) * (lineQuantityError(line) ? 0 : lineQuantity(line)), 0);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -144,7 +153,10 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
       return;
     }
     setSubmitError('');
-    await onSubmit(items.map((line) => ({ productId: line.productId, variantId: line.variantId, sizeId: line.sizeId, quantity: lineQuantity(line) })));
+    await onSubmit(
+      items.map((line) => ({ productId: line.productId, variantId: line.variantId, sizeId: line.sizeId, quantity: lineQuantity(line) })),
+      bulkPricingOn
+    );
   };
 
   if (picker.loading) {
@@ -232,16 +244,37 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
         </p>
       )}
 
+      {picker.isBulkPricingFeatureOn && (
+        <div>
+          <Checkbox
+            name="applyBulkPricing"
+            label="Apply Bulk Pricing"
+            checked={applyBulkPricing}
+            onChange={(e) => setApplyBulkPricing(e.target.checked)}
+            disabled={submitting}
+          />
+          <p className="mt-1 ml-6 text-xs text-gray-500">Charge each added item its bulk pricing tier price for the quantity added. Untick to charge the normal price.</p>
+        </div>
+      )}
+
       {items.length > 0 && (
         <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
           {items.map((line) => {
             const error = lineQuantityError(line);
+            const unitPrice = lineUnitPrice(line);
             return (
               <div key={line.key} className="flex flex-wrap items-start justify-between gap-3 px-3 py-2 text-sm">
                 <div className="min-w-0 flex-1 basis-40">
                   <p className="font-medium text-gray-900 wrap-break-word">{line.productName}</p>
                   <p className="text-xs text-gray-500 wrap-break-word">
-                    {line.variantName} / {line.sizeName} · {formatOrderMoney(order, line.unitPrice)} each
+                    {line.variantName} / {line.sizeName} · {formatOrderMoney(order, unitPrice)} each
+                    {unitPrice !== line.unitPrice && (
+                      <>
+                        {' '}
+                        <span className="line-through text-gray-400">{formatOrderMoney(order, line.unitPrice)}</span>{' '}
+                        <span className="text-emerald-600">Bulk price</span>
+                      </>
+                    )}
                   </p>
                 </div>
                 <div className="w-28 shrink-0">
@@ -267,7 +300,7 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
                 </div>
                 <div className="flex items-center gap-2 shrink-0 pt-1.5">
                   <span className="font-semibold text-gray-900 whitespace-nowrap">
-                    {formatOrderMoney(order, error ? 0 : line.unitPrice * lineQuantity(line))}
+                    {formatOrderMoney(order, error ? 0 : unitPrice * lineQuantity(line))}
                   </span>
                   <Button type="button" variant={theme.button.ghost} size="sm" onClick={() => removeItem(line.key)} disabled={submitting}>
                     Remove
@@ -289,7 +322,7 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
       )}
 
       <p className="text-xs text-gray-400">
-        New products are priced at today&apos;s price and taxed like any other item. The order total goes up by their subtotal plus tax; the existing discount and shipping price are not changed (use Edit Shipping Price for that).
+        New products are priced at today&apos;s price (or their bulk price, if ticked above) and taxed like any other item. The order total goes up by their subtotal plus tax; the existing discount and shipping price are not changed (use Edit Shipping Price for that).
       </p>
       <div className="flex justify-end gap-2">
         <Button type="button" variant={theme.button.ghost} onClick={onCancel} disabled={submitting}>

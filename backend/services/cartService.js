@@ -11,6 +11,7 @@ const logger = require('../utils/logger');
 const shippingPriceCalculationService = require('./shippingPriceCalculationService');
 const freeCashService = require('./freeCashService');
 const abandonedCartService = require('./abandonedCartService');
+const bulkPricing = require('../utils/bulkPricing');
 
 /*
 |--------------------------------------------------------------------------
@@ -83,6 +84,23 @@ const locateCartLineItem = (cart, productId, variantId, sizeId) => {
     return { productEntry, variantEntry, sizeEntry: sizeEntry || null };
 };
 
+// Writes the quantity-dependent price (bulk tier or normal) onto a cart size
+// line. Returns true if the stored price actually changed.
+const applyLinePrice = (sizeEntry, product, variant, size, isBulkPricingOn) => {
+    try {
+        const pricing = bulkPricing.resolveUnitPrice(product, variant, size, sizeEntry.quantity, isBulkPricingOn);
+        const changed = sizeEntry.unitPrice !== pricing.unitPrice
+            || sizeEntry.originalUnitPrice !== pricing.originalUnitPrice
+            || sizeEntry.isBulkPriceApplied !== pricing.isBulkPriceApplied;
+        sizeEntry.unitPrice = pricing.unitPrice;
+        sizeEntry.originalUnitPrice = pricing.originalUnitPrice;
+        sizeEntry.isBulkPriceApplied = pricing.isBulkPriceApplied;
+        return changed;
+    } catch (err) {
+        throw err;
+    }
+};
+
 const countDistinctLineItems = (products) => {
     return products.reduce((sum, p) => sum + p.variants.reduce((vSum, v) => vSum + v.sizes.length, 0), 0);
 };
@@ -147,6 +165,8 @@ const addProductToCart = async (vendorId, cartOwner, locationContext, companyMas
         const { sizeEntry: existingSizeEntry } = locateCartLineItem(cart, productId, variantId, sizeId);
         const requestedTotalQty = (existingSizeEntry ? existingSizeEntry.quantity : 0) + quantity;
 
+        const isBulkPricingOn = await bulkPricing.isBulkPricingActive(vendorId, websiteMasterData, companyMasterData);
+
         const allowOutOfStock = companySettingsData?.allowOutOfStockProductsAdding === true;
         if (!allowOutOfStock && size.stock < requestedTotalQty) {
             if (size.stock == 0) {
@@ -157,6 +177,7 @@ const addProductToCart = async (vendorId, cartOwner, locationContext, companyMas
 
         if (existingSizeEntry) {
             existingSizeEntry.quantity = requestedTotalQty;
+            applyLinePrice(existingSizeEntry, product, variant, size, isBulkPricingOn);
         } else {
             const currentLineItemCount = countDistinctLineItems(cart.products);
             const limit = companyMasterData?.numberOfProductsAllowedInCartAtOnce ?? 50;
@@ -164,11 +185,14 @@ const addProductToCart = async (vendorId, cartOwner, locationContext, companyMas
                 return common.returnResult(false, 400, `You can only have ${limit} distinct items in your cart at once. Please remove an item before adding a new one.`);
             }
 
+            const pricing = bulkPricing.resolveUnitPrice(product, variant, size, quantity, isBulkPricingOn);
             const sizeLine = {
                 sizeId: size._id,
                 sizeName: size.sizeName,
                 labelValue: size.labelValue || null,
-                unitPrice: size.price,
+                unitPrice: pricing.unitPrice,
+                originalUnitPrice: pricing.originalUnitPrice,
+                isBulkPriceApplied: pricing.isBulkPriceApplied,
                 sku: size.sku,
                 quantity
             };
@@ -217,7 +241,7 @@ const addProductToCart = async (vendorId, cartOwner, locationContext, companyMas
     }
 };
 
-const updateCartItemQuantity = async (vendorId, cartOwner, companySettingsData, payload) => {
+const updateCartItemQuantity = async (vendorId, cartOwner, companyMasterData, websiteMasterData, companySettingsData, payload) => {
     try {
         const { productId, variantId, sizeId, quantity } = payload;
 
@@ -255,8 +279,10 @@ const updateCartItemQuantity = async (vendorId, cartOwner, companySettingsData, 
         }
 
         sizeEntry.quantity = quantity;
-        // Snapshot price may have moved since it was first added - refresh it.
-        sizeEntry.unitPrice = resolved.size.price;
+        // Snapshot price may have moved since it was first added, and the new
+        // quantity may enter or leave a bulk pricing tier - refresh it.
+        const isBulkPricingOn = await bulkPricing.isBulkPricingActive(vendorId, websiteMasterData, companyMasterData);
+        applyLinePrice(sizeEntry, resolved.product, resolved.variant, resolved.size, isBulkPricingOn);
 
         await cart.save();
         await invalidateCartTotalCache(vendorId, cartOwner);
@@ -333,8 +359,9 @@ const pruneEmptyProducts = (cart) => {
 
 // Re-validates every line item against current Product data (status +
 // location exclusion) and silently drops anything no longer valid, logging
-// why into cart.removedItems. Returns true if the cart was mutated.
-const revalidateCartItems = async (cart, locationContext) => {
+// why into cart.removedItems. Also re-prices every kept line (bulk tier or
+// normal price). Returns true if the cart was mutated.
+const revalidateCartItems = async (cart, locationContext, isBulkPricingOn) => {
     if (cart.products.length === 0) return false;
 
     const productIds = cart.products.map((p) => p.productId);
@@ -342,6 +369,7 @@ const revalidateCartItems = async (cart, locationContext) => {
     const liveProductMap = new Map(liveProducts.map((p) => [p._id.toString(), p]));
 
     let mutated = false;
+    let priceChanged = false;
 
     for (const productEntry of [...cart.products]) {
         const liveProduct = liveProductMap.get(productEntry.productId.toString());
@@ -386,7 +414,9 @@ const revalidateCartItems = async (cart, locationContext) => {
                     mutated = true;
                 } else {
                     // Keep price/name fresh even when nothing was dropped.
-                    sizeEntry.unitPrice = liveSize.price;
+                    if (applyLinePrice(sizeEntry, liveProduct, liveVariant, liveSize, isBulkPricingOn)) {
+                        priceChanged = true;
+                    }
                     sizeEntry.sizeName = liveSize.sizeName;
                     sizeEntry.labelValue = liveSize.labelValue || null;
                 }
@@ -398,7 +428,9 @@ const revalidateCartItems = async (cart, locationContext) => {
         pruneEmptyProducts(cart);
     }
 
-    return mutated;
+    // A price change alone must also be saved, or the cached cart total
+    // would keep the old price.
+    return mutated || priceChanged;
 };
 
 const computeCartSubtotal = (cart) => {
@@ -415,7 +447,7 @@ const computeCartSubtotal = (cart) => {
     return { subtotal, totalQuantity };
 };
 
-const getCart = async (vendorId, cartOwner, locationContext) => {
+const getCart = async (vendorId, cartOwner, locationContext, companyMasterData, websiteMasterData) => {
     try {
         const cart = await Cart.findOne({ vendorId, status: 'A', ...ownerFilter(cartOwner) });
         if (!cart) {
@@ -426,7 +458,8 @@ const getCart = async (vendorId, cartOwner, locationContext) => {
             });
         }
 
-        const mutated = await revalidateCartItems(cart, locationContext);
+        const isBulkPricingOn = await bulkPricing.isBulkPricingActive(vendorId, websiteMasterData, companyMasterData);
+        const mutated = await revalidateCartItems(cart, locationContext, isBulkPricingOn);
         if (mutated) {
             await cart.save();
             await invalidateCartTotalCache(vendorId, cartOwner);
@@ -456,7 +489,7 @@ const getCart = async (vendorId, cartOwner, locationContext) => {
 |--------------------------------------------------------------------------
 */
 
-const mergeGuestCartIntoUserCart = async (vendorId, userId, guestCartId, locationContext, companyMasterData) => {
+const mergeGuestCartIntoUserCart = async (vendorId, userId, guestCartId, locationContext, companyMasterData, websiteMasterData) => {
     try {
         if (!guestCartId) {
             return common.returnResult(true, 200, 'No guest cart to merge');
@@ -484,6 +517,8 @@ const mergeGuestCartIntoUserCart = async (vendorId, userId, guestCartId, locatio
                     if (sizeEntry) {
                         sizeEntry.quantity = gSize.quantity;
                         sizeEntry.unitPrice = gSize.unitPrice;
+                        sizeEntry.originalUnitPrice = gSize.originalUnitPrice;
+                        sizeEntry.isBulkPriceApplied = gSize.isBulkPriceApplied;
                         sizeEntry.sku = gSize.sku;
                         sizeEntry.sizeName = gSize.sizeName;
                         continue;
@@ -510,7 +545,10 @@ const mergeGuestCartIntoUserCart = async (vendorId, userId, guestCartId, locatio
 
         // Re-validate against current status/exclusions now that we know
         // the actual logged-in user's location (confirmed requirement 3).
-        await revalidateCartItems(userCart, locationContext);
+        // Also re-prices every line, since a merged quantity can change which
+        // bulk pricing tier applies.
+        const isBulkPricingOn = await bulkPricing.isBulkPricingActive(vendorId, websiteMasterData, companyMasterData);
+        await revalidateCartItems(userCart, locationContext, isBulkPricingOn);
 
         // Enforce the per-vendor line-item cap. Pre-existing user-cart lines
         // are never evicted for this; only newly-merged-in guest lines are
@@ -1124,7 +1162,8 @@ const checkoutCart = async (vendorId, cartOwner, userId, locationContext, compan
             return common.returnResult(false, 400, 'Your cart is empty.');
         }
 
-        await revalidateCartItems(cart, locationContext);
+        const isBulkPricingOn = await bulkPricing.isBulkPricingActive(vendorId, websiteMasterData, companyMasterData);
+        await revalidateCartItems(cart, locationContext, isBulkPricingOn);
         if (cart.products.length === 0) {
             await cart.save();
             return common.returnResult(false, 400, 'None of the items in your cart are currently available for checkout.');
@@ -1156,7 +1195,7 @@ const checkoutCart = async (vendorId, cartOwner, userId, locationContext, compan
                         continue;
                     }
 
-                    sizeEntry.unitPrice = liveSize.price;
+                    applyLinePrice(sizeEntry, liveProduct, liveVariant, liveSize, isBulkPricingOn);
                     sizeEntry.isCheckedOut = true;
                     eligibleLineItems.push({
                         productId: productEntry.productId,
@@ -1168,6 +1207,8 @@ const checkoutCart = async (vendorId, cartOwner, userId, locationContext, compan
                         sku: sizeEntry.sku,
                         taxIds: liveProduct.taxIds || [],
                         unitPrice: sizeEntry.unitPrice,
+                        originalUnitPrice: sizeEntry.originalUnitPrice,
+                        isBulkPriceApplied: sizeEntry.isBulkPriceApplied,
                         amount: sizeEntry.unitPrice * sizeEntry.quantity,
                         quantity: sizeEntry.quantity,
                         shippingType: liveSize.shipping?.type || null,

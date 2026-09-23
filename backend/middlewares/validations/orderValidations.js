@@ -51,7 +51,9 @@ const addOrderProductsSchema = Joi.object({
             sizeId: objectId().required().label('Size'),
             quantity: Joi.number().integer().min(1).max(100000).required().label('Quantity')
         })
-    ).min(1).max(50).required().label('Items')
+    ).min(1).max(50).required().label('Items'),
+    // Same "Apply Bulk Pricing" choice as Place Order - off means normal price.
+    applyBulkPricing: Joi.boolean().default(false).label('Apply bulk pricing')
 });
 
 const cancelOrderSchema = Joi.object({

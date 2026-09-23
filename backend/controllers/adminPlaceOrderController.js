@@ -32,7 +32,9 @@ const formatProductOptions = (meta) => ({
         : meta.variants,
 });
 
-const formatUser = (user) => ({ ...user, _id: encodeIfPresent(user._id) });
+// fetchUsersBySearchField returns { userId, value, name } rows (no _id), and
+// userId is sent straight back as placeOrder's / getUserAddresses' userId.
+const formatUser = (user) => ({ ...user, userId: encodeIfPresent(user.userId) });
 
 const formatAddress = (address) => ({ ...address, _id: encodeIfPresent(address._id) });
 
