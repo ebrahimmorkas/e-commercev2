@@ -5,7 +5,7 @@ const WeightMaster = require("../models/WeightMaster");
 
 async function seedWeights() {
     try {
-        await mongoose.connect("mongodb://127.0.0.1:27017/ecommerce-v2");
+        await mongoose.connect(process.env.MONGODB_URI);
         console.log("✅ MongoDB Connected");
 
         // Base unit per type (conversionFactor: 1): Gram for MASS, Milliliter

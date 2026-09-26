@@ -38,9 +38,11 @@ const validateFile = (file, { maxSizeField, allowedFormatsField }, companyMaster
         }
     }
 
-    if (allowedFormatsField && companyMasterData && companyMasterData[allowedFormatsField]) {
-        const allowedFormats = companyMasterData[allowedFormatsField];
-        const allowedList = Array.isArray(allowedFormats) ? allowedFormats : [allowedFormats];
+    const allowedFormats = allowedFormatsField && companyMasterData ? companyMasterData[allowedFormatsField] : null;
+    // An empty list means no format restriction - the format fields are lists
+    // that default to [], and [] must not reject every upload.
+    const allowedList = [].concat(allowedFormats || []).filter(Boolean);
+    if (allowedList.length > 0) {
         const extension = getFileExtension(file.originalname);
         if (!allowedList.map(f => f.toLowerCase()).includes(extension)) {
             return { valid: false, message: `File format .${extension} is not allowed. Allowed formats: ${allowedList.join(', ')}.` };

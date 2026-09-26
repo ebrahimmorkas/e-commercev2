@@ -134,7 +134,7 @@ const ProductForm = ({ mode = 'add', initialDraft, lookups, products = [], onSub
   // same numbers instead of a hardcoded guess, or the admin only finds out on the final Create click.
   const imageLimits = {
     maxMB: typeof companyMaster?.allowedProductImageMB === 'number' ? companyMaster.allowedProductImageMB : null,
-    formats: [].concat(companyMaster?.allowedProductImagesFormat || []).map((f) => String(f).toLowerCase().replace(/^./, '')),
+    formats: [].concat(companyMaster?.allowedProductImagesFormat || []).map((f) => String(f).toLowerCase().replace(/^\./, '')),
   };
 
   const colorOptions = useMemo(() => draft.colors.map((c) => ({ value: c, label: c })), [draft.colors]);

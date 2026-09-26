@@ -58,6 +58,7 @@ const uploadBannerMedia = async ({ vendorId, imageFile, videoFile, userId, compa
                 file: bufferedImage,
                 userId,
                 maxSizeField: 'allowedBannerImagesMB',
+                allowedFormatsField: 'allowedBannerImagesFormat',
                 companyMasterData,
                 websiteMasterData
             });
@@ -265,7 +266,8 @@ const updateBanner = async (vendorId, bannerId, updateData, newImageFile, newVid
                 const bufferedImage = await toBufferedImageFile(newImageFile);
                 const uploadResult = await imageUploadService.uploadImage({
                     vendorId, module: 'banner', file: bufferedImage, userId,
-                    maxSizeField: 'allowedBannerImagesMB', companyMasterData, websiteMasterData
+                    maxSizeField: 'allowedBannerImagesMB', allowedFormatsField: 'allowedBannerImagesFormat',
+                    companyMasterData, websiteMasterData
                 });
                 if (!uploadResult.isSuccess) {
                     return common.returnResult(false, uploadResult.statusCode, uploadResult.message);

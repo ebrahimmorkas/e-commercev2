@@ -12,7 +12,6 @@ const CountryMaster = require("../models/CountryMaster");
 // reported and skipped for the link; the currency is still created.
 const CURRENCIES = [
     { name: "Indian Rupee", short_name: "INR", symbol: "₹", symbol_position: "PREFIX", decimal_places: 2, countryName: "India" },
-    { name: "US Dollar", short_name: "USD", symbol: "$", symbol_position: "PREFIX", decimal_places: 2, countryName: "United States" },
     { name: "UAE Dirham", short_name: "AED", symbol: "AED", symbol_position: "SUFFIX", decimal_places: 2, countryName: "United Arab Emirates" }
 ];
 

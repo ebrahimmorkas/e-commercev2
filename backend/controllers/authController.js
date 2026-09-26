@@ -116,7 +116,8 @@ const register = async (req, res) => {
         if (!countResult.isSuccess) {
             return sendError(res, countResult.statusCode, countResult.message);
         }
-        if (countResult.meta.count >= numberOfUsersAllowed) {
+        // null/undefined = no limit (a bare `count >= null` would block every signup).
+        if (numberOfUsersAllowed !== null && numberOfUsersAllowed !== undefined && countResult.meta.count >= numberOfUsersAllowed) {
             return sendError(res, 403, 'You have exceeded the number of users allowed');
         }
 

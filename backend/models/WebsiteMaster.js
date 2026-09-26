@@ -152,11 +152,15 @@ const websiteMasterSchema = mongoose.Schema({
     // CompanyMaster.isBulkUpdatingProductsAllowed (per-vendor entitlement,
     // off by default) via checkFeatureOnOrOff. See bulkUpdateProducts in
     // productService.js.
-    // NOTE: isBulkUploadForProductsFeatureOn (the create-flow's own gate)
-    // has no matching field here - checkFeatureOnOrOff will read it as
-    // undefined/false and reject every request at the website-level check.
-    // Pre-existing gap, left untouched since it's outside this feature's scope.
     isBulkUpdatingProductsAllowed: {
+        type: Boolean,
+        default: true
+    },
+    // Global switch for creating products in bulk via excel - paired with
+    // CompanyMaster.isBulkUploadForProductsFeatureOn via checkFeatureOnOrOff
+    // (see bulkUploadProducts in productController.js). Without this field the
+    // website-level check read undefined and rejected every bulk upload.
+    isBulkUploadForProductsFeatureOn: {
         type: Boolean,
         default: true
     },

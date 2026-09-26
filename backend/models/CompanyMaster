@@ -52,9 +52,13 @@ const companyMasterSchema = mongoose.Schema({
         type: Number,
         default: 2
     },
+    // Image extensions allowed for banner images. Empty = any image format
+    // (see validateFile in imageUploadService.js). A value stored as a single
+    // string before this became a list is read back as a one-item list.
     allowedBannerImagesFormat: {
-        type: String,
-        enum: ['jpg', 'png', 'jpeg']
+        type: [String],
+        enum: ['jpg', 'png', 'jpeg'],
+        default: []
     },
     // Vendor-specific hard cap (MB) for banner videos specifically, passed as
     // maxSizeField into videoUploadService. Falls back to the module-wide
@@ -335,9 +339,11 @@ const companyMasterSchema = mongoose.Schema({
         type: Number,
         default: 2
     },
+    // Same convention as allowedBannerImagesFormat - empty = any image format.
     allowedProductImagesFormat: {
-        type: String,
-        enum: ['jpg', 'png', 'jpeg']
+        type: [String],
+        enum: ['jpg', 'png', 'jpeg'],
+        default: []
     },
     // Vendor wil be able to add only Main Category if this is false
     isCategoryNestingAllowed: {
@@ -681,6 +687,13 @@ const companyMasterSchema = mongoose.Schema({
     // End of Modules
 
     // Customer Management
+    // Most customer accounts this vendor may have - checked on signup (see
+    // register in authController.js). null = no limit.
+    numberOfUsersAllowed: {
+        type: Number,
+        default: null,
+        min: 0
+    },
     // Vendor entitlement: whether this vendor's admin may change/reset a
     // customer's password directly. Off by default - same opt-in convention
     // as isCloningProductAllowed/isBulkUpdatingProductsAllowed, since this is
