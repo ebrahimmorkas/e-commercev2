@@ -41,6 +41,15 @@ export const CustomersIcon = (props) => (
   </svg>
 );
 
+export const DeliveryAgentIcon = (props) => (
+  <svg {...base} {...props}>
+    <path d="M3 7.5h10.5v8.25H3z" />
+    <path d="M13.5 10.5h3.75l2.25 2.625v2.625H13.5" />
+    <circle cx="7" cy="17.25" r="1.75" />
+    <circle cx="17" cy="17.25" r="1.75" />
+  </svg>
+);
+
 export const AddUserIcon = (props) => (
   <svg {...base} {...props}>
     <circle cx="9" cy="7.5" r="3.25" />

@@ -15,6 +15,9 @@ import FreeCashPage from './admin/features/freeCash/pages/FreeCashPage';
 import GroupsPage from './admin/masters/group/pages/GroupsPage';
 import EmailTemplatesPage from './admin/masters/emailTemplate/pages/EmailTemplatesPage';
 import CompanySettingsPage from './admin/features/companySettings/pages/CompanySettingsPage';
+import DeliveryAgentsPage from './admin/features/deliveryAgents/pages/DeliveryAgentsPage';
+import MyDeliveriesPage from './admin/features/myDeliveries/pages/MyDeliveriesPage';
+import { DeliveryAgentIcon } from './components/ui/Sidebar/icons';
 import LoginPage from './admin/features/login/pages/LoginPage';
 import { useAuth } from './admin/features/login/hooks/useAuth';
 import { useAssignedModules } from './admin/modules/hooks/useAssignedModules';
@@ -27,9 +30,13 @@ const PAGE_LABELS = DEFAULT_NAV_ITEMS.reduce((acc, item) => {
   return acc;
 }, {});
 
+// A delivery agent sees only their own deliveries - no store modules.
+const AGENT_NAV_ITEMS = [{ key: 'myDeliveries', label: 'My Deliveries', icon: DeliveryAgentIcon }];
+
 function App() {
   const { isAuthenticated, isLoading, user, logout } = useAuth();
-  const { assignedCodes } = useAssignedModules(isAuthenticated);
+  const isDeliveryAgent = user?.role === 'deliveryAgent';
+  const { assignedCodes } = useAssignedModules(isAuthenticated && !isDeliveryAgent);
   const navItems = filterNavItemsByAssignedModules(DEFAULT_NAV_ITEMS, assignedCodes);
   const [activePage, setActivePage] = useSessionStorageState('ecom.admin.activePage', 'announcements');
 
@@ -50,6 +57,17 @@ function App() {
 
   if (!isAuthenticated) {
     return <LoginPage />;
+  }
+
+  if (isDeliveryAgent) {
+    return (
+      <div className="App md:flex min-h-screen bg-gray-50">
+        <Sidebar items={AGENT_NAV_ITEMS} activeKey="myDeliveries" onNavigate={() => {}} user={user} onLogout={logout} />
+        <div className="flex-1 min-w-0">
+          <MyDeliveriesPage />
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -77,6 +95,8 @@ function App() {
           <CustomersPage onAddUser={() => setActivePage('addUser')} />
         ) : effectiveActivePage === 'addUser' ? (
           <AddUserPage onDone={() => setActivePage('customers')} />
+        ) : effectiveActivePage === 'deliveryAgents' ? (
+          <DeliveryAgentsPage />
         ) : effectiveActivePage === 'abandonedCarts' ? (
           <AbandonedCartsPage />
         ) : effectiveActivePage === 'banners' ? (

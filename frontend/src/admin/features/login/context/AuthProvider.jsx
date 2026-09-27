@@ -11,6 +11,10 @@ import {
 } from '../../../../utils/apiClient';
 import { useToast } from '../../../../components/common/Toast';
 
+// Who may use /admin: the store's admins, and its delivery agents (who only
+// ever see their own My Deliveries page - see App.jsx).
+const ADMIN_PANEL_ROLES = ['admin', 'deliveryAgent'];
+
 /**
  * Owns the admin session: current user, login/logout, and a silent refresh on
  * mount so a page reload stays logged in as long as the refresh-token cookie
@@ -61,8 +65,8 @@ const AuthProvider = ({ children }) => {
         if (cancelled) return;
         // The refresh-token cookie is shared with the storefront session, so a
         // customer who wandered to /admin can silently "refresh" here too -
-        // only a real admin role gets seated.
-        if (data.user?.role !== 'admin') {
+        // only an admin or a delivery agent gets seated.
+        if (!ADMIN_PANEL_ROLES.includes(data.user?.role)) {
           clearLocalState();
           return;
         }
@@ -87,7 +91,7 @@ const AuthProvider = ({ children }) => {
       // server-side regardless of role, so the hint must be set even when
       // we refuse to seat a non-admin account here.
       setSessionHint();
-      if (data.user?.role !== 'admin') {
+      if (!ADMIN_PANEL_ROLES.includes(data.user?.role)) {
         clearAccessToken();
         return { success: false, message: 'This account does not have admin access.' };
       }

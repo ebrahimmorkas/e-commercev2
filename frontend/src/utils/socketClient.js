@@ -137,6 +137,56 @@ export const reconnectSocket = () => {
 };
 
 /**
+ * Keeps live updates alive with no Refresh button: whenever the socket gives
+ * up (status OFFLINE - usually its access token expired), waits a little,
+ * renews the access token and re-opens it, backing off from 2s up to 30s
+ * while it keeps failing. `onRecovered` runs once it's back after being
+ * offline, so pages can re-fetch what they missed (a manual re-open doesn't
+ * fire onReconnect's `reconnect` event).
+ * @param {() => Promise<boolean>} renewAuth - e.g. apiClient's renewAccessToken
+ * @param {() => void} [onRecovered]
+ * @returns {() => void} stop
+ */
+export const startAutoReconnect = (renewAuth, onRecovered) => {
+  let timer = null;
+  let attempt = 0;
+  let wasOffline = false;
+  let stopped = false;
+
+  const unsubscribe = onConnectionStatusChange((status) => {
+    if (stopped) return;
+    if (status === CONNECTION_STATUS.CONNECTED) {
+      clearTimeout(timer);
+      timer = null;
+      attempt = 0;
+      if (wasOffline) {
+        wasOffline = false;
+        onRecovered?.();
+      }
+      return;
+    }
+    if (status !== CONNECTION_STATUS.OFFLINE || timer) return;
+
+    wasOffline = true;
+    const delay = Math.min(30000, 2000 * 2 ** attempt);
+    attempt += 1;
+    timer = setTimeout(async () => {
+      timer = null;
+      if (stopped) return;
+      await renewAuth().catch(() => false);
+      // A failed re-open reports OFFLINE again (connect_error), which schedules the next try.
+      if (!stopped) reconnectSocket();
+    }, delay);
+  });
+
+  return () => {
+    stopped = true;
+    clearTimeout(timer);
+    unsubscribe();
+  };
+};
+
+/**
  * Fires after a successful RE-connection only - not the first connect.
  * @param {() => void} handler
  * @returns {() => void} unsubscribe

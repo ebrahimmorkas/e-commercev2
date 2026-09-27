@@ -1,13 +1,16 @@
 import { formatCurrencyAmount } from '../../../../utils/money';
 
-// Mirrors backend/constants/orderStepConstants.js's RESERVED_STEP_CODES/
-// TERMINAL_STEP_CODES for badge coloring and the cancel/advance gates below.
-// Any OTHER step code is a vendor-custom step with no special styling.
-export const TERMINAL_STEP_CODES = ['COMPLETED', 'DELIVERED'];
-
+// Badge colours for backend/constants/orderStepConstants.js's built-in step
+// codes. Any OTHER step code is a vendor-custom step with no special styling.
+// Whether an order is finalized (on its workflow's last step) or closed
+// (rejected/cancelled/refunded) comes from the server: order.isFinalized /
+// order.isClosed - never worked out from the step code here.
 const STEP_BADGE_VARIANTS = {
   ACCEPTED: 'blue',
   REJECTED: 'red',
+  CANCELLED: 'red',
+  REFUNDED: 'gray',
+  PAYMENT_AT_DELIVERY: 'purple',
   READY_FOR_DELIVERY: 'purple',
   DISPATCHED: 'yellow',
   DELIVERED: 'green',
@@ -30,7 +33,11 @@ export const orderSourceVariant = (order) => {
   return 'gray';
 };
 
-export const isOrderLocked = (order) => !!order && TERMINAL_STEP_CODES.includes(order.currentStepCode);
+// On the last step of its workflow: nothing at all can be done to it any more.
+export const isOrderLocked = (order) => !!order && order.isFinalized === true;
+
+// Rejected, cancelled or refunded: only Refund / Restart are possible.
+export const isOrderClosed = (order) => !!order && order.isClosed === true;
 
 // Order snapshots its own currency at creation time, so historical orders
 // always render with the currency they were actually placed in.
@@ -55,14 +62,14 @@ export const canEditShipping = (order) =>
 export const canEditOrderFor = (order) =>
   !!order &&
   !isOrderLocked(order) &&
-  order.currentStepCode !== 'REJECTED' &&
+  !isOrderClosed(order) &&
   !order.cancelledAt &&
   ['PENDING', 'FAILED'].includes(order.payment?.status || 'PENDING');
 
 // Whether an order's delivery address may still be changed: not finalized,
 // cancelled or rejected. The backend re-checks this.
 export const canEditShippingAddressFor = (order) =>
-  !!order && !isOrderLocked(order) && order.currentStepCode !== 'REJECTED' && !order.cancelledAt;
+  !!order && !isOrderLocked(order) && !isOrderClosed(order) && !order.cancelledAt;
 
 // Shipping row text for a placed order. Orders placed from the storefront
 // carry a shippingPriceBreakdown (see backend Order model); admin-placed ones

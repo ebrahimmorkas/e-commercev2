@@ -117,6 +117,18 @@ const performRefresh = async () => {
 };
 
 /**
+ * Mints a fresh access token from the refresh-token cookie (shared with the
+ * 401 retry above). For callers that need a valid token without making an API
+ * request first - e.g. re-opening a live-updates socket that gave up.
+ * @returns {Promise<boolean>} whether a new token was obtained
+ */
+export const renewAccessToken = async () => {
+  const newToken = await performRefresh();
+  if (newToken) setAccessToken(newToken);
+  return !!newToken;
+};
+
+/**
  * @param {string} path - Path relative to the API base URL, e.g. '/announcements/add-announcement'
  * @param {Object} options
  * @param {string} options.method - HTTP method (default 'GET')

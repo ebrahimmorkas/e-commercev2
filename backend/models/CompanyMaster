@@ -464,6 +464,13 @@ const companyMasterSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // How many delivery agents the vendor may have. Active and inactive
+    // agents count, deleted ones don't (deliveryAgentService.createDeliveryAgent).
+    numberOfDeliveryAgentsAllowed: {
+        type: Number,
+        min: 0,
+        default: 0
+    },
     isEmailSendingFeatureOnAfterOrderStatusChanges: {
         type: Boolean,
         default: false

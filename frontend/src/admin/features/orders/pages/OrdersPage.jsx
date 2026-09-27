@@ -1,10 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Card from '../../../../components/common/Card';
 import Table from '../../../../components/common/tables';
 import Badge from '../../../../components/common/Badge';
 import EmptyState from '../../../../components/common/EmptyState';
 import Button from '../../../../components/common/Buttons';
 import SearchInput from '../../../../components/common/SearchInput';
+import Dropdown from '../../../../components/common/DropDown';
+import { getOrderStatusOptions } from '../api/orderAdminApi';
 import { useOrdersAdmin } from '../hooks/useOrdersAdmin';
 import { useRealtime } from '../../../realtime/useRealtime';
 import LiveIndicator from '../../../realtime/LiveIndicator';
@@ -19,6 +21,9 @@ import theme from '../theme/theme';
 // (matching rules: utils/searchFilter.js). Limited to what the list rows carry - order number,
 // source, status, payment, the address snapshot, and the customer's name/phone for walk-in
 // orders. Online orders only carry a user id here, not the customer's name.
+// Status filter value meaning "no filter" - a real option, so the admin can always pick it to go back.
+const ALL_STATUSES = 'ALL';
+
 const orderSearchFields = (order) => [
   order.orderNumber,
   orderSourceLabel(order),
@@ -52,9 +57,35 @@ const OrdersPage = () => {
   const { status, reconnect } = useRealtime();
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  // ALL_STATUSES = no filter. Options: "All statuses", this store's workflow
+  // steps, then the built-in statuses - picking "All statuses" goes back to every order.
+  const [statusFilter, setStatusFilter] = useState(ALL_STATUSES);
+  const [statusOptions, setStatusOptions] = useState([]);
 
-  const filteredOrders = useMemo(() => filterBySearch(orders, searchTerm, orderSearchFields), [orders, searchTerm]);
-  const isSearching = searchTerm.trim() !== '';
+  useEffect(() => {
+    let cancelled = false;
+    getOrderStatusOptions()
+      .then((data) => {
+        if (!cancelled) {
+          setStatusOptions([
+            { value: ALL_STATUSES, label: 'All statuses' },
+            ...(data?.statuses || []).map((status) => ({ value: status.code, label: status.name })),
+          ]);
+        }
+      })
+      // Best-effort: without the options the page still works, just without the filter.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filteredOrders = useMemo(() => {
+    const byStatus = statusFilter !== ALL_STATUSES ? orders.filter((order) => order.currentStepCode === statusFilter) : orders;
+    return filterBySearch(byStatus, searchTerm, orderSearchFields);
+  }, [orders, searchTerm, statusFilter]);
+  const isSearching = searchTerm.trim() !== '' || statusFilter !== ALL_STATUSES;
+  const statusFilterLabel = statusOptions.find((option) => option.value === statusFilter)?.label;
 
   // While the live connection is up the list keeps itself current, so a manual Refresh is only offered when
   // it can actually help: the connection is down/reconnecting (the list may be stale), or the last load
@@ -138,15 +169,31 @@ const OrdersPage = () => {
         )}
 
         {!loading && orders.length > 0 && (
-          <SearchInput
-            value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder="Search order #, status, payment, customer or city…"
-            ariaLabel="Search orders"
-            matchCount={filteredOrders.length}
-            totalCount={orders.length}
-            itemLabel="orders"
-          />
+          <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+            <div className="flex-1 min-w-0">
+              <SearchInput
+                value={searchTerm}
+                onChange={setSearchTerm}
+                placeholder="Search order #, status, payment, customer or city…"
+                ariaLabel="Search orders"
+                matchCount={filteredOrders.length}
+                totalCount={orders.length}
+                itemLabel="orders"
+              />
+            </div>
+            {statusOptions.length > 0 && (
+              <div className="sm:w-60 shrink-0">
+                <Dropdown
+                  placeholder="All statuses"
+                  options={statusOptions}
+                  value={statusFilter}
+                  onChange={(value) => setStatusFilter(value || ALL_STATUSES)}
+                  clearable
+                  aria-label="Filter orders by status"
+                />
+              </div>
+            )}
+          </div>
         )}
 
         <Table
@@ -156,17 +203,27 @@ const OrdersPage = () => {
           actions={actions}
           loading={loading}
           pageSize={15}
-          resetPageOn={searchTerm}
+          resetPageOn={`${searchTerm}|${statusFilter}`}
           onRowClick={(row) => setSelectedOrderId(row._id)}
           emptyComponent={
             isSearching && orders.length > 0 ? (
               <EmptyState
                 size="sm"
                 title="No matching orders"
-                description={`Nothing matches "${searchTerm.trim()}". Try an order number, status or payment method.`}
+                description={
+                  searchTerm.trim()
+                    ? `Nothing matches "${searchTerm.trim()}"${statusFilter !== ALL_STATUSES ? ` in "${statusFilterLabel}"` : ''}. Try an order number, status or payment method.`
+                    : `No orders are "${statusFilterLabel || statusFilter}" right now.`
+                }
                 action={
-                  <Button variant={theme.button.secondary} onClick={() => setSearchTerm('')}>
-                    Clear search
+                  <Button
+                    variant={theme.button.secondary}
+                    onClick={() => {
+                      setSearchTerm('');
+                      setStatusFilter(ALL_STATUSES);
+                    }}
+                  >
+                    Clear filters
                   </Button>
                 }
               />

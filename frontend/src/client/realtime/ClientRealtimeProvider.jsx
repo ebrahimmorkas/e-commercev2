@@ -6,8 +6,10 @@ import {
   disconnectSocket,
   onUserNotification,
   onReconnect,
+  startAutoReconnect,
   REALTIME_RECONNECTED,
 } from '../../utils/socketClient';
+import { renewAccessToken } from '../../utils/apiClient';
 
 /**
  * Owns the ONE shared socket.io connection for the storefront - connects once
@@ -36,15 +38,20 @@ const ClientRealtimeProvider = ({ children }) => {
 
     // Tells every subscriber (whatever its module) to resync, since pushes
     // sent while the socket was down were never delivered.
-    const unsubscribeReconnect = onReconnect(() => {
+    const resyncAll = () => {
       listenersRef.current.forEach((listener) => {
         listener.handler({ module: listener.module, type: REALTIME_RECONNECTED, data: null });
       });
-    });
+    };
+    const unsubscribeReconnect = onReconnect(resyncAll);
+    // A socket that gave up (e.g. its access token expired) comes back by
+    // itself, so order pages stay live without the customer reloading.
+    const stopAutoReconnect = startAutoReconnect(renewAccessToken, resyncAll);
 
     return () => {
       unsubscribe();
       unsubscribeReconnect();
+      stopAutoReconnect();
       disconnectSocket();
     };
   }, [isAuthenticated]);

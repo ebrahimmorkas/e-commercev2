@@ -114,6 +114,22 @@ const getCompanySettings = async (req, res) => {
   }
 };
 
+// The steps of the order workflow assigned to this vendor - what the order
+// step settings (cancellation cutoff, payment step, delivery agent step
+// change) can be set to.
+const getAssignedOrderSteps = async (req, res) => {
+  const vendorId = req.vendorId;
+  try {
+    const result = await companySettingsService.fetchAssignedOrderSteps(req.companyMasterData, req.websiteMasterData);
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+  } catch (error) {
+    logger.logException('companySettingsController: getAssignedOrderSteps - Exception while fetching order steps', { vendorId, error });
+  }
+};
+
 const assignEmailTemplate = async (req, res) => {
   const vendorId = req.vendorId;
   try {
@@ -157,6 +173,7 @@ module.exports = {
   createCompanySettings,
   updateCompanySettings,
   getCompanySettings,
+  getAssignedOrderSteps,
   assignEmailTemplate,
   unassignEmailTemplate
 };

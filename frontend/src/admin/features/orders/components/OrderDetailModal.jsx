@@ -10,10 +10,11 @@ import OrderStatusTimeline from './OrderStatusTimeline';
 import OrderItems from './OrderItems';
 import AdvanceStepForm from './AdvanceStepForm';
 import AssignDeliveryAgentForm from './AssignDeliveryAgentForm';
+import DeliveryAgentSection from './DeliveryAgentSection';
 import AddShippingPriceForm from './AddShippingPriceForm';
 import EditShippingAddressForm from './EditShippingAddressForm';
 import EditOrderForm from './EditOrderForm';
-import { formatOrderMoney, formatOrderShipping, canEditShipping, canEditShippingAddressFor, canEditOrderFor, formatOrderDateTime, stepBadgeVariant, isOrderLocked, orderSourceLabel, orderSourceVariant } from '../utils/formatOrder';
+import { formatOrderMoney, formatOrderShipping, canEditShipping, canEditShippingAddressFor, canEditOrderFor, formatOrderDateTime, stepBadgeVariant, isOrderLocked, isOrderClosed, orderSourceLabel, orderSourceVariant } from '../utils/formatOrder';
 import theme from '../theme/theme';
 
 const SummaryRow = ({ label, value, bold = false }) => (
@@ -72,7 +73,7 @@ const WalkInCustomerBlock = ({ customer }) => {
  * GET/PATCH /api/orders/admin/... (orderAdminApi.js).
  */
 const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
-  const { order, stepOptions, loading, error, mutating, advanceStep, assignAgent, addShippingPrice, editShippingPrice, canEditShippingPrice, canEditShippingAddress, loadUserAddresses, editShippingAddress, canEditOrder, addProducts } = useOrderAdmin(orderId);
+  const { order, stepOptions, loading, error, mutating, advanceStep, assignAgent, unassignAgent, addShippingPrice, editShippingPrice, canEditShippingPrice, canEditShippingAddress, loadUserAddresses, editShippingAddress, canEditOrder, addProducts } = useOrderAdmin(orderId);
   const { download: downloadInvoice, downloading: downloadingInvoice } = useInvoiceDownload(downloadInvoiceAdmin);
   const { download: downloadCreditNote, downloading: downloadingCreditNote } = useInvoiceDownload(downloadCreditNoteAdmin);
   const [activeForm, setActiveForm] = useState(null); // null | 'advance' | 'assign' | 'shipping' | 'editShipping' | 'editAddress' | 'editOrder'
@@ -122,6 +123,12 @@ const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
     return success;
   };
 
+  const handleUnassign = async () => {
+    const success = await unassignAgent();
+    if (success) onChanged?.();
+    return success;
+  };
+
   const handleAssign = async (deliveryAgentUserId) => {
     const success = await assignAgent(deliveryAgentUserId);
     if (success) {
@@ -146,11 +153,6 @@ const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="text-sm text-gray-500">Placed on {formatOrderDateTime(order.orderPlacedAt)}</p>
-              {order.assignedDeliveryAgentId && (
-                <p className="text-xs text-gray-400 mt-0.5">
-                  Delivery agent assigned {formatOrderDateTime(order.deliveryAgentAssignedAt)}
-                </p>
-              )}
             </div>
             <div className="flex items-center gap-2">
               {/* Decided by the server: feature on, order invoiceable (older orders and never-invoiced cancelled orders are not). */}
@@ -174,6 +176,8 @@ const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
             <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-3">Status history</h3>
             <OrderStatusTimeline statusHistory={order.statusHistory} />
           </div>
+
+          <DeliveryAgentSection order={order} />
 
           {order.items?.length > 0 && (
             <div className="pt-4 border-t border-gray-200">
@@ -232,14 +236,13 @@ const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
 
           {isOrderLocked(order) ? (
             <p className="text-xs text-gray-400 pt-4 border-t border-gray-200">
-              This order has reached a terminal step and can no longer be updated.
+              This order has reached the last step of its workflow and can no longer be updated.
             </p>
           ) : (
             <div className="pt-4 border-t border-gray-200 space-y-4">
               {activeForm === 'advance' ? (
                 <AdvanceStepForm
                   stepOptions={stepOptions}
-                  currentStepCode={order.currentStepCode}
                   onSubmit={handleAdvance}
                   onCancel={() => setActiveForm(null)}
                   submitting={mutating}
@@ -278,13 +281,15 @@ const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
                   submitting={mutating}
                 />
               ) : activeForm === 'assign' ? (
-                <AssignDeliveryAgentForm onSubmit={handleAssign} onCancel={() => setActiveForm(null)} submitting={mutating} />
+                <AssignDeliveryAgentForm currentAgentId={order.assignedDeliveryAgentId} onSubmit={handleAssign} onCancel={() => setActiveForm(null)} submitting={mutating} />
               ) : (
                 <div className="flex flex-wrap gap-2">
-                  <Button variant={theme.button.primary} onClick={() => setActiveForm('advance')}>
-                    Advance step
-                  </Button>
-                  {order.shippingPriceBreakdown?.isShippingPending && (
+                  {stepOptions.length > 0 && (
+                    <Button variant={theme.button.primary} onClick={() => setActiveForm('advance')}>
+                      {isOrderClosed(order) ? 'Refund / Restart' : 'Update status'}
+                    </Button>
+                  )}
+                  {order.shippingPriceBreakdown?.isShippingPending && !isOrderClosed(order) && (
                     <Button variant={theme.button.secondary} onClick={() => setActiveForm('shipping')}>
                       Add Shipping price
                     </Button>
@@ -304,9 +309,17 @@ const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
                       Edit Shipping Address
                     </Button>
                   )}
-                  <Button variant={theme.button.secondary} onClick={() => setActiveForm('assign')}>
-                    Assign delivery agent
-                  </Button>
+                  {/* Server-decided: agent access on, the agent step change set in Company Settings, order still active. */}
+                  {order.canAssignDeliveryAgent && (
+                    <Button variant={theme.button.secondary} onClick={() => setActiveForm('assign')}>
+                      {order.assignedDeliveryAgentId ? 'Change delivery agent' : 'Assign delivery agent'}
+                    </Button>
+                  )}
+                  {order.canAssignDeliveryAgent && order.assignedDeliveryAgentId && (
+                    <Button variant={theme.button.ghost} onClick={handleUnassign} loading={mutating && activeForm === null}>
+                      Remove delivery agent
+                    </Button>
+                  )}
                 </div>
               )}
             </div>

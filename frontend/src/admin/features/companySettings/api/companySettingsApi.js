@@ -10,6 +10,13 @@ const BASE = '/company-settings';
 export const getCompanySettings = () => apiRequest(`${BASE}/get-company-settings`);
 
 /**
+ * The order workflow the platform assigned to this store - what the order step
+ * settings (cancellation cutoff, payment step, delivery agent step change) can be set to.
+ * @returns {Promise<{ steps: Array<{ code: string, name: string, sequence: number }>, lastStepCode: string|null, isDeliveryAgentAccessOn: boolean }>}
+ */
+export const getAssignedOrderSteps = () => apiRequest(`${BASE}/order-steps`);
+
+/**
  * create/update both always go through the multipart-form fields declared on
  * the route (companyLogo/paymentScanner/partnerCertificate), so every field -
  * including plain text/boolean/number ones - is sent as multipart/form-data,
@@ -58,6 +65,7 @@ export const updateCompanySettings = (fields, files = {}) =>
 
 export default {
   getCompanySettings,
+  getAssignedOrderSteps,
   createCompanySettings,
   updateCompanySettings,
 };

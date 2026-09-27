@@ -18,6 +18,9 @@ export const getAllOrdersAdmin = () => apiRequest(`${BASE}/admin`);
 /** @returns {Promise<{ order: Object }>} */
 export const getOrderByIdAdmin = (id) => apiRequest(`${BASE}/admin/${id}`);
 
+/** Every status an order of this store can be in (its workflow steps, then Payment at Delivery / Rejected / Cancelled / Refunded) - the Orders page filter. @returns {Promise<{ statuses: Array<{ code: string, name: string }> }>} */
+export const getOrderStatusOptions = () => apiRequest(`${BASE}/admin/status-options`);
+
 /** @returns {Promise<{ steps: Array<{ code: string, name: string, sequence: number }> }>} */
 export const getOrderStepOptions = (id) => apiRequest(`${BASE}/admin/${id}/steps`);
 
@@ -110,7 +113,11 @@ export const addProductsToOrder = (id, items, applyBulkPricing = false, manualTa
 export const previewAddProductsTax = ({ orderId, items, applyBulkPricing }) =>
   apiRequest(`${BASE}/admin/${orderId}/add-products/tax-preview`, { method: 'POST', body: { items, applyBulkPricing } });
 
+/** The store's active delivery agents, for the Assign dropdown. @returns {Promise<{ agents: Array<{ _id, name, phone_no, openOrderCount }> }>} */
+export const getAssignableDeliveryAgents = () => apiRequest(`${BASE}/admin/delivery-agents`);
+
 /**
+ * Assigns the order to an agent, or changes its agent (the history is kept on the order).
  * @param {string} id
  * @param {string} deliveryAgentUserId
  * @returns {Promise<{ order: Object }>}
@@ -120,6 +127,9 @@ export const assignDeliveryAgent = (id, deliveryAgentUserId) =>
     method: 'PATCH',
     body: { deliveryAgentUserId },
   });
+
+/** Takes the agent off the order. */
+export const unassignDeliveryAgent = (id) => apiRequest(`${BASE}/admin/${id}/unassign-delivery-agent`, { method: 'PATCH' });
 
 /**
  * The PDF invoice for any order of this vendor (generated on the server).
@@ -133,4 +143,4 @@ export const downloadInvoiceAdmin = (id) => apiDownload(`${BASE}/admin/${id}/inv
  */
 export const downloadCreditNoteAdmin = (id) => apiDownload(`${BASE}/admin/${id}/invoice?type=credit-note`);
 
-export default { getAllOrdersAdmin, getOrderByIdAdmin, getOrderStepOptions, advanceOrderStep, setOrderShippingPrice, updateOrderShippingPrice, getOrderUserAddresses, updateOrderShippingAddress, getEditCategories, getEditProducts, getEditProductOptions, addProductsToOrder, previewAddProductsTax, assignDeliveryAgent, downloadInvoiceAdmin, downloadCreditNoteAdmin };
+export default { getAllOrdersAdmin, getOrderByIdAdmin, getOrderStatusOptions, getOrderStepOptions, advanceOrderStep, getAssignableDeliveryAgents, unassignDeliveryAgent, setOrderShippingPrice, updateOrderShippingPrice, getOrderUserAddresses, updateOrderShippingAddress, getEditCategories, getEditProducts, getEditProductOptions, addProductsToOrder, previewAddProductsTax, assignDeliveryAgent, downloadInvoiceAdmin, downloadCreditNoteAdmin };

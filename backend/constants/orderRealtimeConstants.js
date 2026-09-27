@@ -9,6 +9,9 @@ const ORDER_NOTIFICATION_TYPES = {
     STATUS_CHANGED: 'STATUS_CHANGED',
     CANCELLED: 'CANCELLED',
     AGENT_ASSIGNED: 'AGENT_ASSIGNED',
+    // Sent only to the delivery agent an order was just taken off (changed to
+    // another agent, removed, or the order was restarted).
+    AGENT_UNASSIGNED: 'AGENT_UNASSIGNED',
     PAYMENT_UPDATED: 'PAYMENT_UPDATED',
     SHIPPING_UPDATED: 'SHIPPING_UPDATED',
     ADDRESS_UPDATED: 'ADDRESS_UPDATED',

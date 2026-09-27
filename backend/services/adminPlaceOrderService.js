@@ -3,10 +3,10 @@ const Address = require('../models/Address');
 const User = require('../models/User');
 const Category = require('../models/Category');
 const Product = require('../models/Product');
-const OrderStepMaster = require('../models/OrderStepMaster');
 const categoryService = require('./categoryService');
 const commissionService = require('./commissionService');
 const invoiceService = require('./invoiceService');
+const orderStepService = require('./orderStepService');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
 const bulkPricing = require('../utils/bulkPricing');
@@ -681,11 +681,11 @@ const placeOrderOnBehalfOfUser = async (vendorId, adminUserId, websiteMasterData
         if (!orderStepMasterId) {
             return common.returnResult(false, 500, 'Order workflow is not configured for this store yet. Please contact support.');
         }
-        const stepMaster = await OrderStepMaster.findOne({ _id: orderStepMasterId, status: 'A' });
+        const stepMaster = await orderStepService.loadActiveStepMaster(orderStepMasterId);
         if (!stepMaster) {
             return common.returnResult(false, 500, 'Order workflow is not configured correctly for this store. Please contact support.');
         }
-        const firstStep = stepMaster.steps.find((step) => step.sequence === 1);
+        const firstStep = orderStepService.getFirstStep(stepMaster);
         if (!firstStep) {
             return common.returnResult(false, 500, 'Order workflow is misconfigured for this store (no starting step). Please contact support.');
         }
@@ -812,6 +812,8 @@ const placeOrderOnBehalfOfUser = async (vendorId, adminUserId, websiteMasterData
             orderPlacedAt: new Date(),
             createdBy: adminUserId
         });
+        // The first step may itself be the payment step (paid on placement) or the only step (final at once).
+        orderStepService.applyFlowStepEffects(order, firstStep, stepMaster, companySettingsData);
 
         try {
             await order.save();

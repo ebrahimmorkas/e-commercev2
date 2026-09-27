@@ -11,10 +11,12 @@ const SALT_ROUNDS = Number(process.env.SALT_ROUNDS);
 const ADMIN_LIST_PROJECTION = 'name username phone_no whatsapp_no email role status createdAt';
 const ADMIN_DETAIL_PROJECTION = 'name username phone_no whatsapp_no email role status country state city authProvider createdAt updatedAt';
 
-const fetchAllUsersAdmin = async (vendorId) => {
+// role: 'user' (customers, the default) or 'deliveryAgent' - the Customers
+// page lists agents read-only; they are managed on the Delivery Agents page.
+const fetchAllUsersAdmin = async (vendorId, role = 'user') => {
     try {
         const users = await User.find(
-            { vendorId, role: 'user', status: { $ne: 'D' } },
+            { vendorId, role, status: { $ne: 'D' } },
             ADMIN_LIST_PROJECTION,
             { sort: { name: 1 } }
         );

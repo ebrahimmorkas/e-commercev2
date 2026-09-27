@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const orderController = require('../controllers/orderController');
+const deliveryAgentController = require('../controllers/deliveryAgentController');
 const authenticate = require('../middlewares/authenticate');
 const authorize = require('../middlewares/authorize');
 const vendorDetection = require('../middlewares/vendorDetection');
@@ -9,6 +10,7 @@ const ensureVendorDataCached = require('../middlewares/ensureVendorDataCached');
 const checkModuleAssigned = require('../middlewares/checkModuleAssigned');
 const validate = require('../middlewares/validate');
 const { productsQuerySchema, productIdParamSchema } = require('../middlewares/validations/adminPlaceOrderValidations');
+const { agentOrdersQuerySchema } = require('../middlewares/validations/deliveryAgentValidations');
 const {
     createOrderSchema,
     orderIdParamSchema,
@@ -61,6 +63,13 @@ router.post(
 
 // --- Admin routes ---
 router.get('/admin', ...vendorContext, authorize('admin'), orderController.getAllOrdersAdmin);
+
+// The vendor's active delivery agents, for the Assign dropdown on an order.
+// Must stay before '/admin/:id'.
+router.get('/admin/delivery-agents', ...vendorContext, authorize('admin'), deliveryAgentController.getAssignableDeliveryAgents);
+
+// Every status an order can be in, for the Orders page filter. Must stay before '/admin/:id'.
+router.get('/admin/status-options', ...vendorContext, authorize('admin'), orderController.getOrderStatusOptions);
 
 router.get(
     '/admin/:id',
@@ -155,6 +164,7 @@ router.put(
     orderController.updateOrderShippingAddress
 );
 
+// Assigns the order to an agent, or changes its agent (history kept on the order).
 router.patch(
     '/admin/:id/assign-delivery-agent',
     ...vendorContext,
@@ -164,13 +174,32 @@ router.patch(
     orderController.assignDeliveryAgent
 );
 
-// --- Delivery agent route ---
 router.patch(
-    '/delivery-agent/:id/mark-delivered',
+    '/admin/:id/unassign-delivery-agent',
+    ...vendorContext,
+    authorize('admin'),
+    validate(orderIdParamSchema, 'params'),
+    orderController.unassignDeliveryAgent
+);
+
+// --- Delivery agent routes ---
+// The logged-in agent's own orders: ?view=pending (to deliver) | done.
+router.get(
+    '/delivery-agent/my-orders',
+    ...vendorContext,
+    authorize('deliveryAgent'),
+    validate(agentOrdersQuerySchema, 'query'),
+    deliveryAgentController.getMyAgentOrders
+);
+
+// Makes the vendor's one configured agent step change (CompanySettings
+// deliveryAgentFromStep -> deliveryAgentToStep) on an order assigned to them.
+router.patch(
+    '/delivery-agent/:id/advance-step',
     ...vendorContext,
     authorize('deliveryAgent'),
     validate(orderIdParamSchema, 'params'),
-    orderController.deliveryAgentMarkDelivered
+    orderController.deliveryAgentAdvanceStep
 );
 
 module.exports = router;

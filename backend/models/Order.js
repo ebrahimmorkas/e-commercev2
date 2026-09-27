@@ -248,6 +248,22 @@ const orderPaymentSchema = new mongoose.Schema(
     }
 );
 
+// One assignment of a delivery agent to an order. A new entry is added every
+// time the admin assigns (or changes) the agent; the previous open entry is
+// closed (unassignedAt) at the same moment, so this is the full history.
+const deliveryAgentAssignmentSchema = new mongoose.Schema(
+    {
+        deliveryAgentId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+        // Snapshot, so the history still reads right if the agent is renamed or deleted.
+        deliveryAgentName: { type: String, trim: true, default: null },
+        assignedAt: { type: Date, required: true },
+        assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+        unassignedAt: { type: Date, default: null },
+        unassignedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null }
+    },
+    { _id: false }
+);
+
 const walkInCustomerSchema = new mongoose.Schema(
     {
         name: { type: String, required: true, trim: true, minlength: 2, maxlength: 50 },
@@ -327,6 +343,27 @@ const orderSchema = new mongoose.Schema(
         statusHistory: {
             type: [orderStatusHistorySchema],
             default: []
+        },
+
+        // True once the order reaches the LAST step of its workflow - nothing
+        // at all can happen to it after that (see orderStepService.js). Kept
+        // on the order (not worked out from the template on every read) so
+        // the conditional updates in orderService/orderEditService can filter on it.
+        isFinalized: {
+            type: Boolean,
+            required: true,
+            default: false,
+            index: true
+        },
+
+        // The admin took the built-in Payment at Delivery step instead of the
+        // vendor's payment step: the delivery agent collects the money, so the
+        // payment is marked PAID when the vendor's delivery-agent transition
+        // happens (else, as a fallback, at the last step). Reset on restart.
+        isPaymentAtDelivery: {
+            type: Boolean,
+            required: true,
+            default: false
         },
 
         // The actual products/variants/sizes placed on this order. Empty
@@ -531,9 +568,10 @@ const orderSchema = new mongoose.Schema(
             default: null
         },
 
-        // Set by admin. A deliveryAgent-role user may only move this order
-        // from DISPATCHED to DELIVERED, and only when assigned to them (see
-        // orderStepConstants.js + orderService.js).
+        // Set by admin. A deliveryAgent-role user may only make the vendor's
+        // one configured transition (CompanySettings.deliveryAgentFromStep ->
+        // deliveryAgentToStep), and only on orders assigned to them (see
+        // orderService.deliveryAgentAdvanceStep).
         assignedDeliveryAgentId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
@@ -543,6 +581,31 @@ const orderSchema = new mongoose.Schema(
 
         deliveryAgentAssignedAt: {
             type: Date,
+            default: null
+        },
+
+        deliveryAgentAssignments: {
+            type: [deliveryAgentAssignmentSchema],
+            default: []
+        },
+
+        // When the vendor's delivery-agent step change (CompanySettings
+        // deliveryAgentFromStep -> deliveryAgentToStep) was made on this
+        // order, by whom, and whether that was the agent or an admin standing
+        // in for them. Once set the agent can no longer be changed. Cleared on restart.
+        deliveryAgentTransitionAt: {
+            type: Date,
+            default: null
+        },
+        deliveryAgentTransitionBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null,
+            index: true
+        },
+        deliveryAgentTransitionByRole: {
+            type: String,
+            enum: ["deliveryAgent", "admin", null],
             default: null
         },
 
@@ -695,7 +758,12 @@ const orderSchema = new mongoose.Schema(
         }
     },
     {
-        timestamps: true
+        timestamps: true,
+        // Two step changes on the same order at once (two admins, or an admin
+        // and the customer) must not both go through - the loser's save()
+        // throws a VersionError (see orderStepService.isVersionConflict).
+        // Limited to the current-step fields so no other save is affected.
+        optimisticConcurrency: ['currentStepId', 'currentStepCode']
     }
 );
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getOrderByIdAdmin, getOrderStepOptions, advanceOrderStep, assignDeliveryAgent, setOrderShippingPrice, updateOrderShippingPrice, getOrderUserAddresses, updateOrderShippingAddress, addProductsToOrder } from '../api/orderAdminApi';
+import { getOrderByIdAdmin, getOrderStepOptions, advanceOrderStep, assignDeliveryAgent, unassignDeliveryAgent, setOrderShippingPrice, updateOrderShippingPrice, getOrderUserAddresses, updateOrderShippingAddress, addProductsToOrder } from '../api/orderAdminApi';
 import { useToast } from '../../../../components/common/Toast';
 import { useRealtime } from '../../../realtime/useRealtime';
 import { REALTIME_RECONNECTED } from '../../../../utils/socketClient';
@@ -33,14 +33,8 @@ export const useOrderAdmin = (orderId) => {
     try {
       const [orderData, stepsData] = await Promise.all([getOrderByIdAdmin(orderId), getOrderStepOptions(orderId)]);
       setOrder(orderData?.order || null);
-    setCanEditShippingPrice(orderData?.canEditShippingPrice === true);
-    setCanEditShippingAddress(orderData?.canEditShippingAddress === true);
-    setCanEditOrder(orderData?.canEditOrder === true);
       setCanEditShippingPrice(orderData?.canEditShippingPrice === true);
-    setCanEditShippingAddress(orderData?.canEditShippingAddress === true);
-    setCanEditOrder(orderData?.canEditOrder === true);
       setCanEditShippingAddress(orderData?.canEditShippingAddress === true);
-    setCanEditOrder(orderData?.canEditOrder === true);
       setCanEditOrder(orderData?.canEditOrder === true);
       setStepOptions(stepsData?.steps || []);
     } catch (err) {
@@ -168,7 +162,7 @@ export const useOrderAdmin = (orderId) => {
     try {
       await assignDeliveryAgent(orderId, deliveryAgentUserId);
       await refreshOrderSilently();
-      toast.success('Delivery agent assigned');
+      toast.success('Delivery agent saved');
       return true;
     } catch (err) {
       toast.error(err.message || 'Could not assign delivery agent');
@@ -178,7 +172,22 @@ export const useOrderAdmin = (orderId) => {
     }
   };
 
-  return { order, stepOptions, loading, error, mutating, refetch: fetchOrder, advanceStep, assignAgent, addShippingPrice, editShippingPrice, canEditShippingPrice, canEditShippingAddress, loadUserAddresses, editShippingAddress, canEditOrder, addProducts };
+  const unassignAgent = async () => {
+    setMutating(true);
+    try {
+      await unassignDeliveryAgent(orderId);
+      await refreshOrderSilently();
+      toast.success('Delivery agent removed from the order');
+      return true;
+    } catch (err) {
+      toast.error(err.message || 'Could not remove the delivery agent');
+      return false;
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  return { order, stepOptions, loading, error, mutating, refetch: fetchOrder, advanceStep, assignAgent, unassignAgent, addShippingPrice, editShippingPrice, canEditShippingPrice, canEditShippingAddress, loadUserAddresses, editShippingAddress, canEditOrder, addProducts };
 };
 
 export default useOrderAdmin;

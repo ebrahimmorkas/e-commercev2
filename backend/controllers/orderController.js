@@ -1,6 +1,7 @@
 const orderService = require('../services/orderService');
 const orderEditService = require('../services/orderEditService');
 const invoiceService = require('../services/invoiceService');
+const orderStepService = require('../services/orderStepService');
 const logger = require('../utils/logger.js');
 const common = require('../utils/common');
 
@@ -17,6 +18,8 @@ const formatOrderForResponse = (orderDoc) => {
 
     return {
         ...order,
+        // Rejected/Cancelled/Refunded - only Refund/Restart are possible (see orderStepService).
+        isClosed: orderStepService.isOrderClosed(order),
         _id: encodeIfPresent(order._id),
         cartId: encodeIfPresent(order.cartId),
         vendorId: encodeIfPresent(order.vendorId),
@@ -28,6 +31,15 @@ const formatOrderForResponse = (orderDoc) => {
         billingAddressId: encodeIfPresent(order.billingAddressId),
         placedByAdminId: encodeIfPresent(order.placedByAdminId),
         assignedDeliveryAgentId: encodeIfPresent(order.assignedDeliveryAgentId),
+        deliveryAgentTransitionBy: encodeIfPresent(order.deliveryAgentTransitionBy),
+        deliveryAgentAssignments: Array.isArray(order.deliveryAgentAssignments)
+            ? order.deliveryAgentAssignments.map((entry) => ({
+                ...entry,
+                deliveryAgentId: encodeIfPresent(entry.deliveryAgentId),
+                assignedBy: encodeIfPresent(entry.assignedBy),
+                unassignedBy: encodeIfPresent(entry.unassignedBy),
+            }))
+            : order.deliveryAgentAssignments,
         cancelledBy: encodeIfPresent(order.cancelledBy),
         createdBy: encodeIfPresent(order.createdBy),
         updatedBy: encodeIfPresent(order.updatedBy),
@@ -77,12 +89,9 @@ const formatIneligibleItems = (items) => (Array.isArray(items)
     }))
     : items);
 
-// fetchOrderStepOptions returns OrderStepMaster.steps[] subdocuments
-// (display-only picker for advanceOrderStep, which is actually driven by
-// stepCode not id) - encode their own subdocument id for consistency.
-const formatOrderStepOptions = (steps) => (Array.isArray(steps)
-    ? steps.map((step) => ({ ...step, _id: encodeIfPresent(step._id) }))
-    : steps);
+// fetchOrderStepOptions returns { code, name, type } actions (no ids) - the
+// codes are what advanceOrderStep takes.
+const formatOrderStepOptions = (steps) => (Array.isArray(steps) ? steps : []);
 
 // Addresses returned inline on order-related endpoints (not through
 // addressController's own formatter) - encode at least the address's own id
@@ -227,7 +236,7 @@ const createOrder = async (req, res) => {
 const getMyOrders = async (req, res) => {
     const vendorId = req.vendorId;
     try {
-        const result = await orderService.fetchMyOrders(vendorId, req.user._id);
+        const result = await orderService.fetchMyOrders(vendorId, req.user._id, req.companySettingsData);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
@@ -256,7 +265,7 @@ const getMyOrderById = async (req, res) => {
             return common.sendError(res, trackingFeatureCheck.statusCode, trackingFeatureCheck.message);
         }
 
-        const result = await orderService.fetchOrderById(vendorId, id, req.user._id, false);
+        const result = await orderService.fetchOrderById(vendorId, id, req.user._id, false, req.companySettingsData, req.companyMasterData, req.websiteMasterData);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
@@ -314,7 +323,7 @@ const getOrderByIdAdmin = async (req, res) => {
     let id;
     try {
         id = common.decodeId(req.params.id);
-        const result = await orderService.fetchOrderById(vendorId, id, null, true);
+        const result = await orderService.fetchOrderById(vendorId, id, null, true, req.companySettingsData, req.companyMasterData, req.websiteMasterData);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
@@ -337,12 +346,26 @@ const getOrderByIdAdmin = async (req, res) => {
     }
 };
 
+const getOrderStatusOptions = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        const result = await orderService.fetchOrderStatusOptions(req.companyMasterData, req.websiteMasterData);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('orderController: getOrderStatusOptions - Exception while fetching order statuses', { vendorId, error });
+        return sendServerError(res);
+    }
+};
+
 const getOrderStepOptions = async (req, res) => {
     const vendorId = req.vendorId;
     let id;
     try {
         id = common.decodeId(req.params.id);
-        const result = await orderService.fetchOrderStepOptions(vendorId, id);
+        const result = await orderService.fetchOrderStepOptions(vendorId, id, req.companySettingsData, req.companyMasterData, req.websiteMasterData);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
@@ -610,7 +633,7 @@ const assignDeliveryAgent = async (req, res) => {
     try {
         id = common.decodeId(req.params.id);
         const result = await orderService.assignDeliveryAgent(
-            vendorId, req.user._id, id, common.decodeId(req.body.deliveryAgentUserId), req.companyMasterData
+            vendorId, req.user._id, id, common.decodeId(req.body.deliveryAgentUserId), req.companyMasterData, req.companySettingsData, req.websiteMasterData
         );
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
@@ -625,12 +648,31 @@ const assignDeliveryAgent = async (req, res) => {
     }
 };
 
-const deliveryAgentMarkDelivered = async (req, res) => {
+const unassignDeliveryAgent = async (req, res) => {
     const vendorId = req.vendorId;
     let id;
     try {
         id = common.decodeId(req.params.id);
-        const result = await orderService.deliveryAgentMarkDelivered(
+        const result = await orderService.unassignDeliveryAgent(vendorId, req.user._id, id, req.companyMasterData, req.websiteMasterData);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, {
+            ...result.meta,
+            order: formatOrderForResponse(result.meta.order),
+        });
+    } catch (error) {
+        logger.logException('orderController: unassignDeliveryAgent - Exception while removing delivery agent', { vendorId, id, error });
+        return sendServerError(res);
+    }
+};
+
+const deliveryAgentAdvanceStep = async (req, res) => {
+    const vendorId = req.vendorId;
+    let id;
+    try {
+        id = common.decodeId(req.params.id);
+        const result = await orderService.deliveryAgentAdvanceStep(
             vendorId, req.user._id, id, req.companyMasterData, req.websiteMasterData, req.companySettingsData
         );
         if (!result.isSuccess) {
@@ -641,7 +683,7 @@ const deliveryAgentMarkDelivered = async (req, res) => {
             order: formatOrderForResponse(result.meta.order),
         });
     } catch (error) {
-        logger.logException('orderController: deliveryAgentMarkDelivered - Exception while marking order delivered', { vendorId, id, error });
+        logger.logException('orderController: deliveryAgentAdvanceStep - Exception while moving order to the next step', { vendorId, id, error });
         return sendServerError(res);
     }
 };
@@ -662,10 +704,12 @@ module.exports = {
     cancelOrder,
     getAllOrdersAdmin,
     getOrderByIdAdmin,
+    getOrderStatusOptions,
     getOrderStepOptions,
     advanceOrderStep,
     assignDeliveryAgent,
-    deliveryAgentMarkDelivered,
+    unassignDeliveryAgent,
+    deliveryAgentAdvanceStep,
     downloadMyInvoice,
     downloadInvoiceAdmin
 };

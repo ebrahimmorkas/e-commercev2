@@ -25,7 +25,7 @@ import theme from '../theme/theme';
  * page like Brands/Banners/Free Cash.
  */
 const CompanySettingsPage = () => {
-  const { settings, exists, companyMaster, loading, error, saving, save } = useCompanySettings();
+  const { settings, exists, companyMaster, orderSteps, loading, error, saving, save } = useCompanySettings();
   const [draft, setDraft] = useState(emptyDraft());
   const [activeTab, setActiveTab] = useState('general');
   const [formErrors, setFormErrors] = useState({});
@@ -65,7 +65,7 @@ const CompanySettingsPage = () => {
     { key: 'policies', label: 'Policies', content: <PoliciesSection {...sectionProps} /> },
     { key: 'storefront', label: 'Storefront', content: <StorefrontSection {...sectionProps} companyMaster={companyMaster} /> },
     { key: 'product', label: 'Product', content: <ProductSection {...sectionProps} /> },
-    { key: 'cartOrder', label: 'Cart & Order', content: <CartOrderSection {...sectionProps} /> },
+    { key: 'cartOrder', label: 'Cart & Order', content: <CartOrderSection {...sectionProps} orderSteps={orderSteps} /> },
     { key: 'payment', label: 'Payment & Bank', content: <PaymentBankSection {...sectionProps} companyMaster={companyMaster} /> },
     { key: 'email', label: 'Email', content: <EmailSection {...sectionProps} /> },
     { key: 'invoice', label: 'Invoice', content: <InvoiceSection {...sectionProps} errors={formErrors} /> },

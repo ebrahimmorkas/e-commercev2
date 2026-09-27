@@ -44,7 +44,7 @@ const formatUserForResponse = (userDoc) => {
 const getAllUsersAdmin = async (req, res) => {
     const vendorId = req.vendorId;
     try {
-        const result = await userService.fetchAllUsersAdmin(vendorId);
+        const result = await userService.fetchAllUsersAdmin(vendorId, req.query.role === 'deliveryAgent' ? 'deliveryAgent' : 'user');
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }

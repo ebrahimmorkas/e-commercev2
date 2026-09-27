@@ -1,14 +1,9 @@
 import { formatCurrencyAmount } from '../../../../utils/money';
 
-// Mirrors backend/constants/orderStepConstants.js's RESERVED_STEP_CODES/
-// TERMINAL_STEP_CODES - just the two used for the cancel-button UI gate.
-// The backend is still the authority: cancelOrder re-validates cutoff step,
-// isOrderCancellationAllowed, etc. server-side regardless of what this shows.
-export const TERMINAL_STEP_CODES = ['COMPLETED', 'DELIVERED'];
-export const REJECTED_STEP_CODE = 'REJECTED';
-
-export const isOrderCancellable = (order) =>
-  !!order && !TERMINAL_STEP_CODES.includes(order.currentStepCode) && order.currentStepCode !== REJECTED_STEP_CODE;
+// Decided by the server (order.canBeCancelled - the same check cancelOrder
+// makes: the store allows it, the order isn't closed or on its last step, and
+// it hasn't reached the store's cancellation cutoff step).
+export const isOrderCancellable = (order) => !!order && order.canBeCancelled === true;
 
 // Order snapshots its own currency at creation time (currencySymbol/
 // currencySymbolPosition/currencyDecimalPlaces) so historical orders always

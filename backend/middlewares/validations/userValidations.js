@@ -92,6 +92,11 @@ const changePasswordAdminSchema = Joi.object({
         .messages({ 'string.pattern.base': PASSWORD_PATTERN_MESSAGE })
 });
 
+// Customers page list: customers (default) or the vendor's delivery agents.
+const listUsersAdminQuerySchema = Joi.object({
+    role: Joi.string().valid('user', 'deliveryAgent').default('user').label('Role')
+});
+
 // --- Bulk status / delete (multi-select checkbox actions) --------------------
 const bulkUserStatusSchema = Joi.object({
     userIds: Joi.array().items(objectId()).min(1).max(50).unique().required().label('Customer IDs'),
@@ -103,6 +108,7 @@ const bulkDeleteUserSchema = Joi.object({
 });
 
 module.exports = {
+    listUsersAdminQuerySchema,
     userIdParamSchema,
     createUserAdminSchema,
     updateUserAdminSchema,

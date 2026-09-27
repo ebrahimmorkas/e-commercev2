@@ -117,6 +117,7 @@ app.use('/api/reviewRoutes', reviewRoutes);
 app.use('/api/discount', discountRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/delivery-agents', require('./routes/deliveryAgentRoutes'));
 app.use('/api/admin-place-order', adminPlaceOrderRoutes);
 app.use('/api/order-returns', orderReturnRoutes);
 app.use('/api/order-exchanges', orderExchangeRoutes);

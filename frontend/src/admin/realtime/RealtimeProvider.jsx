@@ -5,12 +5,15 @@ import {
   connectSocket,
   disconnectSocket,
   onNotification,
+  onUserNotification,
   onReconnect,
   onConnectionStatusChange,
   reconnectSocket,
+  startAutoReconnect,
   CONNECTION_STATUS,
   REALTIME_RECONNECTED,
 } from '../../utils/socketClient';
+import { renewAccessToken } from '../../utils/apiClient';
 
 /**
  * Owns the ONE shared socket.io connection for the whole admin app - connects
@@ -22,18 +25,22 @@ import {
  * `reconnect()` for when the socket has given up on its own.
  */
 const RealtimeProvider = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  // Admins listen on the store's admin channel; a delivery agent on their own
+  // private channel (the server only ever sends them their own orders).
+  const channel = !isAuthenticated ? null : user?.role === 'admin' ? 'admin' : user?.role === 'deliveryAgent' ? 'agent' : null;
   const listenersRef = useRef(new Set());
   const [status, setStatus] = useState(CONNECTION_STATUS.CONNECTING);
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!channel) {
       disconnectSocket();
       return undefined;
     }
 
     connectSocket();
-    const unsubscribe = onNotification((payload) => {
+    const listen = channel === 'agent' ? onUserNotification : onNotification;
+    const unsubscribe = listen((payload) => {
       listenersRef.current.forEach((listener) => {
         if (listener.module === payload.module) listener.handler(payload);
       });
@@ -41,21 +48,25 @@ const RealtimeProvider = ({ children }) => {
 
     // Tells every subscriber (whatever its module) to resync, since pushes
     // sent while the socket was down were never delivered.
-    const unsubscribeReconnect = onReconnect(() => {
+    const resyncAll = () => {
       listenersRef.current.forEach((listener) => {
         listener.handler({ module: listener.module, type: REALTIME_RECONNECTED, data: null });
       });
-    });
+    };
+    const unsubscribeReconnect = onReconnect(resyncAll);
 
     const unsubscribeStatus = onConnectionStatusChange(setStatus);
+    // No Refresh button needed: a socket that gave up comes back by itself.
+    const stopAutoReconnect = startAutoReconnect(renewAccessToken, resyncAll);
 
     return () => {
       unsubscribe();
       unsubscribeReconnect();
       unsubscribeStatus();
+      stopAutoReconnect();
       disconnectSocket();
     };
-  }, [isAuthenticated]);
+  }, [channel]);
 
   const subscribe = useCallback((moduleName, handler) => {
     const listener = { module: moduleName, handler };

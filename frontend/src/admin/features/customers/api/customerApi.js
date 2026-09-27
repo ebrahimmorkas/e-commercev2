@@ -6,7 +6,8 @@ const BASE = '/users';
  * Fetches all (active + inactive, non-deleted) customers for the current
  * vendor, admin view.
  */
-export const getAllUsersAdmin = () => apiRequest(`${BASE}/get-all-users-admin`);
+/** @param {'user'|'deliveryAgent'} [role] - customers (default) or the store's delivery agents */
+export const getAllUsersAdmin = (role = 'user') => apiRequest(`${BASE}/get-all-users-admin?role=${role}`);
 
 export const getUserById = (userId) => apiRequest(`${BASE}/get-user-admin/${userId}`);
 

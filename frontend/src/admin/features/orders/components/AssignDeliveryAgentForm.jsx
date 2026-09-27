@@ -1,54 +1,85 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Button from '../../../../components/common/Buttons';
+import Spinner from '../../../../components/common/Spinner';
+import { getAssignableDeliveryAgents } from '../api/orderAdminApi';
 import theme from '../theme/theme';
 
 const inputClass =
   'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
 
 /**
- * There is no backend endpoint to list a vendor's deliveryAgent-role users,
- * so this takes their user id as plain text rather than a picker - see
- * orderAdminApi.js.
+ * Picks one of the store's active delivery agents (GET /orders/admin/delivery-agents).
+ * Used both to assign an agent and to change the current one.
  *
+ * @param {string|null} currentAgentId - the order's current agent (left out of the list)
  * @param {Function} onSubmit - (deliveryAgentUserId) => Promise<boolean>
  * @param {Function} onCancel
  * @param {boolean} submitting
  */
-const AssignDeliveryAgentForm = ({ onSubmit, onCancel, submitting }) => {
+const AssignDeliveryAgentForm = ({ currentAgentId = null, onSubmit, onCancel, submitting }) => {
+  const [agents, setAgents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [deliveryAgentUserId, setDeliveryAgentUserId] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    getAssignableDeliveryAgents()
+      .then((data) => {
+        if (!cancelled) setAgents((data?.agents || []).filter((agent) => agent._id !== currentAgentId));
+      })
+      .catch((err) => {
+        if (!cancelled) setLoadError(err.message || 'Could not load delivery agents');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentAgentId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const id = deliveryAgentUserId.trim();
-    if (!id) return;
-    const success = await onSubmit(id);
+    if (!deliveryAgentUserId) return;
+    const success = await onSubmit(deliveryAgentUserId);
     if (success) setDeliveryAgentUserId('');
   };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-4">
+        <Spinner size="md" />
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       <div>
-        <input
-          type="text"
-          placeholder="Delivery agent user ID"
-          value={deliveryAgentUserId}
-          onChange={(e) => setDeliveryAgentUserId(e.target.value)}
-          className={inputClass}
-          required
-          pattern="^[0-9a-fA-F]{24}$"
-          title="A 24-character user ID"
-          disabled={submitting}
-        />
-        <p className="mt-1 text-xs text-gray-400">
-          The Mongo _id of a user with the deliveryAgent role for this store.
-        </p>
+        {loadError ? (
+          <p className="text-sm text-red-600">{loadError}</p>
+        ) : agents.length === 0 ? (
+          <p className="text-sm text-gray-500">No other active delivery agents. Add or activate one on the Delivery Agents page.</p>
+        ) : (
+          <select value={deliveryAgentUserId} onChange={(e) => setDeliveryAgentUserId(e.target.value)} className={inputClass} required disabled={submitting}>
+            <option value="" disabled>
+              Select a delivery agent
+            </option>
+            {agents.map((agent) => (
+              <option key={agent._id} value={agent._id}>
+                {agent.name} - {agent.phone_no} ({agent.openOrderCount} to deliver)
+              </option>
+            ))}
+          </select>
+        )}
       </div>
       <div className="flex justify-end gap-2">
         <Button type="button" variant={theme.button.ghost} onClick={onCancel} disabled={submitting}>
           Cancel
         </Button>
-        <Button type="submit" variant={theme.button.primary} loading={submitting}>
-          Assign agent
+        <Button type="submit" variant={theme.button.primary} loading={submitting} disabled={!deliveryAgentUserId}>
+          {currentAgentId ? 'Change agent' : 'Assign agent'}
         </Button>
       </div>
     </form>

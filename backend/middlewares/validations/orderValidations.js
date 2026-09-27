@@ -20,8 +20,12 @@ const orderIdParamSchema = Joi.object({
     id: objectId().required().label('Order ID')
 });
 
+// Step codes (and the RESTART action) are letters, digits and underscores -
+// what the step dropdown offers is decided server-side per order.
 const advanceOrderStepSchema = Joi.object({
-    targetStepCode: Joi.string().trim().uppercase().required().label('Target step'),
+    targetStepCode: Joi.string().trim().uppercase().max(50).pattern(/^[A-Z0-9_]+$/)
+        .messages({ 'string.pattern.base': '{{#label}} is not a valid step.' })
+        .required().label('Target step'),
     remarks: Joi.string().trim().max(500).allow(null, '').label('Remarks')
 });
 

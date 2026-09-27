@@ -5,16 +5,26 @@ import theme from '../theme/theme';
 const inputClass =
   'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
 
+// What each kind of move does besides changing the status - shown under the dropdown.
+const ACTION_HINTS = {
+  PAYMENT_AT_DELIVERY:
+    'Use this when the customer pays the delivery agent. The payment is marked as done when the delivery agent step change happens.',
+  REJECT: 'The stock goes back, and the commission and invoice are voided. The order can be restarted later.',
+  REFUND: 'Records that the payment was given back to the customer. The order can be restarted later.',
+  RESTART: 'Takes the stock again (refused if a product is short), and issues a new invoice.',
+};
+
 /**
- * @param {Array<{ code: string, name: string, sequence: number }>} stepOptions - this order's workflow steps (GET /orders/admin/:id/steps)
- * @param {string} currentStepCode
+ * @param {Array<{ code: string, name: string, type: string }>} stepOptions - what the order can do right now (GET /orders/admin/:id/steps): the next step, and Payment at Delivery / Reject / Refund / Restart when allowed
  * @param {Function} onSubmit - (targetStepCode, remarks) => Promise<boolean>
  * @param {Function} onCancel
  * @param {boolean} submitting
  */
-const AdvanceStepForm = ({ stepOptions, currentStepCode, onSubmit, onCancel, submitting }) => {
+const AdvanceStepForm = ({ stepOptions, onSubmit, onCancel, submitting }) => {
   const [targetStepCode, setTargetStepCode] = useState('');
   const [remarks, setRemarks] = useState('');
+  const selectedOption = stepOptions.find((step) => step.code === targetStepCode);
+  const hint = selectedOption ? ACTION_HINTS[selectedOption.type] : null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -40,11 +50,12 @@ const AdvanceStepForm = ({ stepOptions, currentStepCode, onSubmit, onCancel, sub
             Select status
           </option>
           {stepOptions.map((step) => (
-            <option key={step.code} value={step.code} disabled={step.code === currentStepCode}>
-              {step.name} {step.code === currentStepCode ? '(current)' : ''}
+            <option key={step.code} value={step.code}>
+              {step.name}
             </option>
           ))}
         </select>
+        {hint && <p className="mt-1.5 text-xs text-gray-500">{hint}</p>}
       </div>
       <textarea
         placeholder="Remarks (optional)"

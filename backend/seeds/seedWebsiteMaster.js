@@ -73,6 +73,7 @@ const WEBSITE_MASTER = {
     // Orders
     isOrderTrakingAllowed: true,
     isEmailSendingFeatureOnAfterOrderStatusChanges: true,
+    isOrderStatusUpdationAllowedByDeliveryAgents: true,
 
     // Shipping Price
     isShippingPriceFeatureOn: true,

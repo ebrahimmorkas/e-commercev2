@@ -15,6 +15,7 @@ import { useCustomerLookups } from '../hooks/useCustomerLookups';
 import { useAssignedModules } from '../../../modules/hooks/useAssignedModules';
 import { filterBySearch } from '../../../../utils/searchFilter';
 import CustomerForm from '../components/CustomerForm';
+import DeliveryAgentsReadOnlyList from '../components/DeliveryAgentsReadOnlyList';
 import theme from '../theme/theme';
 
 const PlusIcon = () => (
@@ -77,6 +78,10 @@ const CustomersPage = ({ onAddUser }) => {
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  // 'customers' | 'agents' - agents are only listed when the store has delivery agents switched on.
+  const [listView, setListView] = useState('customers');
+  const showAgentsSwitch = !!companyMaster?.isOrderStatusUpdationAllowedByDeliveryAgents;
+  const isAgentsView = showAgentsSwitch && listView === 'agents';
 
   const filteredCustomers = useMemo(() => filterCustomers(customers, searchTerm), [customers, searchTerm]);
 
@@ -284,18 +289,38 @@ const CustomersPage = ({ onAddUser }) => {
         title={<span className="font-bold">Customers</span>}
         subtitle="Manage your storefront's registered customers"
         headerActions={
-          isAddUserAllowed && (
+          isAddUserAllowed && !isAgentsView && (
             <Button variant={theme.button.primary} leftIcon={<PlusIcon />} onClick={onAddUser}>
               Add User
             </Button>
           )
         }
       >
+        {showAgentsSwitch && (
+          <div className="flex gap-2 mb-4">
+            <Button variant={listView === 'customers' ? theme.button.primary : theme.button.ghost} size="sm" onClick={() => setListView('customers')}>
+              Customers
+            </Button>
+            <Button
+              variant={listView === 'agents' ? theme.button.primary : theme.button.ghost}
+              size="sm"
+              onClick={() => {
+                setListView('agents');
+                setSelectedIds([]);
+              }}
+            >
+              Delivery Agents
+            </Button>
+          </div>
+        )}
+
         {error && (
           <p className={`mb-4 text-sm ${theme.alert.error.text} ${theme.alert.error.background} border ${theme.alert.error.border} rounded-lg px-4 py-2`}>{error}</p>
         )}
 
-        {loading ? (
+        {isAgentsView ? (
+          <DeliveryAgentsReadOnlyList />
+        ) : loading ? (
           <div className="flex justify-center py-16">
             <Spinner size="lg" />
           </div>

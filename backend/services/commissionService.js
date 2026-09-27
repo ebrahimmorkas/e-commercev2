@@ -94,6 +94,37 @@ const voidCommissionForOrder = async (vendorId, orderId, reason) => {
     }
 };
 
+// Called when a rejected/cancelled order is restarted (orderService.
+// advanceOrderStep -> RESTART): the order is live again, so its commission is
+// owed again. There is one ledger entry per order (unique index), so a VOIDED
+// entry is brought back to PENDING - re-based on the order as it is now, at
+// the percentage locked in when it was placed - rather than a second one being
+// added. No entry (commission was off when it was placed) records a fresh one
+// if commission is on now. A PENDING/COLLECTED entry is left as it is.
+const reinstateCommissionForOrder = async (order, companyMasterData) => {
+    try {
+        const entry = await CommissionLedgerEntry.findOne({ vendorId: order.vendorId, orderId: order._id });
+        if (!entry) {
+            return await recordCommissionForOrder(order, companyMasterData);
+        }
+        if (entry.ledgerStatus !== COMMISSION_LEDGER_STATUSES.VOIDED) {
+            return entry;
+        }
+
+        entry.commissionBaseAmount = Math.max(0, (order.subtotal || 0) - (order.totalDiscountAmount || 0));
+        entry.commissionAmount = Math.round(entry.commissionBaseAmount * entry.commissionPercentage) / 100;
+        entry.ledgerStatus = COMMISSION_LEDGER_STATUSES.PENDING;
+        entry.voidedAt = null;
+        entry.voidReason = null;
+        await entry.save();
+
+        logger.logInfo(1, 0, 'Commission ledger entry reinstated for restarted order', { vendorId: order.vendorId, orderId: order._id, commissionAmount: entry.commissionAmount });
+        return entry;
+    } catch (err) {
+        throw err;
+    }
+};
+
 // Admin-only bookkeeping actions - see scripts/manageCommissionLedger.js.
 const markCollected = async (vendorId, adminUserId, entryId, notes) => {
     try {
@@ -134,6 +165,7 @@ module.exports = {
     recordCommissionForOrder,
     syncCommissionForOrder,
     voidCommissionForOrder,
+    reinstateCommissionForOrder,
     markCollected,
     listByVendor
 };

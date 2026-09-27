@@ -194,6 +194,13 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // Platform-wide switch for delivery agents (the Delivery Agents page,
+    // assigning agents to orders, the agents' own step change and Payment at
+    // Delivery). A vendor also needs CompanyMaster's flag of the same name.
+    isOrderStatusUpdationAllowedByDeliveryAgents: {
+        type: Boolean,
+        default: false
+    },
 
     // Email
     // Non-null forces EVERY vendor onto this provider regardless of what

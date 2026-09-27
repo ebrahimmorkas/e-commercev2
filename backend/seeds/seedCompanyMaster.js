@@ -124,6 +124,7 @@ const COMPANY_MASTER = {
     numberOfOrdersAllowedPerMonth: null,
     isOrderTrakingAllowed: true,
     isOrderStatusUpdationAllowedByDeliveryAgents: false,
+    numberOfDeliveryAgentsAllowed: 0,
     isEmailSendingFeatureOnAfterOrderStatusChanges: true,
     isPDFDownloadableFeatureOn: false,
 

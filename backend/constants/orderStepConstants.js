@@ -1,33 +1,69 @@
-// Fixed step codes that any OrderStepMaster template must reuse (as
-// OrderStepMaster.steps[].code) for a step meant to carry the platform's
-// built-in behavior. These 6 always mean the same thing no matter which
-// vendor's workflow they appear in, or what display `name` is given to
-// them - only the reserved `code` is what business logic (delivery-agent
-// authorization, return/exchange eligibility, terminal-state detection)
-// keys off. Any OTHER code value on a step is a fully custom step (e.g.
-// "IN_PROGRESS", "CONFIRMED") with no special behavior beyond its place
-// in the sequence. OrderStepMaster templates are authored by the platform
-// admin only, never by vendors, and are not edited once a vendor is
-// already using them (companyMaster.orderSteps).
+// Built-in step codes. A vendor's OrderStepMaster template (assigned through
+// CompanyMaster.orderSteps) is the NORMAL flow: any subset of the built-in
+// FLOW codes below plus any custom codes (e.g. "IN_PROGRESS", "CONFIRMED"), in
+// whatever sequence the platform admin chooses - none of them is required.
+// The admin can only move an order to the NEXT step of that flow, and the
+// flow's LAST step is final (nothing at all can happen to the order after it).
+//
+// The SIDE codes are never stored in a template. They sit outside the
+// sequence so they can never block "next step"/"last step":
+//   REJECTED            - the admin rejected the order.
+//   CANCELLED           - the customer cancelled the order.
+//   REFUNDED            - a rejected/cancelled order's payment was given back.
+//   PAYMENT_AT_DELIVERY - taken INSTEAD of the vendor's payment step (only for
+//                         vendors with delivery-agent access): the payment is
+//                         collected by the agent, so it is marked paid when the
+//                         vendor's delivery-agent transition happens instead.
+// Rejected/Cancelled/Refunded orders are not final - they can be restarted
+// from the flow's first step (RESTART_ACTION).
 const RESERVED_STEP_CODES = {
     ACCEPTED: 'ACCEPTED',
-    REJECTED: 'REJECTED',
     COMPLETED: 'COMPLETED',
     DELIVERED: 'DELIVERED',
     DISPATCHED: 'DISPATCHED',
-    READY_FOR_DELIVERY: 'READY_FOR_DELIVERY'
+    READY_FOR_DELIVERY: 'READY_FOR_DELIVERY',
+    REJECTED: 'REJECTED',
+    CANCELLED: 'CANCELLED',
+    REFUNDED: 'REFUNDED',
+    PAYMENT_AT_DELIVERY: 'PAYMENT_AT_DELIVERY'
 };
 
-const VALID_RESERVED_STEP_CODES = Object.values(RESERVED_STEP_CODES);
-
-// Once an order's current step reaches one of these, it is a dead end - no
-// further step transitions are allowed for that order at all. NOTE: don't
-// design a template where COMPLETED comes AFTER DELIVERED in sequence -
-// reaching DELIVERED locks the order before it could ever reach COMPLETED.
-const TERMINAL_STEP_CODES = [
-    RESERVED_STEP_CODES.COMPLETED,
-    RESERVED_STEP_CODES.DELIVERED
+// Built-in codes a template may place anywhere in its flow.
+const FLOW_STEP_CODES = [
+    RESERVED_STEP_CODES.ACCEPTED,
+    RESERVED_STEP_CODES.READY_FOR_DELIVERY,
+    RESERVED_STEP_CODES.DISPATCHED,
+    RESERVED_STEP_CODES.DELIVERED,
+    RESERVED_STEP_CODES.COMPLETED
 ];
+
+// Display names for the side steps (they have no template entry to take a name from).
+const SIDE_STEP_NAMES = {
+    [RESERVED_STEP_CODES.REJECTED]: 'Rejected',
+    [RESERVED_STEP_CODES.CANCELLED]: 'Cancelled',
+    [RESERVED_STEP_CODES.REFUNDED]: 'Refunded',
+    [RESERVED_STEP_CODES.PAYMENT_AT_DELIVERY]: 'Payment at Delivery'
+};
+
+// An order sitting on one of these is "closed": nothing but Refund (when paid)
+// and Restart is allowed on it.
+const CLOSED_STEP_CODES = [
+    RESERVED_STEP_CODES.REJECTED,
+    RESERVED_STEP_CODES.CANCELLED,
+    RESERVED_STEP_CODES.REFUNDED
+];
+
+// Refund is only possible from these.
+const REFUNDABLE_STEP_CODES = [
+    RESERVED_STEP_CODES.REJECTED,
+    RESERVED_STEP_CODES.CANCELLED
+];
+
+// Not a step - the action code the admin sends to restart a closed order.
+const RESTART_ACTION = 'RESTART';
+
+// Codes a template may never use for its own steps.
+const TEMPLATE_FORBIDDEN_CODES = [...Object.keys(SIDE_STEP_NAMES), RESTART_ACTION];
 
 // A return/exchange request can only be opened once the order has reached
 // one of these steps.
@@ -36,16 +72,13 @@ const RETURN_EXCHANGE_ELIGIBLE_STEP_CODES = [
     RESERVED_STEP_CODES.COMPLETED
 ];
 
-// A delivery agent may only move an order forward from DISPATCHED to
-// DELIVERED, and only when that order is assigned to them.
-const DELIVERY_AGENT_FROM_STEP_CODE = RESERVED_STEP_CODES.DISPATCHED;
-const DELIVERY_AGENT_TO_STEP_CODE = RESERVED_STEP_CODES.DELIVERED;
-
 module.exports = {
     RESERVED_STEP_CODES,
-    VALID_RESERVED_STEP_CODES,
-    TERMINAL_STEP_CODES,
-    RETURN_EXCHANGE_ELIGIBLE_STEP_CODES,
-    DELIVERY_AGENT_FROM_STEP_CODE,
-    DELIVERY_AGENT_TO_STEP_CODE
+    FLOW_STEP_CODES,
+    SIDE_STEP_NAMES,
+    CLOSED_STEP_CODES,
+    REFUNDABLE_STEP_CODES,
+    RESTART_ACTION,
+    TEMPLATE_FORBIDDEN_CODES,
+    RETURN_EXCHANGE_ELIGIBLE_STEP_CODES
 };

@@ -172,8 +172,16 @@ const invoiceSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-// One invoice per order, and invoice numbers never repeat within a vendor.
-invoiceSchema.index({ vendorId: 1, orderId: 1 }, { unique: true });
+// At most one LIVE (ISSUED) invoice per order, and invoice numbers never
+// repeat within a vendor. Partial so a voided invoice (order rejected or
+// cancelled) stays on record with its credit note while a restarted order gets
+// a new invoice. Mongoose won't change an existing index's options - after
+// editing this run `node scripts/migrateOrderStepWorkflow.js`.
+invoiceSchema.index(
+    { vendorId: 1, orderId: 1 },
+    { unique: true, partialFilterExpression: { status: 'ISSUED' }, name: 'vendorId_1_orderId_1_issued' }
+);
+invoiceSchema.index({ vendorId: 1, orderId: 1, createdAt: -1 });
 invoiceSchema.index({ vendorId: 1, invoiceNumber: 1 }, { unique: true });
 // Credit note numbers are unique too (partial: most invoices never get one).
 invoiceSchema.index(

@@ -17,6 +17,30 @@ const CUSTOMER_NOTIFIED_TYPES = [
     ORDER_NOTIFICATION_TYPES.ITEMS_UPDATED
 ];
 
+// The order's delivery agent (and one who was just taken off it) hears about
+// every change to it on their private user channel - only the order id and
+// number, nothing about the customer; their My Deliveries page re-fetches.
+const notifyDeliveryAgents = (order, type, previousAgentId) => {
+    try {
+        const currentAgentId = order.assignedDeliveryAgentId ? order.assignedDeliveryAgentId.toString() : null;
+        const previous = previousAgentId ? previousAgentId.toString() : null;
+        const payloadFor = (agentType) => ({
+            module: REALTIME_MODULE_ORDERS,
+            type: agentType,
+            data: { orderId: common.encodeId(order._id), orderNumber: order.orderNumber }
+        });
+
+        if (currentAgentId) {
+            realtimeService.emitToUser(order.vendorId, currentAgentId, REALTIME_USER_NOTIFICATION_EVENT, payloadFor(type));
+        }
+        if (previous && previous !== currentAgentId) {
+            realtimeService.emitToUser(order.vendorId, previous, REALTIME_USER_NOTIFICATION_EVENT, payloadFor(ORDER_NOTIFICATION_TYPES.AGENT_UNASSIGNED));
+        }
+    } catch (err) {
+        logger.logWarning('Exception in orderRealtimeService.notifyDeliveryAgents', { orderId: order?._id, type, error: err });
+    }
+};
+
 // Best-effort push - never throws, so a notification failure can never break
 // the order/payment request that triggered it (the order itself is always
 // already saved before this is called). Deliberately kept out of
@@ -28,7 +52,9 @@ const CUSTOMER_NOTIFIED_TYPES = [
 // Anything richer (items, addresses, timeline) is re-fetched over REST by the
 // client. Admins get it on the shared admin channel; the order's own customer
 // (and only them - a private per-user room) gets it on the user channel.
-const notifyOrderChanged = (order, type) => {
+// options.previousAgentId: the delivery agent the order had before this change,
+// when this change took them off it (so they hear about it too).
+const notifyOrderChanged = (order, type, options = {}) => {
     try {
         if (!order) return;
 
@@ -45,6 +71,7 @@ const notifyOrderChanged = (order, type) => {
                 orderNumber: order.orderNumber,
                 currentStepCode: order.currentStepCode,
                 currentStepName: order.currentStepName,
+                isFinalized: order.isFinalized === true,
                 paymentStatus: order.payment?.status,
                 paymentMethod: order.payment?.method,
                 updatedAt: order.updatedAt
@@ -56,6 +83,8 @@ const notifyOrderChanged = (order, type) => {
         if (CUSTOMER_NOTIFIED_TYPES.includes(type) && order.userId) {
             realtimeService.emitToUser(order.vendorId, order.userId, REALTIME_USER_NOTIFICATION_EVENT, notification);
         }
+
+        notifyDeliveryAgents(order, type, options.previousAgentId);
     } catch (err) {
         logger.logWarning('Exception in orderRealtimeService.notifyOrderChanged', { orderId: order?._id, type, error: err });
     }

@@ -13,6 +13,7 @@ export const useCompanySettings = () => {
   const [settings, setSettings] = useState(null);
   const [exists, setExists] = useState(false);
   const [companyMaster, setCompanyMaster] = useState(null);
+  const [orderSteps, setOrderSteps] = useState({ steps: [], lastStepCode: null, isDeliveryAgentAccessOn: false });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -22,9 +23,10 @@ export const useCompanySettings = () => {
     setLoading(true);
     setError('');
     try {
-      const [settingsResult, companyMasterResult] = await Promise.allSettled([
+      const [settingsResult, companyMasterResult, orderStepsResult] = await Promise.allSettled([
         companySettingsApi.getCompanySettings(),
         lookupApi.getCompanyMasterData(),
+        companySettingsApi.getAssignedOrderSteps(),
       ]);
 
       if (settingsResult.status === 'fulfilled') {
@@ -38,6 +40,13 @@ export const useCompanySettings = () => {
       }
 
       setCompanyMaster(companyMasterResult.status === 'fulfilled' ? companyMasterResult.value || null : null);
+      if (orderStepsResult.status === 'fulfilled' && orderStepsResult.value) {
+        setOrderSteps({
+          steps: orderStepsResult.value.steps || [],
+          lastStepCode: orderStepsResult.value.lastStepCode || null,
+          isDeliveryAgentAccessOn: orderStepsResult.value.isDeliveryAgentAccessOn === true,
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -69,6 +78,7 @@ export const useCompanySettings = () => {
     settings,
     exists,
     companyMaster,
+    orderSteps,
     loading,
     error,
     saving,

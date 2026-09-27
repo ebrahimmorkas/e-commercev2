@@ -66,18 +66,19 @@ const userSchema = mongoose.Schema({
     // country/state/city hold CountryMaster/StateMaster/CityMaster ids (as
     // strings), picked from the vendor's allowed countries - see
     // services/userLocationService.js. Older accounts held typed names;
-    // scripts/migrateUserLocationsToIds.js converts those.
+    // scripts/migrateUserLocationsToIds.js converts those. Optional for a
+    // delivery agent (vendor staff, not a shopper).
     country: {
         type: String,
-        required: true,
+        required: function () { return this.role !== 'deliveryAgent'; },
     },
     city: {
         type: String,
-        required: true,
+        required: function () { return this.role !== 'deliveryAgent'; },
     },  
     state: {
         type: String,
-        required: true,
+        required: function () { return this.role !== 'deliveryAgent'; },
     },  
     // Optional tax registration details captured at signup (only when the vendor has
     // CompanySettings.isTaxRegistrationOnSignupEnabled on). businessFullName/trn are

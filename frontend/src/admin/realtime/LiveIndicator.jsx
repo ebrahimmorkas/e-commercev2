@@ -16,7 +16,7 @@ const STATUS_DISPLAY = {
   [CONNECTION_STATUS.OFFLINE]: {
     variant: 'red',
     label: 'Offline',
-    hint: 'Live updates are paused. Use Refresh to reload and reconnect.',
+    hint: 'Live updates are paused - reconnecting automatically.',
   },
 };
 

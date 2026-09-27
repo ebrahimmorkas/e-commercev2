@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { TEMPLATE_FORBIDDEN_CODES } = require("../constants/orderStepConstants");
 
 const orderStepSchema = new mongoose.Schema(
     {
@@ -64,9 +65,15 @@ const orderStepMasterSchema = new mongoose.Schema(
                         return false;
                     }
 
+                    // Rejected/Cancelled/Refunded/Payment at Delivery are built-in side
+                    // steps outside the flow (see orderStepConstants.js), never template steps.
+                    if (codes.some((code) => TEMPLATE_FORBIDDEN_CODES.includes(String(code).toUpperCase()))) {
+                        return false;
+                    }
+
                     return true;
                 },
-                message: "Order steps must contain unique sequence numbers and unique codes."
+                message: "Order steps must contain unique sequence numbers and unique codes, and may not use the built-in side step codes (REJECTED, CANCELLED, REFUNDED, PAYMENT_AT_DELIVERY, RESTART)."
             }
         },
 

@@ -224,7 +224,8 @@ const issueInvoiceForOrder = async (order, { companySettingsData, companyMasterD
         const featureCheck = await isInvoiceFeatureOn(vendorId, websiteMasterData, companyMasterData);
         if (!featureCheck.isSuccess) return featureCheck;
 
-        const existing = await Invoice.findOne({ vendorId, orderId: order._id });
+        // Only the live invoice counts: a voided one (order rejected/cancelled, then restarted) is history.
+        const existing = await Invoice.findOne({ vendorId, orderId: order._id, status: 'ISSUED' });
         if (existing) return common.returnResult(true, 200, 'Invoice already issued', { invoice: existing });
 
         if (order.cancelledAt) {
@@ -276,7 +277,7 @@ const issueInvoiceForOrder = async (order, { companySettingsData, companyMasterD
             // Two requests raced to invoice the same order - the unique {vendorId, orderId} index
             // let only one through; hand back the winner. (The loser's counter value is skipped.)
             if (err.code === 11000) {
-                const winner = await Invoice.findOne({ vendorId, orderId: order._id });
+                const winner = await Invoice.findOne({ vendorId, orderId: order._id, status: 'ISSUED' });
                 if (winner) return common.returnResult(true, 200, 'Invoice already issued', { invoice: winner });
             }
             throw err;
@@ -370,8 +371,8 @@ const tryIssueInvoiceForOrder = async (order, context) => {
  */
 const voidInvoiceForOrder = async (order, reason) => {
     try {
-        const invoice = await Invoice.findOne({ vendorId: order.vendorId, orderId: order._id });
-        if (!invoice || invoice.status === 'VOID') {
+        const invoice = await Invoice.findOne({ vendorId: order.vendorId, orderId: order._id, status: 'ISSUED' });
+        if (!invoice) {
             return common.returnResult(true, 200, 'No invoice to void');
         }
 
@@ -423,8 +424,8 @@ const tryVoidInvoiceForOrder = (order, reason) =>
 const refreshInvoiceForOrder = async (order, { companySettingsData } = {}) => {
     try {
         const { vendorId } = order;
-        const invoice = await Invoice.findOne({ vendorId, orderId: order._id });
-        if (!invoice || invoice.status !== 'ISSUED' || order.cancelledAt || !order.items || order.items.length === 0) {
+        const invoice = await Invoice.findOne({ vendorId, orderId: order._id, status: 'ISSUED' });
+        if (!invoice || order.cancelledAt || !order.items || order.items.length === 0) {
             return common.returnResult(true, 200, 'No invoice to refresh');
         }
 
@@ -458,9 +459,14 @@ const tryRefreshInvoiceForOrder = (order, context) =>
 /** What the order screens need to know: is there an invoice, what number, is it void, is there a credit note. */
 const getInvoiceSummaryForOrder = async (vendorId, orderId) => {
     try {
-        const invoice = await Invoice.findOne({ vendorId, orderId }).select('invoiceNumber status creditNote').lean();
+        // The newest one: the live invoice, or - for a closed order - the one voided last. A
+        // restarted order can also have an older voided invoice whose credit note still matters.
+        const [invoice, latestCreditNote] = await Promise.all([
+            Invoice.findOne({ vendorId, orderId }).sort({ createdAt: -1 }).select('invoiceNumber status creditNote').lean(),
+            Invoice.findOne({ vendorId, orderId, 'creditNote.number': { $type: 'string' } }).sort({ createdAt: -1 }).select('creditNote').lean()
+        ]);
         if (!invoice) return null;
-        return { invoiceNumber: invoice.invoiceNumber, status: invoice.status, creditNoteNumber: invoice.creditNote?.number || null };
+        return { invoiceNumber: invoice.invoiceNumber, status: invoice.status, creditNoteNumber: latestCreditNote?.creditNote?.number || null };
     } catch (err) {
         throw err;
     }
@@ -486,8 +492,9 @@ const getInvoicePdfForOrder = async (vendorId, orderId, userId, context, { docum
         const copies = context.companySettingsData?.invoicePrintDuplicateCopy === true ? 2 : 1;
 
         if (document === 'credit-note') {
-            const invoice = await Invoice.findOne({ vendorId, orderId: order._id });
-            if (!invoice || !invoice.creditNote?.number) {
+            // A restarted-then-closed-again order can have several; the latest credit note is the relevant one.
+            const invoice = await Invoice.findOne({ vendorId, orderId: order._id, 'creditNote.number': { $type: 'string' } }).sort({ createdAt: -1 });
+            if (!invoice) {
                 return common.returnResult(false, 404, 'There is no credit note for this order.');
             }
             const buffer = await invoicePdfService.renderInvoicePdf(invoice, { document: 'credit-note', copies });
@@ -495,10 +502,16 @@ const getInvoicePdfForOrder = async (vendorId, orderId, userId, context, { docum
             return common.returnResult(true, 200, 'Credit note generated', { buffer, filename: `CreditNote-${safeNumber}.pdf` });
         }
 
-        const issued = await issueInvoiceForOrder(order, context);
-        if (!issued.isSuccess) return issued;
-
-        const { invoice } = issued.meta;
+        // A rejected/cancelled order can't be invoiced, but the invoice it already had (now void) can still be downloaded.
+        let invoice;
+        if (order.cancelledAt) {
+            invoice = await Invoice.findOne({ vendorId, orderId: order._id }).sort({ createdAt: -1 });
+            if (!invoice) return common.returnResult(false, 409, 'This order was cancelled, so no invoice can be issued for it.');
+        } else {
+            const issued = await issueInvoiceForOrder(order, context);
+            if (!issued.isSuccess) return issued;
+            invoice = issued.meta.invoice;
+        }
         const buffer = await invoicePdfService.renderInvoicePdf(invoice, { copies });
         const safeNumber = invoice.invoiceNumber.replace(/[^A-Za-z0-9._-]/g, '-');
         return common.returnResult(true, 200, 'Invoice generated', { buffer, filename: `Invoice-${safeNumber}.pdf` });

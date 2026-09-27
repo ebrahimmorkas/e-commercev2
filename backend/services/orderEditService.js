@@ -8,7 +8,8 @@ const commissionService = require('./commissionService');
 const invoiceService = require('./invoiceService');
 const orderService = require('./orderService');
 const { ORDER_NOTIFICATION_TYPES } = require('../constants/orderRealtimeConstants');
-const { RESERVED_STEP_CODES, TERMINAL_STEP_CODES } = require('../constants/orderStepConstants');
+const { CLOSED_STEP_CODES } = require('../constants/orderStepConstants');
+const orderStepService = require('./orderStepService');
 const { notifyOrderChanged } = require('./orderRealtimeService');
 
 const round2 = (value) => Math.round(value * 100) / 100;
@@ -16,7 +17,7 @@ const round2 = (value) => Math.round(value * 100) / 100;
 // An order stops being editable once it is finalized, cancelled or rejected,
 // and once a payment has been taken (the total would no longer match what was
 // paid). Same rule as editing an order's shipping price.
-const EDIT_BLOCKED_STEP_CODES = [...TERMINAL_STEP_CODES, RESERVED_STEP_CODES.REJECTED];
+
 const EDITABLE_PAYMENT_STATUSES = ['PENDING', 'FAILED'];
 
 /*
@@ -83,7 +84,7 @@ const loadEditableOrder = async (vendorId, orderId) => {
         if (!order) {
             return common.returnResult(false, 404, 'Order not found.');
         }
-        if (EDIT_BLOCKED_STEP_CODES.includes(order.currentStepCode) || order.cancelledAt) {
+        if (!orderStepService.isOrderActive(order) || order.cancelledAt) {
             return common.returnResult(false, 400, 'This order has been finalized, cancelled or rejected and can no longer be edited.');
         }
         if (!EDITABLE_PAYMENT_STATUSES.includes(order.payment?.status || 'PENDING')) {
@@ -226,7 +227,8 @@ const addProductsToOrder = async (vendorId, adminUserId, orderId, payload, compa
                     _id: orderId,
                     vendorId,
                     status: { $ne: 'D' },
-                    currentStepCode: { $nin: EDIT_BLOCKED_STEP_CODES },
+                    isFinalized: { $ne: true },
+                    currentStepCode: { $nin: CLOSED_STEP_CODES },
                     cancelledAt: null,
                     'payment.status': { $in: EDITABLE_PAYMENT_STATUSES },
                     // Nobody added the same line between our read and this write.

@@ -46,7 +46,7 @@ const authenticateSocket = async (socket, next) => {
         }
 
         if (!Object.values(REALTIME_SOCKET_ROLES).includes(user.role)) {
-            return next(new Error('Only admins and customers may connect to this channel'));
+            return next(new Error('Only admins, customers and delivery agents may connect to this channel'));
         }
 
         socket.data.userId = user._id;

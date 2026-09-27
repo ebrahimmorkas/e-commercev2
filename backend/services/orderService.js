@@ -16,14 +16,10 @@ const invoiceService = require('./invoiceService');
 const adminPlaceOrderService = require('./adminPlaceOrderService');
 const addressService = require('./addressService');
 const currencyService = require('./currencyService');
+const orderStepService = require('./orderStepService');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
-const {
-    RESERVED_STEP_CODES,
-    TERMINAL_STEP_CODES,
-    DELIVERY_AGENT_FROM_STEP_CODE,
-    DELIVERY_AGENT_TO_STEP_CODE
-} = require('../constants/orderStepConstants');
+const { RESERVED_STEP_CODES, CLOSED_STEP_CODES, SIDE_STEP_NAMES } = require('../constants/orderStepConstants');
 const { EMAIL_MODULES } = require('../constants/emailModuleConstants');
 const { ORDER_NOTIFICATION_TYPES } = require('../constants/orderRealtimeConstants');
 const { notifyOrderChanged } = require('./orderRealtimeService');
@@ -146,12 +142,12 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
             return common.returnResult(false, 500, 'Order workflow is not configured for this store yet. Please contact support.');
         }
 
-        const stepMaster = await OrderStepMaster.findOne({ _id: orderStepMasterId, status: 'A' });
+        const stepMaster = await orderStepService.loadActiveStepMaster(orderStepMasterId);
         if (!stepMaster) {
             return common.returnResult(false, 500, 'Order workflow is not configured correctly for this store. Please contact support.');
         }
 
-        const firstStep = stepMaster.steps.find((step) => step.sequence === 1);
+        const firstStep = orderStepService.getFirstStep(stepMaster);
         if (!firstStep) {
             return common.returnResult(false, 500, 'Order workflow is misconfigured for this store (no starting step). Please contact support.');
         }
@@ -309,6 +305,8 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
             orderPlacedAt: new Date(),
             createdBy: userId
         });
+        // The first step may itself be the payment step (paid on placement) or the only step (final at once).
+        orderStepService.applyFlowStepEffects(order, firstStep, stepMaster, companySettingsData);
 
         try {
             await order.save();
@@ -363,34 +361,138 @@ const restoreStockForCancelledOrder = async (order) => {
 
 /*
 |--------------------------------------------------------------------------
-| STEP TRANSITION HELPERS
+| STOCK ON RESTART
 |--------------------------------------------------------------------------
+| Rejecting/cancelling an order gave its stock back (restoreStockForCancelledOrder),
+| so restarting it takes the stock again - exactly the lines that restore gives
+| back: the cart's checked-out lines for a normal order, plus every line that
+| carries its own stockDeductedQuantity (admin-placed orders, and products an
+| admin added later). Checked up front so the admin is told every product that
+| is short, then taken line by line; a line lost to a race undoes the rest.
 */
+const buildRestartStockLines = async (order, allowOutOfStock) => {
+    try {
+        const lines = [];
+        if (!order.isPlacedByAdmin && order.cartId) {
+            const cart = await Cart.findById(order.cartId);
+            if (cart) {
+                for (const productEntry of cart.products) {
+                    for (const variantEntry of productEntry.variants) {
+                        for (const sizeEntry of variantEntry.sizes) {
+                            if (!sizeEntry.isCheckedOut) continue;
+                            lines.push({
+                                productId: productEntry.productId,
+                                variantId: variantEntry.variantId,
+                                sizeId: sizeEntry.sizeId,
+                                quantity: sizeEntry.quantity,
+                                label: `"${productEntry.productName}" - ${variantEntry.variantName} - ${sizeEntry.sizeName}`,
+                                itemIndex: null,
+                                allowPartial: false
+                            });
+                        }
+                    }
+                }
+            }
+        }
 
-// Closes whichever statusHistory entry is still open (completedAt: null)
-// and opens a new one for the target step. Mutates `order` in place.
-const closeCurrentHistoryEntryAndPushNext = (order, targetStep, changedByUserId, isManualUpdate) => {
-    const now = new Date();
-    const openEntry = [...order.statusHistory].reverse().find((entry) => entry.completedAt === null);
-    if (openEntry) {
-        openEntry.completedAt = now;
+        (order.items || []).forEach((item, index) => {
+            if (item.stockDeductedQuantity === null || item.stockDeductedQuantity === undefined) return;
+            lines.push({
+                productId: item.productId,
+                variantId: item.variantId,
+                sizeId: item.sizeId,
+                quantity: item.quantity,
+                label: `"${item.productName}" - ${item.variantName} - ${item.sizeName}`,
+                itemIndex: index,
+                // Same rule as when it was first added: the vendor may allow taking what's left.
+                allowPartial: allowOutOfStock
+            });
+        });
+        return lines;
+    } catch (err) {
+        throw err;
     }
-
-    order.statusHistory.push({
-        stepId: targetStep._id,
-        stepCode: targetStep.code,
-        stepName: targetStep.name,
-        sequence: targetStep.sequence,
-        startedAt: now,
-        changedBy: changedByUserId,
-        isManualUpdate
-    });
-
-    order.currentStepId = targetStep._id;
-    order.currentStepCode = targetStep.code;
-    order.currentStepName = targetStep.name;
-    order.currentStepSequence = targetStep.sequence;
 };
+
+// Labels of the lines that can't be fully taken right now (the size is gone,
+// or has too little stock). Quantities of the same size across lines add up.
+const findRestartStockShortages = async (lines) => {
+    try {
+        const productIds = [...new Set(lines.map((line) => line.productId.toString()))];
+        const products = await Product.find({ _id: { $in: productIds } }).select('variants').lean();
+        const productMap = new Map(products.map((product) => [product._id.toString(), product]));
+
+        const neededBySize = new Map();
+        const shortLabels = [];
+        for (const line of lines) {
+            const variant = productMap.get(line.productId.toString())?.variants?.find((v) => v._id.toString() === line.variantId.toString());
+            const size = variant?.sizes?.find((sz) => sz._id.toString() === line.sizeId.toString());
+            if (!size) {
+                shortLabels.push(`${line.label} (no longer available)`);
+                continue;
+            }
+            if (line.allowPartial) continue;
+
+            const sizeKey = line.sizeId.toString();
+            const needed = (neededBySize.get(sizeKey) || 0) + line.quantity;
+            neededBySize.set(sizeKey, needed);
+            if (size.stock < needed) {
+                shortLabels.push(`${line.label} (needs ${line.quantity}, ${Math.max(0, size.stock)} in stock)`);
+            }
+        }
+        return shortLabels;
+    } catch (err) {
+        throw err;
+    }
+};
+
+const reserveStockForRestart = async (order, companySettingsData) => {
+    try {
+        const allowOutOfStock = companySettingsData?.allowOutOfStockProductsAdding === true;
+        const lines = await buildRestartStockLines(order, allowOutOfStock);
+
+        const shortLabels = await findRestartStockShortages(lines);
+        if (shortLabels.length > 0) {
+            return common.returnResult(false, 409, `This order can't be restarted because these products don't have enough stock: ${shortLabels.join('; ')}. Restock them and try again.`);
+        }
+
+        const deductions = [];
+        let unexpectedError = null;
+        for (const line of lines) {
+            const deducted = await adminPlaceOrderService.deductStockForLine(line, line.allowPartial).catch((err) => {
+                unexpectedError = err;
+                return null;
+            });
+            if (deducted === null) {
+                await adminPlaceOrderService.restoreDeductedStock(deductions);
+                if (unexpectedError) throw unexpectedError;
+                return common.returnResult(false, 409, `This order can't be restarted because ${line.label} just went out of stock. Please try again.`);
+            }
+            deductions.push({ productId: line.productId, variantId: line.variantId, sizeId: line.sizeId, deducted });
+            if (line.itemIndex !== null) {
+                order.items[line.itemIndex].stockDeductedQuantity = deducted;
+            }
+        }
+        return common.returnResult(true, 200, 'Stock reserved for restarted order', { deductions });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Saves a step change. Resolves false (instead of throwing) when another step
+// change on the same order won the race - see Order's optimisticConcurrency.
+const saveStepChange = async (order) => {
+    try {
+        return await order.save().then(() => true, (err) => {
+            if (orderStepService.isVersionConflict(err)) return false;
+            throw err;
+        });
+    } catch (err) {
+        throw err;
+    }
+};
+
+const STEP_CONFLICT_MESSAGE = 'This order was just updated by someone else. Please refresh it and try again.';
 
 // Resolves the vendor's tagged 'order' template (or the platform default -
 // see resolveTemplateForModule) and sends it to the customer, with
@@ -472,11 +574,159 @@ const notifyOrderStatusChange = async (order, companyMasterData, websiteMasterDa
 |--------------------------------------------------------------------------
 | STEP TRANSITIONS (admin)
 |--------------------------------------------------------------------------
-| Admin can jump to any step in the vendor's assigned workflow (branching
-| allowed, not strictly sequential - confirmed design), except once an
-| order's current step is COMPLETED or DELIVERED, which are absolute
-| terminal states with no further transitions at all.
+| The admin can only do what orderStepService.getAvailableActions offers for
+| the order right now (the same list the step dropdown shows):
+|   NEXT                - the next step of the workflow (no skipping, no going back)
+|   PAYMENT_AT_DELIVERY - instead of the payment step, for agent-collected payments
+|   REJECTED            - close the order (stock back, commission + invoice voided)
+|   REFUNDED            - a closed order's PAID payment was given back
+|   RESTART             - a closed order starts again from the first step
+| Nothing at all once the order is on its workflow's last step.
 */
+
+// Side effects shared by admin rejection and customer cancellation, run once
+// the closing step is saved.
+const releaseClosedOrder = async (order, reason) => {
+    try {
+        await commissionService.voidCommissionForOrder(order.vendorId, order._id, reason);
+        await restoreStockForCancelledOrder(order);
+        // Voids the invoice (if one was issued) and raises its credit note; never fails the close.
+        await invoiceService.tryVoidInvoiceForOrder(order, reason);
+    } catch (err) {
+        throw err;
+    }
+};
+
+const rejectOrderByAdmin = async (order, adminUserId, remarks) => {
+    try {
+        const rejectedStep = orderStepService.buildSideStep(RESERVED_STEP_CODES.REJECTED, order.currentStepSequence);
+        orderStepService.moveOrderToStep(order, rejectedStep, adminUserId, true, remarks);
+        order.cancelledAt = new Date();
+        order.cancelledBy = adminUserId;
+        order.cancellationReason = remarks || 'Rejected by admin.';
+        order.updatedBy = adminUserId;
+
+        const saved = await saveStepChange(order);
+        if (!saved) {
+            return common.returnResult(false, 409, STEP_CONFLICT_MESSAGE);
+        }
+
+        await releaseClosedOrder(order, order.cancellationReason);
+        return common.returnResult(true, 200, 'Order rejected successfully', { order });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// The payment of a rejected/cancelled order was given back to the customer.
+// Nothing else changes - stock, commission and invoice were already settled
+// when the order was closed.
+const refundOrderByAdmin = async (order, adminUserId, remarks) => {
+    try {
+        const refundedStep = orderStepService.buildSideStep(RESERVED_STEP_CODES.REFUNDED, order.currentStepSequence);
+        orderStepService.moveOrderToStep(order, refundedStep, adminUserId, true, remarks);
+        order.payment.status = 'REFUNDED';
+        order.payment.refundedAmount = order.payment.amount || order.grandTotal;
+        order.payment.refundedAt = new Date();
+        order.updatedBy = adminUserId;
+
+        const saved = await saveStepChange(order);
+        if (!saved) {
+            return common.returnResult(false, 409, STEP_CONFLICT_MESSAGE);
+        }
+        return common.returnResult(true, 200, 'Order marked as refunded', { order });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Payment at Delivery stands in for the payment step (it takes that step's
+// place in the sequence, so "next" carries on from the step after it). The
+// payment is marked PAID later, when the delivery-agent transition happens.
+const takePaymentAtDelivery = async (order, paymentStep, adminUserId, remarks) => {
+    try {
+        const padStep = orderStepService.buildSideStep(RESERVED_STEP_CODES.PAYMENT_AT_DELIVERY, paymentStep.sequence);
+        orderStepService.moveOrderToStep(order, padStep, adminUserId, true, remarks);
+        order.isPaymentAtDelivery = true;
+        order.updatedBy = adminUserId;
+
+        const saved = await saveStepChange(order);
+        if (!saved) {
+            return common.returnResult(false, 409, STEP_CONFLICT_MESSAGE);
+        }
+        return common.returnResult(true, 200, 'Order moved to Payment at Delivery', { order });
+    } catch (err) {
+        throw err;
+    }
+};
+
+const moveOrderToNextStep = async (order, nextStep, stepMaster, adminUserId, remarks, companySettingsData) => {
+    try {
+        orderStepService.enterNextFlowStep(order, nextStep, stepMaster, companySettingsData, adminUserId, remarks);
+        order.updatedBy = adminUserId;
+
+        const saved = await saveStepChange(order);
+        if (!saved) {
+            return common.returnResult(false, 409, STEP_CONFLICT_MESSAGE);
+        }
+        return common.returnResult(true, 200, 'Order status updated successfully', { order });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// A rejected/cancelled/refunded order starts over from the first step: the
+// stock is taken again (refused, naming the short products, if it isn't
+// there), the commission is owed again and a new invoice is issued. A payment
+// that was refunded is due again; one that was never refunded stays PAID.
+const restartOrderByAdmin = async (order, firstStep, stepMaster, adminUserId, remarks, companyMasterData, websiteMasterData, companySettingsData) => {
+    try {
+        const stockResult = await reserveStockForRestart(order, companySettingsData);
+        if (!stockResult.isSuccess) {
+            return stockResult;
+        }
+
+        const wasRefunded = order.currentStepCode === RESERVED_STEP_CODES.REFUNDED;
+        orderStepService.moveOrderToStep(order, firstStep, adminUserId, true, remarks);
+        order.cancelledAt = null;
+        order.cancelledBy = null;
+        order.cancellationReason = null;
+        order.cancellationRemarks = null;
+        order.isPaymentAtDelivery = false;
+        order.isFinalized = false;
+        order.shippedAt = null;
+        order.deliveredAt = null;
+        // The delivery starts over too: the agent is taken off (the admin
+        // assigns one again) and their step change is undone. Both stay in the history.
+        orderStepService.releaseDeliveryAgent(order, adminUserId);
+        order.deliveryAgentTransitionAt = null;
+        order.deliveryAgentTransitionBy = null;
+        order.deliveryAgentTransitionByRole = null;
+        if (wasRefunded) {
+            order.payment.status = 'PENDING';
+            order.payment.paidAt = null;
+            order.payment.refundedAmount = 0;
+            order.payment.refundedAt = null;
+        }
+        orderStepService.applyFlowStepEffects(order, firstStep, stepMaster, companySettingsData);
+        order.updatedBy = adminUserId;
+
+        const saved = await saveStepChange(order);
+        if (!saved) {
+            await adminPlaceOrderService.restoreDeductedStock(stockResult.meta.deductions);
+            return common.returnResult(false, 409, STEP_CONFLICT_MESSAGE);
+        }
+
+        await commissionService.reinstateCommissionForOrder(order, companyMasterData);
+        // Never fails the restart: if it can't be issued now, it is issued on first download.
+        await invoiceService.tryIssueInvoiceForOrder(order, { companySettingsData, companyMasterData, websiteMasterData });
+
+        return common.returnResult(true, 200, 'Order restarted successfully', { order });
+    } catch (err) {
+        throw err;
+    }
+};
+
 const advanceOrderStep = async (vendorId, adminUserId, orderId, targetStepCode, remarks, companyMasterData, websiteMasterData, companySettingsData) => {
     try {
         const order = await Order.findOne({ _id: orderId, vendorId, status: { $ne: 'D' } });
@@ -484,59 +734,62 @@ const advanceOrderStep = async (vendorId, adminUserId, orderId, targetStepCode, 
             return common.returnResult(false, 404, 'Order not found.');
         }
 
-        if (TERMINAL_STEP_CODES.includes(order.currentStepCode)) {
-            return common.returnResult(false, 400, 'This order has already been finalized and cannot be updated further.');
+        if (order.isFinalized) {
+            return common.returnResult(false, 400, 'This order has reached the last step of its workflow and can no longer be updated.');
         }
 
-        const stepMaster = await OrderStepMaster.findById(order.orderStepMasterId);
+        const stepMaster = await orderStepService.loadOrderStepMaster(order);
         if (!stepMaster) {
             return common.returnResult(false, 500, 'Order workflow is misconfigured for this order. Please contact support.');
         }
 
-        const targetStep = stepMaster.steps.find((step) => step.code === targetStepCode);
-        if (!targetStep) {
-            return common.returnResult(false, 400, "That step is not part of this order's workflow.");
+        const actions = orderStepService.getAvailableActions(order, stepMaster, companySettingsData, companyMasterData, websiteMasterData);
+        // A restart takes the agent off - they still need to hear about it.
+        const agentBefore = order.assignedDeliveryAgentId;
+        const action = actions.find((candidate) => candidate.code === targetStepCode);
+        if (!action) {
+            const allowed = actions.map((candidate) => `"${candidate.name}"`).join(', ');
+            return common.returnResult(false, 400, allowed
+                ? `This order can't be moved to that step. What it can do now: ${allowed}.`
+                : 'This order cannot be updated.');
         }
 
-        // Rejecting is one-way and has side effects (stock goes back, commission and invoice are voided).
-        // Repeating it on an already-rejected order used to give the stock back a second time.
-        if (targetStep.code === RESERVED_STEP_CODES.REJECTED && order.currentStepCode === RESERVED_STEP_CODES.REJECTED) {
-            return common.returnResult(false, 400, 'This order has already been rejected.');
+        const cleanRemarks = remarks || null;
+        // Saved together with the step change (each branch saves the order).
+        if (cleanRemarks) {
+            order.remarks = cleanRemarks;
         }
 
-        closeCurrentHistoryEntryAndPushNext(order, targetStep, adminUserId, true);
-
-        if (targetStep.code === RESERVED_STEP_CODES.DISPATCHED) {
-            order.shippedAt = new Date();
+        let result;
+        switch (action.type) {
+            case orderStepService.ACTION_TYPES.NEXT:
+                result = await moveOrderToNextStep(order, action.step, stepMaster, adminUserId, cleanRemarks, companySettingsData);
+                break;
+            case orderStepService.ACTION_TYPES.PAYMENT_AT_DELIVERY:
+                result = await takePaymentAtDelivery(order, action.step, adminUserId, cleanRemarks);
+                break;
+            case orderStepService.ACTION_TYPES.REJECT:
+                result = await rejectOrderByAdmin(order, adminUserId, cleanRemarks);
+                break;
+            case orderStepService.ACTION_TYPES.REFUND:
+                result = await refundOrderByAdmin(order, adminUserId, cleanRemarks);
+                break;
+            case orderStepService.ACTION_TYPES.RESTART:
+                result = await restartOrderByAdmin(order, action.step, stepMaster, adminUserId, cleanRemarks, companyMasterData, websiteMasterData, companySettingsData);
+                break;
+            default:
+                return common.returnResult(false, 400, 'This order cannot be updated.');
         }
-        if (targetStep.code === RESERVED_STEP_CODES.DELIVERED) {
-            order.deliveredAt = new Date();
-        }
-        if (targetStep.code === RESERVED_STEP_CODES.REJECTED) {
-            order.cancelledAt = new Date();
-            order.cancelledBy = adminUserId;
-            order.cancellationReason = remarks || 'Rejected by admin.';
-        }
-        if (remarks) {
-            order.remarks = remarks;
-        }
-
-        order.updatedBy = adminUserId;
-        await order.save();
-
-        if (targetStep.code === RESERVED_STEP_CODES.REJECTED) {
-            await commissionService.voidCommissionForOrder(vendorId, order._id, order.cancellationReason);
-            await restoreStockForCancelledOrder(order);
-            // Voids the invoice (if one was issued) and raises its credit note; never fails the rejection.
-            await invoiceService.tryVoidInvoiceForOrder(order, order.cancellationReason);
+        if (!result.isSuccess) {
+            return result;
         }
 
-        notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.STATUS_CHANGED);
+        notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.STATUS_CHANGED, { previousAgentId: agentBefore });
 
         await notifyOrderStatusChange(order, companyMasterData, websiteMasterData, companySettingsData, adminUserId);
 
-        logger.logInfo(1, 0, 'Order step advanced', { vendorId, orderId, targetStepCode });
-        return common.returnResult(true, 200, 'Order status updated successfully', { order });
+        logger.logInfo(1, 0, 'Order step changed by admin', { vendorId, orderId, targetStepCode, actionType: action.type });
+        return result;
     } catch (err) {
         throw err;
     }
@@ -553,7 +806,6 @@ const advanceOrderStep = async (vendorId, adminUserId, orderId, targetStepCode, 
 const setOrderShippingPrice = async (vendorId, adminUserId, orderId, shippingAmount) => {
     try {
         const amount = Math.round(shippingAmount * 100) / 100;
-        const blockedStepCodes = [...TERMINAL_STEP_CODES, RESERVED_STEP_CODES.REJECTED];
 
         const updated = await Order.findOneAndUpdate(
             {
@@ -562,7 +814,8 @@ const setOrderShippingPrice = async (vendorId, adminUserId, orderId, shippingAmo
                 status: { $ne: 'D' },
                 'shippingPriceBreakdown.isShippingPending': true,
                 'payment.status': { $in: ['PENDING', 'FAILED'] },
-                currentStepCode: { $nin: blockedStepCodes },
+                isFinalized: { $ne: true },
+                currentStepCode: { $nin: CLOSED_STEP_CODES },
                 cancelledAt: null
             },
             [{
@@ -616,7 +869,6 @@ const setOrderShippingPrice = async (vendorId, adminUserId, orderId, shippingAmo
 const updateOrderShippingPrice = async (vendorId, adminUserId, orderId, shippingAmount) => {
     try {
         const amount = Math.round(shippingAmount * 100) / 100;
-        const blockedStepCodes = [...TERMINAL_STEP_CODES, RESERVED_STEP_CODES.REJECTED];
 
         const updated = await Order.findOneAndUpdate(
             {
@@ -625,7 +877,8 @@ const updateOrderShippingPrice = async (vendorId, adminUserId, orderId, shipping
                 status: { $ne: 'D' },
                 'shippingPriceBreakdown.isShippingPending': { $ne: true },
                 'payment.status': { $in: ['PENDING', 'FAILED'] },
-                currentStepCode: { $nin: blockedStepCodes },
+                isFinalized: { $ne: true },
+                currentStepCode: { $nin: CLOSED_STEP_CODES },
                 cancelledAt: null
             },
             [{
@@ -680,8 +933,6 @@ const updateOrderShippingPrice = async (vendorId, adminUserId, orderId, shipping
 | on the order (adminEnteredAddress) - neither touches the customer's address
 | book. Shipping price and tax are NOT recalculated by an address change.
 */
-const ADDRESS_EDIT_BLOCKED_STEP_CODES = [...TERMINAL_STEP_CODES, RESERVED_STEP_CODES.REJECTED];
-
 const fetchUserAddressesForOrder = async (vendorId, orderId) => {
     try {
         const order = await Order.findOne({ _id: orderId, vendorId, status: { $ne: 'D' } });
@@ -704,7 +955,7 @@ const updateOrderShippingAddress = async (vendorId, adminUserId, orderId, { addr
         if (!order) {
             return common.returnResult(false, 404, 'Order not found.');
         }
-        if (ADDRESS_EDIT_BLOCKED_STEP_CODES.includes(order.currentStepCode) || order.cancelledAt) {
+        if (!orderStepService.isOrderActive(order) || order.cancelledAt) {
             return common.returnResult(false, 400, 'This order has been finalized, cancelled or rejected and can no longer be updated.');
         }
 
@@ -727,7 +978,7 @@ const updateOrderShippingAddress = async (vendorId, adminUserId, orderId, { addr
         }
 
         const updated = await Order.findOneAndUpdate(
-            { _id: orderId, vendorId, status: { $ne: 'D' }, currentStepCode: { $nin: ADDRESS_EDIT_BLOCKED_STEP_CODES }, cancelledAt: null },
+            { _id: orderId, vendorId, status: { $ne: 'D' }, isFinalized: { $ne: true }, currentStepCode: { $nin: CLOSED_STEP_CODES }, cancelledAt: null },
             { $set: { ...changes, updatedBy: adminUserId } },
             { new: true }
         );
@@ -749,46 +1000,175 @@ const updateOrderShippingAddress = async (vendorId, adminUserId, orderId, { addr
 |--------------------------------------------------------------------------
 | DELIVERY AGENT
 |--------------------------------------------------------------------------
+| Needs the delivery-agent feature on in WebsiteMaster AND the vendor's
+| CompanyMaster (isOrderStatusUpdationAllowedByDeliveryAgents), and the
+| vendor's one agent step change set in Company Settings
+| (deliveryAgentFromStep -> deliveryAgentToStep, the step right after).
+| The admin can assign, change or take off the agent until that step change
+| has been made; every assignment is kept in Order.deliveryAgentAssignments.
 */
-const assignDeliveryAgent = async (vendorId, adminUserId, orderId, deliveryAgentUserId, companyMasterData) => {
+const checkDeliveryAgentFeature = async (vendorId, websiteMasterData, companyMasterData) => {
     try {
-        if (companyMasterData?.isOrderStatusUpdationAllowedByDeliveryAgents !== true) {
-            return common.returnResult(false, 403, 'Delivery agent order updates are not enabled for this store.');
+        return await common.checkFeatureOnOrOff(
+            vendorId, websiteMasterData, companyMasterData,
+            orderStepService.DELIVERY_AGENT_FEATURE_FLAG, orderStepService.DELIVERY_AGENT_FEATURE_FLAG
+        );
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Closes whatever assignment is still open in the history - an aggregation
+// expression, so the close and the new entry happen in ONE conditional update.
+const closeOpenAssignmentsExpression = (adminUserId) => ({
+    $map: {
+        input: { $ifNull: ['$deliveryAgentAssignments', []] },
+        as: 'entry',
+        in: {
+            $cond: [
+                { $eq: [{ $ifNull: ['$$entry.unassignedAt', null] }, null] },
+                { $mergeObjects: ['$$entry', { unassignedAt: '$$NOW', unassignedBy: adminUserId }] },
+                '$$entry'
+            ]
+        }
+    }
+});
+
+const assignDeliveryAgent = async (vendorId, adminUserId, orderId, deliveryAgentUserId, companyMasterData, companySettingsData, websiteMasterData) => {
+    try {
+        const featureCheck = await checkDeliveryAgentFeature(vendorId, websiteMasterData, companyMasterData);
+        if (!featureCheck.isSuccess) {
+            return common.returnResult(false, featureCheck.statusCode, featureCheck.message);
         }
 
         const order = await Order.findOne({ _id: orderId, vendorId, status: { $ne: 'D' } });
         if (!order) {
             return common.returnResult(false, 404, 'Order not found.');
         }
-        if (TERMINAL_STEP_CODES.includes(order.currentStepCode)) {
-            return common.returnResult(false, 400, 'This order has already been finalized and cannot be reassigned.');
+        if (!orderStepService.isOrderActive(order)) {
+            return common.returnResult(false, 400, 'This order has been finalized, rejected or cancelled and cannot be assigned a delivery agent.');
+        }
+        if (order.deliveryAgentTransitionAt) {
+            return common.returnResult(false, 400, "The delivery agent's step has already been done on this order, so the agent can no longer be changed.");
+        }
+
+        const stepMaster = await orderStepService.loadOrderStepMaster(order);
+        if (!stepMaster) {
+            return common.returnResult(false, 500, 'Order workflow is misconfigured for this order. Please contact support.');
+        }
+        if (!orderStepService.resolveAgentTransition(stepMaster, companySettingsData)) {
+            return common.returnResult(false, 400, 'Set the delivery agent step change (from step and to step) in Company Settings before assigning delivery agents.');
         }
 
         const agent = await User.findOne({ _id: deliveryAgentUserId, vendorId, role: 'deliveryAgent', status: 'A' });
         if (!agent) {
-            return common.returnResult(false, 404, 'Delivery agent not found.');
+            return common.returnResult(false, 404, 'Delivery agent not found, or not active.');
+        }
+        if (order.assignedDeliveryAgentId && order.assignedDeliveryAgentId.toString() === agent._id.toString()) {
+            return common.returnResult(false, 400, `This order is already assigned to ${agent.name}.`);
         }
 
-        order.assignedDeliveryAgentId = agent._id;
-        order.deliveryAgentAssignedAt = new Date();
-        order.updatedBy = adminUserId;
-        await order.save();
+        // Only goes through if nobody changed the agent (or made the agent step
+        // change) since the order was read above - two admins can't both assign.
+        const updated = await Order.findOneAndUpdate(
+            {
+                _id: order._id,
+                vendorId,
+                assignedDeliveryAgentId: order.assignedDeliveryAgentId || null,
+                deliveryAgentTransitionAt: null,
+                isFinalized: { $ne: true },
+                currentStepCode: { $nin: CLOSED_STEP_CODES }
+            },
+            [{
+                $set: {
+                    deliveryAgentAssignments: {
+                        $concatArrays: [
+                            closeOpenAssignmentsExpression(adminUserId),
+                            [{
+                                deliveryAgentId: agent._id,
+                                deliveryAgentName: { $literal: agent.name },
+                                assignedAt: '$$NOW',
+                                assignedBy: adminUserId,
+                                unassignedAt: null,
+                                unassignedBy: null
+                            }]
+                        ]
+                    },
+                    assignedDeliveryAgentId: agent._id,
+                    deliveryAgentAssignedAt: '$$NOW',
+                    updatedBy: adminUserId,
+                    updatedAt: '$$NOW'
+                }
+            }],
+            { new: true, updatePipeline: true }
+        );
+        if (!updated) {
+            return common.returnResult(false, 409, STEP_CONFLICT_MESSAGE);
+        }
 
-        notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.AGENT_ASSIGNED);
+        notifyOrderChanged(updated, ORDER_NOTIFICATION_TYPES.AGENT_ASSIGNED, { previousAgentId: order.assignedDeliveryAgentId });
 
-        logger.logInfo(1, 0, 'Delivery agent assigned to order', { vendorId, orderId, deliveryAgentUserId });
-        return common.returnResult(true, 200, 'Delivery agent assigned successfully', { order });
+        const isChange = !!order.assignedDeliveryAgentId;
+        logger.logInfo(1, 0, isChange ? 'Delivery agent changed on order' : 'Delivery agent assigned to order', { vendorId, orderId, deliveryAgentUserId });
+        return common.returnResult(true, 200, isChange ? `Delivery agent changed to ${agent.name}` : `Order assigned to ${agent.name}`, { order: updated });
     } catch (err) {
         throw err;
     }
 };
 
-// A delivery agent may only move an order from DISPATCHED to DELIVERED,
-// and only when it is assigned to them.
-const deliveryAgentMarkDelivered = async (vendorId, deliveryAgentUserId, orderId, companyMasterData, websiteMasterData, companySettingsData) => {
+// Takes the agent off the order (no agent at all until one is assigned again).
+const unassignDeliveryAgent = async (vendorId, adminUserId, orderId, companyMasterData, websiteMasterData) => {
     try {
-        if (companyMasterData?.isOrderStatusUpdationAllowedByDeliveryAgents !== true) {
-            return common.returnResult(false, 403, 'Delivery agent order updates are not enabled for this store.');
+        const featureCheck = await checkDeliveryAgentFeature(vendorId, websiteMasterData, companyMasterData);
+        if (!featureCheck.isSuccess) {
+            return common.returnResult(false, featureCheck.statusCode, featureCheck.message);
+        }
+
+        const order = await Order.findOne({ _id: orderId, vendorId, status: { $ne: 'D' } });
+        if (!order) {
+            return common.returnResult(false, 404, 'Order not found.');
+        }
+        if (!order.assignedDeliveryAgentId) {
+            return common.returnResult(false, 400, 'This order has no delivery agent.');
+        }
+        if (order.deliveryAgentTransitionAt) {
+            return common.returnResult(false, 400, "The delivery agent's step has already been done on this order, so the agent can no longer be taken off it.");
+        }
+
+        const updated = await Order.findOneAndUpdate(
+            { _id: order._id, vendorId, assignedDeliveryAgentId: order.assignedDeliveryAgentId, deliveryAgentTransitionAt: null },
+            [{
+                $set: {
+                    deliveryAgentAssignments: closeOpenAssignmentsExpression(adminUserId),
+                    assignedDeliveryAgentId: null,
+                    deliveryAgentAssignedAt: null,
+                    updatedBy: adminUserId,
+                    updatedAt: '$$NOW'
+                }
+            }],
+            { new: true, updatePipeline: true }
+        );
+        if (!updated) {
+            return common.returnResult(false, 409, STEP_CONFLICT_MESSAGE);
+        }
+
+        notifyOrderChanged(updated, ORDER_NOTIFICATION_TYPES.AGENT_ASSIGNED, { previousAgentId: order.assignedDeliveryAgentId });
+
+        logger.logInfo(1, 0, 'Delivery agent taken off order', { vendorId, orderId });
+        return common.returnResult(true, 200, 'Delivery agent removed from the order', { order: updated });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// A delivery agent may only make the vendor's one configured transition, and
+// only on an order assigned to them. A Payment at Delivery order is marked
+// PAID by this move (see orderStepService.enterNextFlowStep).
+const deliveryAgentAdvanceStep = async (vendorId, deliveryAgentUserId, orderId, companyMasterData, websiteMasterData, companySettingsData) => {
+    try {
+        const featureCheck = await checkDeliveryAgentFeature(vendorId, websiteMasterData, companyMasterData);
+        if (!featureCheck.isSuccess) {
+            return common.returnResult(false, featureCheck.statusCode, featureCheck.message);
         }
 
         const order = await Order.findOne({ _id: orderId, vendorId, status: { $ne: 'D' } });
@@ -799,32 +1179,41 @@ const deliveryAgentMarkDelivered = async (vendorId, deliveryAgentUserId, orderId
         if (!order.assignedDeliveryAgentId || order.assignedDeliveryAgentId.toString() !== deliveryAgentUserId.toString()) {
             return common.returnResult(false, 403, 'This order is not assigned to you.');
         }
-
-        if (order.currentStepCode !== DELIVERY_AGENT_FROM_STEP_CODE) {
-            return common.returnResult(false, 400, 'This order is not ready to be marked delivered.');
+        if (!orderStepService.isOrderActive(order)) {
+            return common.returnResult(false, 400, 'This order has been finalized, rejected or cancelled and can no longer be updated.');
+        }
+        if (order.deliveryAgentTransitionAt) {
+            return common.returnResult(false, 400, 'You have already done your step on this order.');
         }
 
-        const stepMaster = await OrderStepMaster.findById(order.orderStepMasterId);
+        const stepMaster = await orderStepService.loadOrderStepMaster(order);
         if (!stepMaster) {
             return common.returnResult(false, 500, 'Order workflow is misconfigured for this order. Please contact support.');
         }
 
-        const deliveredStep = stepMaster.steps.find((step) => step.code === DELIVERY_AGENT_TO_STEP_CODE);
-        if (!deliveredStep) {
-            return common.returnResult(false, 500, "This store's order workflow has no Delivered step configured. Please contact support.");
+        const transition = orderStepService.resolveAgentTransition(stepMaster, companySettingsData);
+        if (!transition) {
+            return common.returnResult(false, 400, 'This store has not set up the delivery agent step change yet.');
+        }
+        // Compared by position: a Payment at Delivery order sits where the payment step was.
+        if (order.currentStepSequence !== transition.fromStep.sequence) {
+            return common.returnResult(false, 400, `This order can only be moved to "${transition.toStep.name}" while it is at "${transition.fromStep.name}".`);
         }
 
-        closeCurrentHistoryEntryAndPushNext(order, deliveredStep, deliveryAgentUserId, true);
-        order.deliveredAt = new Date();
+        orderStepService.enterNextFlowStep(order, transition.toStep, stepMaster, companySettingsData, deliveryAgentUserId, null, 'deliveryAgent');
         order.updatedBy = deliveryAgentUserId;
-        await order.save();
+
+        const saved = await saveStepChange(order);
+        if (!saved) {
+            return common.returnResult(false, 409, STEP_CONFLICT_MESSAGE);
+        }
 
         notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.STATUS_CHANGED);
 
         await notifyOrderStatusChange(order, companyMasterData, websiteMasterData, companySettingsData, deliveryAgentUserId);
 
-        logger.logInfo(1, 0, 'Order marked delivered by delivery agent', { vendorId, orderId, deliveryAgentUserId });
-        return common.returnResult(true, 200, 'Order marked as delivered', { order });
+        logger.logInfo(1, 0, 'Order step changed by delivery agent', { vendorId, orderId, deliveryAgentUserId, toStep: transition.toStep.code });
+        return common.returnResult(true, 200, `Order moved to "${transition.toStep.name}"`, { order });
     } catch (err) {
         throw err;
     }
@@ -834,9 +1223,9 @@ const deliveryAgentMarkDelivered = async (vendorId, deliveryAgentUserId, orderId
 |--------------------------------------------------------------------------
 | CANCELLATION (customer-initiated)
 |--------------------------------------------------------------------------
-| Uses the same REJECTED reserved step as admin-driven rejection - the
-| order's own cancelledBy field is what distinguishes "customer cancelled"
-| from "admin rejected" after the fact.
+| Its own CANCELLED side step (an admin's rejection is REJECTED). Like a
+| rejection it gives the stock back and voids the commission and invoice,
+| and the admin can later refund (if paid) and/or restart it.
 */
 const cancelOrder = async (vendorId, userId, orderId, cancellationReason, companySettingsData, companyMasterData, websiteMasterData) => {
     try {
@@ -849,43 +1238,29 @@ const cancelOrder = async (vendorId, userId, orderId, cancellationReason, compan
             return common.returnResult(false, 403, 'Order cancellation is not available for this store.');
         }
 
-        if (TERMINAL_STEP_CODES.includes(order.currentStepCode)) {
-            return common.returnResult(false, 400, 'This order can no longer be cancelled.');
-        }
-
-        if (order.currentStepCode === RESERVED_STEP_CODES.REJECTED) {
-            return common.returnResult(false, 400, 'This order has already been rejected.');
-        }
-
-        const stepMaster = await OrderStepMaster.findById(order.orderStepMasterId);
+        const stepMaster = await orderStepService.loadOrderStepMaster(order);
         if (!stepMaster) {
             return common.returnResult(false, 500, 'Order workflow is misconfigured for this order. Please contact support.');
         }
 
-        const cutoffCode = companySettingsData?.orderCancellationNotAllowedAfterStep;
-        if (cutoffCode) {
-            const cutoffStep = stepMaster.steps.find((step) => step.code === cutoffCode);
-            if (cutoffStep && order.currentStepSequence >= cutoffStep.sequence) {
-                return common.returnResult(false, 400, `This order can no longer be cancelled since it has already reached "${cutoffStep.name}".`);
-            }
+        const blockMessage = orderStepService.getCustomerCancellationBlock(order, stepMaster, companySettingsData);
+        if (blockMessage) {
+            return common.returnResult(false, 400, blockMessage);
         }
 
-        const rejectedStep = stepMaster.steps.find((step) => step.code === RESERVED_STEP_CODES.REJECTED);
-        if (!rejectedStep) {
-            return common.returnResult(false, 500, "This store's order workflow has no Reject step configured. Please contact support.");
-        }
-
-        closeCurrentHistoryEntryAndPushNext(order, rejectedStep, userId, true);
+        const cancelledStep = orderStepService.buildSideStep(RESERVED_STEP_CODES.CANCELLED, order.currentStepSequence);
+        orderStepService.moveOrderToStep(order, cancelledStep, userId, true, cancellationReason);
         order.cancelledAt = new Date();
         order.cancelledBy = userId;
         order.cancellationReason = cancellationReason;
         order.updatedBy = userId;
-        await order.save();
 
-        await commissionService.voidCommissionForOrder(vendorId, order._id, cancellationReason);
-        await restoreStockForCancelledOrder(order);
-        // Voids the invoice (if one was issued) and raises its credit note; never fails the cancellation.
-        await invoiceService.tryVoidInvoiceForOrder(order, cancellationReason);
+        const saved = await saveStepChange(order);
+        if (!saved) {
+            return common.returnResult(false, 409, 'This order was just updated by the store. Please refresh it and try again.');
+        }
+
+        await releaseClosedOrder(order, cancellationReason);
 
         notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.CANCELLED);
 
@@ -903,13 +1278,26 @@ const cancelOrder = async (vendorId, userId, orderId, cancellationReason, compan
 | LISTING / DETAIL
 |--------------------------------------------------------------------------
 */
-const fetchMyOrders = async (vendorId, userId) => {
+const fetchMyOrders = async (vendorId, userId, companySettingsData) => {
     try {
         // List view stays lightweight - full item breakdown is only built
         // for the single-order detail view below.
-        const orders = await Order.find({ vendorId, userId, status: { $ne: 'D' } })
+        const orderDocs = await Order.find({ vendorId, userId, status: { $ne: 'D' } })
             .select('-items')
             .sort({ orderPlacedAt: -1 });
+
+        // canBeCancelled: the same check cancelOrder makes, so the storefront
+        // only offers Cancel when it will work.
+        const stepMasterIds = [...new Set(orderDocs.map((order) => order.orderStepMasterId.toString()))];
+        const stepMasters = await OrderStepMaster.find({ _id: { $in: stepMasterIds } });
+        const stepMasterMap = new Map(stepMasters.map((stepMaster) => [stepMaster._id.toString(), stepMaster]));
+
+        const orders = orderDocs.map((order) => {
+            const stepMaster = stepMasterMap.get(order.orderStepMasterId.toString());
+            const orderObject = order.toObject();
+            orderObject.canBeCancelled = !!stepMaster && !orderStepService.getCustomerCancellationBlock(order, stepMaster, companySettingsData);
+            return orderObject;
+        });
         return common.returnResult(true, 200, 'Orders fetched successfully', { orders });
     } catch (err) {
         throw err;
@@ -1008,7 +1396,7 @@ const enrichOrderItemsForDetail = async (vendorId, order) => {
     }
 };
 
-const fetchOrderById = async (vendorId, orderId, userId, isAdmin) => {
+const fetchOrderById = async (vendorId, orderId, userId, isAdmin, companySettingsData, companyMasterData, websiteMasterData) => {
     try {
         const filter = { _id: orderId, vendorId, status: { $ne: 'D' } };
         if (!isAdmin) {
@@ -1027,6 +1415,18 @@ const fetchOrderById = async (vendorId, orderId, userId, isAdmin) => {
         orderWithItems.invoiceAvailable = order.items.length > 0;
         orderWithItems.items = items;
 
+        const stepMaster = await orderStepService.loadOrderStepMaster(order);
+        if (isAdmin) {
+            // Agents can only be assigned once the vendor's agent step change is set up.
+            // Also not once the agent step change has been made (the agent's part is done).
+            orderWithItems.canAssignDeliveryAgent = orderStepService.isDeliveryAgentFeatureOn(websiteMasterData, companyMasterData) &&
+                orderStepService.isOrderActive(order) &&
+                !order.deliveryAgentTransitionAt &&
+                !!stepMaster && !!orderStepService.resolveAgentTransition(stepMaster, companySettingsData);
+        } else {
+            orderWithItems.canBeCancelled = !!stepMaster && !orderStepService.getCustomerCancellationBlock(order, stepMaster, companySettingsData);
+        }
+
         return common.returnResult(true, 200, 'Order fetched successfully', { order: orderWithItems });
     } catch (err) {
         throw err;
@@ -1044,21 +1444,44 @@ const fetchAllOrdersAdmin = async (vendorId) => {
     }
 };
 
-const fetchOrderStepOptions = async (vendorId, orderId) => {
+// Every status an order of this vendor can be in - the Orders page's status
+// filter: the steps of the vendor's assigned workflow in order, then the
+// built-in ones (Payment at Delivery only while delivery agents are on).
+const fetchOrderStatusOptions = async (companyMasterData, websiteMasterData) => {
+    try {
+        const stepMaster = await orderStepService.loadActiveStepMaster(companyMasterData?.orderSteps);
+        const flowStatuses = orderStepService.getSortedSteps(stepMaster).map((step) => ({ code: step.code, name: step.name }));
+
+        const sideCodes = [
+            ...(orderStepService.isDeliveryAgentFeatureOn(websiteMasterData, companyMasterData) ? [RESERVED_STEP_CODES.PAYMENT_AT_DELIVERY] : []),
+            RESERVED_STEP_CODES.REJECTED,
+            RESERVED_STEP_CODES.CANCELLED,
+            RESERVED_STEP_CODES.REFUNDED
+        ];
+        const sideStatuses = sideCodes.map((code) => ({ code, name: SIDE_STEP_NAMES[code] }));
+
+        return common.returnResult(true, 200, 'Order statuses fetched successfully', { statuses: [...flowStatuses, ...sideStatuses] });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Only what the admin can do with the order right now (advanceOrderStep
+// accepts exactly these codes): empty once it is on its last step.
+const fetchOrderStepOptions = async (vendorId, orderId, companySettingsData, companyMasterData, websiteMasterData) => {
     try {
         const order = await Order.findOne({ _id: orderId, vendorId, status: { $ne: 'D' } });
         if (!order) {
             return common.returnResult(false, 404, 'Order not found.');
         }
 
-        const stepMaster = await OrderStepMaster.findById(order.orderStepMasterId);
+        const stepMaster = await orderStepService.loadOrderStepMaster(order);
         if (!stepMaster) {
             return common.returnResult(false, 500, 'Order workflow is misconfigured for this order. Please contact support.');
         }
 
-        const steps = [...stepMaster.steps]
-            .sort((a, b) => a.sequence - b.sequence)
-            .map((step) => ({ code: step.code, name: step.name, sequence: step.sequence }));
+        const steps = orderStepService.getAvailableActions(order, stepMaster, companySettingsData, companyMasterData, websiteMasterData)
+            .map((action) => ({ code: action.code, name: action.name, type: action.type }));
 
         return common.returnResult(true, 200, 'Order steps fetched successfully', { steps });
     } catch (err) {
@@ -1076,11 +1499,13 @@ module.exports = {
     fetchUserAddressesForOrder,
     updateOrderShippingAddress,
     assignDeliveryAgent,
-    deliveryAgentMarkDelivered,
+    unassignDeliveryAgent,
+    deliveryAgentAdvanceStep,
     cancelOrder,
     fetchMyOrders,
     fetchOrderById,
     deriveLegacyOrderItems,
     fetchAllOrdersAdmin,
+    fetchOrderStatusOptions,
     fetchOrderStepOptions
 };

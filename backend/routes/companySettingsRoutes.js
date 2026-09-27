@@ -1,5 +1,5 @@
 const express = require('express');
-const { createCompanySettings, updateCompanySettings, getCompanySettings, assignEmailTemplate, unassignEmailTemplate } = require('../controllers/companySettingsController');
+const { createCompanySettings, updateCompanySettings, getCompanySettings, getAssignedOrderSteps, assignEmailTemplate, unassignEmailTemplate } = require('../controllers/companySettingsController');
 const { createCompanySettingsSchema, updateCompanySettingsSchema, assignEmailTemplateSchema, unassignEmailTemplateSchema } = require('../middlewares/validations/companySettingsValidations');
 const validate = require('../middlewares/validate');
 const authenticate = require('../middlewares/authenticate');
@@ -15,6 +15,7 @@ const companySettingsFileFields = companySettingsUpload.fields([
 ]);
 
 router.get('/get-company-settings', checkModuleAssigned('COMPANY_SETTINGS'), getCompanySettings);
+router.get('/order-steps', authenticate, authorize('admin'), checkModuleAssigned('COMPANY_SETTINGS'), getAssignedOrderSteps);
 router.post('/create-company-settings', authenticate, authorize('admin'), checkModuleAssigned('COMPANY_SETTINGS'), companySettingsFileFields, validate(createCompanySettingsSchema, 'body'), createCompanySettings);
 router.put('/update-company-settings', authenticate, authorize('admin'), checkModuleAssigned('COMPANY_SETTINGS'), companySettingsFileFields, validate(updateCompanySettingsSchema, 'body'), updateCompanySettings);
 router.post('/assign-email-template', authenticate, authorize('admin'), checkModuleAssigned('COMPANY_SETTINGS'), validate(assignEmailTemplateSchema, 'body'), assignEmailTemplate);
