@@ -766,6 +766,7 @@ const revokeFreeCashForAllUsers = async (vendorId, freeCashId, adminUserId) => {
 module.exports = {
   countFreeCashCreatedThisMonth,
   countFreeCashCreatedTotal,
+  issueUserFreeCash,
   createFreeCash,
   updateFreeCash,
   fetchFreeCashById,

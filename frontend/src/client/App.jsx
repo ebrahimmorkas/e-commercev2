@@ -17,6 +17,8 @@ import AddressesPage from './features/address/pages/AddressesPage';
 import { useToast } from '../components/common/Toast';
 import EmptyState from '../components/common/EmptyState/EmptyState';
 import NotFoundPage from './components/errors/NotFoundPage';
+import PolicyPage from './features/companySettings/pages/PolicyPage';
+import { getPolicyLinkByPath } from './features/companySettings/constants';
 import theme from './features/Home/theme/theme';
 
 // No routing library yet - path match against `/product/:id` (id = Mongo
@@ -53,6 +55,8 @@ const parseRoute = () => {
   if (productId) return { type: 'product', id: productId };
   const categoryId = path.match(CATEGORY_PATH_RE)?.[1];
   if (categoryId) return { type: 'category', id: categoryId };
+  const policyLink = getPolicyLinkByPath(path);
+  if (policyLink) return { type: 'policy', link: policyLink };
   return { type: 'not-found' };
 };
 
@@ -136,6 +140,7 @@ const ClientApp = () => {
   const openOrders = () => navigate('/orders', { type: 'orders' });
   const openAddresses = () => navigate('/addresses', { type: 'addresses' });
   const openOrderDetail = (id) => navigate(`/orders/${id}`, { type: 'order-detail', id });
+  const openPolicyPage = (link) => navigate(link.path, { type: 'policy', link });
   const goHome = () => navigate('/', { type: 'home' });
 
   const handleLoginClick = () => setAuthModalOpen(true);
@@ -336,9 +341,10 @@ const ClientApp = () => {
             onSetItemQuantity={handleSetItemQuantity}
           />
         )}
+        {route.type === 'policy' && <PolicyPage link={route.link} onBack={goHome} />}
         {route.type === 'not-found' && <NotFoundPage onGoHome={goHome} />}
       </main>
-      <Footer />
+      <Footer onOpenPolicyPage={openPolicyPage} />
 
       <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
     </div>
