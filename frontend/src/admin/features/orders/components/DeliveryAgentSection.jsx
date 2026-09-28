@@ -1,4 +1,5 @@
 import { formatOrderDateTime } from '../utils/formatOrder';
+import { formatDeliveryDate } from '../utils/deliveryDate';
 
 /**
  * The order's delivery agent: who has it now, every assignment so far
@@ -23,6 +24,11 @@ const DeliveryAgentSection = ({ order }) => {
           'No agent on this order right now.'
         )}
       </p>
+      {current && formatDeliveryDate(order) && (
+        <p className="text-sm text-gray-700 mt-1">
+          Delivery date: <span className="font-medium text-gray-900">{formatDeliveryDate(order)}</span>
+        </p>
+      )}
       {order.deliveryAgentTransitionAt && (
         <p className="text-sm text-gray-700 mt-1">
           Agent step done {formatOrderDateTime(order.deliveryAgentTransitionAt)}

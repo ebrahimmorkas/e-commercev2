@@ -16,6 +16,7 @@ import GroupsPage from './admin/masters/group/pages/GroupsPage';
 import EmailTemplatesPage from './admin/masters/emailTemplate/pages/EmailTemplatesPage';
 import CompanySettingsPage from './admin/features/companySettings/pages/CompanySettingsPage';
 import DeliveryAgentsPage from './admin/features/deliveryAgents/pages/DeliveryAgentsPage';
+import CouriersPage from './admin/masters/courier/pages/CouriersPage';
 import MyDeliveriesPage from './admin/features/myDeliveries/pages/MyDeliveriesPage';
 import { DeliveryAgentIcon } from './components/ui/Sidebar/icons';
 import LoginPage from './admin/features/login/pages/LoginPage';
@@ -97,6 +98,8 @@ function App() {
           <AddUserPage onDone={() => setActivePage('customers')} />
         ) : effectiveActivePage === 'deliveryAgents' ? (
           <DeliveryAgentsPage />
+        ) : effectiveActivePage === 'couriers' ? (
+          <CouriersPage />
         ) : effectiveActivePage === 'abandonedCarts' ? (
           <AbandonedCartsPage />
         ) : effectiveActivePage === 'banners' ? (

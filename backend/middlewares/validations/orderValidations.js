@@ -29,8 +29,44 @@ const advanceOrderStepSchema = Joi.object({
     remarks: Joi.string().trim().max(500).allow(null, '').label('Remarks')
 });
 
+// 'YYYY-MM-DD', a real calendar date, today or later. "Today" is checked
+// against UTC with one day of slack, because the admin picks the date in
+// their own time zone (which can be a day behind UTC); the date picker
+// already stops earlier days in the browser.
+const deliveryDate = () => Joi.string()
+    .trim()
+    .pattern(/^\d{4}-\d{2}-\d{2}$/)
+    .custom((value, helpers) => {
+        const date = new Date(`${value}T00:00:00.000Z`);
+        if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+            return helpers.error('date.invalidDay');
+        }
+        const earliest = new Date();
+        earliest.setUTCHours(0, 0, 0, 0);
+        earliest.setUTCDate(earliest.getUTCDate() - 1);
+        if (date < earliest) {
+            return helpers.error('date.past');
+        }
+        return value;
+    })
+    .messages({
+        'string.pattern.base': '{{#label}} must be a date in the format YYYY-MM-DD.',
+        'date.invalidDay': '{{#label}} is not a valid date.',
+        'date.past': '{{#label}} must be today or a later date.'
+    });
+
 const assignDeliveryAgentSchema = Joi.object({
-    deliveryAgentUserId: objectId().required().label('Delivery agent')
+    deliveryAgentUserId: objectId().required().label('Delivery agent'),
+    deliveryDate: deliveryDate().required().label('Delivery date')
+});
+
+const changeDeliveryDateSchema = Joi.object({
+    deliveryDate: deliveryDate().required().label('Delivery date')
+});
+
+// courierId null = remove the order's courier.
+const setOrderCourierSchema = Joi.object({
+    courierId: objectId().allow(null).required().label('Courier')
 });
 
 const setShippingPriceSchema = Joi.object({
@@ -85,6 +121,8 @@ module.exports = {
     orderIdParamSchema,
     advanceOrderStepSchema,
     assignDeliveryAgentSchema,
+    changeDeliveryDateSchema,
+    setOrderCourierSchema,
     cancelOrderSchema,
     setShippingPriceSchema,
     setShippingAddressSchema,

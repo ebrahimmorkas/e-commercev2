@@ -13,7 +13,7 @@ import BulkActionBar from '../../../../components/common/BulkActionBar';
 import { useEmailTemplates } from '../hooks/useEmailTemplates';
 import EmailTemplateForm from '../components/EmailTemplateForm';
 import OrderStepsField from '../components/OrderStepsField';
-import { EMAIL_MODULE_OPTIONS, ORDER_MODULE, getModuleLabel } from '../constants';
+import { ORDER_MODULE, getModuleLabel, getModuleOptions } from '../constants';
 import {
   findAssignmentConflicts,
   initialStepPicks,
@@ -56,6 +56,7 @@ const EmailTemplatesPage = () => {
     assignments,
     numberOfTemplatesAllowed,
     stepWise,
+    isCourierFeatureOn,
     loading,
     error,
     mutating,
@@ -516,6 +517,7 @@ const EmailTemplatesPage = () => {
           assignments={assignments}
           templates={templates}
           stepWise={stepWise}
+          isCourierFeatureOn={isCourierFeatureOn}
         />
       </Modal>
 
@@ -554,7 +556,7 @@ const EmailTemplatesPage = () => {
           <Dropdown
             label="Module"
             name="changeModule"
-            options={EMAIL_MODULE_OPTIONS}
+            options={getModuleOptions(isCourierFeatureOn)}
             value={changeModuleModal.module}
             onChange={(val) => setChangeModuleModal((prev) => ({ ...prev, module: val || '' }))}
             placeholder="Select a module"

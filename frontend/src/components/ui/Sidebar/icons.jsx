@@ -41,6 +41,16 @@ export const CustomersIcon = (props) => (
   </svg>
 );
 
+// A parcel box - the Courier Master.
+export const CourierIcon = (props) => (
+  <svg {...base} {...props}>
+    <path d="M3.75 7.5 12 3.75l8.25 3.75v9L12 20.25l-8.25-3.75z" />
+    <path d="M3.75 7.5 12 11.25l8.25-3.75" />
+    <path d="M12 11.25v9" />
+    <path d="m7.875 5.625 8.25 3.75" />
+  </svg>
+);
+
 export const DeliveryAgentIcon = (props) => (
   <svg {...base} {...props}>
     <path d="M3 7.5h10.5v8.25H3z" />

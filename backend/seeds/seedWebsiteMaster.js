@@ -29,7 +29,7 @@ const WEBSITE_MASTER = {
 
     // Email Template
     isEmailTemplateFeatureOn: true,
-    isDifferentEmailTemplatesForOrderStepsOn: false,
+    isDifferentEmailTemplatesForOrderStepsOn: true,
     isAddingOfAttachmentAllowed: true,
     isAddingOfImageAllowed: true,
     isCcAndBccFeatureOn: true,
@@ -56,6 +56,7 @@ const WEBSITE_MASTER = {
 
     // Products
     isBrandFeatureOn: true,
+    isCourierFeatureOn: true,
     isProductReviewFeatureOn: true,
     isBulkPricingFeatureOn: true,
     isCloningProductAllowed: true,
@@ -74,6 +75,13 @@ const WEBSITE_MASTER = {
     // Orders
     isOrderTrakingAllowed: true,
     isEmailSendingFeatureOnAfterOrderStatusChanges: true,
+    isEmailSendingFeatureOnAfterDeliveryAgentAssigned: true,
+    isEmailSendingFeatureOnAfterDeliveryAgentChanged: true,
+    isEmailSendingFeatureOnAfterDeliveryAgentUnassigned: true,
+    isEmailSendingFeatureOnAfterDeliveryDateChanged: true,
+    isEmailSendingFeatureOnAfterCourierAssigned: true,
+    isEmailSendingFeatureOnAfterCourierChanged: true,
+    isEmailSendingFeatureOnAfterCourierRemoved: true,
     isOrderStatusUpdationAllowedByDeliveryAgents: true,
 
     // Shipping Price

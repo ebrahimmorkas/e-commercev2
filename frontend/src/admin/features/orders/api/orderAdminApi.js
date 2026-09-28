@@ -117,16 +117,34 @@ export const previewAddProductsTax = ({ orderId, items, applyBulkPricing }) =>
 export const getAssignableDeliveryAgents = () => apiRequest(`${BASE}/admin/delivery-agents`);
 
 /**
- * Assigns the order to an agent, or changes its agent (the history is kept on the order).
+ * Assigns the order to an agent, or changes its agent (the history is kept on
+ * the order), together with the delivery date. The customer is emailed.
  * @param {string} id
  * @param {string} deliveryAgentUserId
+ * @param {string} deliveryDate - 'YYYY-MM-DD', today or later
  * @returns {Promise<{ order: Object }>}
  */
-export const assignDeliveryAgent = (id, deliveryAgentUserId) =>
+export const assignDeliveryAgent = (id, deliveryAgentUserId, deliveryDate) =>
   apiRequest(`${BASE}/admin/${id}/assign-delivery-agent`, {
     method: 'PATCH',
-    body: { deliveryAgentUserId },
+    body: { deliveryAgentUserId, deliveryDate },
   });
+
+/**
+ * Changes only the delivery date of an order that has an agent. The customer is emailed.
+ * @param {string} id
+ * @param {string} deliveryDate - 'YYYY-MM-DD', today or later
+ */
+export const changeDeliveryDate = (id, deliveryDate) =>
+  apiRequest(`${BASE}/admin/${id}/delivery-date`, { method: 'PATCH', body: { deliveryDate } });
+
+/**
+ * Sets, changes or (courierId null) removes the order's courier. The customer is emailed.
+ * @param {string} id
+ * @param {string|null} courierId
+ */
+export const setOrderCourier = (id, courierId) =>
+  apiRequest(`${BASE}/admin/${id}/courier`, { method: 'PATCH', body: { courierId } });
 
 /** Takes the agent off the order. */
 export const unassignDeliveryAgent = (id) => apiRequest(`${BASE}/admin/${id}/unassign-delivery-agent`, { method: 'PATCH' });
@@ -143,4 +161,4 @@ export const downloadInvoiceAdmin = (id) => apiDownload(`${BASE}/admin/${id}/inv
  */
 export const downloadCreditNoteAdmin = (id) => apiDownload(`${BASE}/admin/${id}/invoice?type=credit-note`);
 
-export default { getAllOrdersAdmin, getOrderByIdAdmin, getOrderStatusOptions, getOrderStepOptions, advanceOrderStep, getAssignableDeliveryAgents, unassignDeliveryAgent, setOrderShippingPrice, updateOrderShippingPrice, getOrderUserAddresses, updateOrderShippingAddress, getEditCategories, getEditProducts, getEditProductOptions, addProductsToOrder, previewAddProductsTax, assignDeliveryAgent, downloadInvoiceAdmin, downloadCreditNoteAdmin };
+export default { getAllOrdersAdmin, getOrderByIdAdmin, getOrderStatusOptions, getOrderStepOptions, advanceOrderStep, getAssignableDeliveryAgents, unassignDeliveryAgent, changeDeliveryDate, setOrderCourier, setOrderShippingPrice, updateOrderShippingPrice, getOrderUserAddresses, updateOrderShippingAddress, getEditCategories, getEditProducts, getEditProductOptions, addProductsToOrder, previewAddProductsTax, assignDeliveryAgent, downloadInvoiceAdmin, downloadCreditNoteAdmin };

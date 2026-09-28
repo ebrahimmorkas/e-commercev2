@@ -7,6 +7,7 @@ const Product = require('../models/Product');
 const Cart = require('../models/Cart');
 const OrderReturn = require('../models/OrderReturn');
 const OrderExchange = require('../models/OrderExchange');
+const CourierMaster = require('../models/CourierMaster');
 const cartService = require('./cartService');
 const counterService = require('./counterService');
 const emailService = require('./emailService');
@@ -17,6 +18,7 @@ const adminPlaceOrderService = require('./adminPlaceOrderService');
 const addressService = require('./addressService');
 const currencyService = require('./currencyService');
 const orderStepService = require('./orderStepService');
+const { generateUniqueTrackingNumber } = require('./trackingNumberService');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
 const { RESERVED_STEP_CODES, CLOSED_STEP_CODES, SIDE_STEP_NAMES } = require('../constants/orderStepConstants');
@@ -256,6 +258,9 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
             return common.returnResult(false, 409, 'An order has already been placed for this cart.');
         }
 
+        // Before any stock is reserved, so a failure here can't leave stock deducted.
+        const trackingNumber = await generateUniqueTrackingNumber(vendorId);
+
         // Reserves stock for every checked-out line item before the Order
         // document (or the cart's deactivation) is ever written, so a lost
         // stock race fails the order cleanly instead of overselling.
@@ -266,6 +271,7 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
 
         const order = new Order({
             orderNumber: orderNumberResult.meta.orderNumber,
+            trackingNumber,
             cartId: cart._id,
             vendorId,
             userId,
@@ -494,33 +500,73 @@ const saveStepChange = async (order) => {
 
 const STEP_CONFLICT_MESSAGE = 'This order was just updated by someone else. Please refresh it and try again.';
 
-// Resolves the vendor's tagged 'order' template (or the platform default -
-// see resolveTemplateForModule) and sends it to the customer, with
-// {{stepName}}/{{orderNumber}}/etc. tokens filled in for the step that was
-// just reached. A missing template, missing customer email, or a failed send
-// is logged and swallowed rather than thrown - the order status change
-// itself already succeeded and was already saved before this is called, so a
-// notification hiccup must never fail the whole request back to the caller.
-// (The `.catch()` below is a promise-level catch, not a try/catch block, so
-// it doesn't run afoul of the house rule that a service catch block may only
-// `throw err;` - that rule still holds for this function's own try/catch,
-// which only guards genuinely unexpected errors, e.g. a DB query blowing up.)
-const notifyOrderStatusChange = async (order, companyMasterData, websiteMasterData, companySettingsData, changedByUserId) => {
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// "28 Sep 2026". Delivery dates are stored at UTC midnight of the picked day
+// (see parseDeliveryDate), so they're formatted in UTC to keep that day.
+// Built by hand because toLocaleDateString's short month varies by ICU
+// version (newer ones print "Sept").
+const formatEmailDate = (date) => {
     try {
-        const featureCheck = await common.checkFeatureOnOrOff(
-            order.vendorId, websiteMasterData, companyMasterData,
-            'isEmailSendingFeatureOnAfterOrderStatusChanges', 'isEmailSendingFeatureOnAfterOrderStatusChanges'
-        );
+        if (!date) return '';
+        const d = new Date(date);
+        return `${String(d.getUTCDate()).padStart(2, '0')} ${SHORT_MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+    } catch (err) {
+        throw err;
+    }
+};
+
+const COURIER_FEATURE_FLAG = 'isCourierFeatureOn';
+
+const isCourierFeatureOn = (websiteMasterData, companyMasterData) => {
+    try {
+        return websiteMasterData?.[COURIER_FEATURE_FLAG] === true && companyMasterData?.[COURIER_FEATURE_FLAG] === true;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// {{courierName}}: the order's courier while the courier feature is on,
+// otherwise (no courier, or the feature is off) the company name from
+// Company Settings.
+const resolveCourierNameToken = (order, companyMasterData, websiteMasterData, companySettingsData) => {
+    try {
+        if (isCourierFeatureOn(websiteMasterData, companyMasterData) && order.courierName) {
+            return order.courierName;
+        }
+        return (companySettingsData && companySettingsData.companyName) || '';
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Resolves the template for `module` (the vendor's assigned one, or the
+// platform default - see resolveTemplateForModule) and emails the order's
+// customer, with the standard order tokens plus `extraTokens` filled in.
+// `featureFlag` is the WebsiteMaster AND CompanyMaster switch for this email.
+// A missing template, missing customer email, or a failed send is logged and
+// swallowed rather than thrown - the order change itself already succeeded
+// and was saved before this is called, so a notification hiccup must never
+// fail the whole request. (The `.catch()` below is a promise-level catch,
+// not a try/catch block, so it doesn't run afoul of the house rule that a
+// service catch block may only `throw err;`.)
+const sendOrderEmail = async ({ order, module, featureFlag, extraTokens = {}, companyMasterData, websiteMasterData, companySettingsData, userId }) => {
+    try {
+        const featureCheck = await common.checkFeatureOnOrOff(order.vendorId, websiteMasterData, companyMasterData, featureFlag, featureFlag);
         if (!featureCheck.isSuccess) {
+            // Logged so a switched-off email is easy to tell apart from a failed one.
+            logger.logInfo(0, 1, 'Email switched off for this vendor - skipping notification', {
+                orderId: order._id, orderNumber: order.orderNumber, module, featureFlag
+            });
             return;
         }
 
         const templateResult = await emailTemplateMasterService.resolveTemplateForModule(
-            order.vendorId, EMAIL_MODULES.ORDER, companyMasterData, companySettingsData, websiteMasterData, order.currentStepCode
+            order.vendorId, module, companyMasterData, companySettingsData, websiteMasterData, order.currentStepCode
         );
         if (!templateResult.isSuccess) {
-            logger.logInfo(0, 1, 'No email template to send for this order step - skipping notification', {
-                orderId: order._id, orderNumber: order.orderNumber, stepCode: order.currentStepCode, reason: templateResult.message
+            logger.logInfo(0, 1, 'No email template to send - skipping notification', {
+                orderId: order._id, orderNumber: order.orderNumber, module, stepCode: order.currentStepCode, reason: templateResult.message
             });
             return;
         }
@@ -529,18 +575,25 @@ const notifyOrderStatusChange = async (order, companyMasterData, websiteMasterDa
 
         const customer = await User.findById(order.userId);
         if (!customer || !customer.email) {
-            logger.logInfo(0, 1, 'Order customer has no email on file - skipping notification', { orderId: order._id });
+            logger.logInfo(0, 1, 'Order customer has no email on file - skipping notification', { orderId: order._id, module });
             return;
         }
+
+        const agent = order.assignedDeliveryAgentId ? await User.findById(order.assignedDeliveryAgentId) : null;
+        const deliveryDate = formatEmailDate(order.estimatedDeliveryDate);
 
         const tokens = {
             customerName: customer.name || '',
             orderNumber: order.orderNumber,
             stepName: order.currentStepName,
             trackingNumber: order.trackingNumber || '',
-            courierName: order.courierName || '',
-            estimatedDeliveryDate: order.estimatedDeliveryDate ? order.estimatedDeliveryDate.toDateString() : '',
-            remarks: order.remarks || ''
+            courierName: resolveCourierNameToken(order, companyMasterData, websiteMasterData, companySettingsData),
+            estimatedDeliveryDate: deliveryDate,
+            deliveryDate,
+            agentName: agent ? agent.name || '' : '',
+            agentPhone: agent ? agent.phone_no || '' : '',
+            remarks: order.remarks || '',
+            ...extraTokens
         };
 
         const subject = emailService.renderTemplateString(template.subject, tokens);
@@ -549,24 +602,41 @@ const notifyOrderStatusChange = async (order, companyMasterData, websiteMasterDa
 
         const sendResult = await emailService.sendEmail({
             vendorId: order.vendorId,
-            module: EMAIL_MODULES.ORDER,
+            module,
             to: customer.email,
             subject,
             html,
             text,
-            userId: changedByUserId,
+            userId,
             companyMasterData,
             websiteMasterData,
             companySettingsData,
             isDefaultTemplate
         }).catch((err) => {
-            logger.logWarning('Order status change email threw while sending', { orderId: order._id, stepCode: order.currentStepCode, err });
+            logger.logWarning('Order email threw while sending', { orderId: order._id, module, stepCode: order.currentStepCode, err });
             return null;
         });
 
         if (sendResult && !sendResult.isSuccess) {
-            logger.logInfo(0, 1, 'Order status change email was not sent', { orderId: order._id, reason: sendResult.message });
+            logger.logInfo(0, 1, 'Order email was not sent', { orderId: order._id, module, reason: sendResult.message });
         }
+    } catch (err) {
+        throw err;
+    }
+};
+
+// The order just reached a new step.
+const notifyOrderStatusChange = async (order, companyMasterData, websiteMasterData, companySettingsData, changedByUserId) => {
+    try {
+        await sendOrderEmail({
+            order,
+            module: EMAIL_MODULES.ORDER,
+            featureFlag: 'isEmailSendingFeatureOnAfterOrderStatusChanges',
+            companyMasterData,
+            websiteMasterData,
+            companySettingsData,
+            userId: changedByUserId
+        });
     } catch (err) {
         throw err;
     }
@@ -1036,7 +1106,30 @@ const closeOpenAssignmentsExpression = (adminUserId) => ({
     }
 });
 
-const assignDeliveryAgent = async (vendorId, adminUserId, orderId, deliveryAgentUserId, companyMasterData, companySettingsData, websiteMasterData) => {
+// deliveryDate: 'YYYY-MM-DD' (already checked by the Joi schema). Stored in
+// Order.estimatedDeliveryDate at UTC midnight of that day, so the picked day
+// never shifts with the server's time zone.
+const parseDeliveryDate = (deliveryDate) => {
+    try {
+        return new Date(`${deliveryDate}T00:00:00.000Z`);
+    } catch (err) {
+        throw err;
+    }
+};
+
+// The name on the agent assignment still open in the order's history.
+const currentAssignmentName = (order) => {
+    try {
+        const open = (order.deliveryAgentAssignments || []).find((entry) => !entry.unassignedAt);
+        return open ? open.deliveryAgentName || '' : '';
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Assigns the order to an agent, or changes its agent, together with the
+// delivery date. Emails the customer (Delivery Agent Assigned / Changed).
+const assignDeliveryAgent = async (vendorId, adminUserId, orderId, deliveryAgentUserId, deliveryDate, companyMasterData, companySettingsData, websiteMasterData) => {
     try {
         const featureCheck = await checkDeliveryAgentFeature(vendorId, websiteMasterData, companyMasterData);
         if (!featureCheck.isSuccess) {
@@ -1062,6 +1155,10 @@ const assignDeliveryAgent = async (vendorId, adminUserId, orderId, deliveryAgent
             return common.returnResult(false, 400, 'Set the delivery agent step change (from step and to step) in Company Settings before assigning delivery agents.');
         }
 
+        if (order.courierId) {
+            return common.returnResult(false, 400, 'This order is shipped with a courier. Remove the courier before assigning a delivery agent.');
+        }
+
         const agent = await User.findOne({ _id: deliveryAgentUserId, vendorId, role: 'deliveryAgent', status: 'A' });
         if (!agent) {
             return common.returnResult(false, 404, 'Delivery agent not found, or not active.');
@@ -1078,6 +1175,7 @@ const assignDeliveryAgent = async (vendorId, adminUserId, orderId, deliveryAgent
                 vendorId,
                 assignedDeliveryAgentId: order.assignedDeliveryAgentId || null,
                 deliveryAgentTransitionAt: null,
+                courierId: null,
                 isFinalized: { $ne: true },
                 currentStepCode: { $nin: CLOSED_STEP_CODES }
             },
@@ -1098,6 +1196,7 @@ const assignDeliveryAgent = async (vendorId, adminUserId, orderId, deliveryAgent
                     },
                     assignedDeliveryAgentId: agent._id,
                     deliveryAgentAssignedAt: '$$NOW',
+                    estimatedDeliveryDate: { $literal: parseDeliveryDate(deliveryDate) },
                     updatedBy: adminUserId,
                     updatedAt: '$$NOW'
                 }
@@ -1111,6 +1210,19 @@ const assignDeliveryAgent = async (vendorId, adminUserId, orderId, deliveryAgent
         notifyOrderChanged(updated, ORDER_NOTIFICATION_TYPES.AGENT_ASSIGNED, { previousAgentId: order.assignedDeliveryAgentId });
 
         const isChange = !!order.assignedDeliveryAgentId;
+        // A change of agent sends only the "changed" email even if the date
+        // moved too - that email already carries the new {{deliveryDate}}.
+        await sendOrderEmail({
+            order: updated,
+            module: isChange ? EMAIL_MODULES.DELIVERY_AGENT_CHANGED : EMAIL_MODULES.DELIVERY_AGENT_ASSIGNED,
+            featureFlag: isChange ? 'isEmailSendingFeatureOnAfterDeliveryAgentChanged' : 'isEmailSendingFeatureOnAfterDeliveryAgentAssigned',
+            extraTokens: isChange ? { previousAgentName: currentAssignmentName(order) } : {},
+            companyMasterData,
+            websiteMasterData,
+            companySettingsData,
+            userId: adminUserId
+        });
+
         logger.logInfo(1, 0, isChange ? 'Delivery agent changed on order' : 'Delivery agent assigned to order', { vendorId, orderId, deliveryAgentUserId });
         return common.returnResult(true, 200, isChange ? `Delivery agent changed to ${agent.name}` : `Order assigned to ${agent.name}`, { order: updated });
     } catch (err) {
@@ -1119,7 +1231,7 @@ const assignDeliveryAgent = async (vendorId, adminUserId, orderId, deliveryAgent
 };
 
 // Takes the agent off the order (no agent at all until one is assigned again).
-const unassignDeliveryAgent = async (vendorId, adminUserId, orderId, companyMasterData, websiteMasterData) => {
+const unassignDeliveryAgent = async (vendorId, adminUserId, orderId, companyMasterData, companySettingsData, websiteMasterData) => {
     try {
         const featureCheck = await checkDeliveryAgentFeature(vendorId, websiteMasterData, companyMasterData);
         if (!featureCheck.isSuccess) {
@@ -1156,8 +1268,90 @@ const unassignDeliveryAgent = async (vendorId, adminUserId, orderId, companyMast
 
         notifyOrderChanged(updated, ORDER_NOTIFICATION_TYPES.AGENT_ASSIGNED, { previousAgentId: order.assignedDeliveryAgentId });
 
+        // {{agentName}}/{{agentPhone}} = the agent who was just taken off.
+        const removedAgent = await User.findById(order.assignedDeliveryAgentId);
+        await sendOrderEmail({
+            order: updated,
+            module: EMAIL_MODULES.DELIVERY_AGENT_UNASSIGNED,
+            featureFlag: 'isEmailSendingFeatureOnAfterDeliveryAgentUnassigned',
+            extraTokens: {
+                agentName: removedAgent ? removedAgent.name || '' : currentAssignmentName(order),
+                agentPhone: removedAgent ? removedAgent.phone_no || '' : ''
+            },
+            companyMasterData,
+            websiteMasterData,
+            companySettingsData,
+            userId: adminUserId
+        });
+
         logger.logInfo(1, 0, 'Delivery agent taken off order', { vendorId, orderId });
         return common.returnResult(true, 200, 'Delivery agent removed from the order', { order: updated });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Changes only the delivery date of an order that has an agent (a change of
+// agent sets the date through assignDeliveryAgent instead). Emails the
+// customer (Delivery Date Changed).
+const changeDeliveryDate = async (vendorId, adminUserId, orderId, deliveryDate, companyMasterData, companySettingsData, websiteMasterData) => {
+    try {
+        const featureCheck = await checkDeliveryAgentFeature(vendorId, websiteMasterData, companyMasterData);
+        if (!featureCheck.isSuccess) {
+            return common.returnResult(false, featureCheck.statusCode, featureCheck.message);
+        }
+
+        const order = await Order.findOne({ _id: orderId, vendorId, status: { $ne: 'D' } });
+        if (!order) {
+            return common.returnResult(false, 404, 'Order not found.');
+        }
+        if (!orderStepService.isOrderActive(order)) {
+            return common.returnResult(false, 400, 'This order has been finalized, rejected or cancelled, so its delivery date can no longer be changed.');
+        }
+        if (!order.assignedDeliveryAgentId) {
+            return common.returnResult(false, 400, 'Assign a delivery agent to this order before setting its delivery date.');
+        }
+
+        const newDate = parseDeliveryDate(deliveryDate);
+        const previousDate = order.estimatedDeliveryDate || null;
+        if (previousDate && previousDate.getTime() === newDate.getTime()) {
+            return common.returnResult(false, 400, `The delivery date is already ${formatEmailDate(newDate)}.`);
+        }
+
+        // Only goes through if nobody changed the date or the agent since the
+        // order was read above.
+        const updated = await Order.findOneAndUpdate(
+            {
+                _id: order._id,
+                vendorId,
+                estimatedDeliveryDate: previousDate,
+                assignedDeliveryAgentId: order.assignedDeliveryAgentId,
+                isFinalized: { $ne: true },
+                currentStepCode: { $nin: CLOSED_STEP_CODES }
+            },
+            { $set: { estimatedDeliveryDate: newDate, updatedBy: adminUserId } },
+            { new: true }
+        );
+        if (!updated) {
+            return common.returnResult(false, 409, STEP_CONFLICT_MESSAGE);
+        }
+
+        // Same notification as an agent change - the order's delivery details changed.
+        notifyOrderChanged(updated, ORDER_NOTIFICATION_TYPES.AGENT_ASSIGNED, { previousAgentId: order.assignedDeliveryAgentId });
+
+        await sendOrderEmail({
+            order: updated,
+            module: EMAIL_MODULES.DELIVERY_DATE_CHANGED,
+            featureFlag: 'isEmailSendingFeatureOnAfterDeliveryDateChanged',
+            extraTokens: { previousDeliveryDate: formatEmailDate(previousDate) },
+            companyMasterData,
+            websiteMasterData,
+            companySettingsData,
+            userId: adminUserId
+        });
+
+        logger.logInfo(1, 0, 'Order delivery date changed', { vendorId, orderId, deliveryDate });
+        return common.returnResult(true, 200, `Delivery date changed to ${formatEmailDate(newDate)}`, { order: updated });
     } catch (err) {
         throw err;
     }
@@ -1421,10 +1615,16 @@ const fetchOrderById = async (vendorId, orderId, userId, isAdmin, companySetting
         if (isAdmin) {
             // Agents can only be assigned once the vendor's agent step change is set up.
             // Also not once the agent step change has been made (the agent's part is done).
+            // An order has either a courier or a delivery agent, never both.
             orderWithItems.canAssignDeliveryAgent = orderStepService.isDeliveryAgentFeatureOn(websiteMasterData, companyMasterData) &&
                 orderStepService.isOrderActive(order) &&
                 !order.deliveryAgentTransitionAt &&
+                !order.courierId &&
                 !!stepMaster && !!orderStepService.resolveAgentTransition(stepMaster, companySettingsData);
+            // The courier can be set/changed/removed at any time while the
+            // feature is on; the page shows why it's disabled when an agent
+            // is on the order.
+            orderWithItems.isCourierFeatureOn = isCourierFeatureOn(websiteMasterData, companyMasterData);
         } else {
             orderWithItems.canBeCancelled = !!stepMaster && !orderStepService.getCustomerCancellationBlock(order, stepMaster, companySettingsData);
         }
@@ -1491,6 +1691,104 @@ const fetchOrderStepOptions = async (vendorId, orderId, companySettingsData, com
     }
 };
 
+// Sets, changes (courierId) or removes (courierId null) the order's courier.
+// The vendor can do this at any time; an order has either a courier or a
+// delivery agent, never both. The order keeps a copy of the courier's name.
+// Orders created before tracking numbers existed get one here. Emails the
+// customer (Courier Assigned / Changed / Removed).
+const setOrderCourier = async (vendorId, adminUserId, orderId, courierId, companyMasterData, companySettingsData, websiteMasterData) => {
+    try {
+        const featureCheck = await common.checkFeatureOnOrOff(vendorId, websiteMasterData, companyMasterData, COURIER_FEATURE_FLAG, COURIER_FEATURE_FLAG);
+        if (!featureCheck.isSuccess) {
+            return common.returnResult(false, featureCheck.statusCode, featureCheck.message);
+        }
+
+        const order = await Order.findOne({ _id: orderId, vendorId, status: { $ne: 'D' } });
+        if (!order) {
+            return common.returnResult(false, 404, 'Order not found.');
+        }
+
+        const previousCourierId = order.courierId || null;
+        const previousCourierName = order.courierName || '';
+        let update;
+        let emailModule;
+        let emailFlag;
+        let extraTokens = {};
+
+        if (courierId) {
+            if (order.assignedDeliveryAgentId) {
+                return common.returnResult(false, 400, 'This order has a delivery agent. Remove the delivery agent before assigning a courier.');
+            }
+            if (previousCourierId && previousCourierId.toString() === courierId.toString()) {
+                return common.returnResult(false, 400, `This order is already assigned to ${previousCourierName}.`);
+            }
+            const courier = await CourierMaster.findOne({ _id: courierId, vendorId, status: 'A' });
+            if (!courier) {
+                return common.returnResult(false, 404, 'Courier not found, or not active.');
+            }
+
+            update = { courierId: courier._id, courierName: courier.courierName, updatedBy: adminUserId };
+            if (!order.trackingNumber) {
+                update.trackingNumber = await generateUniqueTrackingNumber(vendorId);
+            }
+            if (previousCourierId) {
+                emailModule = EMAIL_MODULES.COURIER_CHANGED;
+                emailFlag = 'isEmailSendingFeatureOnAfterCourierChanged';
+                extraTokens = { previousCourierName };
+            } else {
+                emailModule = EMAIL_MODULES.COURIER_ASSIGNED;
+                emailFlag = 'isEmailSendingFeatureOnAfterCourierAssigned';
+            }
+        } else {
+            if (!previousCourierId) {
+                return common.returnResult(false, 400, 'This order has no courier.');
+            }
+            update = { courierId: null, courierName: null, updatedBy: adminUserId };
+            emailModule = EMAIL_MODULES.COURIER_REMOVED;
+            emailFlag = 'isEmailSendingFeatureOnAfterCourierRemoved';
+            // {{courierName}} = the courier that was just removed.
+            extraTokens = { courierName: previousCourierName };
+        }
+
+        // Only goes through if nobody changed the courier or assigned an
+        // agent since the order was read above.
+        const updated = await Order.findOneAndUpdate(
+            {
+                _id: order._id,
+                vendorId,
+                courierId: previousCourierId,
+                assignedDeliveryAgentId: courierId ? null : order.assignedDeliveryAgentId || null
+            },
+            { $set: update },
+            { new: true }
+        );
+        if (!updated) {
+            return common.returnResult(false, 409, STEP_CONFLICT_MESSAGE);
+        }
+
+        notifyOrderChanged(updated, ORDER_NOTIFICATION_TYPES.SHIPPING_UPDATED);
+
+        await sendOrderEmail({
+            order: updated,
+            module: emailModule,
+            featureFlag: emailFlag,
+            extraTokens,
+            companyMasterData,
+            websiteMasterData,
+            companySettingsData,
+            userId: adminUserId
+        });
+
+        const message = !courierId
+            ? 'Courier removed from the order'
+            : previousCourierId ? `Courier changed to ${updated.courierName}` : `Courier ${updated.courierName} assigned to the order`;
+        logger.logInfo(1, 0, message, { vendorId, orderId, courierId });
+        return common.returnResult(true, 200, message, { order: updated });
+    } catch (err) {
+        throw err;
+    }
+};
+
 module.exports = {
     resolveOrderNumber,
     buildAddressSnapshot,
@@ -1502,6 +1800,8 @@ module.exports = {
     updateOrderShippingAddress,
     assignDeliveryAgent,
     unassignDeliveryAgent,
+    changeDeliveryDate,
+    setOrderCourier,
     deliveryAgentAdvanceStep,
     cancelOrder,
     fetchMyOrders,

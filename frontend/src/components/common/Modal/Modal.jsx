@@ -7,6 +7,27 @@ const DefaultCloseIcon = () => (
   </svg>
 );
 
+// Body scroll lock counted across all open modals. Each modal used to save
+// and restore body.overflow itself, so when a modal opened on top of another
+// (e.g. a confirmation over a form) and the bottom one closed first, the top
+// one later "restored" the locked value and the page could never scroll again.
+const scrollLock = { count: 0, originalOverflow: '' };
+
+const lockBodyScroll = () => {
+  if (scrollLock.count === 0) {
+    scrollLock.originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+  }
+  scrollLock.count += 1;
+};
+
+const unlockBodyScroll = () => {
+  scrollLock.count = Math.max(0, scrollLock.count - 1);
+  if (scrollLock.count === 0) {
+    document.body.style.overflow = scrollLock.originalOverflow;
+  }
+};
+
 /**
  * A highly reusable Modal / Dialog Component
  *
@@ -76,16 +97,14 @@ const Modal = ({
     if (onClose) onClose();
   }, [onClose]);
 
-  // Lock body scroll while the modal is open
+  // Lock body scroll while the modal is open. Shared across every open modal
+  // (see scrollLock above) so stacked modals closing in any order still
+  // unlock the page once the last one closes.
   useEffect(() => {
     if (!isOpen || !preventScroll) return;
 
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    return () => {
-      document.body.style.overflow = originalOverflow;
-    };
+    lockBodyScroll();
+    return unlockBodyScroll;
   }, [isOpen, preventScroll]);
 
   // Focus the modal (or a chosen element) on open, restore focus on close

@@ -31,6 +31,7 @@ const formatOrderForResponse = (orderDoc) => {
         billingAddressId: encodeIfPresent(order.billingAddressId),
         placedByAdminId: encodeIfPresent(order.placedByAdminId),
         assignedDeliveryAgentId: encodeIfPresent(order.assignedDeliveryAgentId),
+        courierId: encodeIfPresent(order.courierId),
         deliveryAgentTransitionBy: encodeIfPresent(order.deliveryAgentTransitionBy),
         deliveryAgentAssignments: Array.isArray(order.deliveryAgentAssignments)
             ? order.deliveryAgentAssignments.map((entry) => ({
@@ -633,7 +634,8 @@ const assignDeliveryAgent = async (req, res) => {
     try {
         id = common.decodeId(req.params.id);
         const result = await orderService.assignDeliveryAgent(
-            vendorId, req.user._id, id, common.decodeId(req.body.deliveryAgentUserId), req.companyMasterData, req.companySettingsData, req.websiteMasterData
+            vendorId, req.user._id, id, common.decodeId(req.body.deliveryAgentUserId), req.body.deliveryDate,
+            req.companyMasterData, req.companySettingsData, req.websiteMasterData
         );
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
@@ -653,7 +655,7 @@ const unassignDeliveryAgent = async (req, res) => {
     let id;
     try {
         id = common.decodeId(req.params.id);
-        const result = await orderService.unassignDeliveryAgent(vendorId, req.user._id, id, req.companyMasterData, req.websiteMasterData);
+        const result = await orderService.unassignDeliveryAgent(vendorId, req.user._id, id, req.companyMasterData, req.companySettingsData, req.websiteMasterData);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
@@ -663,6 +665,50 @@ const unassignDeliveryAgent = async (req, res) => {
         });
     } catch (error) {
         logger.logException('orderController: unassignDeliveryAgent - Exception while removing delivery agent', { vendorId, id, error });
+        return sendServerError(res);
+    }
+};
+
+const changeDeliveryDate = async (req, res) => {
+    const vendorId = req.vendorId;
+    let id;
+    try {
+        id = common.decodeId(req.params.id);
+        const result = await orderService.changeDeliveryDate(
+            vendorId, req.user._id, id, req.body.deliveryDate, req.companyMasterData, req.companySettingsData, req.websiteMasterData
+        );
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, {
+            ...result.meta,
+            order: formatOrderForResponse(result.meta.order),
+        });
+    } catch (error) {
+        logger.logException('orderController: changeDeliveryDate - Exception while changing delivery date', { vendorId, id, error });
+        return sendServerError(res);
+    }
+};
+
+// Sets, changes or removes (courierId null) the order's courier.
+const setOrderCourier = async (req, res) => {
+    const vendorId = req.vendorId;
+    let id;
+    try {
+        id = common.decodeId(req.params.id);
+        const courierId = req.body.courierId ? common.decodeId(req.body.courierId) : null;
+        const result = await orderService.setOrderCourier(
+            vendorId, req.user._id, id, courierId, req.companyMasterData, req.companySettingsData, req.websiteMasterData
+        );
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, {
+            ...result.meta,
+            order: formatOrderForResponse(result.meta.order),
+        });
+    } catch (error) {
+        logger.logException('orderController: setOrderCourier - Exception while setting order courier', { vendorId, id, error });
         return sendServerError(res);
     }
 };
@@ -709,6 +755,8 @@ module.exports = {
     advanceOrderStep,
     assignDeliveryAgent,
     unassignDeliveryAgent,
+    changeDeliveryDate,
+    setOrderCourier,
     deliveryAgentAdvanceStep,
     downloadMyInvoice,
     downloadInvoiceAdmin

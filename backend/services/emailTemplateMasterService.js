@@ -5,7 +5,7 @@ const redisService = require('./redisService');
 const redisKeys = require('../utils/redisKeys');
 const { validateContentRules } = require('./emailService');
 const orderStepService = require('./orderStepService');
-const { EMAIL_MODULES, getEmailModuleLabel } = require('../constants/emailModuleConstants');
+const { EMAIL_MODULES, COURIER_EMAIL_MODULES, getEmailModuleLabel } = require('../constants/emailModuleConstants');
 const { SIDE_STEP_NAMES } = require('../constants/orderStepConstants');
 const logger = require('../utils/logger');
 const common = require('../utils/common');
@@ -31,6 +31,26 @@ const isStepEntry = (assignment) => Array.isArray(assignment.stepCodes) && assig
 const isStepWiseOrderTemplatesOn = (websiteMasterData, companyMasterData) => {
     try {
         return websiteMasterData?.[STEP_WISE_ORDER_TEMPLATES_FLAG] === true && companyMasterData?.[STEP_WISE_ORDER_TEMPLATES_FLAG] === true;
+    } catch (err) {
+        throw err;
+    }
+};
+
+const isCourierFeatureOn = (websiteMasterData, companyMasterData) => {
+    try {
+        return websiteMasterData?.isCourierFeatureOn === true && companyMasterData?.isCourierFeatureOn === true;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// A courier email module can only be picked while the courier feature is on.
+const checkModuleAllowed = (module, websiteMasterData, companyMasterData) => {
+    try {
+        if (module && COURIER_EMAIL_MODULES.includes(module) && !isCourierFeatureOn(websiteMasterData, companyMasterData)) {
+            return common.returnResult(false, 403, `The ${getEmailModuleLabel(module)} module is not available because the courier feature is turned off for your account.`);
+        }
+        return common.returnResult(true, 200, 'Module allowed');
     } catch (err) {
         throw err;
     }
@@ -362,6 +382,11 @@ const addTemplate = async (vendorId, templateData, userId, companyMasterData, we
         const { templateName, module, subject, htmlBody, textBody, stepSelection, stepCodes, confirmReassign } = templateData;
         const trimmedName = templateName.trim();
 
+        const moduleCheck = checkModuleAllowed(module, websiteMasterData, companyMasterData);
+        if (!moduleCheck.isSuccess) {
+            return moduleCheck;
+        }
+
         const nameExists = await EmailTemplateMaster.exists({
             vendorId,
             templateName: trimmedName,
@@ -431,6 +456,12 @@ const updateTemplate = async (vendorId, templateId, updateData, userId, companyM
         const assignedModule = await getAssignedModuleOfTemplate(vendorId, templateId);
         const newModule = module !== undefined ? (module || null) : template.module;
         const isModuleChanged = module !== undefined && newModule !== template.module;
+        if (isModuleChanged) {
+            const moduleCheck = checkModuleAllowed(newModule, websiteMasterData, companyMasterData);
+            if (!moduleCheck.isSuccess) {
+                return moduleCheck;
+            }
+        }
         const willBeActive = (status !== undefined ? status : template.status) === 'A';
 
         if (status === 'I' && template.status !== 'I' && assignedModule) {
@@ -577,7 +608,9 @@ const fetchAllTemplatesAdmin = async (vendorId, companySettingsData, companyMast
             numberOfTemplatesAllowed,
             isStepWiseOrderTemplatesOn: isStepWiseOn,
             orderStepOptions,
-            hasOrderWorkflow: hasWorkflow
+            hasOrderWorkflow: hasWorkflow,
+            // Hides the courier modules on the page when the feature is off.
+            isCourierFeatureOn: isCourierFeatureOn(websiteMasterData, companyMasterData)
         });
     } catch (err) {
         throw err;
@@ -667,6 +700,10 @@ const changeTemplateModule = async (vendorId, templateId, request, confirmReassi
         }
         if (template.status !== 'A') {
             return common.returnResult(false, 400, 'Only active templates can be assigned to a module. Please mark this template active first.');
+        }
+        const moduleCheck = checkModuleAllowed(module, websiteMasterData, companyMasterData);
+        if (!moduleCheck.isSuccess) {
+            return moduleCheck;
         }
 
         const context = await loadAssignmentContext(vendorId, module, companyMasterData, websiteMasterData);
@@ -758,6 +795,7 @@ const fetchTemplateById = async (vendorId, templateId) => {
 
 module.exports = {
     STEP_SELECTIONS,
+    isCourierFeatureOn,
     resolveTemplateForModule,
     getTemplateCount,
     addTemplate,

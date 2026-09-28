@@ -1,5 +1,6 @@
 const emailTemplateMasterService = require('../services/emailTemplateMasterService');
 const { EMAIL_MODULE_VARIABLES } = require('../constants/emailVariableConstants');
+const { COURIER_EMAIL_MODULES } = require('../constants/emailModuleConstants');
 const logger = require('../utils/logger');
 const common = require('../utils/common');
 
@@ -138,7 +139,13 @@ const getAvailableVariables = async (req, res) => {
     const vendorId = req.vendorId;
     const { module } = req.params;
     try {
-        const variables = EMAIL_MODULE_VARIABLES[module] || [];
+        // With the courier feature off, the courier modules don't exist for
+        // this vendor and {{courierName}} isn't offered anywhere.
+        const isCourierOn = emailTemplateMasterService.isCourierFeatureOn(req.websiteMasterData, req.companyMasterData);
+        if (!isCourierOn && COURIER_EMAIL_MODULES.includes(module)) {
+            return common.sendSuccess(res, 200, 'Available variables fetched successfully', []);
+        }
+        const variables = (EMAIL_MODULE_VARIABLES[module] || []).filter((v) => isCourierOn || v.key !== 'courierName');
         return common.sendSuccess(res, 200, 'Available variables fetched successfully', variables);
     } catch (error) {
         logger.logException('emailTemplateMasterController: getAvailableVariables - Exception while fetching available variables', { vendorId, module, error });

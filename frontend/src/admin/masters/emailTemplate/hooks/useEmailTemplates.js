@@ -14,6 +14,8 @@ export const useEmailTemplates = () => {
   // Step-wise order templates (isDifferentEmailTemplatesForOrderStepsOn) and
   // the order steps a template can be assigned to while it's on.
   const [stepWise, setStepWise] = useState({ isOn: false, stepOptions: [], hasWorkflow: false });
+  // Courier modules are only offered while the courier feature is on.
+  const [isCourierFeatureOn, setIsCourierFeatureOn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [mutating, setMutating] = useState(false);
@@ -32,6 +34,7 @@ export const useEmailTemplates = () => {
         stepOptions: Array.isArray(data?.orderStepOptions) ? data.orderStepOptions : [],
         hasWorkflow: !!data?.hasOrderWorkflow,
       });
+      setIsCourierFeatureOn(!!data?.isCourierFeatureOn);
     } catch (err) {
       setError(err.message || 'Failed to load email templates');
       setTemplates([]);
@@ -185,6 +188,7 @@ export const useEmailTemplates = () => {
     assignments,
     numberOfTemplatesAllowed,
     stepWise,
+    isCourierFeatureOn,
     loading,
     error,
     mutating,

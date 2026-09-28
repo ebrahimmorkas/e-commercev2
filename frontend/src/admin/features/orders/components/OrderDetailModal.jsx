@@ -10,7 +10,10 @@ import OrderStatusTimeline from './OrderStatusTimeline';
 import OrderItems from './OrderItems';
 import AdvanceStepForm from './AdvanceStepForm';
 import AssignDeliveryAgentForm from './AssignDeliveryAgentForm';
+import ChangeDeliveryDateForm from './ChangeDeliveryDateForm';
+import { orderDeliveryDateValue } from '../utils/deliveryDate';
 import DeliveryAgentSection from './DeliveryAgentSection';
+import CourierSection from './CourierSection';
 import AddShippingPriceForm from './AddShippingPriceForm';
 import EditShippingAddressForm from './EditShippingAddressForm';
 import EditOrderForm from './EditOrderForm';
@@ -73,10 +76,10 @@ const WalkInCustomerBlock = ({ customer }) => {
  * GET/PATCH /api/orders/admin/... (orderAdminApi.js).
  */
 const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
-  const { order, stepOptions, loading, error, mutating, advanceStep, assignAgent, unassignAgent, addShippingPrice, editShippingPrice, canEditShippingPrice, canEditShippingAddress, loadUserAddresses, editShippingAddress, canEditOrder, addProducts } = useOrderAdmin(orderId);
+  const { order, stepOptions, loading, error, mutating, advanceStep, assignAgent, unassignAgent, changeDate, saveCourier, addShippingPrice, editShippingPrice, canEditShippingPrice, canEditShippingAddress, loadUserAddresses, editShippingAddress, canEditOrder, addProducts } = useOrderAdmin(orderId);
   const { download: downloadInvoice, downloading: downloadingInvoice } = useInvoiceDownload(downloadInvoiceAdmin);
   const { download: downloadCreditNote, downloading: downloadingCreditNote } = useInvoiceDownload(downloadCreditNoteAdmin);
-  const [activeForm, setActiveForm] = useState(null); // null | 'advance' | 'assign' | 'shipping' | 'editShipping' | 'editAddress' | 'editOrder'
+  const [activeForm, setActiveForm] = useState(null); // null | 'advance' | 'assign' | 'deliveryDate' | 'shipping' | 'editShipping' | 'editAddress' | 'editOrder'
 
   const handleAdvance = async (targetStepCode, remarks) => {
     const success = await advanceStep(targetStepCode, remarks);
@@ -129,8 +132,23 @@ const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
     return success;
   };
 
-  const handleAssign = async (deliveryAgentUserId) => {
-    const success = await assignAgent(deliveryAgentUserId);
+  const handleSaveCourier = async (courierId) => {
+    const success = await saveCourier(courierId);
+    if (success) onChanged?.();
+    return success;
+  };
+
+  const handleChangeDeliveryDate = async (deliveryDate) => {
+    const success = await changeDate(deliveryDate);
+    if (success) {
+      setActiveForm(null);
+      onChanged?.();
+    }
+    return success;
+  };
+
+  const handleAssign = async (deliveryAgentUserId, deliveryDate) => {
+    const success = await assignAgent(deliveryAgentUserId, deliveryDate);
     if (success) {
       setActiveForm(null);
       onChanged?.();
@@ -178,6 +196,9 @@ const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
           </div>
 
           <DeliveryAgentSection order={order} />
+
+          {/* Keyed by the saved courier so the checkbox/dropdown reset to it after every save. */}
+          <CourierSection key={order.courierId || 'none'} order={order} onSave={handleSaveCourier} saving={mutating} />
 
           {order.items?.length > 0 && (
             <div className="pt-4 border-t border-gray-200">
@@ -281,7 +302,15 @@ const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
                   submitting={mutating}
                 />
               ) : activeForm === 'assign' ? (
-                <AssignDeliveryAgentForm currentAgentId={order.assignedDeliveryAgentId} onSubmit={handleAssign} onCancel={() => setActiveForm(null)} submitting={mutating} />
+                <AssignDeliveryAgentForm
+                  currentAgentId={order.assignedDeliveryAgentId}
+                  currentDeliveryDate={order.assignedDeliveryAgentId ? orderDeliveryDateValue(order) : ''}
+                  onSubmit={handleAssign}
+                  onCancel={() => setActiveForm(null)}
+                  submitting={mutating}
+                />
+              ) : activeForm === 'deliveryDate' ? (
+                <ChangeDeliveryDateForm order={order} onSubmit={handleChangeDeliveryDate} onCancel={() => setActiveForm(null)} submitting={mutating} />
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {stepOptions.length > 0 && (
@@ -313,6 +342,11 @@ const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
                   {order.canAssignDeliveryAgent && (
                     <Button variant={theme.button.secondary} onClick={() => setActiveForm('assign')}>
                       {order.assignedDeliveryAgentId ? 'Change delivery agent' : 'Assign delivery agent'}
+                    </Button>
+                  )}
+                  {order.canAssignDeliveryAgent && order.assignedDeliveryAgentId && (
+                    <Button variant={theme.button.secondary} onClick={() => setActiveForm('deliveryDate')}>
+                      Change delivery date
                     </Button>
                   )}
                   {order.canAssignDeliveryAgent && order.assignedDeliveryAgentId && (

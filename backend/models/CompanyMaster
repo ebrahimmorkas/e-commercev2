@@ -398,6 +398,19 @@ const companyMasterSchema = mongoose.Schema({
     },
     // End of Brand
 
+    // Courier (Courier Master module + assigning a courier to an order)
+    isCourierFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    // null = unlimited.
+    numberOfCouriersAllowed: {
+        type: Number,
+        min: 0,
+        default: 3
+    },
+    // End of Courier
+
     // Groups
     isGroupFeatureOn: {
         type: Boolean,
@@ -480,6 +493,38 @@ const companyMasterSchema = mongoose.Schema({
         default: 0
     },
     isEmailSendingFeatureOnAfterOrderStatusChanges: {
+        type: Boolean,
+        default: false
+    },
+    // Customer emails for delivery agent changes on an order (two-level,
+    // website AND company) - see orderService.sendOrderEmail.
+    isEmailSendingFeatureOnAfterDeliveryAgentAssigned: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnAfterDeliveryAgentChanged: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnAfterDeliveryAgentUnassigned: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnAfterDeliveryDateChanged: {
+        type: Boolean,
+        default: false
+    },
+    // Customer emails for courier changes on an order (two-level) - see
+    // orderService.setOrderCourier.
+    isEmailSendingFeatureOnAfterCourierAssigned: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnAfterCourierChanged: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnAfterCourierRemoved: {
         type: Boolean,
         default: false
     },

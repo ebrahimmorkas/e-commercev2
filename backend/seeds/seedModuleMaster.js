@@ -16,6 +16,7 @@ const modules = [
     { moduleName: "Customers", shortModuleName: "Customers", code: "CUSTOMERS", precedence: 6, isSystemModule: true, description: "Customer management." },
     { moduleName: "Add User", shortModuleName: "Add User", code: "ADD_USER", precedence: 6.1, isSystemModule: false, description: "Admin-created customer accounts." },
     { moduleName: "Delivery Agents", shortModuleName: "Delivery Agents", code: "DELIVERY_AGENTS", precedence: 6.2, isSystemModule: false, description: "Vendor's own delivery agents, who deliver orders and make the vendor's delivery-agent step change." },
+    { moduleName: "Courier Master", shortModuleName: "Couriers", code: "COURIER", precedence: 6.3, isSystemModule: false, description: "Courier companies the vendor ships orders with." },
     { moduleName: "Admin Place Order", shortModuleName: "Place Order", code: "ADMIN_PLACE_ORDER", precedence: 5.1, isSystemModule: false, description: "Admin placing an order on behalf of a customer." },
     { moduleName: "Discount", shortModuleName: "Discount", code: "DISCOUNT", precedence: 7, isSystemModule: false, description: "Discount campaigns." },
     { moduleName: "Banner", shortModuleName: "Banner", code: "BANNER", precedence: 8, isSystemModule: false, description: "Homepage banners." },

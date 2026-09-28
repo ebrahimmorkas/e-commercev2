@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import Button from '../../../../components/common/Buttons';
 import Spinner from '../../../../components/common/Spinner';
+import DatePicker from '../../../../components/common/DatePicker';
+import { toDeliveryDateValue, todayStart } from '../utils/deliveryDate';
 import { getAssignableDeliveryAgents } from '../api/orderAdminApi';
 import theme from '../theme/theme';
 
@@ -8,19 +10,22 @@ const inputClass =
   'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
 
 /**
- * Picks one of the store's active delivery agents (GET /orders/admin/delivery-agents).
- * Used both to assign an agent and to change the current one.
+ * Picks one of the store's active delivery agents (GET /orders/admin/delivery-agents)
+ * and the delivery date. Used both to assign an agent and to change the
+ * current one (the date is then pre-filled and can be edited).
  *
  * @param {string|null} currentAgentId - the order's current agent (left out of the list)
- * @param {Function} onSubmit - (deliveryAgentUserId) => Promise<boolean>
+ * @param {string} currentDeliveryDate - the order's delivery date ('YYYY-MM-DD'), or ''
+ * @param {Function} onSubmit - (deliveryAgentUserId, deliveryDate 'YYYY-MM-DD') => Promise<boolean>
  * @param {Function} onCancel
  * @param {boolean} submitting
  */
-const AssignDeliveryAgentForm = ({ currentAgentId = null, onSubmit, onCancel, submitting }) => {
+const AssignDeliveryAgentForm = ({ currentAgentId = null, currentDeliveryDate = '', onSubmit, onCancel, submitting }) => {
   const [agents, setAgents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [deliveryAgentUserId, setDeliveryAgentUserId] = useState('');
+  const [deliveryDate, setDeliveryDate] = useState(currentDeliveryDate);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,8 +46,8 @@ const AssignDeliveryAgentForm = ({ currentAgentId = null, onSubmit, onCancel, su
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!deliveryAgentUserId) return;
-    const success = await onSubmit(deliveryAgentUserId);
+    if (!deliveryAgentUserId || !deliveryDate) return;
+    const success = await onSubmit(deliveryAgentUserId, deliveryDate);
     if (success) setDeliveryAgentUserId('');
   };
 
@@ -74,11 +79,23 @@ const AssignDeliveryAgentForm = ({ currentAgentId = null, onSubmit, onCancel, su
           </select>
         )}
       </div>
+      {!loadError && agents.length > 0 && (
+        <DatePicker
+          label="Delivery date"
+          name="deliveryDate"
+          value={deliveryDate}
+          onChange={(date) => setDeliveryDate(toDeliveryDateValue(date))}
+          minDate={todayStart()}
+          required
+          disabled={submitting}
+          helperText="Shown to the customer in the email about their delivery agent."
+        />
+      )}
       <div className="flex justify-end gap-2">
         <Button type="button" variant={theme.button.ghost} onClick={onCancel} disabled={submitting}>
           Cancel
         </Button>
-        <Button type="submit" variant={theme.button.primary} loading={submitting} disabled={!deliveryAgentUserId}>
+        <Button type="submit" variant={theme.button.primary} loading={submitting} disabled={!deliveryAgentUserId || !deliveryDate}>
           {currentAgentId ? 'Change agent' : 'Assign agent'}
         </Button>
       </div>

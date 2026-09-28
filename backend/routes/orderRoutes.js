@@ -16,6 +16,8 @@ const {
     orderIdParamSchema,
     advanceOrderStepSchema,
     assignDeliveryAgentSchema,
+    changeDeliveryDateSchema,
+    setOrderCourierSchema,
     cancelOrderSchema,
     setShippingPriceSchema,
     setShippingAddressSchema,
@@ -172,6 +174,26 @@ router.patch(
     validate(orderIdParamSchema, 'params'),
     validate(assignDeliveryAgentSchema, 'body'),
     orderController.assignDeliveryAgent
+);
+
+// Sets, changes or removes (courierId null) the order's courier.
+router.patch(
+    '/admin/:id/courier',
+    ...vendorContext,
+    authorize('admin'),
+    validate(orderIdParamSchema, 'params'),
+    validate(setOrderCourierSchema, 'body'),
+    orderController.setOrderCourier
+);
+
+// Changes only the delivery date of an order that has an agent.
+router.patch(
+    '/admin/:id/delivery-date',
+    ...vendorContext,
+    authorize('admin'),
+    validate(orderIdParamSchema, 'params'),
+    validate(changeDeliveryDateSchema, 'body'),
+    orderController.changeDeliveryDate
 );
 
 router.patch(

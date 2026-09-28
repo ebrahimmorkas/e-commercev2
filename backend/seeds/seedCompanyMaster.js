@@ -60,7 +60,7 @@ const COMPANY_MASTER = {
     numberOfEmailsAllowed: 1100,
     numberOfEmailsAllowedPerMonth: 100,
     isEmailTemplateFeatureOn: true,
-    isDifferentEmailTemplatesForOrderStepsOn: false,
+    isDifferentEmailTemplatesForOrderStepsOn: true,
 
     // SMS - not implemented
     isSendingSMSFeatureOn: false,
@@ -127,6 +127,13 @@ const COMPANY_MASTER = {
     isOrderStatusUpdationAllowedByDeliveryAgents: false,
     numberOfDeliveryAgentsAllowed: 0,
     isEmailSendingFeatureOnAfterOrderStatusChanges: true,
+    isEmailSendingFeatureOnAfterDeliveryAgentAssigned: true,
+    isEmailSendingFeatureOnAfterDeliveryAgentChanged: true,
+    isEmailSendingFeatureOnAfterDeliveryAgentUnassigned: true,
+    isEmailSendingFeatureOnAfterDeliveryDateChanged: true,
+    isEmailSendingFeatureOnAfterCourierAssigned: true,
+    isEmailSendingFeatureOnAfterCourierChanged: true,
+    isEmailSendingFeatureOnAfterCourierRemoved: true,
     isPDFDownloadableFeatureOn: false,
 
     // Shipping - Free, Fixed, Weight ("Free Above" is ShippingPriceSettings.
@@ -144,6 +151,10 @@ const COMPANY_MASTER = {
     paymentGateway: null,
     showPaymentQRCodeAndBankDetails: true,
     isShowingPartnerCertificateFeatureOn: false,
+
+    // Courier
+    isCourierFeatureOn: true,
+    numberOfCouriersAllowed: 3,
 
     // Out of scope
     isWebsiteBuilderFeatureOn: false,

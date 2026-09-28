@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Form from '../../../../components/common/Form';
 import InputField from '../../../../components/common/InputField';
 import TextArea from '../../../../components/common/TextArea';
@@ -6,7 +6,7 @@ import Dropdown from '../../../../components/common/DropDown';
 import HtmlEditor from '../../../../components/common/HtmlEditor';
 import Button from '../../../../components/common/Buttons';
 import { useEmailTemplateVariables } from '../hooks/useEmailTemplateVariables';
-import { EMAIL_MODULE_OPTIONS, ORDER_MODULE, getModuleLabel } from '../constants';
+import { ORDER_MODULE, getModuleLabel, getModuleOptions } from '../constants';
 import { initialStepPicks, toStepRequest } from '../utils/stepAssignment';
 import OrderStepsField from './OrderStepsField';
 import theme from '../theme/theme';
@@ -95,6 +95,7 @@ const describeModuleAssignment = ({ mode, values, initialValues, assignments, te
  * @param {{module: string, templateId: string}[]} props.assignments - current module assignments (for the module hint)
  * @param {Object[]} props.templates - all templates (to name the one currently holding a module)
  * @param {{isOn: boolean, stepOptions: Object[], hasWorkflow: boolean}} props.stepWise - step-wise order templates
+ * @param {boolean} props.isCourierFeatureOn - offers the courier modules when true
  */
 const EmailTemplateForm = ({
   mode = 'add',
@@ -105,6 +106,7 @@ const EmailTemplateForm = ({
   assignments = [],
   templates = [],
   stepWise = { isOn: false, stepOptions: [], hasWorkflow: false },
+  isCourierFeatureOn = false,
 }) => {
   const validationSchema = buildValidationSchema(mode);
   const { variablesByModule } = useEmailTemplateVariables();
@@ -118,6 +120,23 @@ const EmailTemplateForm = ({
   const [stepsTouched, setStepsTouched] = useState(false);
   const [stepsError, setStepsError] = useState('');
   const isStepModeFor = (module) => stepWise.isOn && module === ORDER_MODULE;
+
+  // Inserts {{key}} into the subject at the cursor (or at the end), like the
+  // HTML body's variable buttons. InputField doesn't forward a ref, so the
+  // input is found inside a wrapper instead.
+  const subjectWrapperRef = useRef(null);
+  const insertSubjectVariable = (key, currentValue, setFieldValue) => {
+    const token = `{{${key}}}`;
+    const input = subjectWrapperRef.current?.querySelector('input');
+    const start = input?.selectionStart ?? currentValue.length;
+    const end = input?.selectionEnd ?? currentValue.length;
+    setFieldValue('subject', `${currentValue.slice(0, start)}${token}${currentValue.slice(end)}`);
+    requestAnimationFrame(() => {
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(start + token.length, start + token.length);
+    });
+  };
 
   const handleStepPicksChange = (picks) => {
     setStepPicks(picks);
@@ -187,7 +206,7 @@ const EmailTemplateForm = ({
               <Dropdown
                 label="Module"
                 name="module"
-                options={EMAIL_MODULE_OPTIONS}
+                options={getModuleOptions(isCourierFeatureOn)}
                 value={values.module}
                 onChange={(val) => setFieldValue('module', val || '')}
                 placeholder="No module"
@@ -220,7 +239,7 @@ const EmailTemplateForm = ({
               />
             )}
 
-            <div>
+            <div ref={subjectWrapperRef}>
               <InputField
                 label="Subject"
                 name="subject"
@@ -234,6 +253,23 @@ const EmailTemplateForm = ({
               />
               {showError('subject') && (
                 <p className={`mt-1 text-sm ${theme.text.error}`} role="alert">{errors.subject}</p>
+              )}
+              {(variablesByModule[values.module] || []).length > 0 && (
+                <div className="flex flex-wrap items-center gap-1 mt-2">
+                  <span className={`text-xs mr-1 ${theme.text.muted}`}>Insert variable:</span>
+                  {variablesByModule[values.module].map((variable) => (
+                    <Button
+                      key={variable.key}
+                      type="button"
+                      variant="outline"
+                      size="xs"
+                      title={variable.description}
+                      onClick={() => insertSubjectVariable(variable.key, values.subject, setFieldValue)}
+                    >
+                      {`{{${variable.key}}}`}
+                    </Button>
+                  ))}
+                </div>
               )}
             </div>
 

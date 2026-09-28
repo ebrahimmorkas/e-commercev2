@@ -621,6 +621,16 @@ const orderSchema = new mongoose.Schema(
             default: null
         },
 
+        // The courier (Courier Master) shipping this order - an order has
+        // either a courier or a delivery agent, never both. courierName is a
+        // copy taken when the courier was set, so renaming/deleting the
+        // courier later never changes this order or its emails.
+        courierId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'CourierMaster',
+            default: null
+        },
+
         courierName: {
             type: String,
             trim: true,

@@ -101,12 +101,27 @@ const DatePicker = ({
   const isControlled = value !== undefined;
   const selectedDate = isControlled ? parseDateValue(value) : internalValue;
 
+  // The popover is fixed to the viewport, so page/modal scrolling can never
+  // bring it into view - it has to be placed inside the screen up front:
+  // below the field when it fits, otherwise above it (whichever side has
+  // more room), and always clamped to the viewport edges.
   const updatePopoverPosition = useCallback(() => {
     if (!triggerRef.current) return;
     const rect = triggerRef.current.getBoundingClientRect();
     const popoverWidth = 288; // w-72
-    const left = Math.max(8, Math.min(rect.left, window.innerWidth - popoverWidth - 8));
-    setPopoverStyle({ position: 'fixed', top: rect.bottom + 4, left });
+    const gap = 4;
+    const margin = 8;
+    // Real height once rendered; a 6-week month is about 340px before that.
+    const popoverHeight = calendarRef.current?.offsetHeight || 340;
+    const left = Math.max(margin, Math.min(rect.left, window.innerWidth - popoverWidth - margin));
+
+    const spaceBelow = window.innerHeight - rect.bottom - gap - margin;
+    const spaceAbove = rect.top - gap - margin;
+    const openAbove = spaceBelow < popoverHeight && spaceAbove > spaceBelow;
+    const preferredTop = openAbove ? rect.top - gap - popoverHeight : rect.bottom + gap;
+    const top = Math.max(margin, Math.min(preferredTop, window.innerHeight - popoverHeight - margin));
+
+    setPopoverStyle({ position: 'fixed', top, left });
   }, []);
 
   useLayoutEffect(() => {
@@ -115,10 +130,13 @@ const DatePicker = ({
       return;
     }
     updatePopoverPosition();
+    // Once more after the calendar has rendered, with its real height.
+    const frame = requestAnimationFrame(updatePopoverPosition);
     const handleReposition = () => updatePopoverPosition();
     window.addEventListener('scroll', handleReposition, true);
     window.addEventListener('resize', handleReposition);
     return () => {
+      cancelAnimationFrame(frame);
       window.removeEventListener('scroll', handleReposition, true);
       window.removeEventListener('resize', handleReposition);
     };

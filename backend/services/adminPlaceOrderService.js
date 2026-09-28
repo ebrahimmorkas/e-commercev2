@@ -7,6 +7,7 @@ const categoryService = require('./categoryService');
 const commissionService = require('./commissionService');
 const invoiceService = require('./invoiceService');
 const orderStepService = require('./orderStepService');
+const { generateUniqueTrackingNumber } = require('./trackingNumberService');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
 const bulkPricing = require('../utils/bulkPricing');
@@ -736,6 +737,9 @@ const placeOrderOnBehalfOfUser = async (vendorId, adminUserId, websiteMasterData
             return common.returnResult(false, orderNumberResult.statusCode, orderNumberResult.message);
         }
 
+        // Before any stock is reserved, so a failure here can't leave stock deducted.
+        const trackingNumber = await generateUniqueTrackingNumber(vendorId);
+
         // --- Reserve stock line by line; undo everything if any line loses ---
         const deductions = [];
         for (const line of lines) {
@@ -766,6 +770,7 @@ const placeOrderOnBehalfOfUser = async (vendorId, adminUserId, websiteMasterData
 
         const order = new Order({
             orderNumber: orderNumberResult.meta.orderNumber,
+            trackingNumber,
             vendorId,
             userId: user ? user._id : null,
             orderStepMasterId: stepMaster._id,

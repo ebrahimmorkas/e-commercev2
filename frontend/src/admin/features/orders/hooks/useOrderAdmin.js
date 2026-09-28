@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getOrderByIdAdmin, getOrderStepOptions, advanceOrderStep, assignDeliveryAgent, unassignDeliveryAgent, setOrderShippingPrice, updateOrderShippingPrice, getOrderUserAddresses, updateOrderShippingAddress, addProductsToOrder } from '../api/orderAdminApi';
+import { getOrderByIdAdmin, getOrderStepOptions, advanceOrderStep, assignDeliveryAgent, unassignDeliveryAgent, changeDeliveryDate, setOrderCourier, setOrderShippingPrice, updateOrderShippingPrice, getOrderUserAddresses, updateOrderShippingAddress, addProductsToOrder } from '../api/orderAdminApi';
 import { useToast } from '../../../../components/common/Toast';
 import { useRealtime } from '../../../realtime/useRealtime';
 import { REALTIME_RECONNECTED } from '../../../../utils/socketClient';
@@ -157,10 +157,10 @@ export const useOrderAdmin = (orderId) => {
     }
   };
 
-  const assignAgent = async (deliveryAgentUserId) => {
+  const assignAgent = async (deliveryAgentUserId, deliveryDate) => {
     setMutating(true);
     try {
-      await assignDeliveryAgent(orderId, deliveryAgentUserId);
+      await assignDeliveryAgent(orderId, deliveryAgentUserId, deliveryDate);
       await refreshOrderSilently();
       toast.success('Delivery agent saved');
       return true;
@@ -187,7 +187,38 @@ export const useOrderAdmin = (orderId) => {
     }
   };
 
-  return { order, stepOptions, loading, error, mutating, refetch: fetchOrder, advanceStep, assignAgent, unassignAgent, addShippingPrice, editShippingPrice, canEditShippingPrice, canEditShippingAddress, loadUserAddresses, editShippingAddress, canEditOrder, addProducts };
+  // courierId null = remove the order's courier.
+  const saveCourier = async (courierId) => {
+    setMutating(true);
+    try {
+      await setOrderCourier(orderId, courierId);
+      await refreshOrderSilently();
+      toast.success(courierId ? 'Courier saved' : 'Courier removed from the order');
+      return true;
+    } catch (err) {
+      toast.error(err.message || 'Could not save the courier');
+      return false;
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const changeDate = async (deliveryDate) => {
+    setMutating(true);
+    try {
+      await changeDeliveryDate(orderId, deliveryDate);
+      await refreshOrderSilently();
+      toast.success('Delivery date changed');
+      return true;
+    } catch (err) {
+      toast.error(err.message || 'Could not change the delivery date');
+      return false;
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  return { order, stepOptions, loading, error, mutating, refetch: fetchOrder, advanceStep, assignAgent, unassignAgent, changeDate, saveCourier, addShippingPrice, editShippingPrice, canEditShippingPrice, canEditShippingAddress, loadUserAddresses, editShippingAddress, canEditOrder, addProducts };
 };
 
 export default useOrderAdmin;

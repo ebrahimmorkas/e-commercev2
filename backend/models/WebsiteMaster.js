@@ -148,6 +148,11 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: true
     },
+    // Courier Master module + assigning a courier to an order.
+    isCourierFeatureOn: {
+        type: Boolean,
+        default: false
+    },
     // Global switch, on by default - paired with
     // CompanyMaster.isBulkUpdatingProductsAllowed (per-vendor entitlement,
     // off by default) via checkFeatureOnOrOff. See bulkUpdateProducts in
@@ -191,6 +196,38 @@ const websiteMasterSchema = mongoose.Schema({
         default: false
     },
     isEmailSendingFeatureOnAfterOrderStatusChanges: {
+        type: Boolean,
+        default: false
+    },
+    // Customer emails for delivery agent changes on an order (two-level,
+    // website AND company) - see orderService.sendOrderEmail.
+    isEmailSendingFeatureOnAfterDeliveryAgentAssigned: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnAfterDeliveryAgentChanged: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnAfterDeliveryAgentUnassigned: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnAfterDeliveryDateChanged: {
+        type: Boolean,
+        default: false
+    },
+    // Customer emails for courier changes on an order (two-level) - see
+    // orderService.setOrderCourier.
+    isEmailSendingFeatureOnAfterCourierAssigned: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnAfterCourierChanged: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnAfterCourierRemoved: {
         type: Boolean,
         default: false
     },
