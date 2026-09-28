@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import Form from '../../../../components/common/Form';
 import InputField from '../../../../components/common/InputField';
 import TextArea from '../../../../components/common/TextArea';
@@ -5,7 +6,9 @@ import Dropdown from '../../../../components/common/DropDown';
 import HtmlEditor from '../../../../components/common/HtmlEditor';
 import Button from '../../../../components/common/Buttons';
 import { useEmailTemplateVariables } from '../hooks/useEmailTemplateVariables';
-import { EMAIL_MODULE_OPTIONS } from '../constants';
+import { EMAIL_MODULE_OPTIONS, ORDER_MODULE, getModuleLabel } from '../constants';
+import { initialStepPicks, toStepRequest } from '../utils/stepAssignment';
+import OrderStepsField from './OrderStepsField';
 import theme from '../theme/theme';
 
 const STATUS_OPTIONS = [
@@ -41,6 +44,45 @@ const buildValidationSchema = (mode) => {
   return schema;
 };
 
+// What will happen to the module assignment when this form is saved - shown
+// under the Module dropdown so auto-assignment is never a surprise. Mirrors
+// the backend rules in emailTemplateMasterService (addTemplate/updateTemplate).
+const describeModuleAssignment = ({ mode, values, initialValues, assignments, templates, isStepMode, stepsTouched }) => {
+  const { module } = values;
+  if (!module) {
+    return "Select a module to have this template sent automatically for that module's emails.";
+  }
+
+  const label = getModuleLabel(module);
+  if (isStepMode) {
+    if (values.status !== 'A') {
+      return `Inactive templates are not assigned to a module. Mark it active to use it for ${label} emails.`;
+    }
+    const isAssigning = mode === 'add' || module !== (initialValues.module || '') || stepsTouched;
+    return isAssigning
+      ? `This template will be assigned to the selected ${label} steps. If a step already belongs to another template, you will be asked to confirm before it is moved.`
+      : 'Change the order steps below to change which steps this template is sent for.';
+  }
+
+  const holder = assignments.find((a) => a.module === module);
+  const isHeldByThis = !!holder && mode === 'edit' && holder.templateId === initialValues._id;
+  const isModuleChanged = mode === 'add' || module !== (initialValues.module || '');
+
+  if (!isModuleChanged) {
+    return isHeldByThis
+      ? `This template is currently assigned to the ${label} module.`
+      : `This template is not assigned yet. Use "Change Module" on the templates list to assign it to the ${label} module.`;
+  }
+  if (values.status !== 'A') {
+    return `Inactive templates are not assigned to a module. Mark it active to use it for ${label} emails.`;
+  }
+  if (holder && !isHeldByThis) {
+    const holderName = templates.find((t) => t._id === holder.templateId)?.templateName || 'another template';
+    return `The ${label} module is currently assigned to "${holderName}". You will be asked to confirm before this template replaces it.`;
+  }
+  return `This template will be automatically assigned to the ${label} module.`;
+};
+
 /**
  * Add/Edit form for an email template. Built on the reusable Form orchestrator
  * (render-prop mode, since Dropdown/HtmlEditor aren't config-driven field types).
@@ -50,10 +92,38 @@ const buildValidationSchema = (mode) => {
  * @param {(values: Object) => Promise<void>} props.onSubmit
  * @param {Function} props.onCancel
  * @param {boolean} props.submitting
+ * @param {{module: string, templateId: string}[]} props.assignments - current module assignments (for the module hint)
+ * @param {Object[]} props.templates - all templates (to name the one currently holding a module)
+ * @param {{isOn: boolean, stepOptions: Object[], hasWorkflow: boolean}} props.stepWise - step-wise order templates
  */
-const EmailTemplateForm = ({ mode = 'add', initialValues = {}, onSubmit, onCancel, submitting = false }) => {
+const EmailTemplateForm = ({
+  mode = 'add',
+  initialValues = {},
+  onSubmit,
+  onCancel,
+  submitting = false,
+  assignments = [],
+  templates = [],
+  stepWise = { isOn: false, stepOptions: [], hasWorkflow: false },
+}) => {
   const validationSchema = buildValidationSchema(mode);
   const { variablesByModule } = useEmailTemplateVariables();
+
+  // Order steps live outside the Form orchestrator: they're only required in
+  // step-wise mode for the Order module, which its per-field validators
+  // can't see. Only sent when the vendor touched them (or picked/changed the
+  // module) so a plain content edit never reassigns anything.
+  const ownAssignment = mode === 'edit' ? assignments.find((a) => a.templateId === initialValues._id) : null;
+  const [stepPicks, setStepPicks] = useState(() => initialStepPicks(ownAssignment));
+  const [stepsTouched, setStepsTouched] = useState(false);
+  const [stepsError, setStepsError] = useState('');
+  const isStepModeFor = (module) => stepWise.isOn && module === ORDER_MODULE;
+
+  const handleStepPicksChange = (picks) => {
+    setStepPicks(picks);
+    setStepsTouched(true);
+    setStepsError(picks.length === 0 ? 'Please select at least one order step.' : '');
+  };
 
   const formInitialValues = {
     templateName: initialValues.templateName || '',
@@ -75,6 +145,15 @@ const EmailTemplateForm = ({ mode = 'add', initialValues = {}, onSubmit, onCance
 
     if (mode === 'edit') {
       payload.status = values.status;
+    }
+
+    const isModuleChanged = mode === 'add' || payload.module !== (initialValues.module || '');
+    if (isStepModeFor(payload.module) && (isModuleChanged || stepsTouched)) {
+      if (stepPicks.length === 0) {
+        setStepsError('Please select at least one order step.');
+        return;
+      }
+      Object.assign(payload, toStepRequest(stepPicks));
     }
 
     await onSubmit(payload);
@@ -111,8 +190,10 @@ const EmailTemplateForm = ({ mode = 'add', initialValues = {}, onSubmit, onCance
                 options={EMAIL_MODULE_OPTIONS}
                 value={values.module}
                 onChange={(val) => setFieldValue('module', val || '')}
-                placeholder="No module (label only)"
-                helperText="Only used to organise templates and list the variables you can use."
+                placeholder="No module"
+                helperText={describeModuleAssignment({
+                  mode, values, initialValues, assignments, templates, isStepMode: isStepModeFor(values.module), stepsTouched,
+                })}
                 clearable
               />
 
@@ -128,6 +209,16 @@ const EmailTemplateForm = ({ mode = 'add', initialValues = {}, onSubmit, onCance
                 />
               )}
             </div>
+
+            {isStepModeFor(values.module) && (
+              <OrderStepsField
+                value={stepPicks}
+                onChange={handleStepPicksChange}
+                stepOptions={stepWise.stepOptions}
+                hasWorkflow={stepWise.hasWorkflow}
+                error={stepsError}
+              />
+            )}
 
             <div>
               <InputField

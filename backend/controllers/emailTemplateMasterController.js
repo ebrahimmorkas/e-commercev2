@@ -104,7 +104,7 @@ const getAllTemplatesAdmin = async (req, res) => {
             return common.sendError(res, validityResult.statusCode, validityResult.message);
         }
 
-        const result = await emailTemplateMasterService.fetchAllTemplatesAdmin(vendorId, req.companySettingsData, companyMasterData);
+        const result = await emailTemplateMasterService.fetchAllTemplatesAdmin(vendorId, req.companySettingsData, companyMasterData, websiteMasterData);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
@@ -192,6 +192,72 @@ const bulkDeleteTemplates = async (req, res) => {
     }
 };
 
+const changeTemplateModule = async (req, res) => {
+    const vendorId = req.vendorId;
+    let templateId;
+    try {
+        const validityResult = await common.checkFeatureOnOrOff(vendorId, req.websiteMasterData, req.companyMasterData, 'isEmailTemplateFeatureOn', 'isEmailTemplateFeatureOn');
+        if (!validityResult.isSuccess) {
+            return common.sendError(res, validityResult.statusCode, validityResult.message);
+        }
+
+        templateId = common.decodeId(req.body.templateId);
+        const { module, stepSelection, stepCodes, confirmReassign } = req.body;
+        const result = await emailTemplateMasterService.changeTemplateModule(
+            vendorId, templateId, { module, stepSelection, stepCodes }, confirmReassign, req.user._id, req.companyMasterData, req.websiteMasterData
+        );
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, formatTemplateForResponse(result.meta.template));
+    } catch (error) {
+        logger.logException('emailTemplateMasterController: changeTemplateModule - Exception while changing email template module', { vendorId, templateId, error });
+    }
+};
+
+const unassignTemplateModule = async (req, res) => {
+    const vendorId = req.vendorId;
+    let templateId;
+    try {
+        const validityResult = await common.checkFeatureOnOrOff(vendorId, req.websiteMasterData, req.companyMasterData, 'isEmailTemplateFeatureOn', 'isEmailTemplateFeatureOn');
+        if (!validityResult.isSuccess) {
+            return common.sendError(res, validityResult.statusCode, validityResult.message);
+        }
+
+        templateId = common.decodeId(req.body.templateId);
+        const result = await emailTemplateMasterService.unassignTemplateModule(vendorId, templateId);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message);
+    } catch (error) {
+        logger.logException('emailTemplateMasterController: unassignTemplateModule - Exception while unassigning email template module', { vendorId, templateId, error });
+    }
+};
+
+const bulkUnassignTemplateModules = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        const validityResult = await common.checkFeatureOnOrOff(vendorId, req.websiteMasterData, req.companyMasterData, 'isEmailTemplateFeatureOn', 'isEmailTemplateFeatureOn');
+        if (!validityResult.isSuccess) {
+            return common.sendError(res, validityResult.statusCode, validityResult.message);
+        }
+
+        const decodedIds = req.body.templateIds.map((id) => common.decodeId(id));
+        const result = await emailTemplateMasterService.bulkUnassignTemplateModules(vendorId, decodedIds);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        const meta = {
+            ...result.meta,
+            results: result.meta.results.map((r) => ({ ...r, id: common.encodeId(r.id) }))
+        };
+        return common.sendSuccess(res, result.statusCode, result.message, meta);
+    } catch (error) {
+        logger.logException('emailTemplateMasterController: bulkUnassignTemplateModules - Exception while bulk unassigning email template modules', { vendorId, error });
+    }
+};
+
 module.exports = {
     addTemplate,
     updateTemplate,
@@ -200,5 +266,8 @@ module.exports = {
     getTemplateById,
     getAvailableVariables,
     bulkSetTemplateStatus,
-    bulkDeleteTemplates
+    bulkDeleteTemplates,
+    changeTemplateModule,
+    unassignTemplateModule,
+    bulkUnassignTemplateModules
 };

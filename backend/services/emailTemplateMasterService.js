@@ -4,29 +4,97 @@ const CompanySettings = require('../models/CompanySettings');
 const redisService = require('./redisService');
 const redisKeys = require('../utils/redisKeys');
 const { validateContentRules } = require('./emailService');
+const orderStepService = require('./orderStepService');
+const { EMAIL_MODULES, getEmailModuleLabel } = require('../constants/emailModuleConstants');
+const { SIDE_STEP_NAMES } = require('../constants/orderStepConstants');
 const logger = require('../utils/logger');
 const common = require('../utils/common');
 
-// Resolves which template content a given vendor+module should actually
-// send with. Order of precedence:
-//   1. The vendor's own template, IF they have isEmailTemplateFeatureOn AND
-//      have tagged one for this module in CompanySettings.emailTemplateAssignments
-//      AND that template still exists and is active.
-//   2. The platform-owned DefaultEmailTemplateMaster for this module.
-//   3. Neither exists -> isSuccess: false (caller should skip sending).
-// This single function is what makes "vendor has email but not templates"
-// and "vendor has templates but hasn't tagged this module yet" collapse into
-// the same fallback behavior - both just fall through to step 2.
-const resolveTemplateForModule = async (vendorId, module, companyMasterData, companySettingsData) => {
+const STEP_WISE_ORDER_TEMPLATES_FLAG = 'isDifferentEmailTemplatesForOrderStepsOn';
+
+// How the vendor picked the order steps for a template (step-wise mode only).
+// ALL/REMAINING are expanded into a fixed list of step codes when saved.
+const STEP_SELECTIONS = {
+    ALL: 'ALL',
+    REMAINING: 'REMAINING',
+    CUSTOM: 'CUSTOM'
+};
+
+const isSameId = (a, b) => a != null && b != null && String(a) === String(b);
+
+// A step entry covers specific order steps; an entry without stepCodes is a
+// "whole module" entry (see CompanySettings.emailTemplateAssignments).
+const isStepEntry = (assignment) => Array.isArray(assignment.stepCodes) && assignment.stepCodes.length > 0;
+
+// Plain yes/no versions of common.checkFeatureOnOrOff (which needs both
+// master documents to be present) - website AND company flag must be on.
+const isStepWiseOrderTemplatesOn = (websiteMasterData, companyMasterData) => {
     try {
-        if (companyMasterData && companyMasterData.isEmailTemplateFeatureOn && companySettingsData && Array.isArray(companySettingsData.emailTemplateAssignments)) {
-            const assignment = companySettingsData.emailTemplateAssignments.find((a) => a.module === module);
-            if (assignment && assignment.templateId) {
-                const vendorTemplate = await EmailTemplateMaster.findOne({ _id: assignment.templateId, vendorId, status: 'A' });
+        return websiteMasterData?.[STEP_WISE_ORDER_TEMPLATES_FLAG] === true && companyMasterData?.[STEP_WISE_ORDER_TEMPLATES_FLAG] === true;
+    } catch (err) {
+        throw err;
+    }
+};
+
+const isEmailTemplateFeatureOn = (websiteMasterData, companyMasterData) => {
+    try {
+        return websiteMasterData?.isEmailTemplateFeatureOn === true && companyMasterData?.isEmailTemplateFeatureOn === true;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// The order steps a vendor can pick for a template: their assigned workflow
+// (CompanyMaster.orderSteps) in sequence, then the built-in side steps
+// (Rejected/Cancelled/Refunded/Payment at Delivery), which send emails too.
+const getOrderStepOptions = async (companyMasterData) => {
+    try {
+        const stepMaster = await orderStepService.loadActiveStepMaster(companyMasterData && companyMasterData.orderSteps);
+        const flowSteps = orderStepService.getSortedSteps(stepMaster).map((step) => ({ code: step.code, name: step.name }));
+        const sideSteps = Object.entries(SIDE_STEP_NAMES).map(([code, name]) => ({ code, name }));
+        return { options: [...flowSteps, ...sideSteps], hasWorkflow: flowSteps.length > 0 };
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Resolves which template content a given vendor+module (and, for Order,
+// the order step just reached) should send with:
+//   1. The vendor's own assigned template, if the email template feature is
+//      on. With step-wise order templates on, the Order module uses the step
+//      entry covering `stepCode`, else the whole-module entry (which counts
+//      as "every step no other template has"). If the module has templates
+//      assigned but none covers this step, nothing is sent - the vendor chose
+//      not to email for it.
+//   2. No template assigned for the module at all -> the platform's
+//      DefaultEmailTemplateMaster, unless CompanySettings.useDefaultEmailTemplate
+//      is off, in which case nothing is sent.
+// isSuccess: false = the caller should skip sending.
+const resolveTemplateForModule = async (vendorId, module, companyMasterData, companySettingsData, websiteMasterData, stepCode) => {
+    try {
+        if (isEmailTemplateFeatureOn(websiteMasterData, companyMasterData)) {
+            const assignments = (companySettingsData && companySettingsData.emailTemplateAssignments) || [];
+            const moduleEntries = assignments.filter((a) => a.module === module);
+            const isStepMode = module === EMAIL_MODULES.ORDER && isStepWiseOrderTemplatesOn(websiteMasterData, companyMasterData);
+
+            const wholeModuleEntry = moduleEntries.find((a) => !isStepEntry(a));
+            const entry = isStepMode
+                ? moduleEntries.find((a) => isStepEntry(a) && a.stepCodes.includes(stepCode)) || wholeModuleEntry
+                : wholeModuleEntry;
+            const hasModuleTemplates = isStepMode ? moduleEntries.length > 0 : !!wholeModuleEntry;
+
+            if (entry) {
+                const vendorTemplate = await EmailTemplateMaster.findOne({ _id: entry.templateId, vendorId, status: 'A' });
                 if (vendorTemplate) {
-                    return common.returnResult(true, 200, "Vendor's tagged template resolved", { template: vendorTemplate, isDefault: false });
+                    return common.returnResult(true, 200, "Vendor's assigned template resolved", { template: vendorTemplate, isDefault: false });
                 }
+            } else if (hasModuleTemplates) {
+                return common.returnResult(false, 404, 'No email template is assigned to this order step.');
             }
+        }
+
+        if (companySettingsData && companySettingsData.useDefaultEmailTemplate === false) {
+            return common.returnResult(false, 404, 'No email template is assigned to this module and the default email template is turned off.');
         }
 
         const defaultTemplate = await DefaultEmailTemplateMaster.findOne({ module, status: 'A' });
@@ -40,24 +108,245 @@ const resolveTemplateForModule = async (vendorId, module, companyMasterData, com
     }
 };
 
-// Strips any CompanySettings.emailTemplateAssignments entry pointing at
-// templateId - called whenever a template stops being usable (deleted, or
-// deactivated to status 'I'). Not strictly required for correctness -
-// resolveTemplateForModule's status:'A' filter already falls back safely on
-// its own - but leaves no dangling reference behind for anything that reads
-// the assignments array directly (a future admin UI, support tooling, etc.).
-const removeTemplateAssignments = async (vendorId, templateId) => {
-    // Targeted $pull rather than load-and-save(): save() revalidates every
-    // required field on the whole CompanySettings document, so an unrelated
-    // gap (e.g. a missing adminName) would block deactivating/deleting a template.
-    const result = await CompanySettings.updateOne(
-        { vendorId, 'emailTemplateAssignments.templateId': templateId },
-        { $pull: { emailTemplateAssignments: { templateId } } }
-    );
-    if (result.modifiedCount > 0) {
-        await redisService.del(redisKeys.companySettings(vendorId));
+// Always read from the DB, not req.companySettingsData - the cached copy can
+// be up to an hour stale and these checks decide whether to overwrite
+// another template's assignment. null = the vendor has no CompanySettings
+// document yet (nothing can be assigned until they save company settings).
+const getTemplateAssignments = async (vendorId) => {
+    try {
+        const settings = await CompanySettings.findOne({ vendorId }, { emailTemplateAssignments: 1 }).lean();
+        if (!settings) {
+            return null;
+        }
+        return settings.emailTemplateAssignments || [];
+    } catch (err) {
+        throw err;
     }
 };
+
+// Writes the whole assignments array back in one targeted update rather
+// than load-and-save(): save() revalidates every required field on the
+// CompanySettings document, so an unrelated gap (e.g. a missing adminName)
+// would block changing an assignment.
+const saveTemplateAssignments = async (vendorId, assignments, userId) => {
+    try {
+        const update = { emailTemplateAssignments: assignments };
+        if (userId) {
+            update.updatedBy = { userID: userId, vendorID: vendorId };
+        }
+        await CompanySettings.updateOne({ vendorId }, { $set: update });
+        await redisService.del(redisKeys.companySettings(vendorId));
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Removes templateId's assignment (whichever kind) - used when a template's
+// module is cleared/changed and by the Unassign Module action. Deleting or
+// deactivating an assigned template is refused outright (see
+// assignedTemplateLockedResult), so the vendor always unassigns first.
+const removeTemplateAssignments = async (vendorId, templateId) => {
+    try {
+        const assignments = await getTemplateAssignments(vendorId);
+        if (!assignments || !assignments.some((a) => isSameId(a.templateId, templateId))) {
+            return;
+        }
+        await saveTemplateAssignments(vendorId, assignments.filter((a) => !isSameId(a.templateId, templateId)));
+    } catch (err) {
+        throw err;
+    }
+};
+
+// The module templateId is currently assigned to, or null. Counts a step
+// entry even while step-wise templates are off, so a template can't be
+// deleted out from under an assignment that comes back when it's turned on.
+const getAssignedModuleOfTemplate = async (vendorId, templateId) => {
+    try {
+        const assignments = await getTemplateAssignments(vendorId);
+        const assignment = (assignments || []).find((a) => isSameId(a.templateId, templateId));
+        return assignment ? assignment.module : null;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Everything the assignment checks for `module` need, loaded once.
+const loadAssignmentContext = async (vendorId, module, companyMasterData, websiteMasterData) => {
+    try {
+        const assignments = await getTemplateAssignments(vendorId);
+        const isStepMode = module === EMAIL_MODULES.ORDER && isStepWiseOrderTemplatesOn(websiteMasterData, companyMasterData);
+        const stepOptions = isStepMode ? (await getOrderStepOptions(companyMasterData)).options : [];
+        return { assignments, isStepMode, stepOptions };
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Which OTHER template currently sends each order step: a step entry that
+// lists it, else another template's whole-module Order entry.
+const buildStepCoverage = (assignments, templateId, stepOptions) => {
+    try {
+        const orderEntries = assignments.filter((a) => a.module === EMAIL_MODULES.ORDER && !isSameId(a.templateId, templateId));
+        const wholeModuleEntry = orderEntries.find((a) => !isStepEntry(a));
+        const coverage = {};
+        stepOptions.forEach(({ code }) => {
+            const holder = orderEntries.find((a) => isStepEntry(a) && a.stepCodes.includes(code)) || wholeModuleEntry;
+            if (holder) {
+                coverage[code] = holder.templateId;
+            }
+        });
+        return coverage;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Works out what assigning templateId as requested would do, WITHOUT
+// changing anything. request = { module, stepSelection, stepCodes }.
+// meta.plan = { module, stepCodes (fixed list; [] = whole-module entry),
+// conflicts: [{ templateId, stepCode? }] } - the other templates that would
+// lose the module/steps.
+const planAssignment = (templateId, request, context) => {
+    try {
+        const { module } = request;
+        const { assignments, isStepMode, stepOptions } = context;
+
+        if (assignments === null) {
+            return common.returnResult(false, 404, "Company settings are not set up yet, so this template can't be assigned to a module. Please save your company settings first.");
+        }
+
+        if (!isStepMode) {
+            const holder = assignments.find((a) => a.module === module && !isStepEntry(a) && !isSameId(a.templateId, templateId));
+            return common.returnResult(true, 200, 'Assignment planned', {
+                plan: { module, stepCodes: [], conflicts: holder ? [{ templateId: holder.templateId }] : [] }
+            });
+        }
+
+        const optionCodes = stepOptions.map((o) => o.code);
+        const coverage = buildStepCoverage(assignments, templateId, stepOptions);
+        const selection = request.stepSelection || STEP_SELECTIONS.ALL;
+
+        let stepCodes;
+        if (selection === STEP_SELECTIONS.ALL) {
+            stepCodes = optionCodes;
+        } else if (selection === STEP_SELECTIONS.REMAINING) {
+            stepCodes = optionCodes.filter((code) => !coverage[code]);
+            if (stepCodes.length === 0) {
+                return common.returnResult(false, 400, 'Every order step is already assigned to another template, so there are no remaining steps. Please select the steps you want instead.');
+            }
+        } else {
+            const requested = [...new Set((request.stepCodes || []).map((code) => String(code).trim().toUpperCase()))];
+            if (requested.length === 0) {
+                return common.returnResult(false, 400, 'Please select at least one order step.');
+            }
+            const unknown = requested.find((code) => !optionCodes.includes(code));
+            if (unknown) {
+                return common.returnResult(false, 400, `The order step "${unknown}" is not one of your order steps.`);
+            }
+            // Keep the workflow's order rather than the click order.
+            stepCodes = optionCodes.filter((code) => requested.includes(code));
+        }
+
+        const conflicts = stepCodes.filter((code) => coverage[code]).map((code) => ({ stepCode: code, templateId: coverage[code] }));
+        return common.returnResult(true, 200, 'Assignment planned', { plan: { module, stepCodes, conflicts } });
+    } catch (err) {
+        throw err;
+    }
+};
+
+const toQuotedList = (items) => {
+    try {
+        const quoted = items.map((item) => `"${item}"`);
+        return quoted.length > 1 ? `${quoted.slice(0, -1).join(', ')} and ${quoted[quoted.length - 1]}` : quoted[0];
+    } catch (err) {
+        throw err;
+    }
+};
+
+// The 409 message shown when the vendor hasn't confirmed taking the
+// module/steps away from other templates (the frontend normally asks first;
+// this is the server-side guard for a stale page).
+const buildConflictMessage = async (vendorId, plan, stepOptions) => {
+    try {
+        const holderIds = [...new Set(plan.conflicts.map((c) => String(c.templateId)))];
+        const holders = await EmailTemplateMaster.find({ _id: { $in: holderIds }, vendorId }, { templateName: 1 }).lean();
+        const nameOf = (id) => (holders.find((h) => isSameId(h._id, id)) || {}).templateName || 'another template';
+
+        if (plan.stepCodes.length === 0) {
+            return `The ${getEmailModuleLabel(plan.module)} module is already assigned to the template "${nameOf(plan.conflicts[0].templateId)}". Please confirm that you want to replace it.`;
+        }
+
+        const stepName = (code) => (stepOptions.find((o) => o.code === code) || {}).name || code;
+        const parts = holderIds.map((id) => {
+            const steps = plan.conflicts.filter((c) => isSameId(c.templateId, id)).map((c) => stepName(c.stepCode));
+            return `${toQuotedList(steps)} (assigned to "${nameOf(id)}")`;
+        });
+        return `Some of the selected order steps are already assigned to other templates: ${parts.join('; ')}. Please confirm that you want to move them to this template.`;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// planAssignment + the "confirm before taking it from another template" rule.
+const checkAssignment = async (vendorId, templateId, request, confirmReassign, context) => {
+    try {
+        const planResult = planAssignment(templateId, request, context);
+        if (!planResult.isSuccess) {
+            return planResult;
+        }
+        const { plan } = planResult.meta;
+        if (plan.conflicts.length > 0 && !confirmReassign) {
+            return common.returnResult(false, 409, await buildConflictMessage(vendorId, plan, context.stepOptions));
+        }
+        return planResult;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Applies a plan from checkAssignment. templateId ends up with exactly one
+// entry (one module per template), and the module/steps are taken away from
+// whichever templates held them - a step template left with no steps is
+// unassigned.
+const applyAssignment = async (vendorId, templateId, plan, userId) => {
+    try {
+        const { module, stepCodes } = plan;
+        const others = ((await getTemplateAssignments(vendorId)) || []).filter((a) => !isSameId(a.templateId, templateId));
+        let assignments;
+
+        if (stepCodes.length > 0) {
+            assignments = [];
+            others.forEach((a) => {
+                if (a.module === module && isStepEntry(a)) {
+                    const remaining = a.stepCodes.filter((code) => !stepCodes.includes(code));
+                    if (remaining.length > 0) {
+                        assignments.push({ ...a, stepCodes: remaining });
+                    }
+                } else {
+                    assignments.push(a);
+                }
+            });
+            // Another template's whole-module entry is deliberately kept even
+            // if step entries now cover every step: it simply sends nothing
+            // while step-wise mode is on, and is the Order template again if
+            // the feature is turned off.
+            assignments.push({ module, templateId, stepCodes });
+        } else {
+            assignments = others.filter((a) => !(a.module === module && !isStepEntry(a)));
+            assignments.push({ module, templateId, stepCodes: [] });
+        }
+
+        await saveTemplateAssignments(vendorId, assignments, userId);
+        logger.logInfo(1, 0, 'Email template assigned to module', { vendorId, module, templateId, stepCodes });
+    } catch (err) {
+        throw err;
+    }
+};
+
+const assignedTemplateLockedResult = (module, action) => common.returnResult(
+    false, 409,
+    `This template is assigned to the ${getEmailModuleLabel(module)} module. Please unassign the module before ${action}.`
+);
 
 const getTemplateCount = async (vendorId) => {
     try {
@@ -70,7 +359,7 @@ const getTemplateCount = async (vendorId) => {
 
 const addTemplate = async (vendorId, templateData, userId, companyMasterData, websiteMasterData) => {
     try {
-        const { templateName, module, subject, htmlBody, textBody } = templateData;
+        const { templateName, module, subject, htmlBody, textBody, stepSelection, stepCodes, confirmReassign } = templateData;
         const trimmedName = templateName.trim();
 
         const nameExists = await EmailTemplateMaster.exists({
@@ -91,6 +380,22 @@ const addTemplate = async (vendorId, templateData, userId, companyMasterData, we
             return contentCheck;
         }
 
+        // A new template is always Active, so picking a module auto-assigns
+        // it (to the selected order steps, in step-wise mode). Checked before
+        // saving so a refused reassignment doesn't leave a half-done create
+        // behind. No CompanySettings yet (404) doesn't block creating the
+        // template - it's just saved unassigned.
+        let plan = null;
+        let context = null;
+        if (module) {
+            context = await loadAssignmentContext(vendorId, module, companyMasterData, websiteMasterData);
+            const check = await checkAssignment(vendorId, null, { module, stepSelection, stepCodes }, confirmReassign, context);
+            if (!check.isSuccess && check.statusCode !== 404) {
+                return check;
+            }
+            plan = check.isSuccess ? check.meta.plan : null;
+        }
+
         const template = new EmailTemplateMaster({
             vendorId,
             templateName: trimmedName,
@@ -102,6 +407,10 @@ const addTemplate = async (vendorId, templateData, userId, companyMasterData, we
         });
 
         const saved = await template.save();
+
+        if (plan) {
+            await applyAssignment(vendorId, saved._id, plan, userId);
+        }
 
         logger.logInfo(1, 0, 'Email template added successfully', { vendorId, templateId: saved._id });
         return common.returnResult(true, 201, 'Email template added successfully', { template: saved });
@@ -117,7 +426,35 @@ const updateTemplate = async (vendorId, templateId, updateData, userId, companyM
             return common.returnResult(false, 404, 'Email template not found');
         }
 
-        const { templateName, module, subject, htmlBody, textBody, status } = updateData;
+        const { templateName, module, subject, htmlBody, textBody, status, stepSelection, stepCodes, confirmReassign } = updateData;
+
+        const assignedModule = await getAssignedModuleOfTemplate(vendorId, templateId);
+        const newModule = module !== undefined ? (module || null) : template.module;
+        const isModuleChanged = module !== undefined && newModule !== template.module;
+        const willBeActive = (status !== undefined ? status : template.status) === 'A';
+
+        if (status === 'I' && template.status !== 'I' && assignedModule) {
+            return assignedTemplateLockedResult(assignedModule, 'marking it inactive');
+        }
+
+        // Changing the module - or, in step-wise mode, the order steps (the
+        // frontend only sends stepSelection when the vendor touched them) -
+        // behaves like creating the template with that module: an Active
+        // template is auto-assigned (after the vendor confirms taking it from
+        // other templates, if needed) and leaves its previous module. Editing
+        // anything else never touches the assignment.
+        let plan = null;
+        let context = null;
+        if (newModule && willBeActive && (isModuleChanged || stepSelection !== undefined)) {
+            context = await loadAssignmentContext(vendorId, newModule, companyMasterData, websiteMasterData);
+            if (isModuleChanged || context.isStepMode) {
+                const check = await checkAssignment(vendorId, templateId, { module: newModule, stepSelection, stepCodes }, confirmReassign, context);
+                if (!check.isSuccess && check.statusCode !== 404) {
+                    return check;
+                }
+                plan = check.isSuccess ? check.meta.plan : null;
+            }
+        }
 
         if (templateName !== undefined) {
             const trimmedName = templateName.trim();
@@ -162,7 +499,6 @@ const updateTemplate = async (vendorId, templateId, updateData, userId, companyM
             } else if (status === 'I') {
                 template.inActiveMarkedBy = userId;
                 template.inactiveMarkedDate = new Date();
-                await removeTemplateAssignments(vendorId, templateId);
             }
             template.status = status;
         }
@@ -170,6 +506,12 @@ const updateTemplate = async (vendorId, templateId, updateData, userId, companyM
         template.updatedBy = userId;
 
         const updated = await template.save();
+
+        if (plan) {
+            await applyAssignment(vendorId, templateId, plan, userId);
+        } else if (isModuleChanged && assignedModule) {
+            await removeTemplateAssignments(vendorId, templateId);
+        }
         logger.logInfo(1, 0, 'Email template updated successfully', { vendorId, templateId });
         return common.returnResult(true, 200, 'Email template updated successfully', { template: updated });
     } catch (err) {
@@ -184,11 +526,14 @@ const softDeleteTemplate = async (vendorId, templateId, userId) => {
             return common.returnResult(false, 404, 'Email template not found');
         }
 
+        const assignedModule = await getAssignedModuleOfTemplate(vendorId, templateId);
+        if (assignedModule) {
+            return assignedTemplateLockedResult(assignedModule, 'deleting it');
+        }
+
         template.status = 'D';
         template.deletedBy = userId;
         await template.save();
-
-        await removeTemplateAssignments(vendorId, templateId);
 
         logger.logInfo(1, 0, 'Email template deleted successfully', { vendorId, templateId });
         return common.returnResult(true, 200, 'Email template deleted successfully', {});
@@ -197,7 +542,7 @@ const softDeleteTemplate = async (vendorId, templateId, userId) => {
     }
 };
 
-const fetchAllTemplatesAdmin = async (vendorId, companySettingsData, companyMasterData) => {
+const fetchAllTemplatesAdmin = async (vendorId, companySettingsData, companyMasterData, websiteMasterData) => {
     try {
         const templates = await EmailTemplateMaster.find(
             { vendorId, status: { $in: ['A', 'I'] } },
@@ -205,22 +550,34 @@ const fetchAllTemplatesAdmin = async (vendorId, companySettingsData, companyMast
             { sort: { templateName: 1 } }
         );
 
-        // Which module each template is currently bound to (CompanySettings.
-        // emailTemplateAssignments), plus the vendor's template quota, so the
-        // admin list can show "assigned to Order" and "X of N used" without
-        // extra round trips.
+        // Which module (and order steps) each template is currently bound
+        // to, the vendor's template quota, and - when step-wise order
+        // templates are on - the order steps they can pick from, so the admin
+        // page needs no extra round trips.
         const assignments = companySettingsData && Array.isArray(companySettingsData.emailTemplateAssignments)
-            ? companySettingsData.emailTemplateAssignments.map((a) => ({ module: a.module, templateId: a.templateId.toString() }))
+            ? companySettingsData.emailTemplateAssignments.map((a) => ({
+                module: a.module,
+                templateId: a.templateId.toString(),
+                stepCodes: Array.isArray(a.stepCodes) ? a.stepCodes : []
+            }))
             : [];
         const numberOfTemplatesAllowed = companyMasterData && companyMasterData.numberOfTemplatesAllowed != null
             ? companyMasterData.numberOfTemplatesAllowed
             : null;
 
+        const isStepWiseOn = isStepWiseOrderTemplatesOn(websiteMasterData, companyMasterData);
+        const { options: orderStepOptions, hasWorkflow } = isStepWiseOn
+            ? await getOrderStepOptions(companyMasterData)
+            : { options: [], hasWorkflow: false };
+
         return common.returnResult(true, 200, 'Email templates fetched successfully', {
             templates,
             assignments,
             templateCount: templates.length,
-            numberOfTemplatesAllowed
+            numberOfTemplatesAllowed,
+            isStepWiseOrderTemplatesOn: isStepWiseOn,
+            orderStepOptions,
+            hasOrderWorkflow: hasWorkflow
         });
     } catch (err) {
         throw err;
@@ -245,9 +602,12 @@ const setTemplateStatus = async (vendorId, templateId, status, userId) => {
             template.activeMarkedBy = userId;
             template.activeMarkedDate = new Date();
         } else {
+            const assignedModule = await getAssignedModuleOfTemplate(vendorId, templateId);
+            if (assignedModule) {
+                return assignedTemplateLockedResult(assignedModule, 'marking it inactive');
+            }
             template.inActiveMarkedBy = userId;
             template.inactiveMarkedDate = new Date();
-            await removeTemplateAssignments(vendorId, templateId);
         }
         template.status = status;
         template.updatedBy = userId;
@@ -294,6 +654,96 @@ const bulkDeleteTemplates = async (vendorId, userId, templateIds) => {
     }
 };
 
+// "Change Module" action: moves the template to `module` (its Module field
+// AND its assignment - and, in step-wise mode, its order steps - together)
+// so the two can never disagree. Only Active templates can be assigned.
+// request = { module, stepSelection, stepCodes }.
+const changeTemplateModule = async (vendorId, templateId, request, confirmReassign, userId, companyMasterData, websiteMasterData) => {
+    try {
+        const { module } = request;
+        const template = await EmailTemplateMaster.findOne({ _id: templateId, vendorId, status: { $ne: 'D' } });
+        if (!template) {
+            return common.returnResult(false, 404, 'Email template not found');
+        }
+        if (template.status !== 'A') {
+            return common.returnResult(false, 400, 'Only active templates can be assigned to a module. Please mark this template active first.');
+        }
+
+        const context = await loadAssignmentContext(vendorId, module, companyMasterData, websiteMasterData);
+        const planResult = planAssignment(templateId, request, context);
+        if (!planResult.isSuccess) {
+            return planResult;
+        }
+        const { plan } = planResult.meta;
+
+        const current = context.assignments.find((a) => isSameId(a.templateId, templateId));
+        const currentSteps = current && Array.isArray(current.stepCodes) ? current.stepCodes : [];
+        const isUnchanged = !!current && current.module === module && template.module === module
+            && currentSteps.length === plan.stepCodes.length && plan.stepCodes.every((code) => currentSteps.includes(code));
+        if (isUnchanged) {
+            return common.returnResult(false, 409, plan.stepCodes.length > 0
+                ? `This template is already assigned to these steps of the ${getEmailModuleLabel(module)} module.`
+                : `This template is already assigned to the ${getEmailModuleLabel(module)} module.`);
+        }
+
+        if (plan.conflicts.length > 0 && !confirmReassign) {
+            return common.returnResult(false, 409, await buildConflictMessage(vendorId, plan, context.stepOptions));
+        }
+
+        template.module = module;
+        template.updatedBy = userId;
+        const updated = await template.save();
+
+        await applyAssignment(vendorId, templateId, plan, userId);
+
+        return common.returnResult(true, 200, `Email template assigned to the ${getEmailModuleLabel(module)} module successfully`, { template: updated });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// "Unassign Module" action: the template keeps its Module field (so the
+// right variables still show while editing) but stops being sent for that
+// module (and all its order steps). Required before the template can be
+// deleted or marked inactive.
+const unassignTemplateModule = async (vendorId, templateId) => {
+    try {
+        const template = await EmailTemplateMaster.findOne({ _id: templateId, vendorId, status: { $ne: 'D' } });
+        if (!template) {
+            return common.returnResult(false, 404, 'Email template not found');
+        }
+
+        const assignedModule = await getAssignedModuleOfTemplate(vendorId, templateId);
+        if (!assignedModule) {
+            return common.returnResult(false, 409, 'This template is not assigned to any module.');
+        }
+
+        await removeTemplateAssignments(vendorId, templateId);
+
+        logger.logInfo(1, 0, 'Email template unassigned from module', { vendorId, templateId, module: assignedModule });
+        return common.returnResult(true, 200, `Email template unassigned from the ${getEmailModuleLabel(assignedModule)} module successfully`);
+    } catch (err) {
+        throw err;
+    }
+};
+
+const bulkUnassignTemplateModules = async (vendorId, templateIds) => {
+    try {
+        const { results, successCount, failureCount } = await common.runBulkOperation(
+            templateIds,
+            (id) => unassignTemplateModule(vendorId, id)
+        );
+
+        return common.returnResult(
+            true, 200,
+            `Unassigned ${successCount} of ${templateIds.length} email template(s).`,
+            { results, successCount, failureCount }
+        );
+    } catch (err) {
+        throw err;
+    }
+};
+
 const fetchTemplateById = async (vendorId, templateId) => {
     try {
         const template = await EmailTemplateMaster.findOne({ _id: templateId, vendorId, status: { $ne: 'D' } });
@@ -307,6 +757,7 @@ const fetchTemplateById = async (vendorId, templateId) => {
 };
 
 module.exports = {
+    STEP_SELECTIONS,
     resolveTemplateForModule,
     getTemplateCount,
     addTemplate,
@@ -316,5 +767,8 @@ module.exports = {
     setTemplateStatus,
     bulkSetTemplateStatus,
     bulkDeleteTemplates,
+    changeTemplateModule,
+    unassignTemplateModule,
+    bulkUnassignTemplateModules,
     fetchTemplateById
 };

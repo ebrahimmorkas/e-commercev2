@@ -226,6 +226,14 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // Lets the vendor assign different Order-module templates to different
+    // order steps (EmailTemplateAssignment.stepCodes) instead of one template
+    // for the whole Order module. Two-level (website AND company) like the
+    // rest; see resolveTemplateForModule in emailTemplateMasterService.js.
+    isDifferentEmailTemplatesForOrderStepsOn: {
+        type: Boolean,
+        default: false
+    },
     isAddingOfAttachmentAllowed: {
         type: Boolean,
         default: true

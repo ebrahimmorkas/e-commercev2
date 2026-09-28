@@ -30,6 +30,8 @@ const theme = {
   // Badge variants used on the list table.
   moduleBadge: 'purple',
   assignedBadge: 'green',
+  // Order step assignment kept while step-wise templates are off.
+  dormantBadge: 'gray',
   switch: {
     color: 'blue',
   },

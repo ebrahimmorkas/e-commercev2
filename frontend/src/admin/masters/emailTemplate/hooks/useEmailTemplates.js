@@ -4,13 +4,16 @@ import { useToast } from '../../../../components/common/Toast';
 
 /**
  * Owns the email templates list state for the admin page: fetching, and the
- * create/update/delete/status/assign mutations, each surfacing errors via
+ * create/update/delete/status/module-assignment mutations, each surfacing errors via
  * toast rather than throwing, so callers can just check the boolean result.
  */
 export const useEmailTemplates = () => {
   const [templates, setTemplates] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [numberOfTemplatesAllowed, setNumberOfTemplatesAllowed] = useState(null);
+  // Step-wise order templates (isDifferentEmailTemplatesForOrderStepsOn) and
+  // the order steps a template can be assigned to while it's on.
+  const [stepWise, setStepWise] = useState({ isOn: false, stepOptions: [], hasWorkflow: false });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [mutating, setMutating] = useState(false);
@@ -24,6 +27,11 @@ export const useEmailTemplates = () => {
       setTemplates(Array.isArray(data?.templates) ? data.templates : []);
       setAssignments(Array.isArray(data?.assignments) ? data.assignments : []);
       setNumberOfTemplatesAllowed(data?.numberOfTemplatesAllowed ?? null);
+      setStepWise({
+        isOn: !!data?.isStepWiseOrderTemplatesOn,
+        stepOptions: Array.isArray(data?.orderStepOptions) ? data.orderStepOptions : [],
+        hasWorkflow: !!data?.hasOrderWorkflow,
+      });
     } catch (err) {
       setError(err.message || 'Failed to load email templates');
       setTemplates([]);
@@ -83,30 +91,44 @@ export const useEmailTemplates = () => {
     );
   };
 
-  const assignToModule = (module, templateId) =>
+  // steps = { stepSelection, stepCodes } when step-wise order templates are on.
+  const changeModule = (templateId, module, confirmReassign = false, steps = {}) =>
     runMutation(
-      () => emailTemplateApi.assignTemplateToModule(module, templateId),
-      'Email template assigned successfully',
-      'Failed to assign email template'
+      () => emailTemplateApi.changeTemplateModule(templateId, module, confirmReassign, steps),
+      'Email template module changed successfully',
+      'Failed to change email template module'
     );
 
-  const unassignFromModule = (module) =>
+  const unassignModule = (templateId) =>
     runMutation(
-      () => emailTemplateApi.unassignTemplateFromModule(module),
-      'Email template unassigned successfully',
-      'Failed to unassign email template'
+      () => emailTemplateApi.unassignTemplateModule(templateId),
+      'Email template unassigned from its module successfully',
+      'Failed to unassign email template module'
     );
 
   // --- Bulk multi-select actions (checkbox column) --------------------------
-  const describeBulkOutcome = (data, pastTenseVerb) => {
+  // Bulk endpoints process what they can and skip the rest (e.g. templates
+  // still assigned to a module) - results come back in the same order as the
+  // ids sent, so skipped ones are named from that order.
+  const describeBulkOutcome = (data, templateIds, pastTenseVerb, failureVerb) => {
     const successCount = data?.successCount ?? 0;
-    const failureCount = data?.failureCount ?? 0;
-    if (failureCount === 0) {
+    const results = Array.isArray(data?.results) ? data.results : [];
+    const skipped = results
+      .map((result, index) => ({ result, template: templates.find((t) => t._id === templateIds[index]) }))
+      .filter(({ result }) => !result.isSuccess);
+
+    if (skipped.length === 0) {
       toast.success(`${successCount} email template(s) ${pastTenseVerb}`);
-    } else if (successCount === 0) {
-      toast.error(`Could not ${pastTenseVerb === 'deleted' ? 'delete' : 'update'} the selected email template(s)`);
+      return;
+    }
+
+    const shown = skipped.slice(0, 3).map(({ result, template }) => `"${template?.templateName || 'Template'}": ${result.message}`);
+    const more = skipped.length > 3 ? ` And ${skipped.length - 3} more.` : '';
+    const details = `${shown.join(' ')}${more}`;
+    if (successCount === 0) {
+      toast.error(`Could not ${failureVerb} the selected email template(s). ${details}`);
     } else {
-      toast.warning(`${successCount} email template(s) ${pastTenseVerb}, ${failureCount} could not be processed`);
+      toast.warning(`${successCount} email template(s) ${pastTenseVerb}, ${skipped.length} skipped. ${details}`);
     }
   };
 
@@ -115,7 +137,7 @@ export const useEmailTemplates = () => {
     setMutating(true);
     try {
       const data = await emailTemplateApi.bulkSetTemplateStatus(templateIds, status);
-      describeBulkOutcome(data, status === 'A' ? 'activated' : 'deactivated');
+      describeBulkOutcome(data, templateIds, status === 'A' ? 'activated' : 'deactivated', 'update');
       await fetchTemplates();
       return data;
     } catch (err) {
@@ -131,7 +153,7 @@ export const useEmailTemplates = () => {
     setMutating(true);
     try {
       const data = await emailTemplateApi.bulkDeleteTemplates(templateIds);
-      describeBulkOutcome(data, 'deleted');
+      describeBulkOutcome(data, templateIds, 'deleted', 'delete');
       await fetchTemplates();
       return data;
     } catch (err) {
@@ -142,10 +164,27 @@ export const useEmailTemplates = () => {
     }
   };
 
+  const bulkUnassignModules = async (templateIds) => {
+    if (!templateIds || templateIds.length === 0) return null;
+    setMutating(true);
+    try {
+      const data = await emailTemplateApi.bulkUnassignTemplateModules(templateIds);
+      describeBulkOutcome(data, templateIds, 'unassigned', 'unassign');
+      await fetchTemplates();
+      return data;
+    } catch (err) {
+      toast.error(err.message || 'Failed to unassign email template modules');
+      return null;
+    } finally {
+      setMutating(false);
+    }
+  };
+
   return {
     templates,
     assignments,
     numberOfTemplatesAllowed,
+    stepWise,
     loading,
     error,
     mutating,
@@ -154,10 +193,11 @@ export const useEmailTemplates = () => {
     editTemplate,
     removeTemplate,
     toggleStatus,
-    assignToModule,
-    unassignFromModule,
+    changeModule,
+    unassignModule,
     bulkToggleStatus,
     bulkRemoveTemplates,
+    bulkUnassignModules,
   };
 };
 

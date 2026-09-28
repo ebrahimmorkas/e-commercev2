@@ -29,6 +29,7 @@ const WEBSITE_MASTER = {
 
     // Email Template
     isEmailTemplateFeatureOn: true,
+    isDifferentEmailTemplatesForOrderStepsOn: false,
     isAddingOfAttachmentAllowed: true,
     isAddingOfImageAllowed: true,
     isCcAndBccFeatureOn: true,

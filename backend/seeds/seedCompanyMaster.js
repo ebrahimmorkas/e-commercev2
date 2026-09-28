@@ -60,6 +60,7 @@ const COMPANY_MASTER = {
     numberOfEmailsAllowed: 1100,
     numberOfEmailsAllowedPerMonth: 100,
     isEmailTemplateFeatureOn: true,
+    isDifferentEmailTemplatesForOrderStepsOn: false,
 
     // SMS - not implemented
     isSendingSMSFeatureOn: false,

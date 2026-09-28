@@ -408,20 +408,33 @@ const companySettingsSchema = new mongoose.Schema({
     type: [String],
     default: []
   },
+  // Whether the platform's DefaultEmailTemplateMaster is sent when the vendor
+  // has no template assigned for a module (or, with step-wise order
+  // templates on, no template for the Order module at all). false = send
+  // nothing in that case. See resolveTemplateForModule.
+  useDefaultEmailTemplate: {
+    type: Boolean,
+    default: true
+  },
   // End of Email
 
   // Start of Email Template
-  // One EmailTemplateMaster tagged per module - e.g. { module: 'order',
-  // templateId: <the vendor's own template> }. At most one entry per module
-  // (enforced in companySettingsService.assignEmailTemplate, not at the
-  // schema level). See resolveTemplateForModule in
-  // emailTemplateMasterService.js for how this is actually consumed - a
-  // missing/removed entry, or the referenced template being deleted, falls
-  // back to the platform's DefaultEmailTemplateMaster for that module.
+  // Which of the vendor's EmailTemplateMaster templates each module sends.
+  // At most one entry per template (enforced in emailTemplateMasterService,
+  // not at the schema level).
+  //   stepCodes empty     - "whole module" entry; at most one per module.
+  //                         The only kind used while step-wise order
+  //                         templates are off.
+  //   stepCodes non-empty - Order module only: this template is sent for
+  //                         these order step codes. Only used while
+  //                         isDifferentEmailTemplatesForOrderStepsOn is on;
+  //                         kept (but ignored) when it's turned off.
+  // See resolveTemplateForModule for how these are consumed.
   emailTemplateAssignments: {
     type: [{
       module: { type: String, required: true, trim: true },
-      templateId: { type: mongoose.Types.ObjectId, ref: 'EmailTemplateMaster', required: true }
+      templateId: { type: mongoose.Types.ObjectId, ref: 'EmailTemplateMaster', required: true },
+      stepCodes: { type: [String], default: [] }
     }],
     default: []
   },

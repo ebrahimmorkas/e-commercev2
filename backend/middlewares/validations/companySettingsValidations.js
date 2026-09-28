@@ -88,6 +88,7 @@ const companySettingsFieldsSchema = {
     senderEmail: Joi.string().trim().lowercase().email().allow('', null).label('Sender email'),
     ccList: Joi.array().items(Joi.string().trim().lowercase().email()).single().label('CC list'),
     bccList: Joi.array().items(Joi.string().trim().lowercase().email()).single().label('BCC list'),
+    useDefaultEmailTemplate: Joi.boolean().label('Use default email template'),
     isPaymentGatewayFeatureOn: Joi.boolean().label('Online payment enabled'),
     isFreeCashFeatureOn: Joi.boolean().label('Show Free Cash'),
     isFreeCashStackingAllowed: Joi.boolean().label('Allow Free Cash stacking'),

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import InputField from '../../../../components/common/InputField';
+import Switch from '../../../../components/common/Switch';
 import theme from '../theme/theme';
 
 const toEmailList = (text) =>
@@ -27,7 +28,8 @@ const EmailListField = ({ label, value, onCommit }) => {
 };
 
 /**
- * senderEmail + always-cc'd/bcc'd address lists used by emailService.js.
+ * senderEmail + always-cc'd/bcc'd address lists used by emailService.js, and
+ * whether the platform default template is sent when no template is assigned.
  *
  * @param {Object} props.draft
  * @param {(patch: Object) => void} props.onChange
@@ -66,6 +68,14 @@ const EmailSection = ({ draft, onChange }) => {
         />
         <p className={`mt-1 text-xs ${theme.text.muted}`}>Comma-separated. Always bcc'd on every system email.</p>
       </div>
+
+      <Switch
+        label="Use the default email template"
+        description="When no email template of yours is assigned to a module (for example Order), the platform's default email is sent instead. Turn this off to send no email in that case."
+        checked={draft.useDefaultEmailTemplate}
+        onChange={(e) => set({ useDefaultEmailTemplate: e.target.checked })}
+        color={theme.switch.color}
+      />
     </div>
   );
 };

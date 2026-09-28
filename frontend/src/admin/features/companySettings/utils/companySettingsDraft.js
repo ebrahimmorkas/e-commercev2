@@ -62,6 +62,7 @@ export const emptyDraft = () => ({
   senderEmail: '',
   ccList: [],
   bccList: [],
+  useDefaultEmailTemplate: true,
 
   isPaymentGatewayFeatureOn: true,
   bankAccountHolderName: '',
@@ -151,6 +152,8 @@ export const mapApiSettingsToDraft = (doc) => ({
   senderEmail: doc.senderEmail || '',
   ccList: Array.isArray(doc.ccList) ? doc.ccList : [],
   bccList: Array.isArray(doc.bccList) ? doc.bccList : [],
+  // Missing on older documents = the schema default (true).
+  useDefaultEmailTemplate: doc.useDefaultEmailTemplate !== false,
 
   isPaymentGatewayFeatureOn: !!doc.isPaymentGatewayFeatureOn,
   bankAccountHolderName: doc.bankAccountHolderName || '',

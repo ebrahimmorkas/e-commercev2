@@ -515,10 +515,12 @@ const notifyOrderStatusChange = async (order, companyMasterData, websiteMasterDa
             return;
         }
 
-        const templateResult = await emailTemplateMasterService.resolveTemplateForModule(order.vendorId, EMAIL_MODULES.ORDER, companyMasterData, companySettingsData);
+        const templateResult = await emailTemplateMasterService.resolveTemplateForModule(
+            order.vendorId, EMAIL_MODULES.ORDER, companyMasterData, companySettingsData, websiteMasterData, order.currentStepCode
+        );
         if (!templateResult.isSuccess) {
-            logger.logInfo(0, 1, 'No email template (vendor or default) available for the order module - skipping notification', {
-                orderId: order._id, orderNumber: order.orderNumber, stepCode: order.currentStepCode
+            logger.logInfo(0, 1, 'No email template to send for this order step - skipping notification', {
+                orderId: order._id, orderNumber: order.orderNumber, stepCode: order.currentStepCode, reason: templateResult.message
             });
             return;
         }
