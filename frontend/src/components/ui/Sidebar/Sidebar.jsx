@@ -96,7 +96,7 @@ const UserFooter = ({ user, onLogout }) => {
  */
 const Sidebar = ({
   brand = 'Admin Panel',
-  subtitle = 'HUTAIB TAILORING MATERIALS',
+  subtitle,
   items = DEFAULT_NAV_ITEMS,
   activeKey,
   onNavigate,
