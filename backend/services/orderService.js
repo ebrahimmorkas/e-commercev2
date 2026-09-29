@@ -9,6 +9,7 @@ const OrderReturn = require('../models/OrderReturn');
 const OrderExchange = require('../models/OrderExchange');
 const CourierMaster = require('../models/CourierMaster');
 const cartService = require('./cartService');
+const discountUsageService = require('./discountUsageService');
 const counterService = require('./counterService');
 const emailService = require('./emailService');
 const emailTemplateMasterService = require('./emailTemplateMasterService');
@@ -264,12 +265,23 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
         // Reserves stock for every checked-out line item before the Order
         // document (or the cart's deactivation) is ever written, so a lost
         // stock race fails the order cleanly instead of overselling.
+        // Claims the discounts other customers could race for (a first-order-only
+        // discount, a limited number of customers) against this order's id -
+        // before stock, so a lost claim fails the order with nothing to undo.
+        const orderId = new mongoose.Types.ObjectId();
+        const discountClaim = await discountUsageService.claimDiscountsForOrder(vendorId, cart.discounts, userId, orderId);
+        if (!discountClaim.isSuccess) {
+            return common.returnResult(false, 409, discountClaim.message);
+        }
+
         const stockResult = await cartService.decrementStockForOrder(cart);
         if (!stockResult.isSuccess) {
+            await discountUsageService.releaseDiscountClaims(vendorId, discountClaim.claims, userId);
             return common.returnResult(false, stockResult.statusCode, stockResult.message);
         }
 
         const order = new Order({
+            _id: orderId,
             orderNumber: orderNumberResult.meta.orderNumber,
             trackingNumber,
             cartId: cart._id,
@@ -319,6 +331,8 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
 
             await cartService.consumeFreeCashForOrder(vendorId, cart.freeCash, order, userId, companySettingsData, companyMasterData, websiteMasterData);
 
+            await discountUsageService.recordDiscountUsageForOrder(vendorId, cart.discounts, order, userId);
+
             await commissionService.recordCommissionForOrder(order, companyMasterData);
 
             // Locks the cart out of every existing cart route (all of which
@@ -331,6 +345,7 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
             // Stock was already reserved above - give it back since no order
             // actually made it through.
             await cartService.restoreStockForOrder(cart._id);
+            await discountUsageService.releaseDiscountClaims(vendorId, discountClaim.claims, userId);
             throw err;
         }
 
@@ -596,17 +611,47 @@ const sendOrderEmail = async ({ order, module, featureFlag, extraTokens = {}, co
             ...extraTokens
         };
 
-        const subject = emailService.renderTemplateString(template.subject, tokens);
-        const html = emailService.renderTemplateString(template.htmlBody, tokens);
-        const text = template.textBody ? emailService.renderTemplateString(template.textBody, tokens) : undefined;
+        // CC/BCC, Company Settings attachments/images the template picked, and
+        // the {{image:name}} placements (see buildTemplateEmailExtras).
+        const extras = await emailTemplateMasterService.buildTemplateEmailExtras({
+            vendorId: order.vendorId, template, isDefault: isDefaultTemplate, companyMasterData, websiteMasterData, companySettingsData
+        });
+
+        // "Attach invoice" (Order step templates only). Skipped, not failed,
+        // when the order has no issued invoice or PDFs can't be attached.
+        const attachments = [...extras.attachments];
+        if (!isDefaultTemplate && template.attachInvoice === true && module === EMAIL_MODULES.ORDER
+            && emailTemplateMasterService.isInvoiceOptionOn(websiteMasterData, companyMasterData)) {
+            const allowedExtensions = (companyMasterData?.allowedAttachmentExtensions || []).map((e) => String(e).toLowerCase());
+            if (allowedExtensions.length > 0 && !allowedExtensions.includes('pdf')) {
+                logger.logInfo(0, 1, 'Invoice not attached - PDF is not an allowed attachment type', { orderId: order._id });
+            } else {
+                const invoiceAttachment = await invoiceService.buildInvoiceAttachment(order, companySettingsData).catch((err) => {
+                    logger.logWarning('Invoice could not be attached to the order email', { orderId: order._id, err });
+                    return null;
+                });
+                if (invoiceAttachment) attachments.push(invoiceAttachment);
+            }
+        }
+
+        const stripImageTokens = (str) => String(str || '').replace(/\{\{\s*image:[a-z0-9_-]+\s*\}\}/gi, '');
+        const subject = stripImageTokens(emailService.renderTemplateString(template.subject, tokens));
+        const html = extras.renderImages(emailService.renderTemplateString(template.htmlBody, tokens));
+        const text = template.textBody ? stripImageTokens(emailService.renderTemplateString(template.textBody, tokens)) : undefined;
 
         const sendResult = await emailService.sendEmail({
             vendorId: order.vendorId,
             module,
             to: customer.email,
+            cc: extras.cc,
+            bcc: extras.bcc,
+            includeCompanyCc: extras.includeCompanyCc,
+            includeCompanyBcc: extras.includeCompanyBcc,
             subject,
             html,
             text,
+            attachments,
+            images: extras.images,
             userId,
             companyMasterData,
             websiteMasterData,
@@ -662,6 +707,10 @@ const releaseClosedOrder = async (order, reason) => {
     try {
         await commissionService.voidCommissionForOrder(order.vendorId, order._id, reason);
         await restoreStockForCancelledOrder(order);
+        // A first-order-only discount this order held goes back to everyone -
+        // except the customer, when they cancelled it themselves.
+        const cancelledByCustomer = !!order.cancelledBy && order.cancelledBy.toString() === order.userId.toString();
+        await discountUsageService.releaseFirstOrderDiscounts(order.vendorId, order._id, cancelledByCustomer ? order.userId : null);
         // Voids the invoice (if one was issued) and raises its credit note; never fails the close.
         await invoiceService.tryVoidInvoiceForOrder(order, reason);
     } catch (err) {

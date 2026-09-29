@@ -53,6 +53,8 @@ export const useCart = () => {
   // Worked out server-side - re-checked on every cart change (backend/services/cartService.js).
   const appliedFreeCash = useMemo(() => cart?.freeCash || [], [cart]);
   const totalFreeCashAmount = cart?.totalFreeCashAmount || 0;
+  const appliedDiscounts = useMemo(() => cart?.discounts || [], [cart]);
+  const totalDiscountAmount = cart?.totalDiscountAmount || 0;
 
   // For calls outside this hook that answer with the updated cart (applying/removing Free Cash).
   const replaceCart = useCallback((nextCart) => setCart(nextCart || null), []);
@@ -129,6 +131,8 @@ export const useCart = () => {
     subtotal,
     appliedFreeCash,
     totalFreeCashAmount,
+    appliedDiscounts,
+    totalDiscountAmount,
     loading,
     error,
     reload: load,

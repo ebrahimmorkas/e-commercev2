@@ -61,6 +61,7 @@ const COMPANY_MASTER = {
     numberOfEmailsAllowedPerMonth: 100,
     isEmailTemplateFeatureOn: true,
     isDifferentEmailTemplatesForOrderStepsOn: true,
+    isInvoiceSendingFeatureInEmailOn: true,
     fileService: 'local',
 
     // SMS - not implemented

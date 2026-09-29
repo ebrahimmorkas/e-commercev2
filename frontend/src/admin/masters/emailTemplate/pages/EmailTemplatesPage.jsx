@@ -57,6 +57,7 @@ const EmailTemplatesPage = () => {
     numberOfTemplatesAllowed,
     stepWise,
     unavailableModules,
+    contentOptions,
     loading,
     error,
     mutating,
@@ -518,6 +519,7 @@ const EmailTemplatesPage = () => {
           templates={templates}
           stepWise={stepWise}
           unavailableModules={unavailableModules}
+          contentOptions={contentOptions}
         />
       </Modal>
 

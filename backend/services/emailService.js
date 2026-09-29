@@ -217,7 +217,12 @@ const sendEmail = async ({
     companyMasterData,
     websiteMasterData,
     companySettingsData,
-    isDefaultTemplate = false
+    isDefaultTemplate = false,
+    // Whether Company Settings > Email CC/BCC lists are added. A vendor
+    // template decides this with its own checkboxes; everything else
+    // (platform default templates, built-in emails) keeps getting them.
+    includeCompanyCc = true,
+    includeCompanyBcc = true
 }) => {
     try {
         if (!module) {
@@ -279,15 +284,19 @@ const sendEmail = async ({
             return common.returnResult(false, 400, 'No sender email configured for this vendor.');
         }
 
-        const ccList = dedupeEmails([...normalizeList(cc), ...normalizeList(companySettingsData && companySettingsData.ccList)]);
-        const bccList = dedupeEmails([...normalizeList(bcc), ...normalizeList(companySettingsData && companySettingsData.bccList)]);
+        // Saved Company Settings lists are only added while CC/BCC is on for
+        // the account - with it off they're simply left out (the email still
+        // goes). Addresses the caller passes itself are refused when it's off.
+        const ccBccAllowed = !!(websiteMasterData && websiteMasterData.isCcAndBccFeatureOn) && !!(companyMasterData && companyMasterData.isCcAndBccFeatureOn);
+        const companyCc = ccBccAllowed && includeCompanyCc ? normalizeList(companySettingsData && companySettingsData.ccList) : [];
+        const companyBcc = ccBccAllowed && includeCompanyBcc ? normalizeList(companySettingsData && companySettingsData.bccList) : [];
 
-        if (ccList.length > 0 || bccList.length > 0) {
-            const ccBccAllowed = !!(websiteMasterData && websiteMasterData.isCcAndBccFeatureOn) && !!(companyMasterData && companyMasterData.isCcAndBccFeatureOn);
-            if (!ccBccAllowed) {
-                return common.returnResult(false, 403, 'CC/BCC is not allowed for your account.');
-            }
+        if (!ccBccAllowed && (normalizeList(cc).length > 0 || normalizeList(bcc).length > 0)) {
+            return common.returnResult(false, 403, 'CC/BCC is not allowed for your account.');
         }
+
+        const ccList = dedupeEmails([...normalizeList(cc), ...companyCc]);
+        const bccList = dedupeEmails([...normalizeList(bcc), ...companyBcc]);
 
         const provider = getProvider(providerName);
 
@@ -388,7 +397,10 @@ const retryFailedEmails = async ({ maxAgeMinutes = 60, limit = 50 } = {}) => {
                 companyMasterData,
                 websiteMasterData,
                 companySettingsData,
-                isDefaultTemplate: failedLog.isDefaultTemplate
+                isDefaultTemplate: failedLog.isDefaultTemplate,
+                // failedLog.cc/bcc already hold every address that applied.
+                includeCompanyCc: false,
+                includeCompanyBcc: false
             }).catch((err) => {
                 logger.logWarning('Retry attempt threw while resending a failed email', { emailLogId: failedLog._id, err });
                 return null;

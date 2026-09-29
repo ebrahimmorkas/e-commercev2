@@ -6,6 +6,7 @@ const Discount = require('../models/Discount');
 const Product = require('../models/Product');
 const Category = require('../models/Category');
 const User = require('../models/User');
+const Group = require('../models/Group');
 const promotionEmailService = require('./promotionEmailService');
 
 const logger = require('../utils/logger');
@@ -364,6 +365,30 @@ const validateObjectIdArray = (ids, fieldLabel) => {
   }
 };
 
+// Every selected group must exist for this vendor and be of the type the
+// targeting option needs (PRODUCT / CATEGORY / USER) - otherwise the
+// discount could be saved but never match anything in a cart.
+const validateGroupIds = async (vendorId, groupIds, groupType, fieldLabel) => {
+  try {
+    const check = validateObjectIdArray(groupIds, fieldLabel);
+    if (!check.valid) return check;
+
+    const groups = await Group.find({ _id: { $in: groupIds }, vendorId, status: { $ne: 'D' } }, { groupName: 1, groupType: 1 });
+    const foundIds = new Set(groups.map((g) => g._id.toString()));
+    if (groupIds.some((id) => !foundIds.has(id.toString()))) {
+      return { valid: false, message: `One or more of the selected ${fieldLabel} were not found.` };
+    }
+
+    const wrongType = groups.filter((g) => g.groupType !== groupType);
+    if (wrongType.length > 0) {
+      return { valid: false, message: `These groups are not ${groupType} groups: ${wrongType.map((g) => g.groupName).join(', ')}` };
+    }
+    return { valid: true };
+  } catch (err) {
+    throw err;
+  }
+};
+
 /**
  * @param {Object} payload - discount body fields (may include productGroupIds, categoryGroupIds, userGroupIds as arrays)
  * @param {Object} files - req.files from multer .fields([{ name: 'productsFile' }, { name: 'categoriesFile' }, { name: 'usersFile' }])
@@ -512,19 +537,19 @@ const resolveGiveDiscountToTargets = async (vendorId, payload, files = {}) => {
     }
 
     if (config.needsProductGroupIds) {
-      const check = validateObjectIdArray(payload.productGroupIds, 'productGroupIds');
+      const check = await validateGroupIds(vendorId, payload.productGroupIds, 'PRODUCT', 'product groups');
       if (!check.valid) return check;
       resolved.productGroupIds = payload.productGroupIds;
     }
 
     if (config.needsCategoryGroupIds) {
-      const check = validateObjectIdArray(payload.categoryGroupIds, 'categoryGroupIds');
+      const check = await validateGroupIds(vendorId, payload.categoryGroupIds, 'CATEGORY', 'category groups');
       if (!check.valid) return check;
       resolved.categoryGroupIds = payload.categoryGroupIds;
     }
 
     if (config.needsUserGroupIds) {
-      const check = validateObjectIdArray(payload.userGroupIds, 'userGroupIds');
+      const check = await validateGroupIds(vendorId, payload.userGroupIds, 'USER', 'user groups');
       if (!check.valid) return check;
       resolved.userGroupIds = payload.userGroupIds;
     }
@@ -940,19 +965,29 @@ const fetchDiscountsForAdmin = async (vendorId) => {
   }
 };
 
-// User-facing (storefront) listing: only active discounts whose endDate hasn't passed,
-// sorted by precedence (highest first).
-const fetchActiveDiscountsForUser = async (vendorId) => {
+// Storefront listing (logged-in customers only): the active discounts this
+// customer could be offered - never a coupon discount (reachable only by its
+// code) and never one aimed at other customers. The controller strips each
+// one down to its public fields (no user lists, codes or internal notes).
+const fetchActiveDiscountsForUser = async (vendorId, userId) => {
   try {
     const now = new Date();
+    const userGroupIds = await Group.find({ vendorId, groupType: 'USER', status: 'A', members: userId }).distinct('_id');
 
     const discounts = await Discount.find({
       vendorId,
       status: 'A',
       isDiscountForceClosed: false,
-      $or: [
-        { endDate: null },
-        { endDate: { $gte: now } }
+      isCouponCodeDiscount: { $ne: true },
+      $and: [
+        { $or: [{ isOngoingDiscount: true }, { endDate: null }, { endDate: { $gte: now } }] },
+        {
+          $or: [
+            { giveDiscountTo: { $nin: ['USER_GROUP', 'ALL_PRODUCTS_SPECIFIC_USERS', 'SPECIFIC_PRODUCTS_SPECIFIC_USERS', 'SPECIFIC_CATEGORIES_SPECIFIC_USERS', 'CATEGORY_GROUP_SPECIFIC_USERS', 'PRODUCT_GROUP_SPECIFIC_USERS', 'PRODUCT_VARIANTS_SPECIFIC_USERS'] } },
+            { giveDiscountTo: { $ne: 'USER_GROUP' }, userIds: userId },
+            { giveDiscountTo: 'USER_GROUP', userGroupIds: { $in: userGroupIds } }
+          ]
+        }
       ]
     }).sort({ precedence: -1 });
 

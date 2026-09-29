@@ -18,8 +18,28 @@ const formatTemplateForResponse = (templateDoc) => {
         deletedBy: template.deletedBy ? common.encodeId(template.deletedBy) : template.deletedBy,
         activeMarkedBy: template.activeMarkedBy ? common.encodeId(template.activeMarkedBy) : template.activeMarkedBy,
         inActiveMarkedBy: template.inActiveMarkedBy ? common.encodeId(template.inActiveMarkedBy) : template.inActiveMarkedBy,
+        // Company Settings library entries this template picked.
+        attachmentIds: (template.attachmentIds || []).map((id) => common.encodeId(id)),
+        imageIds: (template.imageIds || []).map((id) => common.encodeId(id)),
     };
 };
+
+// The template form sends the library entries' encoded ids back.
+const decodeContentIds = (payload) => {
+    ['attachmentIds', 'imageIds'].forEach((field) => {
+        if (Array.isArray(payload[field])) {
+            payload[field] = payload[field].map((id) => common.decodeId(id));
+        }
+    });
+    return payload;
+};
+
+// The Company Settings library offered on the template form, ids encoded.
+const formatContentOptions = (options) => options && ({
+    ...options,
+    attachments: { ...options.attachments, items: options.attachments.items.map((a) => ({ ...a, _id: common.encodeId(a._id) })) },
+    images: { ...options.images, items: options.images.items.map((img) => ({ ...img, _id: common.encodeId(img._id) })) },
+});
 
 const addTemplate = async (req, res) => {
     const vendorId = req.vendorId;
@@ -37,7 +57,7 @@ const addTemplate = async (req, res) => {
             return common.sendError(res, 403, 'You have exceeded the number of email templates allowed');
         }
 
-        const result = await emailTemplateMasterService.addTemplate(vendorId, req.body, req.user._id, companyMasterData, websiteMasterData);
+        const result = await emailTemplateMasterService.addTemplate(vendorId, decodeContentIds({ ...req.body }), req.user._id, companyMasterData, websiteMasterData);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
@@ -59,7 +79,7 @@ const updateTemplate = async (req, res) => {
         }
 
         templateId = common.decodeId(req.body.templateId);
-        const payload = { ...req.body };
+        const payload = decodeContentIds({ ...req.body });
         delete payload.templateId;
 
         const result = await emailTemplateMasterService.updateTemplate(vendorId, templateId, payload, req.user._id, companyMasterData, websiteMasterData);
@@ -112,6 +132,7 @@ const getAllTemplatesAdmin = async (req, res) => {
             ...result.meta,
             templates: result.meta.templates.map(formatTemplateForResponse),
             assignments: result.meta.assignments.map((a) => ({ ...a, templateId: common.encodeId(a.templateId) })),
+            contentOptions: formatContentOptions(result.meta.contentOptions),
         };
         return common.sendSuccess(res, result.statusCode, result.message, meta);
     } catch (error) {

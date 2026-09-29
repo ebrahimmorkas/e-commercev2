@@ -69,6 +69,25 @@ export const applyFreeCash = (freeCashIds) =>
 
 export const removeFreeCash = () => apiRequest('/cart/remove-free-cash', { method: 'DELETE' });
 
+/**
+ * Discounts the logged-in shopper could apply to the current cart (coupon
+ * discounts are never listed). isEnabled false = no discounts in this store;
+ * requiresLogin = a guest.
+ * @returns {Promise<{ isEnabled: boolean, requiresLogin: boolean, discounts: Array }>}
+ */
+export const getEligibleDiscounts = () => apiRequest('/cart/eligible-discounts');
+
+/**
+ * Replaces whatever discounts are applied with these (plus the coupon, if
+ * given). A rejected one comes back in rejectedDiscounts (or, when none could
+ * be applied, as the thrown ApiError's errors.rejected) with its reason.
+ * @returns {Promise<{ cart: Object, appliedDiscounts: Array, rejectedDiscounts: Array }>}
+ */
+export const applyDiscounts = ({ discountIds = [], couponCode = '' } = {}) =>
+  apiRequest('/cart/apply-discounts', { method: 'POST', body: { discountIds, couponCode } });
+
+export const removeDiscounts = () => apiRequest('/cart/remove-discounts', { method: 'DELETE' });
+
 export default {
   getCart,
   addToCart,
@@ -80,4 +99,7 @@ export default {
   getEligibleFreeCash,
   applyFreeCash,
   removeFreeCash,
+  getEligibleDiscounts,
+  applyDiscounts,
+  removeDiscounts,
 };

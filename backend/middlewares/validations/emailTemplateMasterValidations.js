@@ -25,6 +25,25 @@ const stepFields = {
         .messages({ 'array.min': 'Please select at least one order step.', 'any.required': 'Please select at least one order step.' })
 };
 
+// What goes out with the template (see emailTemplateMasterService
+// .resolveTemplateContentFields, which also checks the ids against the
+// Company Settings library and the account's limits).
+const emailList = (label) => Joi.array()
+    .items(Joi.string().trim().lowercase().email().label('Email address'))
+    .max(50)
+    .unique()
+    .label(label);
+
+const contentFields = {
+    includeCompanyCcList: Joi.boolean().label('Include Company Settings CC list'),
+    includeCompanyBccList: Joi.boolean().label('Include Company Settings BCC list'),
+    ccList: emailList('CC list'),
+    bccList: emailList('BCC list'),
+    attachmentIds: Joi.array().items(objectId().label('Attachment')).max(100).unique().label('Attachments'),
+    imageIds: Joi.array().items(objectId().label('Image')).max(100).unique().label('Images'),
+    attachInvoice: Joi.boolean().label('Attach invoice')
+};
+
 const addTemplateSchema = Joi.object({
     templateName: Joi.string().trim().min(2).max(100).required().label('Template name'),
     module: Joi.string().trim().valid(...VALID_EMAIL_MODULES).allow('', null).label('Module'),
@@ -32,6 +51,7 @@ const addTemplateSchema = Joi.object({
     htmlBody: Joi.string().min(1).required().label('HTML body'),
     textBody: Joi.string().allow('', null).label('Text body'),
     ...stepFields,
+    ...contentFields,
     // true once the vendor has confirmed taking the module (or order steps)
     // away from the template(s) currently holding it - see checkAssignment.
     confirmReassign: Joi.boolean().default(false).label('Confirm reassign')
@@ -46,8 +66,10 @@ const updateTemplateSchema = Joi.object({
     textBody: Joi.string().allow('', null).label('Text body'),
     status: Joi.string().valid('A', 'I').label('Status'),
     ...stepFields,
+    ...contentFields,
     confirmReassign: Joi.boolean().default(false).label('Confirm reassign')
-}).or('templateName', 'module', 'subject', 'htmlBody', 'textBody', 'status', 'stepSelection');
+}).or('templateName', 'module', 'subject', 'htmlBody', 'textBody', 'status', 'stepSelection',
+    'includeCompanyCcList', 'includeCompanyBccList', 'ccList', 'bccList', 'attachmentIds', 'imageIds', 'attachInvoice');
 
 const deleteTemplateSchema = Joi.object({
     templateId: objectId().required().label('Template ID')

@@ -55,6 +55,29 @@ const decodeDiscountPayloadIds = (body) => {
   return payload;
 };
 
+// The only fields a customer may see - never the targeted user lists,
+// coupon code, internal notes, remarks or usage totals.
+const formatStorefrontDiscount = (discountDoc) => {
+  try {
+    const d = discountDoc.toObject ? discountDoc.toObject() : discountDoc;
+    return {
+      _id: common.encodeId(d._id),
+      name: d.name,
+      description: d.description || '',
+      discountType: d.discountType,
+      discountValue: d.discountValue,
+      discountValidAboveAmount: d.discountValidAboveAmount || 0,
+      minimumQuantity: d.isMinimumDiscountQuantityDiscount ? d.minimumQuantity : null,
+      startDate: d.isOngoingDiscount ? null : d.startDate,
+      endDate: d.isOngoingDiscount ? null : d.endDate,
+      firstOrderOnly: d.firstOrderOnly === true,
+      isMultipleDiscountUsageOn: d.isMultipleDiscountUsageOn === true
+    };
+  } catch (err) {
+    throw err;
+  }
+};
+
 /**
  * Both websiteMaster (global) and companyMaster (vendor-specific) must have
  * isDiscountFeatureOn === true for discount actions to be allowed.
@@ -221,13 +244,13 @@ const getActiveDiscounts = async (req, res) => {
       return common.sendError(res, blockReason.statusCode, blockReason.message);
     }
 
-    const result = await discountService.fetchActiveDiscountsForUser(vendorId);
+    const result = await discountService.fetchActiveDiscountsForUser(vendorId, req.user._id);
 
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message);
     }
 
-    return common.sendSuccess(res, result.statusCode, result.message, result.meta.data.map(formatDiscountForResponse));
+    return common.sendSuccess(res, result.statusCode, result.message, result.meta.data.map(formatStorefrontDiscount));
   } catch (error) {
     logger.logException('Error fetching active discounts', { vendorId, error });
   }

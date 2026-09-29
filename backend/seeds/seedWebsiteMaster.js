@@ -30,6 +30,7 @@ const WEBSITE_MASTER = {
     // Email Template
     isEmailTemplateFeatureOn: true,
     isDifferentEmailTemplatesForOrderStepsOn: true,
+    isInvoiceSendingFeatureInEmailOn: true,
     mainFileService: 'local',
     enforceMainFileService: false,
     isAddingOfAttachmentAllowed: true,

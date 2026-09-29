@@ -520,7 +520,25 @@ const getInvoicePdfForOrder = async (vendorId, orderId, userId, context, { docum
     }
 };
 
+/**
+ * The order's current (ISSUED) invoice as an email attachment, for an Order
+ * step email template with "Attach invoice" ticked. null when the order has no
+ * issued invoice (e.g. it was voided) - the email then goes without it.
+ */
+const buildInvoiceAttachment = async (order, companySettingsData) => {
+    try {
+        const invoice = await Invoice.findOne({ vendorId: order.vendorId, orderId: order._id, status: 'ISSUED' });
+        if (!invoice) return null;
+        const buffer = await invoicePdfService.renderInvoicePdf(invoice, { copies: companySettingsData?.invoicePrintDuplicateCopy === true ? 2 : 1 });
+        const safeNumber = invoice.invoiceNumber.replace(/[^A-Za-z0-9._-]/g, '-');
+        return { filename: `Invoice-${safeNumber}.pdf`, content: buffer, mimeType: 'application/pdf', size: buffer.length };
+    } catch (err) {
+        throw err;
+    }
+};
+
 module.exports = {
+    buildInvoiceAttachment,
     issueInvoiceForOrder,
     tryIssueInvoiceForOrder,
     emailInvoiceToCustomer,

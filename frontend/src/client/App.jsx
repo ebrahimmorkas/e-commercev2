@@ -111,6 +111,8 @@ const ClientApp = () => {
     subtotal,
     appliedFreeCash,
     totalFreeCashAmount,
+    appliedDiscounts,
+    totalDiscountAmount,
     replaceCart,
     loading: cartLoading,
     error: cartError,
@@ -312,6 +314,8 @@ const ClientApp = () => {
             reload={reloadCart}
             appliedFreeCash={appliedFreeCash}
             totalFreeCashAmount={totalFreeCashAmount}
+            appliedDiscounts={appliedDiscounts}
+            totalDiscountAmount={totalDiscountAmount}
             onCartUpdated={replaceCart}
             onSignIn={handleLoginClick}
           />
@@ -328,6 +332,7 @@ const ClientApp = () => {
             lineItems={lineItems}
             subtotal={subtotal}
             totalFreeCashAmount={totalFreeCashAmount}
+            totalDiscountAmount={totalDiscountAmount}
             cartLoading={cartLoading}
             initialAddressId={deliveryAddressId}
             onBack={openCart}

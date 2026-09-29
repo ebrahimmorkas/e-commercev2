@@ -9,6 +9,8 @@ import { useEmailTemplateVariables } from '../hooks/useEmailTemplateVariables';
 import { ORDER_MODULE, getModuleLabel, getModuleOptions } from '../constants';
 import { initialStepPicks, toStepRequest } from '../utils/stepAssignment';
 import OrderStepsField from './OrderStepsField';
+import TemplateContentFields from './TemplateContentFields';
+import { initialContentState, buildContentPayload, validateContent } from '../utils/templateContent';
 import theme from '../theme/theme';
 
 const STATUS_OPTIONS = [
@@ -107,6 +109,7 @@ const EmailTemplateForm = ({
   templates = [],
   stepWise = { isOn: false, stepOptions: [], hasWorkflow: false },
   unavailableModules = [],
+  contentOptions = null,
 }) => {
   const validationSchema = buildValidationSchema(mode);
   const { variablesByModule } = useEmailTemplateVariables();
@@ -119,6 +122,15 @@ const EmailTemplateForm = ({
   const [stepPicks, setStepPicks] = useState(() => initialStepPicks(ownAssignment));
   const [stepsTouched, setStepsTouched] = useState(false);
   const [stepsError, setStepsError] = useState('');
+
+  // CC/BCC, attachments, images and the invoice ("What to send with this
+  // email") - kept beside the Form orchestrator like the order steps.
+  const [content, setContent] = useState(() => initialContentState(initialValues));
+  const [contentError, setContentError] = useState('');
+  const patchContent = (patch) => {
+    setContent((prev) => ({ ...prev, ...patch }));
+    setContentError('');
+  };
   const isStepModeFor = (module) => stepWise.isOn && module === ORDER_MODULE;
 
   // Inserts {{key}} into the subject at the cursor (or at the end), like the
@@ -174,6 +186,13 @@ const EmailTemplateForm = ({
       }
       Object.assign(payload, toStepRequest(stepPicks));
     }
+
+    const contentProblem = validateContent(content, contentOptions, payload.module, payload.htmlBody);
+    if (contentProblem) {
+      setContentError(contentProblem);
+      return;
+    }
+    Object.assign(payload, buildContentPayload(content, contentOptions, payload.module));
 
     await onSubmit(payload);
   };
@@ -279,7 +298,15 @@ const EmailTemplateForm = ({
               value={values.htmlBody}
               onChange={(html) => setFieldValue('htmlBody', html)}
               onBlur={handleBlur('htmlBody')}
-              variables={variablesByModule[values.module] || []}
+              variables={[
+                ...(variablesByModule[values.module] || []),
+                // Ticked Company Settings images, placed as {{image:name}}.
+                ...(contentOptions?.images?.isOn
+                  ? contentOptions.images.items
+                      .filter((img) => content.imageIds.includes(img._id))
+                      .map((img) => ({ key: `image:${img.name}`, description: `Shows the image "${img.name}" here` }))
+                  : []),
+              ]}
               placeholder="<p>Hello {{customerName}},</p>"
               helperText={
                 values.module
@@ -299,6 +326,14 @@ const EmailTemplateForm = ({
               onBlur={handleBlur('textBody')}
               rows={4}
               showError={false}
+            />
+
+            <TemplateContentFields
+              content={content}
+              onChange={patchContent}
+              options={contentOptions}
+              module={values.module}
+              error={contentError}
             />
 
             <div className="flex justify-end gap-3 pt-2">

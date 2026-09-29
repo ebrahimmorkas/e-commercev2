@@ -94,7 +94,7 @@ const discountSchema = new mongoose.Schema(
     userGroupIds: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "UserGroup",
+        ref: "Group",
       },
     ],
 
@@ -108,7 +108,7 @@ const discountSchema = new mongoose.Schema(
     productGroupIds: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "ProductGroup",
+        ref: "Group",
       },
     ],
 
@@ -129,7 +129,7 @@ const discountSchema = new mongoose.Schema(
     categoryGroupIds: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "CategoryGroup",
+        ref: "Group",
       },
     ],
 
@@ -205,10 +205,44 @@ const discountSchema = new mongoose.Schema(
       default: false,
     },
 
+    // firstOrderOnly: set once the first customer places an order with this
+    // discount (only one order can ever hold it), cleared again if that order
+    // is cancelled/rejected or fully returned - see services/discountUsageService.js.
     isDiscountUsedForFirstTime: {
       type: Boolean,
       default: false,
     },
+
+    // The customer/order currently holding a firstOrderOnly discount.
+    firstOrderClaimedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    firstOrderClaimedOrderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Order",
+      default: null,
+    },
+
+    // Customers who cancelled/returned the order that held this
+    // firstOrderOnly discount - they can never claim it again.
+    firstOrderExcludedUserIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+
+    // Every customer who has placed an order with this discount - what
+    // numberOfUsersCanUseDiscount is enforced against (atomically, at order
+    // placement). Never shrinks: a cancelled order does not give the use back.
+    usedByUserIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
 
     isDiscountBasedOnPaymentMethods: {
       type: Boolean,

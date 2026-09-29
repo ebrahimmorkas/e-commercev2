@@ -275,6 +275,11 @@ const sendToCustomers = async ({
             return outcome;
         }
         const { template, isDefault } = templateResult.meta;
+        // Read once for the whole send: CC/BCC choices, attachments and images.
+        const extras = await emailTemplateMasterService.buildTemplateEmailExtras({
+            vendorId, template, isDefault, companyMasterData, websiteMasterData, companySettingsData, cache: new Map()
+        });
+        const stripImageTokens = (str) => String(str || '').replace(/\{\{\s*image:[a-z0-9_-]+\s*\}\}/gi, '');
 
         const filter = { vendorId, role: 'user', status: 'A', email: { $nin: [null, ''] } };
         if (recipients !== 'ALL') filter._id = { $in: recipients };
@@ -289,9 +294,15 @@ const sendToCustomers = async ({
                 vendorId,
                 module,
                 to: customer.email,
-                subject: emailService.renderTemplateString(template.subject, tokens),
-                html: emailService.renderTemplateString(template.htmlBody, tokens),
-                text: template.textBody ? emailService.renderTemplateString(template.textBody, tokens) : undefined,
+                cc: extras.cc,
+                bcc: extras.bcc,
+                includeCompanyCc: extras.includeCompanyCc,
+                includeCompanyBcc: extras.includeCompanyBcc,
+                subject: stripImageTokens(emailService.renderTemplateString(template.subject, tokens)),
+                html: extras.renderImages(emailService.renderTemplateString(template.htmlBody, tokens)),
+                text: template.textBody ? stripImageTokens(emailService.renderTemplateString(template.textBody, tokens)) : undefined,
+                attachments: extras.attachments,
+                images: extras.images,
                 userId,
                 companyMasterData,
                 websiteMasterData,

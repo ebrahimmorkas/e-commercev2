@@ -173,7 +173,10 @@ const applyDiscounts = async (req, res) => {
 const removeDiscounts = async (req, res) => {
     const vendorId = req.vendorId;
     try {
-        const result = await cartService.removeDiscountsFromCart(vendorId, req.cartOwner);
+        const userId = req.user ? req.user._id : null;
+        const result = await cartService.removeDiscountsFromCart(
+            vendorId, req.cartOwner, userId, req.companyMasterData, req.websiteMasterData, req.companySettingsData
+        );
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
@@ -231,6 +234,23 @@ const getEligibleFreeCash = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, deepEncodeIds(result.meta));
     } catch (error) {
         logger.logException('cartController: getEligibleFreeCash - Exception while fetching eligible Free Cash', { vendorId, error });
+    }
+};
+
+const getEligibleDiscounts = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        const userId = req.user ? req.user._id : null;
+        const result = await cartService.listEligibleDiscountsForCart(
+            vendorId, req.cartOwner, userId, req.companyMasterData, req.websiteMasterData, req.companySettingsData,
+            req.cookies?.Country || req.user?.country || null
+        );
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, deepEncodeIds(result.meta));
+    } catch (error) {
+        logger.logException('cartController: getEligibleDiscounts - Exception while fetching eligible discounts', { vendorId, error });
     }
 };
 
@@ -327,5 +347,6 @@ module.exports = {
     applyFreeCash,
     removeFreeCash,
     getEligibleFreeCash,
+    getEligibleDiscounts,
     checkoutCart
 };

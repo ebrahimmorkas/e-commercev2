@@ -16,6 +16,8 @@ export const useEmailTemplates = () => {
   const [stepWise, setStepWise] = useState({ isOn: false, stepOptions: [], hasWorkflow: false });
   // Modules whose feature (courier / discount / Free Cash) is off - not offered.
   const [unavailableModules, setUnavailableModules] = useState([]);
+  // CC/BCC switch, the Company Settings attachment/image library and the invoice option.
+  const [contentOptions, setContentOptions] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [mutating, setMutating] = useState(false);
@@ -35,6 +37,7 @@ export const useEmailTemplates = () => {
         hasWorkflow: !!data?.hasOrderWorkflow,
       });
       setUnavailableModules(Array.isArray(data?.unavailableModules) ? data.unavailableModules : []);
+      setContentOptions(data?.contentOptions || null);
     } catch (err) {
       setError(err.message || 'Failed to load email templates');
       setTemplates([]);
@@ -189,6 +192,7 @@ export const useEmailTemplates = () => {
     numberOfTemplatesAllowed,
     stepWise,
     unavailableModules,
+    contentOptions,
     loading,
     error,
     mutating,

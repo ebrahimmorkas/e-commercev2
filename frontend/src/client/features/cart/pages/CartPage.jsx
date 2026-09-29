@@ -11,6 +11,8 @@ import { useTaxEstimate, taxAmountForTotal } from '../hooks/useTaxEstimate';
 import TaxEstimateRows from '../components/TaxEstimateRows';
 import FreeCashPanel from '../components/FreeCashPanel';
 import { useFreeCash } from '../hooks/useFreeCash';
+import DiscountPanel from '../components/DiscountPanel';
+import { useDiscounts } from '../hooks/useDiscounts';
 import { useCurrency } from '../../../currency/useCurrency';
 
 
@@ -101,7 +103,9 @@ const CartLineItem = ({ item, onIncrement, onDecrement, onSetQuantity, onRemove 
  * @param {Array} [props.appliedFreeCash] - cart.freeCash
  * @param {number} [props.totalFreeCashAmount] - cart.totalFreeCashAmount
  * @param {Function} [props.onCartUpdated] - Called with the cart returned by applying/removing Free Cash.
- * @param {Function} [props.onSignIn] - Opens the login modal (a guest can't use Free Cash).
+ * @param {Array} [props.appliedDiscounts] - cart.discounts
+ * @param {number} [props.totalDiscountAmount] - cart.totalDiscountAmount
+ * @param {Function} [props.onSignIn] - Opens the login modal (a guest can't use discounts or Free Cash).
  */
 const CartPage = ({
   lineItems = [],
@@ -120,6 +124,8 @@ const CartPage = ({
   reload,
   appliedFreeCash = [],
   totalFreeCashAmount = 0,
+  appliedDiscounts = [],
+  totalDiscountAmount = 0,
   onCartUpdated,
   onSignIn,
 }) => {
@@ -136,14 +142,23 @@ const CartPage = ({
     refreshKey: `${itemCount}:${subtotal}`,
     skip: lineItems.length === 0,
   });
+  // Each one's eligibility depends on what the other takes off, so both lists
+  // refetch whenever either applied total changes.
+  const promotionsKey = `${itemCount}:${subtotal}:${isAuthenticated}:${totalDiscountAmount}:${totalFreeCashAmount}`;
+  const discounts = useDiscounts({
+    refreshKey: promotionsKey,
+    skip: lineItems.length === 0,
+    onCartUpdated,
+  });
   const freeCash = useFreeCash({
-    refreshKey: `${itemCount}:${subtotal}:${isAuthenticated}`,
+    refreshKey: promotionsKey,
     skip: lineItems.length === 0,
     onCartUpdated,
   });
   const deliveringTo = shippingEstimate?.deliveringTo;
-  // Never more than the items are worth (same rule as the server).
-  const freeCashDeduction = Math.min(totalFreeCashAmount, subtotal);
+  // Together never more than the items are worth (same rule as the server).
+  const discountDeduction = Math.min(totalDiscountAmount, subtotal);
+  const freeCashDeduction = Math.min(totalFreeCashAmount, subtotal - discountDeduction);
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
@@ -240,6 +255,17 @@ const CartPage = ({
           </div>
 
           <div className="h-fit space-y-4">
+            <DiscountPanel
+              key={`${discounts.info ? 'loaded' : 'loading'}|${appliedDiscounts.map((d) => `${d.discountId}:${d.discountAmount}`).join(',')}`}
+              info={discounts.info}
+              appliedDiscounts={appliedDiscounts}
+              saving={discounts.saving}
+              rejections={discounts.rejections}
+              onApply={discounts.apply}
+              onRemove={discounts.remove}
+              onSignIn={onSignIn}
+              formatMoney={formatMoney}
+            />
             <FreeCashPanel
               key={appliedFreeCash.map((f) => `${f.freeCashId}:${f.amountApplied}`).join(',')}
               info={freeCash.info}
@@ -267,6 +293,12 @@ const CartPage = ({
                 <p className="mt-1 text-xs text-slate-500">Shipping price will be manually calculated by admin.</p>
               )}
               <TaxEstimateRows estimate={taxEstimate} formatMoney={formatMoney} />
+              {discountDeduction > 0 && (
+                <div className="mt-2 flex justify-between text-sm text-emerald-600">
+                  <span>Discount</span>
+                  <span>− {formatMoney(discountDeduction)}</span>
+                </div>
+              )}
               {freeCashDeduction > 0 && (
                 <div className="mt-2 flex justify-between text-sm text-emerald-600">
                   <span>Free Cash</span>
@@ -274,10 +306,10 @@ const CartPage = ({
                 </div>
               )}
               <div className="mt-2 pt-3 border-t border-slate-200 flex justify-between text-base font-bold text-slate-900">
-                <span>{shippingEstimate || taxEstimate || freeCashDeduction > 0 ? 'Estimated total' : 'Subtotal'}</span>
-                <span>{formatMoney(subtotal - freeCashDeduction + shippingAmountForTotal(shippingEstimate) + taxAmountForTotal(taxEstimate))}</span>
+                <span>{shippingEstimate || taxEstimate || discountDeduction > 0 || freeCashDeduction > 0 ? 'Estimated total' : 'Subtotal'}</span>
+                <span>{formatMoney(subtotal - discountDeduction - freeCashDeduction + shippingAmountForTotal(shippingEstimate) + taxAmountForTotal(taxEstimate))}</span>
               </div>
-              <p className="mt-1 text-xs text-slate-400">Discounts are applied at checkout. Free Cash and tax are confirmed when the order is placed.</p>
+              <p className="mt-1 text-xs text-slate-400">Discounts, Free Cash and tax are confirmed when the order is placed.</p>
               <button
                 type="button"
                 onClick={onCheckout}

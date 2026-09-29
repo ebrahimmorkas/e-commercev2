@@ -7,6 +7,7 @@ const vendorDetection = require('../middlewares/vendorDetection');
 const ensureVendorDataCached = require('../middlewares/ensureVendorDataCached');
 const authenticate = require('../middlewares/authenticate');
 const resolveCartOwner = require('../middlewares/resolveCartOwner');
+const checkModuleAssigned = require('../middlewares/checkModuleAssigned');
 // Every cart route is reachable by BOTH guests and logged-in users, so
 // optionalAuthenticate (never rejects) + resolveCartOwner (guest cookie or
 // req.user) replace the usual authenticate + authorize('user') pairing.
@@ -22,7 +23,9 @@ router.put('/update-cart', ...cartAccess, validate(updateCartItemSchema, 'body')
 
 router.delete('/remove-cart-item', ...cartAccess, validate(removeCartItemSchema, 'body'), cartController.removeCartItem);
 
-router.post('/apply-discounts', ...cartAccess, validate(applyDiscountsSchema, 'body'), cartController.applyDiscounts);
+router.get('/eligible-discounts', ...cartAccess, checkModuleAssigned('DISCOUNT'), cartController.getEligibleDiscounts);
+
+router.post('/apply-discounts', ...cartAccess, checkModuleAssigned('DISCOUNT'), validate(applyDiscountsSchema, 'body'), cartController.applyDiscounts);
 
 router.delete('/remove-discounts', ...cartAccess, cartController.removeDiscounts);
 

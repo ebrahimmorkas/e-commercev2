@@ -316,6 +316,13 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // Lets an Order step email template attach the order's invoice PDF
+    // (EmailTemplateMaster.attachInvoice). Only offered while step-wise
+    // Order templates (isDifferentEmailTemplatesForOrderStepsOn) are on too.
+    isInvoiceSendingFeatureInEmailOn: {
+        type: Boolean,
+        default: false
+    },
     isAddingOfAttachmentAllowed: {
         type: Boolean,
         default: true

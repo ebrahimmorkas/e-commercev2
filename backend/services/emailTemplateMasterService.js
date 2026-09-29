@@ -1,6 +1,9 @@
 const EmailTemplateMaster = require('../models/EmailTemplateMaster');
 const DefaultEmailTemplateMaster = require('../models/DefaultEmailTemplateMaster');
 const CompanySettings = require('../models/CompanySettings');
+const FileAsset = require('../models/FileAsset');
+const ImageAsset = require('../models/ImageAsset');
+const { readStoredAsset } = require('./storedFileReader');
 const redisService = require('./redisService');
 const redisKeys = require('../utils/redisKeys');
 const { validateContentRules } = require('./emailService');
@@ -388,6 +391,238 @@ const assignedTemplateLockedResult = (module, action) => common.returnResult(
     `This template is assigned to the ${getEmailModuleLabel(module)} module. Please unassign the module before ${action}.`
 );
 
+
+/*
+|--------------------------------------------------------------------------
+| WHAT GOES OUT WITH A TEMPLATE: CC/BCC, ATTACHMENTS, IMAGES, INVOICE
+|--------------------------------------------------------------------------
+| Company Settings > Email is the one library of attachments and images; a
+| template picks from it (attachmentIds / imageIds) and places images in its
+| body with {{image:name}}. Each part only applies while its feature is on
+| (WebsiteMaster AND CompanyMaster): isCcAndBccFeatureOn,
+| isAddingOfAttachmentAllowed, isAddingOfImageAllowed, and for the invoice
+| isInvoiceSendingFeatureInEmailOn + step-wise Order templates.
+*/
+
+const IMAGE_TOKEN = /\{\{\s*image:([a-z0-9_-]+)\s*\}\}/gi;
+
+const isBothOn = (flag, websiteMasterData, companyMasterData) => {
+    try {
+        return websiteMasterData?.[flag] === true && companyMasterData?.[flag] === true;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Whether an Order template may attach the order's invoice.
+const isInvoiceOptionOn = (websiteMasterData, companyMasterData) => {
+    try {
+        return isBothOn('isInvoiceSendingFeatureInEmailOn', websiteMasterData, companyMasterData)
+            && isStepWiseOrderTemplatesOn(websiteMasterData, companyMasterData);
+    } catch (err) {
+        throw err;
+    }
+};
+
+// The {{image:name}} names a body uses.
+const findImageNames = (html) => {
+    try {
+        const names = new Set();
+        String(html || '').replace(IMAGE_TOKEN, (match, name) => { names.add(name.toLowerCase()); return match; });
+        return [...names];
+    } catch (err) {
+        throw err;
+    }
+};
+
+// What the template form offers: the Company Settings library and limits.
+const getTemplateContentOptions = (companySettingsData, companyMasterData, websiteMasterData) => {
+    try {
+        return {
+            isCcAndBccOn: isBothOn('isCcAndBccFeatureOn', websiteMasterData, companyMasterData),
+            attachments: {
+                isOn: isBothOn('isAddingOfAttachmentAllowed', websiteMasterData, companyMasterData),
+                maxCount: companyMasterData?.numberOfAttachmentsAllowed ?? null,
+                items: (companySettingsData?.emailAttachments || []).map((a) => ({
+                    _id: a._id, displayName: a.displayName || a.originalName, originalName: a.originalName, size: a.size, mimeType: a.mimeType
+                }))
+            },
+            images: {
+                isOn: isBothOn('isAddingOfImageAllowed', websiteMasterData, companyMasterData),
+                maxCount: companyMasterData?.numberOfImageAllowed ?? null,
+                items: (companySettingsData?.emailImages || []).map((img) => ({ _id: img._id, name: img.name, url: img.url }))
+            },
+            isInvoiceOptionOn: isInvoiceOptionOn(websiteMasterData, companyMasterData)
+        };
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Checks and normalises the template's content choices before a save.
+// `current` = the template being edited (null on create); `module` = the
+// module it will have. Choices for a feature that's off are left as saved.
+// Returns returnResult; meta.fields = what to set on the template.
+const resolveTemplateContentFields = async (vendorId, data, current, module, companyMasterData, websiteMasterData) => {
+    try {
+        const fields = {};
+        const has = (key) => data[key] !== undefined;
+
+        if (isBothOn('isCcAndBccFeatureOn', websiteMasterData, companyMasterData)) {
+            ['includeCompanyCcList', 'includeCompanyBccList', 'ccList', 'bccList'].forEach((key) => {
+                if (has(key)) fields[key] = data[key];
+            });
+        }
+
+        const attachmentsOn = isBothOn('isAddingOfAttachmentAllowed', websiteMasterData, companyMasterData);
+        const imagesOn = isBothOn('isAddingOfImageAllowed', websiteMasterData, companyMasterData);
+        const needsLibrary = (attachmentsOn && has('attachmentIds')) || imagesOn;
+        const settings = needsLibrary
+            ? await CompanySettings.findOne({ vendorId }, { emailAttachments: 1, emailImages: 1 }).lean()
+            : null;
+
+        // Invoice: Order templates only, and only while the option is on.
+        let attachInvoice = has('attachInvoice') ? data.attachInvoice === true : (current ? current.attachInvoice === true : false);
+        if (module !== EMAIL_MODULES.ORDER) attachInvoice = false;
+        if (attachInvoice && !isInvoiceOptionOn(websiteMasterData, companyMasterData)) {
+            if (has('attachInvoice')) {
+                return common.returnResult(false, 403, 'Attaching the invoice is not available for your account.');
+            }
+            attachInvoice = current ? current.attachInvoice === true : false; // keep what was saved
+        }
+        if (has('attachInvoice') || module !== EMAIL_MODULES.ORDER) fields.attachInvoice = attachInvoice;
+
+        if (attachmentsOn) {
+            const attachmentIds = has('attachmentIds') ? [...new Set(data.attachmentIds.map(String))] : (current?.attachmentIds || []).map(String);
+            const library = new Set((settings?.emailAttachments || []).map((a) => String(a._id)));
+            if (has('attachmentIds') && attachmentIds.some((id) => !library.has(id))) {
+                return common.returnResult(false, 400, 'One of the selected attachments no longer exists. Please refresh the page and try again.');
+            }
+            const maxCount = companyMasterData?.numberOfAttachmentsAllowed;
+            const total = attachmentIds.length + (attachInvoice ? 1 : 0);
+            if (maxCount != null && total > maxCount) {
+                return common.returnResult(false, 400, `A template can send at most ${maxCount} attachment(s), including the invoice. You selected ${total}.`);
+            }
+            if (has('attachmentIds')) fields.attachmentIds = attachmentIds;
+        }
+
+        if (imagesOn) {
+            const imageIds = has('imageIds') ? [...new Set(data.imageIds.map(String))] : (current?.imageIds || []).map(String);
+            const libraryImages = settings?.emailImages || [];
+            if (has('imageIds') && imageIds.some((id) => !libraryImages.some((img) => String(img._id) === id))) {
+                return common.returnResult(false, 400, 'One of the selected images no longer exists. Please refresh the page and try again.');
+            }
+            const maxCount = companyMasterData?.numberOfImageAllowed;
+            if (maxCount != null && imageIds.length > maxCount) {
+                return common.returnResult(false, 400, `A template can use at most ${maxCount} image(s). You selected ${imageIds.length}.`);
+            }
+            // Every {{image:name}} in the body must be one of the selected images.
+            const html = has('htmlBody') ? data.htmlBody : current?.htmlBody;
+            const selectedNames = new Set(libraryImages.filter((img) => imageIds.includes(String(img._id))).map((img) => img.name));
+            const missing = findImageNames(html).filter((name) => !selectedNames.has(name));
+            if (missing.length > 0) {
+                const one = missing.length === 1;
+                return common.returnResult(false, 400, `The body uses ${missing.map((n) => `{{image:${n}}}`).join(', ')}, but ${one ? 'that image is' : 'those images are'} not selected for this template (or no longer ${one ? 'exists' : 'exist'} in Company Settings).`);
+            }
+            if (has('imageIds')) fields.imageIds = imageIds;
+        }
+
+        return common.returnResult(true, 200, 'Content choices are valid', { fields });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Loads a stored file for an email, reusing bytes already read in this send.
+const loadAssetBuffer = async (asset, cache) => {
+    try {
+        const key = String(asset._id);
+        if (cache && cache.has(key)) return cache.get(key);
+        const buffer = await readStoredAsset(asset);
+        if (cache) cache.set(key, buffer);
+        return buffer;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Everything a template adds to an email besides its rendered text:
+//   { includeCompanyCc, includeCompanyBcc, cc, bcc, attachments, images,
+//     renderImages(html) -> html with {{image:name}} turned into inline images }
+// Platform default templates (isDefault) get the Company Settings CC/BCC and
+// nothing else. A file that can't be read is left out and logged - the email
+// still goes. `cache` (a Map) lets a many-recipient send read each file once.
+const buildTemplateEmailExtras = async ({ vendorId, template, isDefault, companyMasterData, websiteMasterData, companySettingsData, cache = null }) => {
+    try {
+        const extras = { includeCompanyCc: true, includeCompanyBcc: true, cc: [], bcc: [], attachments: [], images: [], renderImages: (html) => String(html || '').replace(IMAGE_TOKEN, '') };
+        if (isDefault || !template) return extras;
+
+        extras.includeCompanyCc = template.includeCompanyCcList !== false;
+        extras.includeCompanyBcc = template.includeCompanyBccList !== false;
+        if (isBothOn('isCcAndBccFeatureOn', websiteMasterData, companyMasterData)) {
+            extras.cc = template.ccList || [];
+            extras.bcc = template.bccList || [];
+        }
+
+        const selectedAttachmentIds = (template.attachmentIds || []).map(String);
+        if (selectedAttachmentIds.length && isBothOn('isAddingOfAttachmentAllowed', websiteMasterData, companyMasterData)) {
+            const entries = (companySettingsData?.emailAttachments || []).filter((a) => selectedAttachmentIds.includes(String(a._id)));
+            const assets = await FileAsset.find({ _id: { $in: entries.map((a) => a.fileAssetId) }, vendorId, status: 'A' }).lean();
+            for (const entry of entries) {
+                const asset = assets.find((f) => String(f._id) === String(entry.fileAssetId));
+                if (!asset) continue;
+                try {
+                    const content = await loadAssetBuffer(asset, cache);
+                    const extension = asset.extension ? `.${asset.extension}` : '';
+                    let filename = entry.displayName || entry.originalName || `attachment${extension}`;
+                    if (extension && !filename.toLowerCase().endsWith(extension)) filename += extension;
+                    extras.attachments.push({ filename, content, mimeType: asset.mimeType, size: content.length });
+                } catch (readErr) {
+                    logger.logWarning('Email attachment could not be read - sending without it', { vendorId, fileAssetId: asset._id, err: readErr });
+                }
+            }
+        }
+
+        const selectedImageIds = (template.imageIds || []).map(String);
+        if (selectedImageIds.length && isBothOn('isAddingOfImageAllowed', websiteMasterData, companyMasterData)) {
+            const usedNames = findImageNames(template.htmlBody);
+            const entries = (companySettingsData?.emailImages || []).filter((img) => selectedImageIds.includes(String(img._id)) && usedNames.includes(img.name));
+            const assets = await ImageAsset.find({ _id: { $in: entries.map((img) => img.imageAssetId) }, vendorId, status: 'A' }).lean();
+            const cidByName = {};
+            for (const entry of entries) {
+                const asset = assets.find((a) => String(a._id) === String(entry.imageAssetId));
+                if (!asset) continue;
+                try {
+                    const content = await loadAssetBuffer(asset, cache);
+                    const cid = `${entry.name}@email-image`;
+                    extras.images.push({ filename: entry.originalName || `${entry.name}.png`, content, mimeType: asset.mimeType, size: content.length, cid });
+                    cidByName[entry.name] = cid;
+                } catch (readErr) {
+                    logger.logWarning('Email image could not be read - sending without it', { vendorId, imageAssetId: asset._id, err: readErr });
+                }
+            }
+            extras.renderImages = (html) => String(html || '').replace(IMAGE_TOKEN, (match, name) => {
+                const cid = cidByName[name.toLowerCase()];
+                return cid ? `<img src="cid:${cid}" alt="${name}" style="max-width:100%;height:auto;" />` : '';
+            });
+        }
+
+        return extras;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Company Settings removed a library file - no template keeps pointing at it.
+const removeLibraryFileFromTemplates = async (vendorId, { attachmentId = null, imageId = null }) => {
+    try {
+        if (attachmentId) await EmailTemplateMaster.updateMany({ vendorId }, { $pull: { attachmentIds: attachmentId } });
+        if (imageId) await EmailTemplateMaster.updateMany({ vendorId }, { $pull: { imageIds: imageId } });
+    } catch (err) {
+        throw err;
+    }
+};
+
 const getTemplateCount = async (vendorId) => {
     try {
         const count = await EmailTemplateMaster.countDocuments({ vendorId, status: { $ne: 'D' } });
@@ -400,6 +635,11 @@ const getTemplateCount = async (vendorId) => {
 const addTemplate = async (vendorId, templateData, userId, companyMasterData, websiteMasterData) => {
     try {
         const { templateName, module, subject, htmlBody, textBody, stepSelection, stepCodes, confirmReassign } = templateData;
+
+        const choicesCheck = await resolveTemplateContentFields(vendorId, templateData, null, module || null, companyMasterData, websiteMasterData);
+        if (!choicesCheck.isSuccess) {
+            return choicesCheck;
+        }
         const trimmedName = templateName.trim();
 
         const moduleCheck = checkModuleAllowed(module, websiteMasterData, companyMasterData);
@@ -448,6 +688,7 @@ const addTemplate = async (vendorId, templateData, userId, companyMasterData, we
             subject,
             htmlBody,
             textBody: textBody || null,
+            ...choicesCheck.meta.fields,
             createdBy: userId
         });
 
@@ -506,6 +747,12 @@ const updateTemplate = async (vendorId, templateId, updateData, userId, companyM
                 plan = check.isSuccess ? check.meta.plan : null;
             }
         }
+
+        const choicesCheck = await resolveTemplateContentFields(vendorId, updateData, template, newModule, companyMasterData, websiteMasterData);
+        if (!choicesCheck.isSuccess) {
+            return choicesCheck;
+        }
+        Object.assign(template, choicesCheck.meta.fields);
 
         if (templateName !== undefined) {
             const trimmedName = templateName.trim();
@@ -630,7 +877,9 @@ const fetchAllTemplatesAdmin = async (vendorId, companySettingsData, companyMast
             orderStepOptions,
             hasOrderWorkflow: hasWorkflow,
             // Modules whose feature (courier / discount / Free Cash) is off - hidden on the page.
-            unavailableModules: getUnavailableModules(websiteMasterData, companyMasterData)
+            unavailableModules: getUnavailableModules(websiteMasterData, companyMasterData),
+            // CC/BCC, the Company Settings attachment/image library and the invoice option.
+            contentOptions: getTemplateContentOptions(companySettingsData, companyMasterData, websiteMasterData)
         });
     } catch (err) {
         throw err;
@@ -815,6 +1064,9 @@ const fetchTemplateById = async (vendorId, templateId) => {
 
 module.exports = {
     STEP_SELECTIONS,
+    buildTemplateEmailExtras,
+    removeLibraryFileFromTemplates,
+    isInvoiceOptionOn,
     isCourierFeatureOn,
     isModuleAvailable,
     resolveTemplateForModule,

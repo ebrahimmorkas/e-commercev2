@@ -90,13 +90,6 @@ const InvoiceSection = ({ draft, onChange, errors = {} }) => {
           onChange={(e) => set({ invoiceRoundOffToWhole: e.target.checked })}
           color={theme.switch.color}
         />
-        <Switch
-          label="Email the invoice when an order is placed"
-          description="Sends the customer their invoice PDF by email right after they order. Needs email sending and attachments to be allowed for your account, with PDF among the allowed attachment types. Customers without an email address are skipped."
-          checked={draft.emailInvoiceOnOrderPlaced}
-          onChange={(e) => set({ emailInvoiceOnOrderPlaced: e.target.checked })}
-          color={theme.switch.color}
-        />
       </div>
     </div>
   );

@@ -40,6 +40,51 @@ const emailTemplateMasterSchema = mongoose.Schema({
         type: String,
         default: null
     },
+
+    // --- What goes out with this template (see emailTemplateMasterService
+    // .buildTemplateEmailExtras). Each part only applies while its feature is
+    // on for the account; saved choices are kept (just unused) when it's off.
+    // Company Settings > Email CC/BCC lists - on by default, as every email
+    // got them before templates could choose.
+    includeCompanyCcList: {
+        type: Boolean,
+        default: true
+    },
+    includeCompanyBccList: {
+        type: Boolean,
+        default: true
+    },
+    // This template's own extra CC/BCC addresses (isCcAndBccFeatureOn).
+    ccList: {
+        type: [String],
+        default: []
+    },
+    bccList: {
+        type: [String],
+        default: []
+    },
+    // Which Company Settings attachments (CompanySettings.emailAttachments
+    // entry _ids) are attached - the library lives in Company Settings, a
+    // template only picks from it. Together with attachInvoice, at most
+    // CompanyMaster.numberOfAttachmentsAllowed.
+    attachmentIds: {
+        type: [mongoose.Types.ObjectId],
+        default: []
+    },
+    // Which Company Settings images (CompanySettings.emailImages entry _ids)
+    // this template may place in its body with {{image:name}}. At most
+    // CompanyMaster.numberOfImageAllowed.
+    imageIds: {
+        type: [mongoose.Types.ObjectId],
+        default: []
+    },
+    // Order templates only: attach the order's invoice PDF. Needs
+    // isInvoiceSendingFeatureInEmailOn and step-wise Order templates
+    // (isDifferentEmailTemplatesForOrderStepsOn); counts as one attachment.
+    attachInvoice: {
+        type: Boolean,
+        default: false
+    },
     status: {
         type: String,
         enum: ['I', 'A', 'D'],

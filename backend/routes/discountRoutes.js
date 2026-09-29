@@ -97,9 +97,10 @@ router.delete(
   discountController.deleteDiscount
 );
 
-// Public storefront route - no authenticate/authorize, only vendor context is needed.
+// Storefront route - logged-in customers only (discounts are never shown to guests).
 router.get(
   '/storefront/active',
+  authenticate,
   vendorDetection,
   ensureVendorDataCached,
   checkModuleAssigned('DISCOUNT'),

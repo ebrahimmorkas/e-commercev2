@@ -6,6 +6,7 @@ const logger = require('../utils/logger');
 const common = require('../utils/common');
 const imageUploadService = require('./imageUploadService');
 const fileUploadService = require('./fileUploadService');
+const emailTemplateMasterService = require('./emailTemplateMasterService');
 const CountryMaster = require('../models/CountryMaster');
 const StateMaster = require('../models/StateMaster');
 const CityMaster = require('../models/CityMaster');
@@ -702,6 +703,8 @@ const removeEmailAttachment = async (vendorId, userId, attachmentId) => {
         ).lean();
         await redisService.del(redisKeys.companySettings(vendorId));
 
+        await emailTemplateMasterService.removeLibraryFileFromTemplates(vendorId, { attachmentId: entry._id });
+
         logger.logInfo(1, 0, 'Email attachment removed', { vendorId, attachmentId });
         return common.returnResult(true, 200, 'Attachment removed successfully', emailContentLists(updated));
     } catch (err) {
@@ -790,6 +793,8 @@ const removeEmailImage = async (vendorId, userId, imageId) => {
             { new: true, projection: { emailAttachments: 1, emailImages: 1 } }
         ).lean();
         await redisService.del(redisKeys.companySettings(vendorId));
+
+        await emailTemplateMasterService.removeLibraryFileFromTemplates(vendorId, { imageId: entry._id });
 
         logger.logInfo(1, 0, 'Email image removed', { vendorId, imageId });
         return common.returnResult(true, 200, 'Image removed successfully', emailContentLists(updated));

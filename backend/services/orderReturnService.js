@@ -6,6 +6,7 @@ const common = require('../utils/common');
 const logger = require('../utils/logger');
 const { RETURN_EXCHANGE_ELIGIBLE_STEP_CODES } = require('../constants/orderStepConstants');
 const cartService = require('./cartService');
+const discountUsageService = require('./discountUsageService');
 
 // Flattens the order's cart into its checked-out line items, then keeps
 // only the ones whose live Product size still has an active return policy
@@ -247,6 +248,8 @@ const markReturnRefunded = async (vendorId, adminUserId, returnId, companyMaster
 
         if (order) {
             await cartService.refundFreeCashForReturn(vendorId, order, orderReturn, companyMasterData, websiteMasterData, companySettingsData, adminUserId);
+            // Only once the whole order has been returned and refunded.
+            await discountUsageService.releaseFirstOrderDiscountsIfFullyReturned(vendorId, order);
         }
 
         logger.logInfo(1, 0, 'Return marked refunded', { vendorId, returnId });
