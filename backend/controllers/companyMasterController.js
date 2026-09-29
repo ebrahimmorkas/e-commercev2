@@ -37,7 +37,6 @@ const getCompanyMasterData = async (req, res) => {
     return common.sendSuccess(res, 200, "Company master data fetched successfully", formatCompanyMasterForResponse(companyMasterData));
   } catch (error) {
     logger.logException('Error fetching company master data', { vendorId, error });
-    return common.sendError(res, 500, "Failed to fetch company master data");
   }
 };
 

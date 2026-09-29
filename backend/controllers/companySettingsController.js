@@ -161,7 +161,6 @@ const getCompanySettingsAdmin = async (req, res) => {
     return common.sendSuccess(res, 200, "Company settings fetched successfully", formatCompanySettingsForResponse(settings));
   } catch (error) {
     logger.logException('Error fetching company settings', { vendorId, error });
-    return common.sendError(res, 500, "Failed to fetch company settings");
   }
 };
 

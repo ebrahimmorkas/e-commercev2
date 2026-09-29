@@ -151,6 +151,13 @@ const userFreeCashSchema = new mongoose.Schema(
             default: []
         },
 
+        // When this customer got the "Free Cash Expiring Soon" email for this
+        // grant - sent once (see services/expiryReminderService.js).
+        expiryReminderSentAt: {
+            type: Date,
+            default: null
+        },
+
         status: {
             type: String,
             enum: ['I', 'A', 'D'],

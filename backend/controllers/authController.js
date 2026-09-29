@@ -73,7 +73,6 @@ const getRegistrationConfig = async (req, res) => {
         });
     } catch (err) {
         logException('Error while fetching registration config', err);
-        return sendError(res, 500, 'Failed to fetch registration config');
     }
 };
 
@@ -145,8 +144,6 @@ const register = async (req, res) => {
         return sendSuccess(res, newUser.statusCode, newUser.message, formatAuthUserForResponse(newUser.meta.user));
     } catch (err) {
         logException('Error while registering user', err);
-        // Must always respond - a catch that only logs leaves the client spinning.
-        return sendError(res, 500, 'Registration failed. Please try again.');
     }
 };
 

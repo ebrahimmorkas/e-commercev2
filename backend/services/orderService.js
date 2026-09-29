@@ -317,7 +317,7 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
         try {
             await order.save();
 
-            await cartService.consumeFreeCashForOrder(vendorId, cart.freeCash, order._id, userId, companySettingsData);
+            await cartService.consumeFreeCashForOrder(vendorId, cart.freeCash, order, userId, companySettingsData, companyMasterData, websiteMasterData);
 
             await commissionService.recordCommissionForOrder(order, companyMasterData);
 

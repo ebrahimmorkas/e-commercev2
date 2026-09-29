@@ -12,14 +12,22 @@ export const EMAIL_MODULE_OPTIONS = [
   { value: 'courierAssigned', label: 'Courier Assigned' },
   { value: 'courierChanged', label: 'Courier Changed' },
   { value: 'courierRemoved', label: 'Courier Removed' },
+  { value: 'discountAvailable', label: 'Discount Available' },
+  { value: 'discountExpiringSoon', label: 'Discount Expiring Soon' },
+  { value: 'freeCashCredited', label: 'Free Cash Credited' },
+  { value: 'freeCashUsed', label: 'Free Cash Used' },
+  { value: 'freeCashRefunded', label: 'Free Cash Refunded' },
+  { value: 'freeCashRevoked', label: 'Free Cash Revoked' },
+  { value: 'freeCashExpired', label: 'Free Cash Expired' },
+  { value: 'freeCashExpiringSoon', label: 'Free Cash Expiring Soon' },
 ];
 
-// Only offered while the courier feature is on (backend COURIER_EMAIL_MODULES).
-export const COURIER_MODULES = ['courierAssigned', 'courierChanged', 'courierRemoved'];
-
-/** The module options to offer, given whether the courier feature is on. */
-export const getModuleOptions = (isCourierFeatureOn) =>
-  EMAIL_MODULE_OPTIONS.filter((option) => isCourierFeatureOn || !COURIER_MODULES.includes(option.value));
+/**
+ * The module options to offer. unavailableModules comes from the backend
+ * (modules whose feature - courier / discount / Free Cash - is off).
+ */
+export const getModuleOptions = (unavailableModules = []) =>
+  EMAIL_MODULE_OPTIONS.filter((option) => !unavailableModules.includes(option.value));
 
 // The only module whose templates can be split by order step
 // (isDifferentEmailTemplatesForOrderStepsOn).

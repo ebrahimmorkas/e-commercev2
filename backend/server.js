@@ -15,6 +15,7 @@ const logger = require('./utils/logger.js')
 const {connectRedis} = require('./config/redisConfig');
 const realtimeService = require('./services/realtimeService');
 const abandonedCartService = require('./services/abandonedCartService');
+const expiryReminderService = require('./services/expiryReminderService');
 // Middlewares
 const { requestContext } = require('./middlewares/requestContext');
 const vendorDetection = require('./middlewares/vendorDetection');
@@ -150,6 +151,8 @@ app.use(require('./middlewares/errorHandler'));
 
 realtimeService.init(httpServer);
 abandonedCartService.startAbandonedCartScanner();
+// Discount / Free Cash "Expiring Soon" emails.
+expiryReminderService.startExpiryReminderScanner();
 
 const PORT = process.env.PORT || 5000;
 httpServer.listen(PORT, () => {

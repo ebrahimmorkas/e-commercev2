@@ -13,6 +13,7 @@ import CartOrderSection from '../components/CartOrderSection';
 import PaymentBankSection from '../components/PaymentBankSection';
 import EmailSection from '../components/EmailSection';
 import FreeCashSection from '../components/FreeCashSection';
+import DiscountFreeCashSection from '../components/DiscountFreeCashSection';
 import InvoiceSection from '../components/InvoiceSection';
 import AbandonedCartSection from '../components/AbandonedCartSection';
 import ShippingSection from '../components/ShippingSection';
@@ -70,6 +71,7 @@ const CompanySettingsPage = () => {
     { key: 'email', label: 'Email', content: <EmailSection {...sectionProps} /> },
     { key: 'invoice', label: 'Invoice', content: <InvoiceSection {...sectionProps} errors={formErrors} /> },
     { key: 'freeCash', label: 'Free Cash', content: <FreeCashSection {...sectionProps} /> },
+    { key: 'discountFreeCash', label: 'Discount and Free Cash', content: <DiscountFreeCashSection {...sectionProps} /> },
     { key: 'abandonedCart', label: 'Abandoned Cart', content: <AbandonedCartSection {...sectionProps} /> },
     // Hidden entirely unless the platform has enabled shipping pricing for this vendor.
     ...(companyMaster?.isShippingPriceFeatureOn

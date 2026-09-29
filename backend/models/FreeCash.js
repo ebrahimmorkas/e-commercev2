@@ -125,6 +125,14 @@ const freeCashSchema = new mongoose.Schema(
             default: ""
         },
 
+        // When the "Free Cash Expiring Soon" email went out to ALL customers
+        // for a campaign that isn't user-targeted (targeted campaigns track
+        // this per grant, on UserFreeCash). Cleared when the end date changes.
+        expiryReminderSentAt: {
+            type: Date,
+            default: null
+        },
+
         status: {
             type: String,
             enum: ['I', 'A', 'D'],

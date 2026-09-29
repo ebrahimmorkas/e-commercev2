@@ -5,7 +5,7 @@ const redisService = require('./redisService');
 const redisKeys = require('../utils/redisKeys');
 const { validateContentRules } = require('./emailService');
 const orderStepService = require('./orderStepService');
-const { EMAIL_MODULES, COURIER_EMAIL_MODULES, getEmailModuleLabel } = require('../constants/emailModuleConstants');
+const { EMAIL_MODULES, VALID_EMAIL_MODULES, MODULE_REQUIRED_FEATURE, getEmailModuleLabel } = require('../constants/emailModuleConstants');
 const { SIDE_STEP_NAMES } = require('../constants/orderStepConstants');
 const logger = require('../utils/logger');
 const common = require('../utils/common');
@@ -44,11 +44,31 @@ const isCourierFeatureOn = (websiteMasterData, companyMasterData) => {
     }
 };
 
-// A courier email module can only be picked while the courier feature is on.
+// A module that belongs to a feature (courier / discount / Free Cash - see
+// MODULE_REQUIRED_FEATURE) only exists while that feature is on at BOTH levels.
+const isModuleAvailable = (module, websiteMasterData, companyMasterData) => {
+    try {
+        const feature = MODULE_REQUIRED_FEATURE[module];
+        if (!feature) return true;
+        return websiteMasterData?.[feature] === true && companyMasterData?.[feature] === true;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// The modules to hide on the Email Templates page right now.
+const getUnavailableModules = (websiteMasterData, companyMasterData) => {
+    try {
+        return VALID_EMAIL_MODULES.filter((module) => !isModuleAvailable(module, websiteMasterData, companyMasterData));
+    } catch (err) {
+        throw err;
+    }
+};
+
 const checkModuleAllowed = (module, websiteMasterData, companyMasterData) => {
     try {
-        if (module && COURIER_EMAIL_MODULES.includes(module) && !isCourierFeatureOn(websiteMasterData, companyMasterData)) {
-            return common.returnResult(false, 403, `The ${getEmailModuleLabel(module)} module is not available because the courier feature is turned off for your account.`);
+        if (module && !isModuleAvailable(module, websiteMasterData, companyMasterData)) {
+            return common.returnResult(false, 403, `The ${getEmailModuleLabel(module)} module is not available because that feature is turned off for your account.`);
         }
         return common.returnResult(true, 200, 'Module allowed');
     } catch (err) {
@@ -609,8 +629,8 @@ const fetchAllTemplatesAdmin = async (vendorId, companySettingsData, companyMast
             isStepWiseOrderTemplatesOn: isStepWiseOn,
             orderStepOptions,
             hasOrderWorkflow: hasWorkflow,
-            // Hides the courier modules on the page when the feature is off.
-            isCourierFeatureOn: isCourierFeatureOn(websiteMasterData, companyMasterData)
+            // Modules whose feature (courier / discount / Free Cash) is off - hidden on the page.
+            unavailableModules: getUnavailableModules(websiteMasterData, companyMasterData)
         });
     } catch (err) {
         throw err;
@@ -796,6 +816,7 @@ const fetchTemplateById = async (vendorId, templateId) => {
 module.exports = {
     STEP_SELECTIONS,
     isCourierFeatureOn,
+    isModuleAvailable,
     resolveTemplateForModule,
     getTemplateCount,
     addTemplate,

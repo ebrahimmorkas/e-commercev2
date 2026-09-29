@@ -24,7 +24,9 @@ const freeCashFieldsSchema = {
     }),
     validAbove: Joi.number().min(0).label('Valid above amount'),
     canBeUsedWithOtherDiscounts: Joi.boolean().label('Can be used with other discounts'),
-    remarks: Joi.string().trim().allow('').max(500).label('Remarks')
+    remarks: Joi.string().trim().allow('').max(500).label('Remarks'),
+    // "Notify customers by email" checkbox - see promotionEmailService.
+    notifyCustomers: Joi.boolean().label('Notify customers by email')
 };
 
 const createFreeCashSchema = Joi.object(freeCashFieldsSchema);
@@ -46,7 +48,8 @@ const updateFreeCashSchema = Joi.object({
     validAbove: freeCashFieldsSchema.validAbove,
     canBeUsedWithOtherDiscounts: freeCashFieldsSchema.canBeUsedWithOtherDiscounts,
     remarks: freeCashFieldsSchema.remarks,
-    status: Joi.string().valid('A', 'I').label('Status')
+    status: Joi.string().valid('A', 'I').label('Status'),
+    notifyCustomers: freeCashFieldsSchema.notifyCustomers
 });
 
 const freeCashIdParamSchema = Joi.object({
@@ -70,7 +73,9 @@ const bulkUserEmailRowSchema = Joi.object({
 // --- Bulk status / delete (multi-select checkbox actions) --------------------
 const bulkFreeCashStatusSchema = Joi.object({
     freeCashIds: Joi.array().items(objectId()).min(1).max(50).unique().required().label('Free Cash IDs'),
-    status: Joi.string().valid('A', 'I').required().label('Status')
+    status: Joi.string().valid('A', 'I').required().label('Status'),
+    // Only used when activating - emails the customers again.
+    notifyCustomers: Joi.boolean().default(false).label('Notify customers by email')
 });
 
 const bulkDeleteFreeCashSchema = Joi.object({

@@ -456,6 +456,37 @@ const companySettingsSchema = new mongoose.Schema({
   },
   // End of Email
 
+  // Start of Discount and Free Cash emails (Company Settings > "Discount and
+  // Free Cash" tab - see services/promotionEmailService.js).
+  // TARGETED = only the customers a discount / Free Cash is given to (its
+  // specific users or user groups); ALL = every active customer of the store
+  // when it isn't user-targeted.
+  discountEmailRecipients: {
+    type: String,
+    enum: ['TARGETED', 'ALL'],
+    default: 'TARGETED'
+  },
+  // How many days before a discount's end date the "Discount Expiring Soon" email goes out.
+  discountExpiryReminderDays: {
+    type: Number,
+    min: 1,
+    max: 60,
+    default: 3
+  },
+  freeCashEmailRecipients: {
+    type: String,
+    enum: ['TARGETED', 'ALL'],
+    default: 'TARGETED'
+  },
+  // How many days before a Free Cash's end date the "Free Cash Expiring Soon" email goes out.
+  freeCashExpiryReminderDays: {
+    type: Number,
+    min: 1,
+    max: 60,
+    default: 3
+  },
+  // End of Discount and Free Cash emails
+
   // Start of Email Template
   // Which of the vendor's EmailTemplateMaster templates each module sends.
   // At most one entry per template (enforced in emailTemplateMasterService,

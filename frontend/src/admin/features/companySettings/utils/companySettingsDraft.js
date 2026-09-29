@@ -70,6 +70,12 @@ export const emptyDraft = () => ({
   bccList: [],
   useDefaultEmailTemplate: true,
 
+  // "Discount and Free Cash" tab
+  discountEmailRecipients: 'TARGETED',
+  discountExpiryReminderDays: 3,
+  freeCashEmailRecipients: 'TARGETED',
+  freeCashExpiryReminderDays: 3,
+
   isPaymentGatewayFeatureOn: true,
   bankAccountHolderName: '',
   bankName: '',
@@ -167,6 +173,11 @@ export const mapApiSettingsToDraft = (doc) => ({
   // Missing on older documents = the schema default (true).
   useDefaultEmailTemplate: doc.useDefaultEmailTemplate !== false,
 
+  discountEmailRecipients: doc.discountEmailRecipients || 'TARGETED',
+  discountExpiryReminderDays: doc.discountExpiryReminderDays ?? 3,
+  freeCashEmailRecipients: doc.freeCashEmailRecipients || 'TARGETED',
+  freeCashExpiryReminderDays: doc.freeCashExpiryReminderDays ?? 3,
+
   isPaymentGatewayFeatureOn: !!doc.isPaymentGatewayFeatureOn,
   bankAccountHolderName: doc.bankAccountHolderName || '',
   bankName: doc.bankName || '',
@@ -221,6 +232,7 @@ export const buildSavePayload = (draft, { bankTransferEnabled = false } = {}) =>
   const {
     companyLogo, paymentScanner, partnerCertificate,
     ccList, bccList,
+    discountExpiryReminderDays, freeCashExpiryReminderDays,
     orderCancellationNotAllowedAfterStep,
     markPaymentCompletedAtStep,
     deliveryAgentFromStep,
@@ -250,6 +262,9 @@ export const buildSavePayload = (draft, { bankTransferEnabled = false } = {}) =>
     deliveryAgentToStep: deliveryAgentToStep || null,
     ccList: (ccList || []).filter(Boolean),
     bccList: (bccList || []).filter(Boolean),
+    // A cleared days box falls back to the default of 3.
+    discountExpiryReminderDays: Number(discountExpiryReminderDays) || 3,
+    freeCashExpiryReminderDays: Number(freeCashExpiryReminderDays) || 3,
   };
 
   if (bankTransferEnabled) {

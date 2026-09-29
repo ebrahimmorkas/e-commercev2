@@ -15,6 +15,8 @@ export const needsExcelFor = (giveFreeCashTo) => {
 
 export const emptyDraft = () => ({
   _id: null,
+  // "Notify customers by email" - a per-save choice, never stored on the campaign.
+  notifyCustomers: false,
   freeCashName: '',
   freeCashAmount: '',
   maxCashUsagePerOrder: '',
@@ -45,6 +47,7 @@ export const emptyDraft = () => ({
  */
 export const mapApiFreeCashToDraft = (doc) => ({
   _id: doc._id,
+  notifyCustomers: false,
   freeCashName: doc.freeCashName || '',
   freeCashAmount: doc.freeCashAmount ?? '',
   maxCashUsagePerOrder: doc.maxCashUsagePerOrder ?? '',
@@ -87,6 +90,7 @@ export const buildSubmitFields = (draft, { includeStatus = false } = {}) => {
     validAbove: Number(draft.validAbove) || 0,
     canBeUsedWithOtherDiscounts: !!draft.canBeUsedWithOtherDiscounts,
     remarks: draft.remarks || '',
+    notifyCustomers: !!draft.notifyCustomers,
   };
 
   if (draft.maxCashUsagePerOrder !== '' && draft.maxCashUsagePerOrder !== null && draft.maxCashUsagePerOrder !== undefined) {

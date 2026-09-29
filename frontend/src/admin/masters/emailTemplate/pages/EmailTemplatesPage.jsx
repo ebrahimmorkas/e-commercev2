@@ -56,7 +56,7 @@ const EmailTemplatesPage = () => {
     assignments,
     numberOfTemplatesAllowed,
     stepWise,
-    isCourierFeatureOn,
+    unavailableModules,
     loading,
     error,
     mutating,
@@ -517,7 +517,7 @@ const EmailTemplatesPage = () => {
           assignments={assignments}
           templates={templates}
           stepWise={stepWise}
-          isCourierFeatureOn={isCourierFeatureOn}
+          unavailableModules={unavailableModules}
         />
       </Modal>
 
@@ -556,7 +556,7 @@ const EmailTemplatesPage = () => {
           <Dropdown
             label="Module"
             name="changeModule"
-            options={getModuleOptions(isCourierFeatureOn)}
+            options={getModuleOptions(unavailableModules)}
             value={changeModuleModal.module}
             onChange={(val) => setChangeModuleModal((prev) => ({ ...prev, module: val || '' }))}
             placeholder="Select a module"
