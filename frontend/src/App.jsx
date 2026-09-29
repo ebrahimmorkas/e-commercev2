@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useSessionStorageState } from './hooks/useSessionStorageState';
 import AnnouncementsPage from './admin/features/anoucements/pages/AnnouncementsPage';
 import CategoriesPage from './admin/masters/category/pages/CategoriesPage';
@@ -19,12 +20,12 @@ import DeliveryAgentsPage from './admin/features/deliveryAgents/pages/DeliveryAg
 import CouriersPage from './admin/masters/courier/pages/CouriersPage';
 import MyDeliveriesPage from './admin/features/myDeliveries/pages/MyDeliveriesPage';
 import { DeliveryAgentIcon } from './components/ui/Sidebar/icons';
-import LoginPage from './admin/features/login/pages/LoginPage';
 import { useAuth } from './admin/features/login/hooks/useAuth';
 import { useAssignedModules } from './admin/modules/hooks/useAssignedModules';
 import Spinner from './components/common/Spinner';
 import EmptyState from './components/common/EmptyState';
 import Sidebar, { DEFAULT_NAV_ITEMS, filterNavItemsByAssignedModules } from './components/ui/Sidebar';
+import { useStorefrontCompanySettings } from './client/features/companySettings/hooks/useStorefrontCompanySettings';
 
 const PAGE_LABELS = DEFAULT_NAV_ITEMS.reduce((acc, item) => {
   acc[item.key] = item.label;
@@ -38,6 +39,8 @@ function App() {
   const { isAuthenticated, isLoading, user, logout } = useAuth();
   const isDeliveryAgent = user?.role === 'deliveryAgent';
   const { assignedCodes } = useAssignedModules(isAuthenticated && !isDeliveryAgent);
+  const { companySettings } = useStorefrontCompanySettings();
+  const sidebarSubtitle = companySettings?.companyName;
   const navItems = filterNavItemsByAssignedModules(DEFAULT_NAV_ITEMS, assignedCodes);
   const [activePage, setActivePage] = useSessionStorageState('ecom.admin.activePage', 'announcements');
 
@@ -48,7 +51,17 @@ function App() {
   const isActivePageAllowed = navItems.some((item) => item.key === activePage);
   const effectiveActivePage = isActivePageAllowed ? activePage : (navItems[0]?.key ?? activePage);
 
-  if (isLoading) {
+  // No admin login form of its own anymore - an unauthenticated /admin visit
+  // (direct nav, a dropped session, whatever) bounces to the storefront,
+  // where signing in with an admin/delivery-agent account redirects back
+  // here (see client/features/auth/context/AuthProvider.jsx).
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      window.location.href = '/';
+    }
+  }, [isLoading, isAuthenticated]);
+
+  if (isLoading || !isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <Spinner size="lg" />
@@ -56,14 +69,10 @@ function App() {
     );
   }
 
-  if (!isAuthenticated) {
-    return <LoginPage />;
-  }
-
   if (isDeliveryAgent) {
     return (
       <div className="App md:flex min-h-screen bg-gray-50">
-        <Sidebar items={AGENT_NAV_ITEMS} activeKey="myDeliveries" onNavigate={() => {}} user={user} onLogout={logout} />
+        <Sidebar items={AGENT_NAV_ITEMS} activeKey="myDeliveries" onNavigate={() => {}} user={user} onLogout={logout} subtitle={sidebarSubtitle} />
         <div className="flex-1 min-w-0">
           <MyDeliveriesPage />
         </div>
@@ -73,7 +82,7 @@ function App() {
 
   return (
     <div className="App md:flex min-h-screen bg-gray-50">
-      <Sidebar items={navItems} activeKey={effectiveActivePage} onNavigate={setActivePage} user={user} onLogout={logout} />
+      <Sidebar items={navItems} activeKey={effectiveActivePage} onNavigate={setActivePage} user={user} onLogout={logout} subtitle={sidebarSubtitle} />
 
       <div className="flex-1 min-w-0">
         {effectiveActivePage === 'announcements' ? (

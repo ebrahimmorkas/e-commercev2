@@ -26,6 +26,11 @@ const AuthProvider = ({ children }) => {
   // logged in before, in which case the mount effect below needs to confirm
   // via a silent refresh first.
   const [isLoading, setIsLoading] = useState(() => hasSessionHint());
+  // True for the brief window between clicking logout and the browser
+  // actually navigating away to '/' - without it, clearing `user` re-renders
+  // App.jsx with isAuthenticated:false and flashes the admin LoginPage
+  // before the navigation below takes effect.
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const toast = useToast();
 
   // Clears this tab's in-memory session only - used when the account behind
@@ -104,18 +109,22 @@ const AuthProvider = ({ children }) => {
   }, []);
 
   const logout = useCallback(async () => {
+    setIsLoggingOut(true);
     try {
       await authApi.logout();
     } catch {
       // Best-effort - clear the local session regardless of whether the server call succeeded
     }
     clearSession();
-    toast.success('Logged out successfully');
-  }, [clearSession, toast]);
+    // main.jsx only ever picks the admin bundle for /admin*, so getting back
+    // to the storefront after logout (instead of this same app's own login
+    // form) needs a real navigation, not client state.
+    window.location.href = '/';
+  }, [clearSession]);
 
   const value = useMemo(
-    () => ({ user, isAuthenticated: !!user, isLoading, login, logout }),
-    [user, isLoading, login, logout]
+    () => ({ user, isAuthenticated: !!user, isLoading: isLoading || isLoggingOut, login, logout }),
+    [user, isLoading, isLoggingOut, login, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

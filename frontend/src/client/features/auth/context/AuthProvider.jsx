@@ -19,9 +19,10 @@ import Spinner from '../../../../components/common/Spinner';
  * admin/features/login/context/AuthProvider.jsx as a separate copy since the
  * admin and client apps never mount at the same time (see main.jsx) - but
  * the underlying refresh-token cookie IS shared (see cookieOptions.js), so
- * both providers check `user.role` and bounce admin-role sessions back to
- * /admin rather than seating them here.
+ * both providers check `user.role` and bounce admin/delivery-agent sessions
+ * back to /admin rather than seating them here.
  */
+const ADMIN_PANEL_ROLES = ['admin', 'deliveryAgent'];
 const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   // Starts false (nothing to wait on) unless there's a hint this browser has
@@ -72,10 +73,10 @@ const AuthProvider = ({ children }) => {
         const data = await authApi.refreshToken();
         if (cancelled) return;
         // The refresh-token cookie is shared with the admin session - if an
-        // admin ends up here (e.g. they typed over the /admin path segment),
-        // don't seat them as a "logged in" storefront customer. Send them
-        // back to the admin panel instead.
-        if (data.user?.role === 'admin') {
+        // admin or delivery agent ends up here (e.g. they typed over the
+        // /admin path segment), don't seat them as a "logged in" storefront
+        // customer. Send them back to the admin panel instead.
+        if (ADMIN_PANEL_ROLES.includes(data.user?.role)) {
           clearLocalState();
           setIsLeavingForAdmin(true);
           window.location.replace('/admin');
@@ -100,9 +101,9 @@ const AuthProvider = ({ children }) => {
     try {
       const data = await authApi.login(identifier, password);
       setSessionHint();
-      if (data.user?.role === 'admin') {
-        // An admin signing in through the storefront login belongs in the
-        // admin panel, not browsing the storefront with an admin session.
+      if (ADMIN_PANEL_ROLES.includes(data.user?.role)) {
+        // An admin/delivery-agent signing in through the storefront login
+        // belongs in the admin panel, not browsing the storefront.
         setAccessToken(data.accessToken);
         setIsLeavingForAdmin(true);
         window.location.href = '/admin';

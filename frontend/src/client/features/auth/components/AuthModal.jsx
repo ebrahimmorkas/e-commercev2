@@ -4,10 +4,44 @@ import { useAuth } from '../hooks/useAuth';
 import { getRegistrationConfig } from '../api/authApi';
 import { useSignupLocations } from '../hooks/useSignupLocations';
 import { useToast } from '../../../../components/common/Toast';
+import { useStorefrontCompanySettings } from '../../companySettings/hooks/useStorefrontCompanySettings';
 import htmLogo from '../../../../assets/htm_logo.jpeg';
 
 const inputClass =
   'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500';
+
+const EyeIcon = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
+const EyeOffIcon = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M3 3l18 18" />
+    <path d="M10.6 5.1A10.7 10.7 0 0112 5c7 0 10.5 7 10.5 7a13.4 13.4 0 01-3.1 4.1M6.6 6.6C3.9 8.3 1.5 12 1.5 12s3.5 7 10.5 7a10.6 10.6 0 004.4-.9" />
+    <path d="M9.9 9.9a3 3 0 004.2 4.2" />
+  </svg>
+);
+
+const PasswordInput = ({ className, ...props }) => {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="relative">
+      <input {...props} type={visible ? 'text' : 'password'} className={`${className} pr-10`} />
+      <button
+        type="button"
+        onClick={() => setVisible((v) => !v)}
+        className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-slate-600 cursor-pointer"
+        aria-label={visible ? 'Hide password' : 'Show password'}
+        tabIndex={-1}
+      >
+        {visible ? <EyeOffIcon className="w-4.5 h-4.5" /> : <EyeIcon className="w-4.5 h-4.5" />}
+      </button>
+    </div>
+  );
+};
 
 const EMPTY_REGISTER_FORM = {
   name: '',
@@ -37,6 +71,9 @@ const EMPTY_REGISTER_FORM = {
 const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
   const { login, register } = useAuth();
   const toast = useToast();
+  const { companySettings } = useStorefrontCompanySettings();
+  const logoSrc = companySettings?.companyLogo?.url || htmLogo;
+  const logoAlt = companySettings?.companyName || 'Sign in';
   const [mode, setMode] = useState(initialMode);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -150,7 +187,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
       onClose={resetAndClose}
       title={
         <span className="flex items-center gap-2.5">
-          <img src={htmLogo} alt="HTM" className="h-8 w-auto object-contain" />
+          <img src={logoSrc} alt={logoAlt} className="h-8 w-auto object-contain" />
           {mode === 'login' ? 'Sign in' : 'Create your account'}
         </span>
       }
@@ -174,8 +211,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
             required
             disabled={loading}
           />
-          <input
-            type="password"
+          <PasswordInput
             name="password"
             placeholder="Password"
             value={loginForm.password}
@@ -344,8 +380,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
               )}
             </div>
           )}
-          <input
-            type="password"
+          <PasswordInput
             placeholder="Password"
             value={registerForm.password}
             onChange={(e) => setRegisterForm((f) => ({ ...f, password: e.target.value }))}
