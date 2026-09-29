@@ -169,6 +169,29 @@ const companySettingsSchema = new mongoose.Schema({
     }
   },
 
+  // The vendor's downloadable catalogue (PDF), shown as a storefront navbar
+  // icon. Gated by CompanyMaster.isCatalogueDownloadFeatureOn (vendor-level only;
+  // no WebsiteMaster switch). Stored via fileUploadService as a FileAsset.
+  catalogue: {
+    fileAssetId: {
+      type: mongoose.Types.ObjectId,
+      ref: 'FileAsset',
+      default: null
+    },
+    originalName: {
+      type: String,
+      default: null
+    },
+    size: {
+      type: Number,
+      default: null
+    },
+    uploadedAt: {
+      type: Date,
+      default: null
+    }
+  },
+
   // Policies (stored as HTML from React Quill)
   privacyPolicy: {
     type: String,

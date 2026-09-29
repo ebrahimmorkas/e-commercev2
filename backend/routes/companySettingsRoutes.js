@@ -1,5 +1,5 @@
 const express = require('express');
-const { createCompanySettings, updateCompanySettings, getCompanySettings, getCompanySettingsAdmin, getAssignedOrderSteps, assignEmailTemplate, unassignEmailTemplate, addEmailAttachment, removeEmailAttachment, addEmailImage, removeEmailImage, getEmailAccount, saveEmailAccount, removeEmailAccount, sendTestEmail } = require('../controllers/companySettingsController');
+const { createCompanySettings, updateCompanySettings, getCompanySettings, getCompanySettingsAdmin, getAssignedOrderSteps, assignEmailTemplate, unassignEmailTemplate, addEmailAttachment, removeEmailAttachment, addEmailImage, removeEmailImage, getEmailAccount, saveEmailAccount, removeEmailAccount, sendTestEmail, uploadCatalogue, removeCatalogue, downloadCatalogue } = require('../controllers/companySettingsController');
 const { createCompanySettingsSchema, updateCompanySettingsSchema, assignEmailTemplateSchema, unassignEmailTemplateSchema, addEmailAttachmentSchema, addEmailImageSchema, emailContentIdParamSchema, saveEmailAccountSchema, sendTestEmailSchema } = require('../middlewares/validations/companySettingsValidations');
 const emailContentUpload = require('../middlewares/emailContentUpload');
 const validate = require('../middlewares/validate');
@@ -41,5 +41,11 @@ router.get('/email-account', ...emailContentAccess, getEmailAccount);
 router.put('/email-account', ...emailContentAccess, validate(saveEmailAccountSchema, 'body'), saveEmailAccount);
 router.delete('/email-account', ...emailContentAccess, removeEmailAccount);
 router.post('/email-account/test', ...emailContentAccess, validate(sendTestEmailSchema, 'body'), sendTestEmail);
+
+// Catalogue PDF: upload/remove from Company Settings (admin), download from the
+// storefront navbar (public; 404 unless the feature is on and a PDF exists).
+router.post('/catalogue', ...emailContentAccess, emailContentUpload.single('file'), uploadCatalogue);
+router.delete('/catalogue', ...emailContentAccess, removeCatalogue);
+router.get('/catalogue/download', downloadCatalogue);
 
 module.exports = router;

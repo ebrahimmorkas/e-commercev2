@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import useSessionStorageState from '../../../../hooks/useSessionStorageState';
 import Card from '../../../../components/common/Card';
 import Tabs from '../../../../components/common/Tabs';
 import Button from '../../../../components/common/Buttons';
@@ -32,7 +33,8 @@ const CompanySettingsPage = () => {
   // Email attachments/images - saved on their own, never through the draft/Save.
   const emailContent = useEmailContent(settings);
   const [draft, setDraft] = useState(emptyDraft());
-  const [activeTab, setActiveTab] = useState('general');
+  // Persisted so a refresh lands back on the same tab.
+  const [storedTab, setActiveTab] = useSessionStorageState('ecom.admin.companySettings.tab', 'general');
   const [formErrors, setFormErrors] = useState({});
   const toast = useToast();
 
@@ -45,11 +47,15 @@ const CompanySettingsPage = () => {
 
   const patchDraft = (patch) => setDraft((prev) => ({ ...prev, ...patch }));
 
+  // Admin name/email are only enforced while the General tab (where they live)
+  // is open; from any other tab a blank pair is left out of the save instead.
   const validate = () => {
     const nextErrors = {};
-    if (!draft.adminName.trim()) nextErrors.adminName = 'Admin name is required';
-    if (!draft.adminEmail.trim()) nextErrors.adminEmail = 'Admin email is required';
-    if (draft.taxRegistrationNumber && !/^\d{15}$/.test(draft.taxRegistrationNumber)) {
+    if (activeTab === 'general') {
+      if (!draft.adminName.trim()) nextErrors.adminName = 'Admin name is required';
+      if (!draft.adminEmail.trim()) nextErrors.adminEmail = 'Admin email is required';
+    }
+    if (isInvoiceTabOn && draft.taxRegistrationNumber && !/^\d{15}$/.test(draft.taxRegistrationNumber)) {
       nextErrors.taxRegistrationNumber = 'TRN must be exactly 15 digits';
     }
     if (invalidEmails(draft.ccList).length || invalidEmails(draft.bccList).length) {
@@ -62,9 +68,7 @@ const CompanySettingsPage = () => {
   const handleSave = async () => {
     const errors = validate();
     if (Object.keys(errors).length > 0) {
-      // Jump to the tab that holds the first problem, and say so - the jump alone is easy to miss.
       if (errors.adminName || errors.adminEmail) {
-        setActiveTab('general');
         toast.error('Not saved - please fill in the fields marked in red on the General tab.');
       } else if (errors.taxRegistrationNumber) {
         setActiveTab('invoice');
@@ -75,9 +79,29 @@ const CompanySettingsPage = () => {
       }
       return;
     }
+    // The very first save creates the record, and the backend needs the admin
+    // name/email for that - so it can only happen from the General tab.
+    if (!exists && (!draft.adminName.trim() || !draft.adminEmail.trim())) {
+      setActiveTab('general');
+      setFormErrors({
+        adminName: draft.adminName.trim() ? undefined : 'Admin name is required',
+        adminEmail: draft.adminEmail.trim() ? undefined : 'Admin email is required',
+      });
+      toast.error('Fill in the Admin Name and Admin Email on the General tab to create your settings.');
+      return;
+    }
     const { fields, files } = buildSavePayload(draft, { bankTransferEnabled: !!companyMaster?.showPaymentQRCodeAndBankDetails });
+    if (!fields.adminName?.trim()) delete fields.adminName;
+    if (!fields.adminEmail?.trim()) delete fields.adminEmail;
     await save(fields, files);
   };
+
+  // A feature switched off in CompanyMaster/WebsiteMaster is hidden here
+  // (companyMaster flags already hold the combined value). A vendor's own
+  // Company Settings toggle is different: it stays visible so they can turn it
+  // back on. Unknown (master data not loaded) shows everything.
+  const flagOn = (flag) => companyMaster?.[flag] !== false;
+  const isInvoiceTabOn = flagOn('isPDFDownloadableFeatureOn');
 
   const sectionProps = { draft, onChange: patchDraft };
   // The master email switch (WebsiteMaster AND CompanyMaster); before the
@@ -89,9 +113,9 @@ const CompanySettingsPage = () => {
   const tabs = [
     { key: 'general', label: 'General', content: <GeneralInfoSection {...sectionProps} errors={formErrors} /> },
     { key: 'policies', label: 'Policies', content: <PoliciesSection {...sectionProps} /> },
-    { key: 'storefront', label: 'Storefront', content: <StorefrontSection {...sectionProps} companyMaster={companyMaster} /> },
+    { key: 'storefront', label: 'Storefront', content: <StorefrontSection {...sectionProps} companyMaster={companyMaster} catalogue={settings?.catalogue || null} settingsExist={exists} /> },
     { key: 'product', label: 'Product', content: <ProductSection {...sectionProps} /> },
-    { key: 'cartOrder', label: 'Cart & Order', content: <CartOrderSection {...sectionProps} orderSteps={orderSteps} /> },
+    { key: 'cartOrder', label: 'Cart & Order', content: <CartOrderSection {...sectionProps} orderSteps={orderSteps} companyMaster={companyMaster} /> },
     { key: 'payment', label: 'Payment & Bank', content: <PaymentBankSection {...sectionProps} companyMaster={companyMaster} /> },
     // Email and its Discount/Free Cash email settings only while email is on
     // for the account (the master isSendingEmailFeatureOn switch).
@@ -112,17 +136,26 @@ const CompanySettingsPage = () => {
           },
         ]
       : []),
-    { key: 'invoice', label: 'Invoice', content: <InvoiceSection {...sectionProps} errors={formErrors} /> },
-    { key: 'freeCash', label: 'Free Cash', content: <FreeCashSection {...sectionProps} /> },
-    ...(isEmailOn
+    ...(isInvoiceTabOn
+      ? [{ key: 'invoice', label: 'Invoice', content: <InvoiceSection {...sectionProps} errors={formErrors} /> }]
+      : []),
+    ...(flagOn('isFreeCashFeatureOn')
+      ? [{ key: 'freeCash', label: 'Free Cash', content: <FreeCashSection {...sectionProps} companyMaster={companyMaster} /> }]
+      : []),
+    ...(isEmailOn && (flagOn('isDiscountFeatureOn') || flagOn('isFreeCashFeatureOn'))
       ? [{ key: 'discountFreeCash', label: 'Discount and Free Cash', content: <DiscountFreeCashSection {...sectionProps} /> }]
       : []),
-    { key: 'abandonedCart', label: 'Abandoned Cart', content: <AbandonedCartSection {...sectionProps} /> },
+    ...(flagOn('isAbondonedCartFeatureOn')
+      ? [{ key: 'abandonedCart', label: 'Abandoned Cart', content: <AbandonedCartSection {...sectionProps} /> }]
+      : []),
     // Hidden entirely unless the platform has enabled shipping pricing for this vendor.
     ...(companyMaster?.isShippingPriceFeatureOn
       ? [{ key: 'shipping', label: 'Shipping', content: <ShippingSection companyMaster={companyMaster} /> }]
       : []),
   ];
+
+  // A stored tab that isn't available for this vendor (e.g. Email off) falls back to the first.
+  const activeTab = tabs.some((t) => t.key === storedTab) ? storedTab : tabs[0].key;
 
   if (loading) {
     return (
@@ -137,10 +170,13 @@ const CompanySettingsPage = () => {
       <Card
         title={<span className="font-bold">Company Settings</span>}
         subtitle={exists ? 'Manage your storefront, orders, payments and more.' : 'Set up your company profile to get started.'}
+        // Shipping saves through its own button (separate endpoint), so this one would only mislead there.
         headerActions={
-          <Button variant={theme.button.primary} onClick={handleSave} loading={saving}>
-            {exists ? 'Save Changes' : 'Create Settings'}
-          </Button>
+          activeTab === 'shipping' ? null : (
+            <Button variant={theme.button.primary} onClick={handleSave} loading={saving}>
+              {exists ? 'Save Changes' : 'Create Settings'}
+            </Button>
+          )
         }
       >
         {error && (
@@ -154,13 +190,8 @@ const CompanySettingsPage = () => {
           </p>
         )}
 
-        <Tabs items={tabs} value={activeTab} onChange={setActiveTab} variant="pills" />
+        <Tabs items={tabs} value={activeTab} onChange={setActiveTab} variant="line" />
 
-        <div className="flex justify-end pt-6 mt-6 border-t border-gray-100">
-          <Button variant={theme.button.primary} onClick={handleSave} loading={saving}>
-            {exists ? 'Save Changes' : 'Create Settings'}
-          </Button>
-        </div>
       </Card>
     </div>
   );

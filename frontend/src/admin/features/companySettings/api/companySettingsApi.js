@@ -137,3 +137,16 @@ export default {
   removeEmailAccount,
   sendTestEmail,
 };
+
+// --- Storefront tab: catalogue PDF -----------------------------------------
+// Saved immediately (not through create/update). Each returns { catalogue }
+// ({ originalName, size, uploadedAt } or null).
+
+/** @param {File} file - a PDF */
+export const uploadCatalogue = (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return apiRequest(`${BASE}/catalogue`, { method: 'POST', body: formData });
+};
+
+export const removeCatalogue = () => apiRequest(`${BASE}/catalogue`, { method: 'DELETE' });

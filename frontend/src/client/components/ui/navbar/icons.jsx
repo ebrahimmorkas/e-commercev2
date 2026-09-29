@@ -13,6 +13,12 @@ export const ChevronDownIcon = (props) => (
   </svg>
 );
 
+export const DownloadIcon = (props) => (
+  <svg {...base} {...props}>
+    <path d="M12 4v11m0 0l-4-4m4 4l4-4M5 19h14" />
+  </svg>
+);
+
 export const MenuIcon = (props) => (
   <svg {...base} {...props}>
     <path d="M4 6h16M4 12h16M4 18h16" />

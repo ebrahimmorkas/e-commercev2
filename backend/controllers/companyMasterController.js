@@ -27,6 +27,20 @@ const formatCompanyMasterForResponse = (doc) => {
   };
 };
 
+// Effective on/off per feature flag = the vendor's CompanyMaster flag AND the
+// platform-wide WebsiteMaster flag of the same name (a flag WebsiteMaster
+// doesn't define has no global switch, so only the vendor's applies). The
+// admin UI hides anything whose entry here is false.
+const buildFeatureAccess = (companyMaster, websiteMaster) => {
+  const website = websiteMaster && websiteMaster.toObject ? websiteMaster.toObject() : (websiteMaster || {});
+  const access = {};
+  Object.keys(companyMaster).forEach((key) => {
+    if (typeof companyMaster[key] !== 'boolean') return;
+    access[key] = companyMaster[key] && (typeof website[key] === 'boolean' ? website[key] : true);
+  });
+  return access;
+};
+
 const getCompanyMasterData = async (req, res) => {
   const vendorId = req.vendorId;
   try {
@@ -34,7 +48,9 @@ const getCompanyMasterData = async (req, res) => {
     if (!companyMasterData) {
       return common.sendError(res, 404, "Company master data not found");
     }
-    return common.sendSuccess(res, 200, "Company master data fetched successfully", formatCompanyMasterForResponse(companyMasterData));
+    const formatted = formatCompanyMasterForResponse(companyMasterData);
+    formatted.featureAccess = buildFeatureAccess(formatted, req.websiteMasterData);
+    return common.sendSuccess(res, 200, "Company master data fetched successfully", formatted);
   } catch (error) {
     logger.logException('Error fetching company master data', { vendorId, error });
   }

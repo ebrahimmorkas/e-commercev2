@@ -4,6 +4,8 @@ import { ChevronDownIcon, MenuIcon, CloseIcon } from './icons';
 import { SUPPORT_LINKS } from './data';
 import { useStorefrontCategories } from '../../../features/categories/hooks/useStorefrontCategories';
 import { useStorefrontBrands } from '../../../features/brands/hooks/useStorefrontBrands';
+import { useStorefrontCompanySettings } from '../../../features/companySettings/hooks/useStorefrontCompanySettings';
+import { CATALOGUE_DOWNLOAD_URL } from '../../../features/companySettings/api/companySettingsApi';
 
 const NAV_ITEMS = [
   { key: 'home', label: 'Home' },
@@ -173,6 +175,10 @@ const Navbar = () => {
   const { brands, loading: brandsLoading } = useStorefrontBrands();
   const brandPanelProps = { brands, loading: brandsLoading };
 
+  // The server only sets this when the feature is on for the vendor AND a PDF is uploaded.
+  const { companySettings } = useStorefrontCompanySettings();
+  const hasCatalogue = companySettings?.catalogueAvailable === true;
+
   const [openKey, setOpenKey] = useState(null);
   const closeTimer = useRef(null);
 
@@ -282,6 +288,19 @@ const Navbar = () => {
               </li>
             );
           })}
+          {hasCatalogue && (
+            <li onMouseEnter={scheduleClose}>
+              <a
+                href={CATALOGUE_DOWNLOAD_URL}
+                download
+                title="Download catalogue"
+                aria-label="Download catalogue"
+                className={`flex items-center gap-1.5 h-11 px-4 text-sm font-medium transition-colors duration-150 cursor-pointer ${theme.bar.text} ${theme.bar.hover}`}
+              >
+                Download Catalogue
+              </a>
+            </li>
+          )}
         </ul>
       </div>
 
@@ -358,6 +377,17 @@ const Navbar = () => {
                 </div>
               );
             })}
+
+            {hasCatalogue && (
+              <a
+                href={CATALOGUE_DOWNLOAD_URL}
+                download
+                onClick={closeMobile}
+                className={`flex items-center gap-2 px-3 py-3 mt-1 border-t rounded-lg text-sm font-medium transition-colors duration-150 ${theme.drawer.divider} ${theme.drawer.link}`}
+              >
+                Download Catalogue
+              </a>
+            )}
           </div>
         </aside>
       </div>

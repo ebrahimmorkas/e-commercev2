@@ -23,9 +23,10 @@ import MyDeliveriesPage from './admin/features/myDeliveries/pages/MyDeliveriesPa
 import { DeliveryAgentIcon } from './components/ui/Sidebar/icons';
 import { useAuth } from './admin/features/login/hooks/useAuth';
 import { useAssignedModules } from './admin/modules/hooks/useAssignedModules';
+import { useFeatureAccess } from './admin/modules/hooks/useFeatureAccess';
 import Spinner from './components/common/Spinner';
 import EmptyState from './components/common/EmptyState';
-import Sidebar, { DEFAULT_NAV_ITEMS, filterNavItemsByAssignedModules } from './components/ui/Sidebar';
+import Sidebar, { DEFAULT_NAV_ITEMS, filterNavItemsByAssignedModules, filterNavItemsByFeatureAccess } from './components/ui/Sidebar';
 import { useStorefrontCompanySettings } from './client/features/companySettings/hooks/useStorefrontCompanySettings';
 
 const PAGE_LABELS = DEFAULT_NAV_ITEMS.reduce((acc, item) => {
@@ -42,7 +43,8 @@ function App() {
   const { assignedCodes } = useAssignedModules(isAuthenticated && !isDeliveryAgent);
   const { companySettings } = useStorefrontCompanySettings();
   const sidebarSubtitle = companySettings?.companyName;
-  const navItems = filterNavItemsByAssignedModules(DEFAULT_NAV_ITEMS, assignedCodes);
+  const featureAccess = useFeatureAccess(isAuthenticated && !isDeliveryAgent);
+  const navItems = filterNavItemsByFeatureAccess(filterNavItemsByAssignedModules(DEFAULT_NAV_ITEMS, assignedCodes), featureAccess);
   const [activePage, setActivePage] = useSessionStorageState('ecom.admin.activePage', 'announcements');
   // Customers picked on the Customers page for the Send Email module's To
   // field. Cleared when navigating anywhere through the sidebar.

@@ -6,7 +6,8 @@ import theme from '../theme/theme';
  * @param {Object} props.draft
  * @param {(patch: Object) => void} props.onChange
  */
-const FreeCashSection = ({ draft, onChange }) => {
+const FreeCashSection = ({ draft, onChange, companyMaster = null }) => {
+  const isRefundFeatureOn = companyMaster?.isFreeCashRefundFeatureOn !== false;
   const set = (patch) => onChange(patch);
 
   return (
@@ -44,6 +45,7 @@ const FreeCashSection = ({ draft, onChange }) => {
             color={theme.switch.color}
           />
 
+          {isRefundFeatureOn && (
           <div className="pt-2 border-t border-gray-100">
             <Switch
               label="Refund Free Cash on Order Return"
@@ -80,6 +82,7 @@ const FreeCashSection = ({ draft, onChange }) => {
               </div>
             )}
           </div>
+          )}
         </div>
       )}
     </div>

@@ -1,4 +1,5 @@
 import { apiRequest } from '../../../../utils/apiClient';
+import { getCompanyMasterData } from '../../../../utils/companyMasterApi';
 
 /**
  * companyMaster.isAdminAddingUserFeatureAllowed gates this whole page as a
@@ -7,7 +8,7 @@ import { apiRequest } from '../../../../utils/apiClient';
  * Customers page's "Add User" button hidden for vendors without it, but a
  * vendor can have the module assigned while the company-level flag is still off.
  */
-export const getCompanyMasterData = () => apiRequest('/company-master/get-company-master-data');
+export { getCompanyMasterData };
 
 /**
  * Countries/states/cities scoped to this vendor's CompanyMaster.allowedCountries,

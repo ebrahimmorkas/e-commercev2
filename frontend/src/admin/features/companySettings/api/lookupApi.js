@@ -1,4 +1,5 @@
 import { apiRequest } from '../../../../utils/apiClient';
+import { getCompanyMasterData } from '../../../../utils/companyMasterApi';
 
 /**
  * CompanyMaster entitlement flags this page needs - whether the Bank
@@ -9,7 +10,7 @@ import { apiRequest } from '../../../../utils/apiClient';
  * limitation already accepted in banners/api/lookupApi.js - the real
  * entitlement check still happens server-side on save.
  */
-export const getCompanyMasterData = () => apiRequest('/company-master/get-company-master-data');
+export { getCompanyMasterData };
 
 /** Lookups the Shipping tab's rule pickers need (categories, weight units, countries/states/cities). */
 export const getAdminCategories = () => apiRequest('/category/get-admin-categories');

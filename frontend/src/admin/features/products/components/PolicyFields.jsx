@@ -17,16 +17,17 @@ const PolicyFields = ({ label, value, onChange, unavailable = false }) => {
 
   const setAvailable = (isAvailable) => onChange({ isAvailable, duration: isAvailable ? policy.duration : null, durationType: isAvailable ? policy.durationType : null });
 
+  // When the store doesn't have this feature it is hidden - unless it is already on, which can
+  // still be switched off (otherwise an existing size would be stuck and every save rejected).
+  if (unavailable && !policy.isAvailable) return null;
+
   return (
     <div className="border border-gray-200 rounded-lg p-3">
-      {/* When the store doesn't have this feature it can't be switched ON, but one that is already on can
-          still be switched off - otherwise an existing size would be stuck and every save would be rejected. */}
       <Switch
         label={label}
         checked={policy.isAvailable}
         onChange={(e) => setAvailable(e.target.checked)}
-        disabled={unavailable && !policy.isAvailable}
-        description={unavailable ? 'Not enabled for your account.' : ''}
+        description={unavailable ? 'Not enabled for your account - switch off to remove it.' : ''}
         color={theme.switch.color}
       />
       {policy.isAvailable && (

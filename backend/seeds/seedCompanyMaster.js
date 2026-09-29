@@ -151,6 +151,7 @@ const COMPANY_MASTER = {
     isEmailSendingFeatureOnAfterFreeCashExpired: true,
     isEmailSendingFeatureOnBeforeFreeCashExpires: true,
     isPDFDownloadableFeatureOn: false,
+    isCatalogueDownloadFeatureOn: false,
 
     // Shipping - Free, Fixed, Weight ("Free Above" is ShippingPriceSettings.
     // freeAboveThreshold, set by the vendor on top of any method)

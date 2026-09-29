@@ -225,7 +225,7 @@ const ProductsPage = () => {
     () => selectedProducts.filter((p) => p.status === 'A').map((p) => p._id),
     [selectedProducts]
   );
-  const isCloningAllowed = !!lookups.companyMaster?.isCloningProductAllowed;
+  const isCloningAllowed = lookups.companyMaster?.featureAccess?.isCloningProductAllowed ?? !!lookups.companyMaster?.isCloningProductAllowed;
 
   // Tracks which specific bulk action is in flight so only that button shows
   // a spinner - `mutating` alone is shared across every mutation in the hook
@@ -367,7 +367,7 @@ const ProductsPage = () => {
 
   const actions = [
     { label: 'Edit', icon: <PencilIcon />, variant: theme.button.secondary, onClick: openEdit },
-    { label: 'Clone', icon: <CloneIcon />, variant: theme.button.secondary, onClick: setCloneTarget },
+    ...(isCloningAllowed ? [{ label: 'Clone', icon: <CloneIcon />, variant: theme.button.secondary, onClick: setCloneTarget }] : []),
     { label: 'Delete', icon: <TrashIcon />, variant: theme.button.danger, onClick: setDeleteTarget },
   ];
 
@@ -523,9 +523,11 @@ const ProductsPage = () => {
                     <Button variant={theme.button.secondary} size="sm" leftIcon={<PencilIcon />} onClick={() => openEdit(product)} fullWidth>
                       Edit
                     </Button>
-                    <Button variant={theme.button.secondary} size="sm" leftIcon={<CloneIcon />} onClick={() => setCloneTarget(product)} fullWidth>
-                      Clone
-                    </Button>
+                    {isCloningAllowed && (
+                      <Button variant={theme.button.secondary} size="sm" leftIcon={<CloneIcon />} onClick={() => setCloneTarget(product)} fullWidth>
+                        Clone
+                      </Button>
+                    )}
                     <Button variant={theme.button.danger} size="sm" leftIcon={<TrashIcon />} onClick={() => setDeleteTarget(product)} fullWidth>
                       Delete
                     </Button>

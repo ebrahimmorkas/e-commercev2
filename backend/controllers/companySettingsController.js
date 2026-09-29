@@ -49,6 +49,9 @@ const formatCompanySettingsForResponse = (doc) => {
         companyLogo: encodeNestedImage(settings.companyLogo),
         paymentScanner: encodeNestedImage(settings.paymentScanner),
         partnerCertificate: encodeNestedImage(settings.partnerCertificate),
+        catalogue: settings.catalogue?.fileAssetId
+            ? { originalName: settings.catalogue.originalName, size: settings.catalogue.size, uploadedAt: settings.catalogue.uploadedAt }
+            : null,
         createdBy: encodeAuditSubfield(settings.createdBy),
         updatedBy: encodeAuditSubfield(settings.updatedBy),
         emailTemplateAssignments: (settings.emailTemplateAssignments || []).map((entry) => ({
@@ -113,6 +116,55 @@ const formatPublicCompanySettings = (doc) => {
     return publicSettings;
 };
 
+// --- Catalogue (storefront navbar download) --------------------------------
+const uploadCatalogue = async (req, res) => {
+  const vendorId = req.vendorId;
+  try {
+    const result = await companySettingsService.setCatalogue(vendorId, req.user._id, req.file, req.companyMasterData, req.websiteMasterData);
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+    const { originalName, size, uploadedAt } = result.meta.catalogue;
+    return common.sendSuccess(res, result.statusCode, result.message, { catalogue: { originalName, size, uploadedAt } });
+  } catch (error) {
+    logger.logException('companySettingsController: uploadCatalogue - Exception while uploading catalogue', { vendorId, error });
+    return common.sendError(res, 500, 'Could not upload the catalogue.');
+  }
+};
+
+const removeCatalogue = async (req, res) => {
+  const vendorId = req.vendorId;
+  try {
+    const result = await companySettingsService.removeCatalogue(vendorId, req.user._id);
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+    return common.sendSuccess(res, result.statusCode, result.message, { catalogue: null });
+  } catch (error) {
+    logger.logException('companySettingsController: removeCatalogue - Exception while removing catalogue', { vendorId, error });
+    return common.sendError(res, 500, 'Could not remove the catalogue.');
+  }
+};
+
+// Public (storefront) - streams the PDF as a download.
+const downloadCatalogue = async (req, res) => {
+  const vendorId = req.vendorId;
+  try {
+    const result = await companySettingsService.getCatalogueFile(vendorId, req.companyMasterData, req.websiteMasterData);
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+    const safeName = String(result.meta.fileName).replace(/[^\w.\- ]+/g, '_');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    res.setHeader('Content-Length', result.meta.buffer.length);
+    return res.status(200).end(result.meta.buffer);
+  } catch (error) {
+    logger.logException('companySettingsController: downloadCatalogue - Exception while serving catalogue', { vendorId, error });
+    return common.sendError(res, 500, 'Could not download the catalogue.');
+  }
+};
+
 const createCompanySettings = async (req, res) => {
     const vendorId = req.vendorId;
     try {
@@ -168,7 +220,11 @@ const getCompanySettings = async (req, res) => {
     if (!settings) {
       return common.sendError(res, 404, "Company settings not found");
     }
-    return common.sendSuccess(res, 200, "Company settings fetched successfully", formatPublicCompanySettings(settings));
+    const publicSettings = formatPublicCompanySettings(settings);
+    // Only whether a catalogue can be downloaded - never its storage details.
+    publicSettings.catalogueAvailable = !!settings.catalogue?.fileAssetId
+      && companySettingsService.isCatalogueOn(req.companyMasterData);
+    return common.sendSuccess(res, 200, "Company settings fetched successfully", publicSettings);
   } catch (error) {
     logger.logException('Error fetching company settings', { vendorId, error });
   }
@@ -362,6 +418,9 @@ const sendTestEmail = async (req, res) => {
 };
 
 module.exports = {
+  uploadCatalogue,
+  removeCatalogue,
+  downloadCatalogue,
   getEmailAccount,
   saveEmailAccount,
   removeEmailAccount,

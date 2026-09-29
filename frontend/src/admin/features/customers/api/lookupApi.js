@@ -1,4 +1,5 @@
 import { apiRequest } from '../../../../utils/apiClient';
+import { getCompanyMasterData } from '../../../../utils/companyMasterApi';
 
 /**
  * companyMaster.isAdminAddingUserFeatureAllowed / isPasswordChangeFeatureByAdminAllowed
@@ -6,7 +7,7 @@ import { apiRequest } from '../../../../utils/apiClient';
  * vendor - see admin/features/products/api/lookupApi.js for the same
  * getCompanyMasterData call used the same way.
  */
-export const getCompanyMasterData = () => apiRequest('/company-master/get-company-master-data');
+export { getCompanyMasterData };
 
 /**
  * Countries/states/cities scoped to this vendor's CompanyMaster.allowedCountries,

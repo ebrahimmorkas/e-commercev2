@@ -12,4 +12,8 @@ import { apiRequest } from '../../../../utils/apiClient';
 export const getStorefrontCompanySettings = () =>
   apiRequest('/company-settings/get-company-settings', { auth: false });
 
-export default { getStorefrontCompanySettings };
+// Public link to the vendor's catalogue PDF; the server answers with a
+// download (Content-Disposition: attachment), so a plain link is enough.
+export const CATALOGUE_DOWNLOAD_URL = `${import.meta.env.VITE_API_BASE_URL || '/api'}/company-settings/catalogue/download`;
+
+export default { getStorefrontCompanySettings, CATALOGUE_DOWNLOAD_URL };

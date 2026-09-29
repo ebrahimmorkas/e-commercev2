@@ -68,6 +68,13 @@ const companyMasterSchema = mongoose.Schema({
         type: Boolean,
         default: true
     },
+    // Storefront "Download catalogue" navbar icon; the vendor uploads the PDF
+    // in Company Settings. Off by default (per-vendor entitlement); no
+    // WebsiteMaster counterpart.
+    isCatalogueDownloadFeatureOn: {
+        type: Boolean,
+        default: false
+    },
     isAnnouncementFeatureOn: {
         type: Boolean,
         default: true

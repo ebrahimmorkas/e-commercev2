@@ -1,6 +1,6 @@
-import { apiRequest } from '../../../../utils/apiClient';
+import { getCompanyMasterData } from '../../../../utils/companyMasterApi';
 
-export const getCompanyMasterData = () => apiRequest('/company-master/get-company-master-data');
+export { getCompanyMasterData };
 
 export default {
   getCompanyMasterData,

@@ -1,4 +1,5 @@
 import { apiRequest } from '../../../../utils/apiClient';
+import { getCompanyMasterData } from '../../../../utils/companyMasterApi';
 
 export const getAdminCategories = () => apiRequest('/category/get-admin-categories');
 
@@ -14,7 +15,7 @@ export const getLocationTaxBundle = () => apiRequest('/location-tax-bundle/get-l
 
 export const getCompanySettings = () => apiRequest('/company-settings/get-company-settings');
 
-export const getCompanyMasterData = () => apiRequest('/company-master/get-company-master-data');
+export { getCompanyMasterData };
 
 export default {
   getAdminCategories,

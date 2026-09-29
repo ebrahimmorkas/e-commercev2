@@ -15,9 +15,11 @@ const staleStepText = (code, steps) =>
  * @param {{ steps: Array<{ code: string, name: string, sequence: number }>, lastStepCode: string|null, isDeliveryAgentAccessOn: boolean }} props.orderSteps
  *   - the order workflow assigned to this store (GET /company-settings/order-steps), in sequence
  */
-const CartOrderSection = ({ draft, onChange, orderSteps }) => {
+const CartOrderSection = ({ draft, onChange, orderSteps, companyMaster = null }) => {
   const set = (patch) => onChange(patch);
 
+  const isReturnOn = companyMaster?.isReturnFeatureOn !== false;
+  const isExchangeOn = companyMaster?.isExchangeFeatureOn !== false;
   const steps = orderSteps?.steps || [];
   const stepOptions = steps.map((step) => ({ value: step.code, label: step.name }));
   const lastStep = steps[steps.length - 1] || null;
@@ -45,6 +47,7 @@ const CartOrderSection = ({ draft, onChange, orderSteps }) => {
         />
       </div>
 
+      {(isReturnOn || isExchangeOn) && (
       <div className="pt-4 border-t border-gray-100">
         <h3 className={`text-sm font-semibold ${theme.text.heading} mb-3`}>Return / Exchange</h3>
         <p className={`text-xs ${theme.text.muted} mb-3`}>
@@ -52,20 +55,25 @@ const CartOrderSection = ({ draft, onChange, orderSteps }) => {
           customer can only request a return/exchange for the whole order at once.
         </p>
         <div className="space-y-3">
+          {isReturnOn && (
           <Switch
             label="Allow Return of a Few Items Only"
             checked={draft.fewItemsReturnOnly}
             onChange={(e) => set({ fewItemsReturnOnly: e.target.checked })}
             color={theme.switch.color}
           />
+          )}
+          {isExchangeOn && (
           <Switch
             label="Allow Exchange of a Few Items Only"
             checked={draft.fewItemsExchangeOnly}
             onChange={(e) => set({ fewItemsExchangeOnly: e.target.checked })}
             color={theme.switch.color}
           />
+          )}
         </div>
       </div>
+      )}
 
       <div className="pt-4 border-t border-gray-100">
         <h3 className={`text-sm font-semibold ${theme.text.heading} mb-3`}>Order</h3>

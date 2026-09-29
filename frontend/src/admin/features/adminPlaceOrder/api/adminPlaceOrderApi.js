@@ -1,4 +1,5 @@
 import { apiRequest } from '../../../../utils/apiClient';
+import { getCompanyMasterData } from '../../../../utils/companyMasterApi';
 
 const BASE = '/admin-place-order';
 
@@ -51,7 +52,7 @@ export const getOrderCurrency = (userId) => apiRequest(`${BASE}/currency${toQuer
  */
 export const previewTax = (data) => apiRequest(`${BASE}/tax-preview`, { method: 'POST', body: data });
 
-export const getCompanyMasterData = () => apiRequest('/company-master/get-company-master-data');
+export { getCompanyMasterData };
 
 export default {
   getUserSearchFields,

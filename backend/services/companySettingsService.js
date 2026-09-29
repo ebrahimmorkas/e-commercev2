@@ -14,6 +14,8 @@ const StateMaster = require('../models/StateMaster');
 const CityMaster = require('../models/CityMaster');
 const CurrencyMaster = require('../models/CurrencyMaster');
 const orderStepService = require('./orderStepService');
+const FileAsset = require('../models/FileAsset');
+const { readStoredAsset } = require('./storedFileReader');
 
 // The store currency (every price is entered in it - see currencyService.js)
 // must be an active currency, and can be changed but never cleared: orders
@@ -972,7 +974,120 @@ const sendTestEmail = async (vendorId, userId, to, companyMasterData, websiteMas
     }
 };
 
+// --- Catalogue (storefront "Download catalogue" icon) ----------------------
+const CATALOGUE_MODULE = 'catalogue';
+const CATALOGUE_MAX_MB = 25;
+
+const CATALOGUE_FLAG = 'isCatalogueDownloadFeatureOn';
+
+// Vendor-level only - there is deliberately no WebsiteMaster switch for this.
+const isCatalogueOn = (companyMasterData) => companyMasterData?.[CATALOGUE_FLAG] === true;
+
+// Uploads (or replaces) the vendor's catalogue PDF.
+const setCatalogue = async (vendorId, userId, file, companyMasterData, websiteMasterData) => {
+    try {
+        if (!isCatalogueOn(companyMasterData)) {
+            return common.returnResult(false, 403, 'Catalogue download is not available for your account.');
+        }
+        if (!file || !file.buffer) {
+            return common.returnResult(false, 400, 'Choose a PDF file to upload.');
+        }
+        if (!/\.pdf$/i.test(file.originalname || '')) {
+            return common.returnResult(false, 400, 'The catalogue must be a PDF file.');
+        }
+        if (file.size > CATALOGUE_MAX_MB * 1024 * 1024) {
+            return common.returnResult(false, 400, `The catalogue must be ${CATALOGUE_MAX_MB}MB or smaller.`);
+        }
+        const existing = await CompanySettings.findOne({ vendorId }, { catalogue: 1 }).lean();
+        if (!existing) {
+            return common.returnResult(false, 404, 'Please save your company settings first, then upload the catalogue.');
+        }
+
+        // Content is verified too (a renamed non-PDF is rejected) by uploadFile.
+        const upload = await fileUploadService.uploadFile({
+            vendorId, module: CATALOGUE_MODULE, file, userId, companyMasterData, websiteMasterData
+        });
+        if (!upload.isSuccess) {
+            return upload;
+        }
+        const asset = upload.meta.file;
+        if (asset.mimeType !== 'application/pdf') {
+            await fileUploadService.deleteFile({ vendorId, fileId: asset._id, userId });
+            return common.returnResult(false, 400, 'The catalogue must be a PDF file.');
+        }
+
+        const updated = await CompanySettings.findOneAndUpdate(
+            { vendorId },
+            { $set: { catalogue: { fileAssetId: asset._id, originalName: asset.originalName, size: asset.size, uploadedAt: new Date() } } },
+            { new: true, projection: { catalogue: 1 } }
+        ).lean();
+        await redisService.del(redisKeys.companySettings(vendorId));
+
+        // The replaced file is no longer referenced anywhere - remove it.
+        if (existing.catalogue?.fileAssetId) {
+            const removal = await fileUploadService.deleteFile({ vendorId, fileId: existing.catalogue.fileAssetId, userId });
+            if (!removal.isSuccess && removal.statusCode !== 404) {
+                logger.logInfo(1, 0, 'Old catalogue file could not be removed', { vendorId, fileAssetId: existing.catalogue.fileAssetId });
+            }
+        }
+
+        logger.logInfo(1, 0, 'Catalogue uploaded', { vendorId, fileAssetId: asset._id });
+        return common.returnResult(true, 201, 'Catalogue uploaded successfully', { catalogue: updated.catalogue });
+    } catch (err) {
+        throw err;
+    }
+};
+
+const removeCatalogue = async (vendorId, userId) => {
+    try {
+        const existing = await CompanySettings.findOne({ vendorId }, { catalogue: 1 }).lean();
+        if (!existing?.catalogue?.fileAssetId) {
+            return common.returnResult(false, 404, 'There is no catalogue to remove.');
+        }
+        const removal = await fileUploadService.deleteFile({ vendorId, fileId: existing.catalogue.fileAssetId, userId });
+        if (!removal.isSuccess && removal.statusCode !== 404) {
+            return removal;
+        }
+        await CompanySettings.updateOne(
+            { vendorId },
+            { $set: { catalogue: { fileAssetId: null, originalName: null, size: null, uploadedAt: null } } }
+        );
+        await redisService.del(redisKeys.companySettings(vendorId));
+
+        logger.logInfo(1, 0, 'Catalogue removed', { vendorId });
+        return common.returnResult(true, 200, 'Catalogue removed successfully', { catalogue: null });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Bytes of the catalogue for the public download route; 404 when the
+// feature is off or nothing is uploaded.
+const getCatalogueFile = async (vendorId, companyMasterData, websiteMasterData) => {
+    try {
+        if (!isCatalogueOn(companyMasterData)) {
+            return common.returnResult(false, 404, 'Catalogue not available.');
+        }
+        const settings = await CompanySettings.findOne({ vendorId }, { catalogue: 1 }).lean();
+        if (!settings?.catalogue?.fileAssetId) {
+            return common.returnResult(false, 404, 'Catalogue not available.');
+        }
+        const asset = await FileAsset.findOne({ _id: settings.catalogue.fileAssetId, vendorId, status: 'A' }).lean();
+        if (!asset) {
+            return common.returnResult(false, 404, 'Catalogue not available.');
+        }
+        const buffer = await readStoredAsset(asset);
+        return common.returnResult(true, 200, 'OK', { buffer, fileName: asset.originalName || 'catalogue.pdf' });
+    } catch (err) {
+        throw err;
+    }
+};
+
 module.exports = {
+  setCatalogue,
+  removeCatalogue,
+  getCatalogueFile,
+  isCatalogueOn,
   createCompanySettings,
   updateCompanySettings,
   fetchCompanySettingsByVendorId,

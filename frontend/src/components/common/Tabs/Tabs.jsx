@@ -79,7 +79,8 @@ const Tabs = ({
 
   const listVariantClasses = {
     underline: 'border-b border-gray-200 gap-6',
-    pills: 'gap-2',
+    pills: 'flex-wrap gap-2',
+    line: 'flex-wrap gap-x-1 gap-y-1 border-b border-gray-200',
     bordered: 'border border-gray-200 rounded-lg p-1 gap-1 bg-gray-50',
   };
 
@@ -90,6 +91,13 @@ const Tabs = ({
 
     if (variant === 'pills') {
       return `${base} ${disabledClasses} ${isActive ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`;
+    }
+
+    if (variant === 'line') {
+      // Underline is drawn by the gradient <span> in the render below.
+      return `relative inline-flex items-center gap-2 px-3.5 py-2.5 text-sm rounded-t-md transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 ${disabledClasses} ${
+        isActive ? 'font-semibold text-violet-700 bg-violet-50/60' : 'font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+      }`;
     }
 
     if (variant === 'bordered') {
@@ -127,6 +135,14 @@ const Tabs = ({
           >
             {item.icon && <span className="flex-shrink-0">{item.icon}</span>}
             {item.label}
+            {variant === 'line' && (
+              <span
+                aria-hidden="true"
+                className={`pointer-events-none absolute inset-x-2 -bottom-px h-[3px] rounded-full bg-gradient-to-r from-violet-500 via-fuchsia-500 to-pink-500 transition-all duration-200 origin-center ${
+                  item.key === activeKey ? 'opacity-100 scale-x-100' : 'opacity-0 scale-x-0'
+                }`}
+              />
+            )}
           </button>
         ))}
       </div>
