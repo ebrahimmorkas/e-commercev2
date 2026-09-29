@@ -22,6 +22,38 @@ const DELIVERY_AGENT_VARIABLES = [
     COURIER_NAME_VARIABLE
 ];
 
+// Amounts are shown in each customer's own currency (converted from the
+// store currency - see promotionEmailService.buildCustomerMoneyFormatter);
+// Free Cash Used/Refunded use the order's own currency instead.
+const DISCOUNT_VARIABLES = [
+    { key: 'customerName', description: "The customer's name" },
+    { key: 'discountName', description: "The discount's name" },
+    { key: 'discountDescription', description: "The discount's description" },
+    { key: 'discountValue', description: 'What the discount gives, e.g. "10%" or "₹100.00"' },
+    { key: 'couponCode', description: 'The coupon code to enter at checkout (blank when the discount applies automatically)' },
+    { key: 'startDate', description: 'When the discount starts, e.g. 28 Sep 2026' },
+    { key: 'endDate', description: 'When the discount ends, e.g. 30 Sep 2026 (or "No end date")' },
+    { key: 'minimumOrderAmount', description: 'Minimum order amount needed for the discount (blank when there is none)' },
+    { key: 'minimumQuantity', description: 'Minimum quantity needed for the discount (blank when there is none)' },
+    { key: 'validDays', description: 'Days the discount works on, e.g. "Monday, Friday" (blank when every day)' },
+    { key: 'validHours', description: 'Hours the discount works in, e.g. "10:00 - 18:00" (blank when all day)' },
+    { key: 'firstOrderOnly', description: '"Yes" when the discount is for the first order only, else "No"' },
+    { key: 'paymentMethods', description: 'Payment methods the discount is limited to (blank when any)' },
+    { key: 'appliesTo', description: 'What the discount applies to, e.g. "All products" or "Selected categories"' }
+];
+
+const FREE_CASH_VARIABLES = [
+    { key: 'customerName', description: "The customer's name" },
+    { key: 'freeCashName', description: "The Free Cash campaign's name" },
+    { key: 'freeCashAmount', description: 'The Free Cash amount given, e.g. "₹500.00"' },
+    { key: 'remainingAmount', description: 'How much of it is left to use' },
+    { key: 'maxUsagePerOrder', description: 'The most that can be used on one order (blank when there is no limit)' },
+    { key: 'minimumOrderAmount', description: 'Minimum order amount needed to use it (blank when there is none)' },
+    { key: 'startDate', description: 'When it can first be used, e.g. 28 Sep 2026' },
+    { key: 'endDate', description: 'When it expires, e.g. 30 Sep 2026' },
+    { key: 'canCombineWithDiscounts', description: '"Yes" when it can be used together with discounts, else "No"' }
+];
+
 const COURIER_VARIABLES = [
     { key: 'customerName', description: "The customer's name" },
     { key: 'orderNumber', description: "The order's number" },
@@ -59,7 +91,24 @@ const EMAIL_MODULE_VARIABLES = {
         { key: 'previousCourierName', description: 'The courier that was replaced' }
     ],
     // courierName here is the courier that was just removed.
-    [EMAIL_MODULES.COURIER_REMOVED]: COURIER_VARIABLES
+    [EMAIL_MODULES.COURIER_REMOVED]: COURIER_VARIABLES,
+    [EMAIL_MODULES.DISCOUNT_AVAILABLE]: DISCOUNT_VARIABLES,
+    [EMAIL_MODULES.DISCOUNT_EXPIRING_SOON]: DISCOUNT_VARIABLES,
+    [EMAIL_MODULES.FREE_CASH_CREDITED]: FREE_CASH_VARIABLES,
+    [EMAIL_MODULES.FREE_CASH_USED]: [
+        ...FREE_CASH_VARIABLES,
+        { key: 'amountUsed', description: 'How much Free Cash was used on the order' },
+        { key: 'orderNumber', description: 'The order it was used on' }
+    ],
+    [EMAIL_MODULES.FREE_CASH_REFUNDED]: [
+        ...FREE_CASH_VARIABLES,
+        { key: 'amountRefunded', description: 'How much Free Cash was given back' },
+        { key: 'orderNumber', description: 'The order that was returned' }
+    ],
+    [EMAIL_MODULES.FREE_CASH_REVOKED]: FREE_CASH_VARIABLES,
+    // Sent when a newer Free Cash replaced this one (Free Cash stacking is off).
+    [EMAIL_MODULES.FREE_CASH_EXPIRED]: FREE_CASH_VARIABLES,
+    [EMAIL_MODULES.FREE_CASH_EXPIRING_SOON]: FREE_CASH_VARIABLES
 };
 
 module.exports = {

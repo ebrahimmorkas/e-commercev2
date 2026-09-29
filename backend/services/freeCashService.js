@@ -1,5 +1,6 @@
 const FreeCash = require('../models/FreeCash');
 const UserFreeCash = require('../models/UserFreeCash');
+const promotionEmailService = require('./promotionEmailService');
 const User = require('../models/User');
 const Category = require('../models/Category');
 const Group = require('../models/Group');
@@ -340,7 +341,12 @@ const countFreeCashCreatedTotal = async (vendorId) => {
 | do that safely at scale. Eligibility for those options is intended to be
 | resolved lazily at cart/order time in a later pass, not here.
 */
-const issueUserFreeCash = async (vendorId, freeCashDoc, targetUserIds, userId, companySettingsData) => {
+// emailContext = { companyMasterData, websiteMasterData } - only passed when
+// a campaign is being created, so the customers whose older Free Cash this
+// replaces get the Free Cash Expired email (never for a lazy cart-time issue).
+// expireOtherGrants = false is for the lazy cart-time issue: a customer just
+// opening their cart must never lose Free Cash they were given directly.
+const issueUserFreeCash = async (vendorId, freeCashDoc, targetUserIds, userId, companySettingsData, emailContext = null, expireOtherGrants = true) => {
   try {
     if (!Array.isArray(targetUserIds) || targetUserIds.length === 0) {
       return common.returnResult(true, 200, 'No specific users to issue Free Cash to for this targeting option.', { issuedCount: 0 });
@@ -348,10 +354,19 @@ const issueUserFreeCash = async (vendorId, freeCashDoc, targetUserIds, userId, c
 
     const stackingAllowed = companySettingsData ? companySettingsData.isFreeCashStackingAllowed === true : false;
 
-    if (!stackingAllowed) {
+    if (!stackingAllowed && expireOtherGrants) {
       // Stacking off: issuing a new grant immediately expires every other
       // still-active grant that user already holds for this vendor,
-      // irrespective of which FreeCash campaign they came from.
+      // irrespective of which FreeCash campaign they came from. Those
+      // customers are told (Free Cash Expired email).
+      const replacedGrants = await UserFreeCash.find({
+        vendorId,
+        userId: { $in: targetUserIds },
+        isCashExpired: false,
+        isRevoked: false,
+        status: { $ne: 'D' }
+      }).lean();
+
       await UserFreeCash.updateMany(
         {
           vendorId,
@@ -364,6 +379,12 @@ const issueUserFreeCash = async (vendorId, freeCashDoc, targetUserIds, userId, c
           $set: { isCashExpired: true, cashExpiredDate: new Date() }
         }
       );
+
+      if (emailContext) {
+        promotionEmailService.notifyFreeCashExpired({
+          vendorId, grants: replacedGrants, ...emailContext, companySettingsData, userId
+        });
+      }
     }
 
     const docsToInsert = targetUserIds.map((targetUserId) => ({
@@ -398,7 +419,8 @@ const issueUserFreeCash = async (vendorId, freeCashDoc, targetUserIds, userId, c
 |--------------------------------------------------------------------------
 */
 
-const createFreeCash = async (vendorId, userId, payload, files, companyMasterData, websiteMasterData, companySettingsData) => {
+// notifyCustomers = the form's "Notify customers by email" checkbox.
+const createFreeCash = async (vendorId, userId, payload, files, companyMasterData, websiteMasterData, companySettingsData, notifyCustomers = false) => {
   try {
     const basicCheck = validateBasicFields(payload);
     if (!basicCheck.valid) {
@@ -445,7 +467,15 @@ const createFreeCash = async (vendorId, userId, payload, files, companyMasterDat
 
     await freeCashDoc.save();
 
-    const issueResult = await issueUserFreeCash(vendorId, freeCashDoc, resolution.resolved.giveToUsers, userId, companySettingsData);
+    const issueResult = await issueUserFreeCash(
+      vendorId, freeCashDoc, resolution.resolved.giveToUsers, userId, companySettingsData, { companyMasterData, websiteMasterData }
+    );
+
+    if (notifyCustomers) {
+      promotionEmailService.notifyFreeCashCredited({
+        vendorId, freeCash: freeCashDoc, companyMasterData, websiteMasterData, companySettingsData, userId
+      });
+    }
 
     logger.logInfo(1, 0, 'Free Cash created successfully', { vendorId, freeCashId: freeCashDoc._id });
 
@@ -465,7 +495,9 @@ const createFreeCash = async (vendorId, userId, payload, files, companyMasterDat
 // action to avoid silently duplicating or expiring grants. Use
 // issueUserFreeCash directly (a dedicated route, in a later pass) to
 // re-distribute after a targeting change.
-const updateFreeCash = async (vendorId, freeCashId, userId, payload, files, companyMasterData, websiteMasterData) => {
+// emailContext = { notifyCustomers, companySettingsData } - a re-activated
+// campaign emails its customers again when notifyCustomers is set.
+const updateFreeCash = async (vendorId, freeCashId, userId, payload, files, companyMasterData, websiteMasterData, emailContext = {}) => {
   try {
     const idCheck = common.validateObjectId(freeCashId);
     if (!idCheck.valid) {
@@ -542,8 +574,15 @@ const updateFreeCash = async (vendorId, freeCashId, userId, payload, files, comp
     existingFreeCash.subCategoryIds = resolvedTargets.subCategoryIds;
     existingFreeCash.applicableToAllProducts = resolvedTargets.applicableToAllProducts;
 
+    const previousStatus = existingFreeCash.status;
+    const previousEndDate = existingFreeCash.endDate ? new Date(existingFreeCash.endDate).getTime() : null;
+
     if (payload.startDate !== undefined) existingFreeCash.startDate = payload.startDate;
     if (payload.endDate !== undefined) existingFreeCash.endDate = payload.endDate;
+
+    // A moved end date gets its own "Expiring Soon" reminder.
+    const endDateChanged = (existingFreeCash.endDate ? new Date(existingFreeCash.endDate).getTime() : null) !== previousEndDate;
+    if (endDateChanged) existingFreeCash.expiryReminderSentAt = null;
     if (payload.validAbove !== undefined) existingFreeCash.validAbove = payload.validAbove;
     if (payload.canBeUsedWithOtherDiscounts !== undefined) existingFreeCash.canBeUsedWithOtherDiscounts = payload.canBeUsedWithOtherDiscounts === true;
     if (payload.remarks !== undefined) existingFreeCash.remarks = payload.remarks;
@@ -563,6 +602,16 @@ const updateFreeCash = async (vendorId, freeCashId, userId, payload, files, comp
 
     await existingFreeCash.save();
 
+    if (endDateChanged) {
+      await UserFreeCash.updateMany({ vendorId, freeCashId: existingFreeCash._id }, { $set: { expiryReminderSentAt: null } });
+    }
+
+    if (emailContext.notifyCustomers && existingFreeCash.status === 'A' && previousStatus !== 'A') {
+      promotionEmailService.notifyFreeCashCredited({
+        vendorId, freeCash: existingFreeCash, companyMasterData, websiteMasterData, companySettingsData: emailContext.companySettingsData, userId
+      });
+    }
+
     logger.logInfo(1, 0, 'Free Cash updated successfully', { vendorId, freeCashId });
 
     return common.returnResult(true, 200, 'Free Cash updated successfully', { data: existingFreeCash, excelReports });
@@ -574,7 +623,7 @@ const updateFreeCash = async (vendorId, freeCashId, userId, payload, files, comp
 // Single-Free Cash status flip used only by the bulk endpoint below - a
 // fresh, minimal function rather than reusing updateFreeCash (which also
 // re-validates/re-resolves the full targeting payload).
-const setFreeCashStatusForBulk = async (vendorId, userId, freeCashId, status) => {
+const setFreeCashStatusForBulk = async (vendorId, userId, freeCashId, status, emailContext = {}) => {
   try {
     const idCheck = common.validateObjectId(freeCashId);
     if (!idCheck.valid) {
@@ -585,6 +634,7 @@ const setFreeCashStatusForBulk = async (vendorId, userId, freeCashId, status) =>
     if (!freeCash) {
       return common.returnResult(false, 404, 'Free Cash not found.');
     }
+    const wasActive = freeCash.status === 'A';
 
     if (status === 'A') {
       freeCash.activeMarkedBy = userId;
@@ -597,17 +647,21 @@ const setFreeCashStatusForBulk = async (vendorId, userId, freeCashId, status) =>
     freeCash.updatedBy = userId;
 
     await freeCash.save();
+
+    if (emailContext.notifyCustomers && status === 'A' && !wasActive) {
+      promotionEmailService.notifyFreeCashCredited({ vendorId, freeCash, ...emailContext, userId });
+    }
     return common.returnResult(true, 200, `Free Cash ${status === 'A' ? 'activated' : 'deactivated'} successfully`);
   } catch (err) {
     throw err;
   }
 };
 
-const bulkSetFreeCashStatus = async (vendorId, userId, freeCashIds, status) => {
+const bulkSetFreeCashStatus = async (vendorId, userId, freeCashIds, status, emailContext = {}) => {
   try {
     const { results, successCount, failureCount } = await common.runBulkOperation(
       freeCashIds,
-      (id) => setFreeCashStatusForBulk(vendorId, userId, id, status)
+      (id) => setFreeCashStatusForBulk(vendorId, userId, id, status, emailContext)
     );
 
     logger.logInfo(successCount, failureCount, 'Bulk Free Cash status update completed', { vendorId, status, successCount, failureCount });
@@ -709,7 +763,9 @@ const deleteFreeCash = async (vendorId, freeCashId, userId) => {
 | gate). Only blocks grants not already fully used.
 */
 
-const revokeFreeCashForUser = async (vendorId, targetUserId, freeCashId, adminUserId) => {
+// emailContext = { companyMasterData, websiteMasterData, companySettingsData } -
+// the customers whose Free Cash is revoked are emailed (Free Cash Revoked).
+const revokeFreeCashForUser = async (vendorId, targetUserId, freeCashId, adminUserId, emailContext = {}) => {
   try {
     const idCheck = common.validateObjectId([targetUserId, freeCashId]);
     if (!idCheck.valid) {
@@ -721,10 +777,13 @@ const revokeFreeCashForUser = async (vendorId, targetUserId, freeCashId, adminUs
       return common.returnResult(false, 404, 'Free Cash not found.');
     }
 
+    const revokeFilter = { vendorId, freeCashId, userId: targetUserId, isRevoked: false, isCashUsed: false, status: { $ne: 'D' } };
+    const revokedGrants = await UserFreeCash.find(revokeFilter).lean();
     const result = await UserFreeCash.updateMany(
-      { vendorId, freeCashId, userId: targetUserId, isRevoked: false, isCashUsed: false, status: { $ne: 'D' } },
+      revokeFilter,
       { $set: { isRevoked: true, revokedBy: adminUserId, revokedDate: new Date() } }
     );
+    promotionEmailService.notifyFreeCashRevoked({ vendorId, grants: revokedGrants, ...emailContext, userId: adminUserId });
 
     if (!result.matchedCount) {
       return common.returnResult(false, 404, 'No active, unused Free Cash grant found for this user.');
@@ -738,7 +797,7 @@ const revokeFreeCashForUser = async (vendorId, targetUserId, freeCashId, adminUs
   }
 };
 
-const revokeFreeCashForAllUsers = async (vendorId, freeCashId, adminUserId) => {
+const revokeFreeCashForAllUsers = async (vendorId, freeCashId, adminUserId, emailContext = {}) => {
   try {
     const idCheck = common.validateObjectId(freeCashId);
     if (!idCheck.valid) {
@@ -750,10 +809,13 @@ const revokeFreeCashForAllUsers = async (vendorId, freeCashId, adminUserId) => {
       return common.returnResult(false, 404, 'Free Cash not found.');
     }
 
+    const revokeFilter = { vendorId, freeCashId, isRevoked: false, isCashUsed: false, status: { $ne: 'D' } };
+    const revokedGrants = await UserFreeCash.find(revokeFilter).lean();
     const result = await UserFreeCash.updateMany(
-      { vendorId, freeCashId, isRevoked: false, isCashUsed: false, status: { $ne: 'D' } },
+      revokeFilter,
       { $set: { isRevoked: true, revokedBy: adminUserId, revokedDate: new Date() } }
     );
+    promotionEmailService.notifyFreeCashRevoked({ vendorId, grants: revokedGrants, ...emailContext, userId: adminUserId });
 
     logger.logInfo(1, 0, 'Free Cash revoked for all users', { vendorId, freeCashId });
 

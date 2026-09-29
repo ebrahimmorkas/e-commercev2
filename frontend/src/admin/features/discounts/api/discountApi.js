@@ -60,8 +60,9 @@ export const deleteDiscount = (discountId) => apiRequest(`${BASE}/${discountId}`
 // --- Bulk multi-select actions (checkbox selection in the admin table) ------
 // Both return { results, successCount, failureCount } - see
 // backend/utils/common.js's runBulkOperation.
-export const bulkSetDiscountStatus = (discountIds, status) =>
-  apiRequest(`${BASE}/bulk-status`, { method: 'PATCH', body: { discountIds, status } });
+// notifyCustomers: only when activating - emails the discounts' customers again.
+export const bulkSetDiscountStatus = (discountIds, status, notifyCustomers = false) =>
+  apiRequest(`${BASE}/bulk-status`, { method: 'PATCH', body: { discountIds, status, notifyCustomers } });
 
 export const bulkDeleteDiscounts = (discountIds) =>
   apiRequest(`${BASE}/bulk-delete`, { method: 'DELETE', body: { discountIds } });

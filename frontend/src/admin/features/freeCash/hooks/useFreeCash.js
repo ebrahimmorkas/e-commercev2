@@ -97,12 +97,14 @@ export const useFreeCash = () => {
    * giveFreeCashTo doesn't depend on a re-uploaded excel file; otherwise the
    * caller is directed to the edit form instead. Mirrors useDiscounts.toggleStatus.
    */
-  const toggleStatus = async (freeCash) => {
+  // notifyCustomers: when re-activating, email its customers again.
+  const toggleStatus = async (freeCash, notifyCustomers = false) => {
     if (needsExcelFor(freeCash.giveFreeCashTo)) {
       toast.error('This campaign\'s targeting was set via an excel upload - open Edit and re-upload the file to change its status.');
       return false;
     }
     const draft = mapApiFreeCashToDraft(freeCash);
+    draft.notifyCustomers = freeCash.status !== 'A' && notifyCustomers;
     draft.status = freeCash.status === 'A' ? 'I' : 'A';
     const fields = buildSubmitFields(draft, { includeStatus: true });
     const result = await editFreeCash(freeCash._id, fields, null);
@@ -155,11 +157,11 @@ export const useFreeCash = () => {
     }
   };
 
-  const bulkToggleStatus = async (freeCashIds, status) => {
+  const bulkToggleStatus = async (freeCashIds, status, notifyCustomers = false) => {
     if (!freeCashIds || freeCashIds.length === 0) return null;
     setMutating(true);
     try {
-      const data = await freeCashApi.bulkSetFreeCashStatus(freeCashIds, status);
+      const data = await freeCashApi.bulkSetFreeCashStatus(freeCashIds, status, notifyCustomers);
       describeBulkOutcome(data, status === 'A' ? 'activated' : 'deactivated');
       await fetchFreeCash();
       return data;

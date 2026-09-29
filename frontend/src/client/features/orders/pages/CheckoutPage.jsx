@@ -20,12 +20,13 @@ import { useCurrency } from '../../../currency/useCurrency';
  *
  * @param {Array} lineItems
  * @param {number} subtotal
+ * @param {number} [totalFreeCashAmount] - Free Cash applied on the cart page.
  * @param {boolean} cartLoading
  * @param {string|null} [initialAddressId] - Address already chosen on the cart page.
  * @param {Function} onBack - Back to cart.
  * @param {Function} onPlaced - Called with the new order's _id on success.
  */
-const CheckoutPage = ({ lineItems = [], subtotal = 0, cartLoading, initialAddressId = null, onBack, onPlaced }) => {
+const CheckoutPage = ({ lineItems = [], subtotal = 0, totalFreeCashAmount = 0, cartLoading, initialAddressId = null, onBack, onPlaced }) => {
   // Amounts here are in the store currency; shown in the shopper's (the one the order is charged in).
   const { formatMoney } = useCurrency();
   const [selectedAddressId, setSelectedAddressId] = useState(initialAddressId);
@@ -44,6 +45,9 @@ const CheckoutPage = ({ lineItems = [], subtotal = 0, cartLoading, initialAddres
     refreshKey: `${lineItems.length}:${subtotal}`,
     skip: lineItems.length === 0,
   });
+
+  // Never more than the items are worth (same rule as the server).
+  const freeCashDeduction = Math.min(totalFreeCashAmount, subtotal);
 
   const handlePlaceOrder = async () => {
     if (!selectedAddressId) {
@@ -130,9 +134,15 @@ const CheckoutPage = ({ lineItems = [], subtotal = 0, cartLoading, initialAddres
             <p className="mt-1 text-xs text-slate-400">Shipping price will be manually calculated by admin.</p>
           )}
           <TaxEstimateRows estimate={taxEstimate} formatMoney={formatMoney} />
+          {freeCashDeduction > 0 && (
+            <div className="mt-2 flex justify-between text-sm text-emerald-600">
+              <span>Free Cash</span>
+              <span>− {formatMoney(freeCashDeduction)}</span>
+            </div>
+          )}
           <div className="mt-2 pt-3 border-t border-slate-200 flex justify-between text-base font-bold text-slate-900">
             <span>Estimated total</span>
-            <span>{formatMoney(subtotal + shippingAmountForTotal(shippingEstimate) + taxAmountForTotal(taxEstimate))}</span>
+            <span>{formatMoney(subtotal - freeCashDeduction + shippingAmountForTotal(shippingEstimate) + taxAmountForTotal(taxEstimate))}</span>
           </div>
           <p className="mt-1 text-xs text-slate-400">Final discounts are applied when the order is placed.</p>
           <button

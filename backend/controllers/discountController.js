@@ -40,8 +40,13 @@ const formatDiscountForResponse = (discountDoc) => {
 // create/update discount payload - productIds/categoryIds/userIds are
 // resolved server-side from an excel upload (see discountService.js), never
 // submitted as ids by the client.
+// The form's "Notify customers by email" checkbox - a string when the
+// request is multipart (excel upload), a boolean otherwise.
+const readNotifyCustomers = (body) => body && (body.notifyCustomers === true || body.notifyCustomers === 'true');
+
 const decodeDiscountPayloadIds = (body) => {
   const payload = { ...body };
+  delete payload.notifyCustomers;
   ['productGroupIds', 'categoryGroupIds', 'userGroupIds'].forEach((field) => {
     if (Array.isArray(payload[field])) {
       payload[field] = payload[field].map((id) => common.decodeId(id));
@@ -113,7 +118,12 @@ const createDiscount = async (req, res) => {
 
         const files = req.files || {};
     const payload = decodeDiscountPayloadIds(req.body);
-    const result = await discountService.createDiscount(vendorId, userId, payload, files, req.companyMasterData);
+    const result = await discountService.createDiscount(vendorId, userId, payload, files, req.companyMasterData, {
+      notifyCustomers: readNotifyCustomers(req.body),
+      companyMasterData: req.companyMasterData,
+      websiteMasterData: req.websiteMasterData,
+      companySettingsData: req.companySettingsData
+    });
 
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message, result.meta);
@@ -125,7 +135,6 @@ const createDiscount = async (req, res) => {
         });
   } catch (error) {
     logger.logException('Error creating discount', { vendorId, error });
-    return common.sendError(res, 500, 'Something went wrong. Please try again.');
   }
 };
 
@@ -142,7 +151,12 @@ const updateDiscount = async (req, res) => {
     discountId = common.decodeId(req.params.id);
     const files = req.files || {};
     const payload = decodeDiscountPayloadIds(req.body);
-    const result = await discountService.updateDiscount(vendorId, discountId, userId, payload, files, req.companyMasterData);
+    const result = await discountService.updateDiscount(vendorId, discountId, userId, payload, files, req.companyMasterData, {
+      notifyCustomers: readNotifyCustomers(req.body),
+      companyMasterData: req.companyMasterData,
+      websiteMasterData: req.websiteMasterData,
+      companySettingsData: req.companySettingsData
+    });
 
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message, result.meta);
@@ -154,7 +168,6 @@ const updateDiscount = async (req, res) => {
         });
   } catch (error) {
     logger.logException('Error updating discount', { vendorId, discountId, error });
-    return common.sendError(res, 500, 'Something went wrong. Please try again.');
   }
 };
 
@@ -177,7 +190,6 @@ const getDiscountById = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message, formatDiscountForResponse(result.meta.data));
   } catch (error) {
     logger.logException('Error fetching discount', { vendorId, discountId, error });
-    return common.sendError(res, 500, 'Something went wrong. Please try again.');
   }
 };
 
@@ -198,7 +210,6 @@ const getAllDiscountsAdmin = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message, result.meta.data.map(formatDiscountForResponse));
   } catch (error) {
     logger.logException('Error fetching discounts', { vendorId, error });
-    return common.sendError(res, 500, 'Something went wrong. Please try again.');
   }
 };
 
@@ -219,7 +230,6 @@ const getActiveDiscounts = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message, result.meta.data.map(formatDiscountForResponse));
   } catch (error) {
     logger.logException('Error fetching active discounts', { vendorId, error });
-    return common.sendError(res, 500, 'Something went wrong. Please try again.');
   }
 };
 
@@ -243,7 +253,6 @@ const deleteDiscount = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message);
   } catch (error) {
     logger.logException('Error deleting discount', { vendorId, discountId, error });
-    return common.sendError(res, 500, 'Something went wrong. Please try again.');
   }
 };
 
@@ -253,7 +262,12 @@ const bulkSetDiscountStatus = async (req, res) => {
   const { status } = req.body;
   try {
     const decodedIds = req.body.discountIds.map((id) => common.decodeId(id));
-    const result = await discountService.bulkSetDiscountStatus(vendorId, userId, decodedIds, status);
+    const result = await discountService.bulkSetDiscountStatus(vendorId, userId, decodedIds, status, {
+      notifyCustomers: req.body.notifyCustomers === true,
+      companyMasterData: req.companyMasterData,
+      websiteMasterData: req.websiteMasterData,
+      companySettingsData: req.companySettingsData
+    });
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message);
     }
@@ -264,7 +278,6 @@ const bulkSetDiscountStatus = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message, meta);
   } catch (error) {
     logger.logException('discountController: bulkSetDiscountStatus - Exception while bulk updating discount status', { vendorId, error });
-    return common.sendError(res, 500, 'Something went wrong. Please try again.');
   }
 };
 
@@ -284,7 +297,6 @@ const bulkDeleteDiscounts = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message, meta);
   } catch (error) {
     logger.logException('discountController: bulkDeleteDiscounts - Exception while bulk deleting discounts', { vendorId, error });
-    return common.sendError(res, 500, 'Something went wrong. Please try again.');
   }
 };
 

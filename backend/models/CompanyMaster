@@ -528,6 +528,40 @@ const companyMasterSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // Customer emails for Discounts and Free Cash (two-level) - see
+    // services/promotionEmailService.js.
+    isEmailSendingFeatureOnAfterDiscountAvailable: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnBeforeDiscountExpires: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnAfterFreeCashCredited: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnAfterFreeCashUsed: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnAfterFreeCashRefunded: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnAfterFreeCashRevoked: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnAfterFreeCashExpired: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnBeforeFreeCashExpires: {
+        type: Boolean,
+        default: false
+    },
     numberOfOrdersAllowedPerMonth: {
         type: Number,
         default: 1000000

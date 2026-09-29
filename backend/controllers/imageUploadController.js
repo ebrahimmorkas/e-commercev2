@@ -51,7 +51,6 @@ const uploadImage = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, { image: formatImageForResponse(result.meta.image) });
     } catch (error) {
         logger.logException('Error uploading image', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to upload image');
     }
 };
 
@@ -68,7 +67,6 @@ const getImages = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, { images: result.meta.images.map(formatImageForResponse) });
     } catch (error) {
         logger.logException('Error fetching images', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to fetch images');
     }
 };
 
@@ -85,7 +83,6 @@ const getImageById = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, { image: formatImageForResponse(result.meta.image) });
     } catch (error) {
         logger.logException('Error fetching image', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to fetch image');
     }
 };
 
@@ -111,7 +108,6 @@ const updateImage = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, { image: formatImageForResponse(result.meta.image) });
     } catch (error) {
         logger.logException('Error updating image', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to update image');
     }
 };
 
@@ -131,7 +127,6 @@ const deleteImage = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         logger.logException('Error deleting image', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to delete image');
     }
 };
 

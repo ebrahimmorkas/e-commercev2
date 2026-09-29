@@ -61,8 +61,9 @@ export const revokeFreeCashForAllUsers = (freeCashId) =>
 // --- Bulk multi-select actions (checkbox selection in the admin table) ------
 // Both return { results, successCount, failureCount } - see
 // backend/utils/common.js's runBulkOperation.
-export const bulkSetFreeCashStatus = (freeCashIds, status) =>
-  apiRequest(`${BASE}/bulk-status`, { method: 'PATCH', body: { freeCashIds, status } });
+// notifyCustomers: only when activating - emails the campaigns' customers again.
+export const bulkSetFreeCashStatus = (freeCashIds, status, notifyCustomers = false) =>
+  apiRequest(`${BASE}/bulk-status`, { method: 'PATCH', body: { freeCashIds, status, notifyCustomers } });
 
 export const bulkDeleteFreeCash = (freeCashIds) =>
   apiRequest(`${BASE}/bulk-delete`, { method: 'DELETE', body: { freeCashIds } });

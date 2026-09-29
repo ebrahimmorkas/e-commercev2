@@ -231,6 +231,40 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // Customer emails for Discounts and Free Cash (two-level) - see
+    // services/promotionEmailService.js.
+    isEmailSendingFeatureOnAfterDiscountAvailable: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnBeforeDiscountExpires: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnAfterFreeCashCredited: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnAfterFreeCashUsed: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnAfterFreeCashRefunded: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnAfterFreeCashRevoked: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnAfterFreeCashExpired: {
+        type: Boolean,
+        default: false
+    },
+    isEmailSendingFeatureOnBeforeFreeCashExpires: {
+        type: Boolean,
+        default: false
+    },
     // Platform-wide switch for delivery agents (the Delivery Agents page,
     // assigning agents to orders, the agents' own step change and Payment at
     // Delivery). A vendor also needs CompanyMaster's flag of the same name.

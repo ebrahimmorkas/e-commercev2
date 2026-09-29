@@ -184,7 +184,6 @@ const getAnnouncementById = async (req, res) => {
         return common.sendSuccess(res, 200, 'Announcement fetched successfully', formatAnnouncementForResponse(result.meta.announcement));
     } catch (error) {
         logger.logException('announcementController: getAnnouncementById - Exception while fetching announcement by ID', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to fetch announcement');
     }
 };
 

@@ -95,7 +95,7 @@ const describeModuleAssignment = ({ mode, values, initialValues, assignments, te
  * @param {{module: string, templateId: string}[]} props.assignments - current module assignments (for the module hint)
  * @param {Object[]} props.templates - all templates (to name the one currently holding a module)
  * @param {{isOn: boolean, stepOptions: Object[], hasWorkflow: boolean}} props.stepWise - step-wise order templates
- * @param {boolean} props.isCourierFeatureOn - offers the courier modules when true
+ * @param {string[]} props.unavailableModules - modules not to offer (their feature is off)
  */
 const EmailTemplateForm = ({
   mode = 'add',
@@ -106,7 +106,7 @@ const EmailTemplateForm = ({
   assignments = [],
   templates = [],
   stepWise = { isOn: false, stepOptions: [], hasWorkflow: false },
-  isCourierFeatureOn = false,
+  unavailableModules = [],
 }) => {
   const validationSchema = buildValidationSchema(mode);
   const { variablesByModule } = useEmailTemplateVariables();
@@ -206,7 +206,7 @@ const EmailTemplateForm = ({
               <Dropdown
                 label="Module"
                 name="module"
-                options={getModuleOptions(isCourierFeatureOn)}
+                options={getModuleOptions(unavailableModules)}
                 value={values.module}
                 onChange={(val) => setFieldValue('module', val || '')}
                 placeholder="No module"

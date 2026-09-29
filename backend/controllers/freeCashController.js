@@ -126,8 +126,10 @@ const createFreeCash = async (req, res) => {
 
     const files = req.files || {};
     const payload = decodeFreeCashPayloadIds(req.body);
+    const notifyCustomers = payload.notifyCustomers === true || payload.notifyCustomers === 'true';
+    delete payload.notifyCustomers;
     const result = await freeCashService.createFreeCash(
-      vendorId, userId, payload, files, req.companyMasterData, req.websiteMasterData, req.companySettingsData
+      vendorId, userId, payload, files, req.companyMasterData, req.websiteMasterData, req.companySettingsData, notifyCustomers
     );
 
     if (!result.isSuccess) {
@@ -156,8 +158,11 @@ const updateFreeCash = async (req, res) => {
     freeCashId = common.decodeId(req.params.id);
     const files = req.files || {};
     const payload = decodeFreeCashPayloadIds(req.body);
+    const notifyCustomers = payload.notifyCustomers === true || payload.notifyCustomers === 'true';
+    delete payload.notifyCustomers;
     const result = await freeCashService.updateFreeCash(
-      vendorId, freeCashId, userId, payload, files, req.companyMasterData, req.websiteMasterData
+      vendorId, freeCashId, userId, payload, files, req.companyMasterData, req.websiteMasterData,
+      { notifyCustomers, companySettingsData: req.companySettingsData }
     );
 
     if (!result.isSuccess) {
@@ -254,7 +259,9 @@ const revokeFreeCashForUser = async (req, res) => {
 
     const targetUserId = common.decodeId(req.body.userId);
     const freeCashId = common.decodeId(req.body.freeCashId);
-    const result = await freeCashService.revokeFreeCashForUser(vendorId, targetUserId, freeCashId, adminUserId);
+    const result = await freeCashService.revokeFreeCashForUser(vendorId, targetUserId, freeCashId, adminUserId, {
+      companyMasterData: req.companyMasterData, websiteMasterData: req.websiteMasterData, companySettingsData: req.companySettingsData
+    });
 
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message);
@@ -281,7 +288,9 @@ const revokeFreeCashForAllUsers = async (req, res) => {
     }
 
     const freeCashId = common.decodeId(req.body.freeCashId);
-    const result = await freeCashService.revokeFreeCashForAllUsers(vendorId, freeCashId, adminUserId);
+    const result = await freeCashService.revokeFreeCashForAllUsers(vendorId, freeCashId, adminUserId, {
+      companyMasterData: req.companyMasterData, websiteMasterData: req.websiteMasterData, companySettingsData: req.companySettingsData
+    });
 
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message);
@@ -299,7 +308,12 @@ const bulkSetFreeCashStatus = async (req, res) => {
   const { status } = req.body;
   try {
     const decodedIds = req.body.freeCashIds.map((id) => common.decodeId(id));
-    const result = await freeCashService.bulkSetFreeCashStatus(vendorId, userId, decodedIds, status);
+    const result = await freeCashService.bulkSetFreeCashStatus(vendorId, userId, decodedIds, status, {
+      notifyCustomers: req.body.notifyCustomers === true,
+      companyMasterData: req.companyMasterData,
+      websiteMasterData: req.websiteMasterData,
+      companySettingsData: req.companySettingsData
+    });
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message);
     }

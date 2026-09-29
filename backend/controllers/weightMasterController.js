@@ -19,7 +19,6 @@ const getWeights = async (req, res) => {
     return common.sendSuccess(res, 200, 'Weights fetched successfully', weights.map(formatWeightForResponse));
   } catch (error) {
     logger.logException('Error fetching weights', { error });
-    return common.sendError(res, 500, 'Failed to fetch weights');
   }
 };
 

@@ -9,6 +9,8 @@ import { useShippingEstimate } from '../hooks/useShippingEstimate';
 import { formatShippingEstimate, shippingAmountForTotal } from '../utils/formatShipping';
 import { useTaxEstimate, taxAmountForTotal } from '../hooks/useTaxEstimate';
 import TaxEstimateRows from '../components/TaxEstimateRows';
+import FreeCashPanel from '../components/FreeCashPanel';
+import { useFreeCash } from '../hooks/useFreeCash';
 import { useCurrency } from '../../../currency/useCurrency';
 
 
@@ -96,6 +98,10 @@ const CartLineItem = ({ item, onIncrement, onDecrement, onSetQuantity, onRemove 
  * @param {string|null} [props.addressId] - Saved address the shipping estimate is priced against.
  * @param {Function} [props.onAddressChange] - Called with a saved address _id (or null).
  * @param {Function} [props.reload]
+ * @param {Array} [props.appliedFreeCash] - cart.freeCash
+ * @param {number} [props.totalFreeCashAmount] - cart.totalFreeCashAmount
+ * @param {Function} [props.onCartUpdated] - Called with the cart returned by applying/removing Free Cash.
+ * @param {Function} [props.onSignIn] - Opens the login modal (a guest can't use Free Cash).
  */
 const CartPage = ({
   lineItems = [],
@@ -112,6 +118,10 @@ const CartPage = ({
   addressId = null,
   onAddressChange,
   reload,
+  appliedFreeCash = [],
+  totalFreeCashAmount = 0,
+  onCartUpdated,
+  onSignIn,
 }) => {
   const { formatMoney } = useCurrency();
   const [addressModalOpen, setAddressModalOpen] = useState(false);
@@ -126,7 +136,14 @@ const CartPage = ({
     refreshKey: `${itemCount}:${subtotal}`,
     skip: lineItems.length === 0,
   });
+  const freeCash = useFreeCash({
+    refreshKey: `${itemCount}:${subtotal}:${isAuthenticated}`,
+    skip: lineItems.length === 0,
+    onCartUpdated,
+  });
   const deliveringTo = shippingEstimate?.deliveringTo;
+  // Never more than the items are worth (same rule as the server).
+  const freeCashDeduction = Math.min(totalFreeCashAmount, subtotal);
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
@@ -222,34 +239,53 @@ const CartPage = ({
             ))}
           </div>
 
-          <div className={`h-fit rounded-xl border p-4 sm:p-5 ${theme.card.background} ${theme.card.border}`}>
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Order Summary</h2>
-            <div className="mt-4 flex justify-between text-sm text-slate-600">
-              <span>Items ({itemCount})</span>
-              <span>{formatMoney(subtotal)}</span>
-            </div>
-            {shippingEstimate && (
-              <div className="mt-2 flex justify-between text-sm text-slate-600">
-                <span>Shipping</span>
-                <span>{formatShippingEstimate(shippingEstimate, formatMoney)}</span>
+          <div className="h-fit space-y-4">
+            <FreeCashPanel
+              key={appliedFreeCash.map((f) => `${f.freeCashId}:${f.amountApplied}`).join(',')}
+              info={freeCash.info}
+              appliedFreeCash={appliedFreeCash}
+              saving={freeCash.saving}
+              rejections={freeCash.rejections}
+              onApply={freeCash.apply}
+              onRemove={freeCash.remove}
+              onSignIn={onSignIn}
+              formatMoney={formatMoney}
+            />
+            <div className={`rounded-xl border p-4 sm:p-5 ${theme.card.background} ${theme.card.border}`}>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Order Summary</h2>
+              <div className="mt-4 flex justify-between text-sm text-slate-600">
+                <span>Items ({itemCount})</span>
+                <span>{formatMoney(subtotal)}</span>
               </div>
-            )}
-            {shippingEstimate?.isShippingPending && (
-              <p className="mt-1 text-xs text-slate-500">Shipping price will be manually calculated by admin.</p>
-            )}
-            <TaxEstimateRows estimate={taxEstimate} formatMoney={formatMoney} />
-            <div className="mt-2 pt-3 border-t border-slate-200 flex justify-between text-base font-bold text-slate-900">
-              <span>{shippingEstimate || taxEstimate ? 'Estimated total' : 'Subtotal'}</span>
-              <span>{formatMoney(subtotal + shippingAmountForTotal(shippingEstimate) + taxAmountForTotal(taxEstimate))}</span>
+              {shippingEstimate && (
+                <div className="mt-2 flex justify-between text-sm text-slate-600">
+                  <span>Shipping</span>
+                  <span>{formatShippingEstimate(shippingEstimate, formatMoney)}</span>
+                </div>
+              )}
+              {shippingEstimate?.isShippingPending && (
+                <p className="mt-1 text-xs text-slate-500">Shipping price will be manually calculated by admin.</p>
+              )}
+              <TaxEstimateRows estimate={taxEstimate} formatMoney={formatMoney} />
+              {freeCashDeduction > 0 && (
+                <div className="mt-2 flex justify-between text-sm text-emerald-600">
+                  <span>Free Cash</span>
+                  <span>− {formatMoney(freeCashDeduction)}</span>
+                </div>
+              )}
+              <div className="mt-2 pt-3 border-t border-slate-200 flex justify-between text-base font-bold text-slate-900">
+                <span>{shippingEstimate || taxEstimate || freeCashDeduction > 0 ? 'Estimated total' : 'Subtotal'}</span>
+                <span>{formatMoney(subtotal - freeCashDeduction + shippingAmountForTotal(shippingEstimate) + taxAmountForTotal(taxEstimate))}</span>
+              </div>
+              <p className="mt-1 text-xs text-slate-400">Discounts are applied at checkout. Free Cash and tax are confirmed when the order is placed.</p>
+              <button
+                type="button"
+                onClick={onCheckout}
+                className={`mt-5 w-full py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition-colors duration-150 ${theme.card.button}`}
+              >
+                Proceed to Checkout
+              </button>
             </div>
-            <p className="mt-1 text-xs text-slate-400">Discounts are applied at checkout. Tax is confirmed for your delivery address when the order is placed.</p>
-            <button
-              type="button"
-              onClick={onCheckout}
-              className={`mt-5 w-full py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition-colors duration-150 ${theme.card.button}`}
-            >
-              Proceed to Checkout
-            </button>
           </div>
         </div>
       )}

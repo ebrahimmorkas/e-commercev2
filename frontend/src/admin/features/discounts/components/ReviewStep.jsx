@@ -1,5 +1,6 @@
 import Dropdown from '../../../../components/common/DropDown';
 import Badge from '../../../../components/common/Badge';
+import Checkbox from '../../../../components/common/Checkbox';
 import { GIVE_DISCOUNT_TO_CONFIG, DISCOUNT_FLOW_OPTIONS, STATUS_OPTIONS } from '../constants';
 import theme from '../theme/theme';
 import { useStoreCurrency } from '../../../currency/useStoreCurrency';
@@ -34,6 +35,17 @@ const ReviewStep = ({ draft, onChange, isEdit = false }) => {
           required
         />
       )}
+
+      <Checkbox
+        label="Notify customers by email"
+        checked={!!draft.notifyCustomers}
+        onChange={(e) => set({ notifyCustomers: e.target.checked })}
+        description={
+          isEdit
+            ? 'Sends the Discount Available email to customers newly added to this discount - or to everyone it is for, if you are re-activating it.'
+            : 'Sends the Discount Available email to the customers this discount is for (see Company Settings > Discount and Free Cash).'
+        }
+      />
 
       <div className="rounded-xl border border-gray-200 p-4">
         <p className={`text-sm font-medium mb-2 ${theme.text.heading}`}>{draft.name || 'Untitled discount'}</p>

@@ -25,6 +25,8 @@ export const requiredExcelSheetsFor = (giveDiscountTo) => {
 
 export const emptyDraft = () => ({
   _id: null,
+  // "Notify customers by email" - a per-save choice, never stored on the discount.
+  notifyCustomers: false,
   name: '',
   description: '',
   remarks: '',
@@ -76,6 +78,7 @@ export const emptyDraft = () => ({
  */
 export const mapApiDiscountToDraft = (doc) => ({
   _id: doc._id,
+  notifyCustomers: false,
   name: doc.name || '',
   description: doc.description || '',
   remarks: doc.remarks || '',
@@ -164,6 +167,8 @@ export const buildSubmitFields = (draft, { includeStatus = false } = {}) => {
     timezone: draft.timezone || 'Asia/Kolkata',
 
     isDiscountBasedOnPaymentMethods: !!draft.isDiscountBasedOnPaymentMethods,
+
+    notifyCustomers: !!draft.notifyCustomers,
   };
 
   if (!isOngoing) {

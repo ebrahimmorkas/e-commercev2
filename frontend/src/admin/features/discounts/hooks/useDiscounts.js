@@ -97,13 +97,15 @@ export const useDiscounts = () => {
    * giveDiscountTo doesn't depend on a re-uploaded excel file; otherwise the
    * caller is directed to the edit form instead.
    */
-  const toggleStatus = async (discount) => {
+  // notifyCustomers: when re-activating, email its customers again.
+  const toggleStatus = async (discount, notifyCustomers = false) => {
     if (needsExcelFor(discount.giveDiscountTo)) {
       toast.error('This discount\'s targeting was set via an excel upload - open Edit and re-upload the file to change its status.');
       return false;
     }
     const draft = mapApiDiscountToDraft(discount);
     draft.status = discount.status === 'A' ? 'I' : 'A';
+    draft.notifyCustomers = draft.status === 'A' && notifyCustomers;
     const fields = buildSubmitFields(draft, { includeStatus: true });
     const result = await editDiscount(discount._id, fields, null);
     return result.success;
@@ -128,11 +130,11 @@ export const useDiscounts = () => {
     }
   };
 
-  const bulkToggleStatus = async (discountIds, status) => {
+  const bulkToggleStatus = async (discountIds, status, notifyCustomers = false) => {
     if (!discountIds || discountIds.length === 0) return null;
     setMutating(true);
     try {
-      const data = await discountApi.bulkSetDiscountStatus(discountIds, status);
+      const data = await discountApi.bulkSetDiscountStatus(discountIds, status, notifyCustomers);
       describeBulkOutcome(data, status === 'A' ? 'activated' : 'deactivated');
       await fetchDiscounts();
       return data;

@@ -89,7 +89,6 @@ const addToCart = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, deepEncodeIds(result.meta));
     } catch (error) {
         logger.logException('Error adding product to cart', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to add product to cart');
     }
 };
 
@@ -113,7 +112,6 @@ const updateCartItem = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, deepEncodeIds(result.meta));
     } catch (error) {
         logger.logException('Error updating cart item', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to update cart item');
     }
 };
 
@@ -126,14 +124,13 @@ const removeCartItem = async (req, res) => {
             variantId: common.decodeId(req.body.variantId),
             sizeId: common.decodeId(req.body.sizeId)
         };
-        const result = await cartService.removeCartItem(vendorId, req.cartOwner, payload);
+        const result = await cartService.removeCartItem(vendorId, req.cartOwner, payload, req.companyMasterData, req.websiteMasterData, req.companySettingsData);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
         return common.sendSuccess(res, result.statusCode, result.message, deepEncodeIds(result.meta));
     } catch (error) {
         logger.logException('Error removing cart item', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to remove cart item');
     }
 };
 
@@ -141,14 +138,13 @@ const getCart = async (req, res) => {
     const vendorId = req.vendorId;
     try {
         const locationContext = buildLocationContext(req);
-        const result = await cartService.getCart(vendorId, req.cartOwner, locationContext, req.companyMasterData, req.websiteMasterData);
+        const result = await cartService.getCart(vendorId, req.cartOwner, locationContext, req.companyMasterData, req.websiteMasterData, req.companySettingsData);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
         return common.sendSuccess(res, result.statusCode, result.message, deepEncodeIds(result.meta));
     } catch (error) {
         logger.logException('Error fetching cart', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to fetch cart');
     }
 };
 
@@ -171,7 +167,6 @@ const applyDiscounts = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, deepEncodeIds(result.meta));
     } catch (error) {
         logger.logException('Error applying discounts to cart', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to apply discounts');
     }
 };
 
@@ -185,7 +180,6 @@ const removeDiscounts = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, deepEncodeIds(result.meta));
     } catch (error) {
         logger.logException('Error removing discounts from cart', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to remove discounts');
     }
 };
 
@@ -234,7 +228,7 @@ const getEligibleFreeCash = async (req, res) => {
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, result.statusCode, result.message, deepEncodeIds(result.meta.data));
+        return common.sendSuccess(res, result.statusCode, result.message, deepEncodeIds(result.meta));
     } catch (error) {
         logger.logException('cartController: getEligibleFreeCash - Exception while fetching eligible Free Cash', { vendorId, error });
     }
@@ -291,7 +285,6 @@ const checkoutCart = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, deepEncodeIds(result.meta));
     } catch (error) {
         logger.logException('Error checking out cart', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to checkout cart');
     }
 };
 

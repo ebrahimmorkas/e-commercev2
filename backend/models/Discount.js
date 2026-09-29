@@ -287,6 +287,14 @@ const discountSchema = new mongoose.Schema(
       min: 0,
     },
 
+    // When the "Discount Expiring Soon" email went out for this discount -
+    // it's sent once (see services/expiryReminderService.js). Cleared when
+    // the end date is changed, so a moved end date gets its own reminder.
+    expiryReminderSentAt: {
+      type: Date,
+      default: null,
+    },
+
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

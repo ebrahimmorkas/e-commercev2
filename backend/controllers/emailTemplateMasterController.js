@@ -1,6 +1,5 @@
 const emailTemplateMasterService = require('../services/emailTemplateMasterService');
 const { EMAIL_MODULE_VARIABLES } = require('../constants/emailVariableConstants');
-const { COURIER_EMAIL_MODULES } = require('../constants/emailModuleConstants');
 const logger = require('../utils/logger');
 const common = require('../utils/common');
 
@@ -139,12 +138,12 @@ const getAvailableVariables = async (req, res) => {
     const vendorId = req.vendorId;
     const { module } = req.params;
     try {
-        // With the courier feature off, the courier modules don't exist for
-        // this vendor and {{courierName}} isn't offered anywhere.
-        const isCourierOn = emailTemplateMasterService.isCourierFeatureOn(req.websiteMasterData, req.companyMasterData);
-        if (!isCourierOn && COURIER_EMAIL_MODULES.includes(module)) {
+        // A module whose feature is off doesn't exist for this vendor; with the
+        // courier feature off {{courierName}} isn't offered anywhere either.
+        if (!emailTemplateMasterService.isModuleAvailable(module, req.websiteMasterData, req.companyMasterData)) {
             return common.sendSuccess(res, 200, 'Available variables fetched successfully', []);
         }
+        const isCourierOn = emailTemplateMasterService.isCourierFeatureOn(req.websiteMasterData, req.companyMasterData);
         const variables = (EMAIL_MODULE_VARIABLES[module] || []).filter((v) => isCourierOn || v.key !== 'courierName');
         return common.sendSuccess(res, 200, 'Available variables fetched successfully', variables);
     } catch (error) {

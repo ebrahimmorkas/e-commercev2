@@ -10,7 +10,9 @@ const objectId = () => Joi.string().trim().min(1).messages({
 // --- Bulk status / delete (multi-select checkbox actions) --------------------
 const bulkDiscountStatusSchema = Joi.object({
   discountIds: Joi.array().items(objectId()).min(1).max(50).unique().required().label('Discount IDs'),
-  status: Joi.string().valid('A', 'I').required().label('Status')
+  status: Joi.string().valid('A', 'I').required().label('Status'),
+  // Only used when activating - emails the customers again.
+  notifyCustomers: Joi.boolean().default(false).label('Notify customers by email')
 });
 
 const bulkDeleteDiscountSchema = Joi.object({

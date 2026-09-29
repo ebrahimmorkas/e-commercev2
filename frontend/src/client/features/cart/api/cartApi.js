@@ -51,6 +51,24 @@ export const getTaxEstimate = (addressId) =>
 
 export const checkoutCart = () => apiRequest('/cart/checkout-cart', { method: 'POST' });
 
+/**
+ * Free Cash the shopper could apply to the current cart. isEnabled false =
+ * the store has no Free Cash (show nothing); requiresLogin = a guest.
+ * @returns {Promise<{ isEnabled: boolean, requiresLogin: boolean, isMultipleFreeCashUsageAllowed: boolean, freeCash: Array }>}
+ */
+export const getEligibleFreeCash = () => apiRequest('/cart/eligible-free-cash');
+
+/**
+ * Replaces whatever Free Cash is applied with these. A rejected one comes
+ * back in rejectedFreeCash (or, when none could be applied, as the thrown
+ * ApiError's errors.rejected) with its reason.
+ * @returns {Promise<{ cart: Object, appliedFreeCash: Array, rejectedFreeCash: Array }>}
+ */
+export const applyFreeCash = (freeCashIds) =>
+  apiRequest('/cart/apply-free-cash', { method: 'POST', body: { freeCashIds } });
+
+export const removeFreeCash = () => apiRequest('/cart/remove-free-cash', { method: 'DELETE' });
+
 export default {
   getCart,
   addToCart,
@@ -59,4 +77,7 @@ export default {
   checkoutCart,
   getShippingEstimate,
   getTaxEstimate,
+  getEligibleFreeCash,
+  applyFreeCash,
+  removeFreeCash,
 };

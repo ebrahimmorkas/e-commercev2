@@ -1,5 +1,6 @@
 import Dropdown from '../../../../components/common/DropDown';
 import Badge from '../../../../components/common/Badge';
+import Checkbox from '../../../../components/common/Checkbox';
 import { GIVE_FREE_CASH_TO_CONFIG, STATUS_OPTIONS } from '../constants';
 import theme from '../theme/theme';
 import { useStoreCurrency } from '../../../currency/useStoreCurrency';
@@ -33,6 +34,17 @@ const ReviewStep = ({ draft, onChange, isEdit = false }) => {
           required
         />
       )}
+
+      <Checkbox
+        label="Notify customers by email"
+        checked={!!draft.notifyCustomers}
+        onChange={(e) => set({ notifyCustomers: e.target.checked })}
+        description={
+          isEdit
+            ? 'Sends the Free Cash Credited email to its customers when you re-activate this Free Cash.'
+            : 'Sends the Free Cash Credited email to the customers this Free Cash is for (see Company Settings > Discount and Free Cash).'
+        }
+      />
 
       <div className="rounded-xl border border-gray-200 p-4">
         <p className={`text-sm font-medium mb-2 ${theme.text.heading}`}>{draft.freeCashName || 'Untitled Free Cash'}</p>

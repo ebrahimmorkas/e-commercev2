@@ -82,6 +82,14 @@ const WEBSITE_MASTER = {
     isEmailSendingFeatureOnAfterCourierAssigned: true,
     isEmailSendingFeatureOnAfterCourierChanged: true,
     isEmailSendingFeatureOnAfterCourierRemoved: true,
+    isEmailSendingFeatureOnAfterDiscountAvailable: true,
+    isEmailSendingFeatureOnBeforeDiscountExpires: true,
+    isEmailSendingFeatureOnAfterFreeCashCredited: true,
+    isEmailSendingFeatureOnAfterFreeCashUsed: true,
+    isEmailSendingFeatureOnAfterFreeCashRefunded: true,
+    isEmailSendingFeatureOnAfterFreeCashRevoked: true,
+    isEmailSendingFeatureOnAfterFreeCashExpired: true,
+    isEmailSendingFeatureOnBeforeFreeCashExpires: true,
     isOrderStatusUpdationAllowedByDeliveryAgents: true,
 
     // Shipping Price

@@ -3,6 +3,7 @@ const Product = require('../models/Product');
 const Discount = require('../models/Discount');
 const FreeCash = require('../models/FreeCash');
 const UserFreeCash = require('../models/UserFreeCash');
+const Category = require('../models/Category');
 const redisService = require('./redisService');
 const redisKeys = require('../utils/redisKeys');
 const common = require('../utils/common');
@@ -13,6 +14,8 @@ const abandonedCartService = require('./abandonedCartService');
 const bulkPricing = require('../utils/bulkPricing');
 const taxCalculationService = require('./taxCalculationService');
 const currencyService = require('./currencyService');
+const promotionEmailService = require('./promotionEmailService');
+const { EMAIL_MODULES } = require('../constants/emailModuleConstants');
 
 // Formats a store-currency amount for a shopper's message, in the currency
 // they see prices in (their country's, converted). Falls back to the plain
@@ -243,6 +246,8 @@ const addProductToCart = async (vendorId, cartOwner, locationContext, companyMas
         // decided; this just keeps the activity clock current either way).
         const wasAbandoned = abandonedCartService.markCartActivity(cart);
 
+        // A changed cart total can change how much Free Cash applies.
+        await recalculateAppliedFreeCash(vendorId, cart, cartLinesForFreeCash(cart), companyMasterData, websiteMasterData, companySettingsData);
         await cart.save();
         await invalidateCartTotalCache(vendorId, cartOwner);
 
@@ -271,7 +276,7 @@ const updateCartItemQuantity = async (vendorId, cartOwner, companyMasterData, we
         }
 
         if (quantity <= 0) {
-            return removeCartItem(vendorId, cartOwner, { productId, variantId, sizeId });
+            return removeCartItem(vendorId, cartOwner, { productId, variantId, sizeId }, companyMasterData, websiteMasterData, companySettingsData);
         }
 
         const resolved = await resolveActiveProductLine(vendorId, productId, variantId, sizeId);
@@ -301,6 +306,7 @@ const updateCartItemQuantity = async (vendorId, cartOwner, companyMasterData, we
         // quantity may enter or leave a bulk pricing tier - refresh it.
         const isBulkPricingOn = await bulkPricing.isBulkPricingActive(vendorId, websiteMasterData, companyMasterData);
         applyLinePrice(sizeEntry, resolved.product, resolved.variant, resolved.size, isBulkPricingOn);
+        await recalculateAppliedFreeCash(vendorId, cart, cartLinesForFreeCash(cart), companyMasterData, websiteMasterData, companySettingsData);
 
         await cart.save();
         await invalidateCartTotalCache(vendorId, cartOwner);
@@ -311,7 +317,7 @@ const updateCartItemQuantity = async (vendorId, cartOwner, companyMasterData, we
     }
 };
 
-const removeCartItem = async (vendorId, cartOwner, payload) => {
+const removeCartItem = async (vendorId, cartOwner, payload, companyMasterData, websiteMasterData, companySettingsData) => {
     try {
         const { productId, variantId, sizeId } = payload;
 
@@ -338,6 +344,7 @@ const removeCartItem = async (vendorId, cartOwner, payload) => {
         if (productEntry.variants.length === 0) {
             cart.products = cart.products.filter((p) => p.productId.toString() !== productId.toString());
         }
+        await recalculateAppliedFreeCash(vendorId, cart, cartLinesForFreeCash(cart), companyMasterData, websiteMasterData, companySettingsData);
 
         await cart.save();
         await invalidateCartTotalCache(vendorId, cartOwner);
@@ -465,7 +472,7 @@ const computeCartSubtotal = (cart) => {
     return { subtotal, totalQuantity };
 };
 
-const getCart = async (vendorId, cartOwner, locationContext, companyMasterData, websiteMasterData) => {
+const getCart = async (vendorId, cartOwner, locationContext, companyMasterData, websiteMasterData, companySettingsData) => {
     try {
         const cart = await Cart.findOne({ vendorId, status: 'A', ...ownerFilter(cartOwner) });
         if (!cart) {
@@ -478,7 +485,10 @@ const getCart = async (vendorId, cartOwner, locationContext, companyMasterData, 
 
         const isBulkPricingOn = await bulkPricing.isBulkPricingActive(vendorId, websiteMasterData, companyMasterData);
         const mutated = await revalidateCartItems(cart, locationContext, isBulkPricingOn);
-        if (mutated) {
+        // Re-checked on every fetch too - a grant can expire or be revoked
+        // without the cart itself changing.
+        const freeCashResult = await recalculateAppliedFreeCash(vendorId, cart, cartLinesForFreeCash(cart), companyMasterData, websiteMasterData, companySettingsData);
+        if (mutated || freeCashResult.changed) {
             await cart.save();
             await invalidateCartTotalCache(vendorId, cartOwner);
         }
@@ -815,32 +825,155 @@ const removeDiscountsFromCart = async (vendorId, cartOwner) => {
 | Mirrors the DISCOUNTS section above. giveFreeCashTo === 'SPECIFIC_USERS'
 | or 'GROUPS' campaigns already have their UserFreeCash grants created
 | eagerly by freeCashService.createFreeCash (Pass 1). 'ALL_USERS' and the
-| category-restricted options do NOT - eligibility for those is resolved
-| here, lazily, the first time this user's cart becomes eligible, via
-| freeCashService.issueUserFreeCash (so the isFreeCashStackingAllowed
-| expire-others behavior stays centralized in one place).
+| category-restricted options do NOT - each customer is given one grant,
+| lazily, the first time their cart becomes eligible, via
+| freeCashService.issueUserFreeCash (without expiring their other grants).
+|
+| A category-restricted campaign is worked out against the cart lines in
+| its categories only: its validAbove is checked against, and its amount
+| capped at, the total of those lines - never the whole cart.
 */
 
-// True if any cart line item's product falls under this FreeCash campaign's
-// selected category/categories. ALL_USERS is not category-restricted and
-// never reaches here.
-const cartMatchesFreeCashCategory = (cart, freeCashDoc, productCategoryMap) => {
-    const mainIds = new Set((freeCashDoc.mainCategoryIds || []).map((id) => id.toString()));
-    const subIds = new Set((freeCashDoc.subCategoryIds || []).map((id) => id.toString()));
+const CATEGORY_FREE_CASH_TYPES = ['ONLY_MAIN_CATEGORY', 'MAIN_CATEGORY_AND_SUB_CATEGORY'];
 
-    return cart.products.some((p) => {
-        const categories = productCategoryMap.get(p.productId.toString()) || [];
-        if (freeCashDoc.giveFreeCashTo === 'MAIN_CATEGORY_AND_SUB_CATEGORY' && subIds.size > 0) {
-            return categories.some((catId) => subIds.has(catId.toString()));
-        }
-        return categories.some((catId) => mainIds.has(catId.toString()));
-    });
+const isCategoryFreeCash = (freeCashDoc) => CATEGORY_FREE_CASH_TYPES.includes(freeCashDoc.giveFreeCashTo);
+
+// Stacking off means a customer holds one grant at a time, so applying
+// several is only possible when both settings are on.
+const isMultipleFreeCashAllowed = (companySettingsData) =>
+    !!companySettingsData
+    && companySettingsData.isFreeCashStackingAllowed === true
+    && companySettingsData.isMultipleFreeCashUsageAllowed === true;
+
+const isFreeCashEnabled = async (vendorId, websiteMasterData, companyMasterData, companySettingsData) => {
+    if (!websiteMasterData || !companyMasterData || !companySettingsData) return false;
+    const featureCheck = await common.checkFeatureOnOrOff(vendorId, websiteMasterData, companyMasterData, 'isFreeCashFeatureOn', 'isFreeCashFeatureOn');
+    return featureCheck.isSuccess && companySettingsData.isFreeCashFeatureOn === true;
 };
+
+// A grant (with freeCashId populated) that can still be drawn from right now.
+const isGrantUsable = (grant, now) => {
+    const fc = grant && grant.freeCashId;
+    return !!grant && !grant.isCashExpired && !grant.isRevoked && grant.status === 'A' && grant.remainingAmount > 0
+        && !!fc && fc.status === 'A' && now >= fc.startDate && now <= fc.endDate;
+};
+
+// The lines the Free Cash math runs on: [{ productId, amount }].
+const cartLinesForFreeCash = (cart) => {
+    const lines = [];
+    for (const p of cart.products) {
+        for (const v of p.variants) {
+            for (const s of v.sizes) {
+                lines.push({ productId: p.productId, amount: s.unitPrice * s.quantity });
+            }
+        }
+    }
+    return lines;
+};
+
+const loadProductCategoryMap = async (productIds) => {
+    const liveProducts = await Product.find({ _id: { $in: productIds } }, { mainCategory: 1, subCategory: 1 });
+    return new Map(liveProducts.map((p) => [p._id.toString(), [p.mainCategory, p.subCategory].filter(Boolean)]));
+};
+
+// Whether a line counts towards this campaign - every line for a campaign
+// that is not category-restricted.
+const lineMatchesFreeCash = (line, freeCashDoc, productCategoryMap) => {
+    if (!isCategoryFreeCash(freeCashDoc)) return true;
+
+    const categories = productCategoryMap.get(line.productId.toString()) || [];
+    const subIds = new Set((freeCashDoc.subCategoryIds || []).map((id) => id.toString()));
+    if (freeCashDoc.giveFreeCashTo === 'MAIN_CATEGORY_AND_SUB_CATEGORY' && subIds.size > 0) {
+        return categories.some((catId) => subIds.has(catId.toString()));
+    }
+    const mainIds = new Set((freeCashDoc.mainCategoryIds || []).map((id) => id.toString()));
+    return categories.some((catId) => mainIds.has(catId.toString()));
+};
+
+// Works out, in the given order, how much of each chosen Free Cash applies
+// to these lines. grantMap is freeCashId -> usable grant (freeCashId
+// populated). Each applied amount is taken off the lines it covers, so two
+// campaigns on the same category can never deduct more than those lines
+// are worth. An active discount is taken off the cart total first.
+const allocateFreeCash = ({ freeCashIds, grantMap, lines, productCategoryMap, discounts, totalDiscountAmount, multipleAllowed, formatMoney }) => {
+    const lineRemaining = lines.map((l) => l.amount);
+    const subtotal = lineRemaining.reduce((sum, amount) => sum + amount, 0);
+    const hasActiveDiscount = (discounts || []).length > 0;
+    let runningAvailable = subtotal - (hasActiveDiscount ? (totalDiscountAmount || 0) : 0);
+
+    const applied = [];
+    const rejected = [];
+
+    for (const freeCashId of freeCashIds) {
+        const grant = grantMap.get(freeCashId.toString());
+        if (!grant) {
+            rejected.push({ freeCashId, reason: 'This Free Cash is not available for your account.' });
+            continue;
+        }
+        const fc = grant.freeCashId;
+
+        if (!multipleAllowed && applied.length > 0) {
+            rejected.push({ freeCashId, freeCashName: fc.freeCashName, reason: 'Only one Free Cash can be applied at a time for this store.' });
+            continue;
+        }
+
+        if (hasActiveDiscount && fc.canBeUsedWithOtherDiscounts !== true) {
+            rejected.push({ freeCashId, freeCashName: fc.freeCashName, reason: 'This Free Cash cannot be combined with an active discount. Remove the discount first.' });
+            continue;
+        }
+
+        const matchingIndexes = lines
+            .map((line, index) => (lineMatchesFreeCash(line, fc, productCategoryMap) ? index : -1))
+            .filter((index) => index !== -1);
+        const matchingAvailable = matchingIndexes.reduce((sum, index) => sum + lineRemaining[index], 0);
+        const available = Math.max(Math.min(matchingAvailable, runningAvailable), 0);
+
+        if (fc.validAbove > 0 && available < fc.validAbove) {
+            const scope = isCategoryFreeCash(fc) ? ' from the eligible categories' : '';
+            rejected.push({ freeCashId, freeCashName: fc.freeCashName, reason: `Add items worth ${formatMoney(fc.validAbove - available)} more${scope} to unlock this Free Cash.` });
+            continue;
+        }
+
+        const cap = (fc.maxCashUsagePerOrder !== null && fc.maxCashUsagePerOrder !== undefined)
+            ? Math.min(grant.remainingAmount, fc.maxCashUsagePerOrder)
+            : grant.remainingAmount;
+
+        const amountApplied = Math.round(Math.min(cap, available) * 100) / 100;
+        if (amountApplied <= 0) {
+            const reason = isCategoryFreeCash(fc)
+                ? 'Your cart has no items from the categories this Free Cash is valid on.'
+                : 'No cart amount remaining to apply this Free Cash against.';
+            rejected.push({ freeCashId, freeCashName: fc.freeCashName, reason });
+            continue;
+        }
+
+        let toDeduct = amountApplied;
+        for (const index of matchingIndexes) {
+            if (toDeduct <= 0) break;
+            const taken = Math.min(lineRemaining[index], toDeduct);
+            lineRemaining[index] -= taken;
+            toDeduct -= taken;
+        }
+        runningAvailable -= amountApplied;
+
+        applied.push({
+            freeCashId: fc._id,
+            userFreeCashId: grant._id,
+            freeCashName: fc.freeCashName,
+            canBeUsedWithOtherDiscounts: fc.canBeUsedWithOtherDiscounts === true,
+            amountApplied
+        });
+    }
+
+    return { applied, rejected };
+};
+
+const sumAppliedFreeCash = (applied) => Math.round(applied.reduce((sum, f) => sum + f.amountApplied, 0) * 100) / 100;
 
 // Returns the list of currently-usable UserFreeCash grants for this user -
 // pre-existing ones (SPECIFIC_USERS/GROUPS, issued at campaign-creation
 // time) plus lazily-issued ones for any ALL_USERS/category-restricted
-// campaign this user is eligible for but doesn't hold a grant for yet.
+// campaign this user is eligible for and has never been given.
 const resolveEligibleUserFreeCash = async (vendorId, userId, cart, productCategoryMap, companySettingsData) => {
     const now = new Date();
 
@@ -853,29 +986,35 @@ const resolveEligibleUserFreeCash = async (vendorId, userId, cart, productCatego
         remainingAmount: { $gt: 0 }
     }).populate('freeCashId');
 
-    const validGrants = existingGrants.filter((grant) => {
-        const fc = grant.freeCashId;
-        return fc && fc.status === 'A' && now >= fc.startDate && now <= fc.endDate;
-    });
-
-    const grantedFreeCashIds = new Set(validGrants.map((g) => g.freeCashId._id.toString()));
+    const validGrants = existingGrants.filter((grant) => isGrantUsable(grant, now));
 
     const lazyCandidates = await FreeCash.find({
         vendorId,
         status: 'A',
-        giveFreeCashTo: { $in: ['ALL_USERS', 'ONLY_MAIN_CATEGORY', 'MAIN_CATEGORY_AND_SUB_CATEGORY'] },
+        giveFreeCashTo: { $in: ['ALL_USERS', ...CATEGORY_FREE_CASH_TYPES] },
         startDate: { $lte: now },
         endDate: { $gte: now }
     });
+    if (lazyCandidates.length === 0) return validGrants;
+
+    // Any grant this customer ever had for a campaign - used up, expired or
+    // revoked included - means they were already given it once.
+    const issuedFreeCashIds = await UserFreeCash.distinct('freeCashId', {
+        vendorId,
+        userId,
+        freeCashId: { $in: lazyCandidates.map((fc) => fc._id) }
+    });
+    const alreadyIssued = new Set(issuedFreeCashIds.map((id) => id.toString()));
+    const lines = cartLinesForFreeCash(cart);
 
     for (const fc of lazyCandidates) {
-        if (grantedFreeCashIds.has(fc._id.toString())) continue;
+        if (alreadyIssued.has(fc._id.toString())) continue;
 
-        if (fc.giveFreeCashTo !== 'ALL_USERS' && !cartMatchesFreeCashCategory(cart, fc, productCategoryMap)) {
+        if (isCategoryFreeCash(fc) && !lines.some((line) => lineMatchesFreeCash(line, fc, productCategoryMap))) {
             continue;
         }
 
-        await freeCashService.issueUserFreeCash(vendorId, fc, [userId], userId, companySettingsData);
+        await freeCashService.issueUserFreeCash(vendorId, fc, [userId], userId, companySettingsData, null, false);
         const freshGrant = await UserFreeCash.findOne({ vendorId, freeCashId: fc._id, userId }).sort({ createdAt: -1 });
         if (freshGrant) {
             // A plain wrapper (not freshGrant.freeCashId = fc) - assigning a
@@ -886,6 +1025,65 @@ const resolveEligibleUserFreeCash = async (vendorId, userId, cart, productCatego
     }
 
     return validGrants;
+};
+
+// Re-works the Free Cash already on the cart against the given lines
+// (the cart's own, or checkout's in-stock ones). Called whenever the cart's
+// lines change and at checkout, so an applied amount never outlives the
+// cart it was worked out for; anything that no longer qualifies is dropped.
+// Mutates cart.freeCash/totalFreeCashAmount but does not save. Returns
+// { changed, dropped: [{ freeCashName, reason }] }.
+const recalculateAppliedFreeCash = async (vendorId, cart, lines, companyMasterData, websiteMasterData, companySettingsData, formatMoney = (amount) => String(amount)) => {
+    const previous = cart.freeCash || [];
+    if (previous.length === 0) {
+        const changed = (cart.totalFreeCashAmount || 0) !== 0;
+        cart.totalFreeCashAmount = 0;
+        return { changed, dropped: [] };
+    }
+
+    const nameById = new Map(previous.map((f) => [f.freeCashId.toString(), f.freeCashName]));
+    let applied = [];
+    let rejected = [];
+
+    const enabled = await isFreeCashEnabled(vendorId, websiteMasterData, companyMasterData, companySettingsData);
+    if (!enabled) {
+        rejected = previous.map((f) => ({ freeCashId: f.freeCashId, reason: 'Free Cash is not available right now.' }));
+    } else {
+        const grants = await UserFreeCash.find({ _id: { $in: previous.map((f) => f.userFreeCashId) }, vendorId }).populate('freeCashId');
+        const now = new Date();
+        const grantMap = new Map();
+        for (const grant of grants) {
+            if (isGrantUsable(grant, now)) grantMap.set(grant.freeCashId._id.toString(), grant);
+        }
+
+        const productCategoryMap = await loadProductCategoryMap(lines.map((l) => l.productId));
+        ({ applied, rejected } = allocateFreeCash({
+            freeCashIds: previous.map((f) => f.freeCashId),
+            grantMap,
+            lines,
+            productCategoryMap,
+            discounts: cart.discounts,
+            totalDiscountAmount: cart.totalDiscountAmount,
+            multipleAllowed: isMultipleFreeCashAllowed(companySettingsData),
+            formatMoney
+        }));
+        rejected = rejected.map((r) => (r.reason === 'This Free Cash is not available for your account.'
+            ? { ...r, reason: 'This Free Cash is no longer available.' }
+            : r));
+    }
+
+    const changed = applied.length !== previous.length
+        || applied.some((f, index) => f.userFreeCashId.toString() !== previous[index].userFreeCashId.toString()
+            || f.amountApplied !== previous[index].amountApplied);
+
+    cart.freeCash = applied;
+    cart.totalFreeCashAmount = sumAppliedFreeCash(applied);
+
+    const dropped = rejected.map((r) => ({
+        freeCashName: r.freeCashName || nameById.get(r.freeCashId.toString()) || 'Free Cash',
+        reason: r.reason
+    }));
+    return { changed, dropped };
 };
 
 // countryId only formats amounts in messages (shopper's currency).
@@ -914,75 +1112,34 @@ const applyFreeCashToCart = async (vendorId, cartOwner, userId, companyMasterDat
             return common.returnResult(false, 400, 'Select at least one Free Cash to apply.');
         }
 
-        const multipleAllowed = companySettingsData.isMultipleFreeCashUsageAllowed === true;
+        const multipleAllowed = isMultipleFreeCashAllowed(companySettingsData);
         if (!multipleAllowed && freeCashIds.length > 1) {
             return common.returnResult(false, 400, 'Only one Free Cash can be applied at a time for this store.');
         }
 
-        const productIds = cart.products.map((p) => p.productId);
-        const liveProducts = await Product.find({ _id: { $in: productIds } }, { mainCategory: 1, subCategory: 1 });
-        const productCategoryMap = new Map(liveProducts.map((p) => [p._id.toString(), [p.mainCategory, p.subCategory].filter(Boolean)]));
-
+        const productCategoryMap = await loadProductCategoryMap(cart.products.map((p) => p.productId));
         const eligibleGrants = await resolveEligibleUserFreeCash(vendorId, userId, cart, productCategoryMap, companySettingsData);
-        const eligibleMap = new Map(eligibleGrants.map((g) => [g.freeCashId._id.toString(), g]));
+        const grantMap = new Map(eligibleGrants.map((g) => [g.freeCashId._id.toString(), g]));
 
-        const { subtotal } = computeCartSubtotal(cart);
-        const hasActiveDiscount = cart.discounts.length > 0;
-
-        const applied = [];
-        const rejected = [];
-        let runningAvailable = subtotal - (hasActiveDiscount ? cart.totalDiscountAmount : 0);
-
-        for (const freeCashId of freeCashIds) {
-            const grant = eligibleMap.get(freeCashId.toString());
-            if (!grant) {
-                rejected.push({ freeCashId, reason: 'This Free Cash is not available for your account.' });
-                continue;
-            }
-            const fc = grant.freeCashId;
-
-            if (!multipleAllowed && applied.length > 0) {
-                rejected.push({ freeCashId, freeCashName: fc.freeCashName, reason: 'Only one Free Cash can be applied at a time for this store.' });
-                continue;
-            }
-
-            if (hasActiveDiscount && fc.canBeUsedWithOtherDiscounts !== true) {
-                rejected.push({ freeCashId, freeCashName: fc.freeCashName, reason: 'This Free Cash cannot be combined with an active discount. Remove the discount first.' });
-                continue;
-            }
-
-            if (fc.validAbove > 0 && runningAvailable < fc.validAbove) {
-                rejected.push({ freeCashId, freeCashName: fc.freeCashName, reason: `Add items worth ${formatMoney(fc.validAbove - runningAvailable)} more to unlock this Free Cash.` });
-                continue;
-            }
-
-            const cap = (fc.maxCashUsagePerOrder !== null && fc.maxCashUsagePerOrder !== undefined)
-                ? Math.min(grant.remainingAmount, fc.maxCashUsagePerOrder)
-                : grant.remainingAmount;
-
-            const amountApplied = Math.min(cap, runningAvailable);
-            if (amountApplied <= 0) {
-                rejected.push({ freeCashId, freeCashName: fc.freeCashName, reason: 'No cart amount remaining to apply this Free Cash against.' });
-                continue;
-            }
-
-            applied.push({
-                freeCashId: fc._id,
-                userFreeCashId: grant._id,
-                freeCashName: fc.freeCashName,
-                canBeUsedWithOtherDiscounts: fc.canBeUsedWithOtherDiscounts === true,
-                amountApplied: Math.round(amountApplied * 100) / 100
-            });
-
-            runningAvailable -= amountApplied;
-        }
+        const { applied, rejected } = allocateFreeCash({
+            freeCashIds,
+            grantMap,
+            lines: cartLinesForFreeCash(cart),
+            productCategoryMap,
+            discounts: cart.discounts,
+            totalDiscountAmount: cart.totalDiscountAmount,
+            multipleAllowed,
+            formatMoney
+        });
 
         if (applied.length === 0) {
-            return common.returnResult(false, 400, 'None of the selected Free Cash could be applied.', { rejected });
+            // A single rejection's own reason ("Add items worth X more...") says more than the generic message.
+            const message = rejected.length === 1 ? rejected[0].reason : 'None of the selected Free Cash could be applied.';
+            return common.returnResult(false, 400, message, { rejected });
         }
 
         cart.freeCash = applied;
-        cart.totalFreeCashAmount = Math.round(applied.reduce((sum, f) => sum + f.amountApplied, 0) * 100) / 100;
+        cart.totalFreeCashAmount = sumAppliedFreeCash(applied);
         cart.updatedBy = userId;
         await cart.save();
         await invalidateCartTotalCache(vendorId, cartOwner);
@@ -1011,39 +1168,72 @@ const removeFreeCashFromCart = async (vendorId, cartOwner, userId) => {
 };
 
 // Storefront listing - what Free Cash could this user apply to their
-// current cart right now, without actually applying anything.
+// current cart right now, without actually applying anything. isEnabled /
+// requiresLogin / isMultipleFreeCashUsageAllowed tell the cart page what to
+// render (nothing, a login prompt, a single choice or multiple choices).
 const listEligibleFreeCashForCart = async (vendorId, cartOwner, userId, companyMasterData, websiteMasterData, companySettingsData) => {
     try {
-        if (!userId) {
-            return common.returnResult(true, 200, 'Log in to view available Free Cash', { data: [] });
-        }
+        const response = {
+            isEnabled: false,
+            requiresLogin: false,
+            isMultipleFreeCashUsageAllowed: isMultipleFreeCashAllowed(companySettingsData),
+            freeCash: []
+        };
 
-        const featureCheck = await common.checkFeatureOnOrOff(vendorId, websiteMasterData, companyMasterData, 'isFreeCashFeatureOn', 'isFreeCashFeatureOn');
-        if (!featureCheck.isSuccess || !companySettingsData || companySettingsData.isFreeCashFeatureOn !== true) {
-            return common.returnResult(true, 200, 'Free Cash is not enabled', { data: [] });
+        const enabled = await isFreeCashEnabled(vendorId, websiteMasterData, companyMasterData, companySettingsData);
+        if (!enabled) {
+            return common.returnResult(true, 200, 'Free Cash is not enabled', response);
+        }
+        response.isEnabled = true;
+
+        if (!userId) {
+            response.requiresLogin = true;
+            return common.returnResult(true, 200, 'Log in to view available Free Cash', response);
         }
 
         const cart = await Cart.findOne({ vendorId, status: 'A', ...ownerFilter(cartOwner) });
         if (!cart || cart.products.length === 0) {
-            return common.returnResult(true, 200, 'Cart is empty', { data: [] });
+            return common.returnResult(true, 200, 'Cart is empty', response);
         }
 
-        const productIds = cart.products.map((p) => p.productId);
-        const liveProducts = await Product.find({ _id: { $in: productIds } }, { mainCategory: 1, subCategory: 1 });
-        const productCategoryMap = new Map(liveProducts.map((p) => [p._id.toString(), [p.mainCategory, p.subCategory].filter(Boolean)]));
-
+        const productCategoryMap = await loadProductCategoryMap(cart.products.map((p) => p.productId));
         const grants = await resolveEligibleUserFreeCash(vendorId, userId, cart, productCategoryMap, companySettingsData);
 
-        const data = grants.map((g) => ({
-            freeCashId: g.freeCashId._id,
-            freeCashName: g.freeCashId.freeCashName,
-            remainingAmount: g.remainingAmount,
-            validAbove: g.freeCashId.validAbove,
-            maxCashUsagePerOrder: g.freeCashId.maxCashUsagePerOrder,
-            canBeUsedWithOtherDiscounts: g.freeCashId.canBeUsedWithOtherDiscounts === true
-        }));
+        // Names of the categories a category-restricted campaign is valid on,
+        // for "Valid on: ..." in the cart.
+        const categoryIds = new Set();
+        for (const g of grants) {
+            if (!isCategoryFreeCash(g.freeCashId)) continue;
+            const ids = g.freeCashId.giveFreeCashTo === 'MAIN_CATEGORY_AND_SUB_CATEGORY' && (g.freeCashId.subCategoryIds || []).length > 0
+                ? g.freeCashId.subCategoryIds
+                : g.freeCashId.mainCategoryIds;
+            (ids || []).forEach((id) => categoryIds.add(id.toString()));
+        }
+        const categories = categoryIds.size > 0
+            ? await Category.find({ _id: { $in: [...categoryIds] }, vendorId }, { categoryName: 1 })
+            : [];
+        const categoryNameById = new Map(categories.map((c) => [c._id.toString(), c.categoryName]));
 
-        return common.returnResult(true, 200, 'Eligible Free Cash fetched successfully', { data });
+        response.freeCash = grants.map((g) => {
+            const fc = g.freeCashId;
+            const validOnIds = fc.giveFreeCashTo === 'MAIN_CATEGORY_AND_SUB_CATEGORY' && (fc.subCategoryIds || []).length > 0
+                ? fc.subCategoryIds
+                : fc.mainCategoryIds;
+            return {
+                freeCashId: fc._id,
+                freeCashName: fc.freeCashName,
+                remainingAmount: g.remainingAmount,
+                validAbove: fc.validAbove,
+                maxCashUsagePerOrder: fc.maxCashUsagePerOrder,
+                canBeUsedWithOtherDiscounts: fc.canBeUsedWithOtherDiscounts === true,
+                endDate: fc.endDate,
+                validOnCategories: isCategoryFreeCash(fc)
+                    ? (validOnIds || []).map((id) => categoryNameById.get(id.toString())).filter(Boolean)
+                    : []
+            };
+        });
+
+        return common.returnResult(true, 200, 'Eligible Free Cash fetched successfully', response);
     } catch (err) {
         throw err;
     }
@@ -1054,7 +1244,8 @@ const listEligibleFreeCashForCart = async (vendorId, cartOwner, userId, companyM
 // down each grant's remainingAmount and records a cashUsageHistory entry
 // against the real orderId. isStoringRemainingFreeCashAmountAllowed=false
 // forfeits any leftover balance immediately instead of carrying it forward.
-const consumeFreeCashForOrder = async (vendorId, appliedFreeCash, orderId, userId, companySettingsData) => {
+// order + masters are only for the "Free Cash Used" email (order's currency).
+const consumeFreeCashForOrder = async (vendorId, appliedFreeCash, order, userId, companySettingsData, companyMasterData, websiteMasterData) => {
     try {
         if (!Array.isArray(appliedFreeCash) || appliedFreeCash.length === 0) return;
 
@@ -1071,9 +1262,16 @@ const consumeFreeCashForOrder = async (vendorId, appliedFreeCash, orderId, userI
             grant.usedAmount += amountUsed;
             grant.remainingAmount = newRemaining;
             grant.isCashUsed = newRemaining <= 0;
-            grant.cashUsageHistory.push({ amountUsed, remainingAmount: newRemaining, usedDate: now, orderId });
+            grant.cashUsageHistory.push({ amountUsed, remainingAmount: newRemaining, usedDate: now, orderId: order._id });
             grant.updatedBy = userId;
             await grant.save();
+
+            if (amountUsed > 0) {
+                promotionEmailService.notifyFreeCashOrderEvent({
+                    vendorId, module: EMAIL_MODULES.FREE_CASH_USED, grant: grant.toObject(), order, amount: amountUsed,
+                    companyMasterData, websiteMasterData, companySettingsData, userId
+                });
+            }
         }
     } catch (err) {
         throw err;
@@ -1151,6 +1349,11 @@ const refundFreeCashForReturn = async (vendorId, order, orderReturn, companyMast
             });
             grant.updatedBy = adminUserId;
             await grant.save();
+
+            promotionEmailService.notifyFreeCashOrderEvent({
+                vendorId, module: EMAIL_MODULES.FREE_CASH_REFUNDED, grant: grant.toObject(), order, amount: cappedRefund,
+                companyMasterData, websiteMasterData, companySettingsData, userId: adminUserId
+            });
         }
     } catch (err) {
         throw err;
@@ -1282,32 +1485,15 @@ const checkoutCart = async (vendorId, cartOwner, userId, locationContext, compan
         cart.taxes = taxSummary.taxes;
         cart.totalTaxAmount = taxSummary.totalTaxAmount;
 
-        // Re-validate previously-applied Free Cash is still active, not
-        // revoked/expired, and still has enough remaining balance - same
-        // re-check discipline as the discounts block above.
-        const droppedFreeCash = [];
-        if (cart.freeCash.length > 0) {
-            const userFreeCashIds = cart.freeCash.map((f) => f.userFreeCashId);
-            const liveGrants = await UserFreeCash.find({ _id: { $in: userFreeCashIds } }).populate('freeCashId');
-            const liveGrantMap = new Map(liveGrants.map((g) => [g._id.toString(), g]));
-            const now = new Date();
-
-            cart.freeCash = cart.freeCash.filter((f) => {
-                const grant = liveGrantMap.get(f.userFreeCashId.toString());
-                const fcDoc = grant && grant.freeCashId;
-                const stillValid = grant && !grant.isCashExpired && !grant.isRevoked && grant.status === 'A'
-                    && fcDoc && fcDoc.status === 'A' && now >= fcDoc.startDate && now <= fcDoc.endDate
-                    && grant.remainingAmount >= f.amountApplied;
-
-                if (!stillValid) {
-                    droppedFreeCash.push({ freeCashName: f.freeCashName, reason: 'This Free Cash is no longer available.' });
-                }
-                return stillValid;
-            });
-            cart.totalFreeCashAmount = Math.round(cart.freeCash.reduce((sum, f) => sum + f.amountApplied, 0) * 100) / 100;
-        } else {
-            cart.totalFreeCashAmount = 0;
-        }
+        // Re-work previously-applied Free Cash against the lines actually being
+        // checked out: grants that are no longer usable, or whose minimum
+        // amount (validAbove) is no longer met, are dropped, and every amount
+        // is re-capped - same re-check discipline as the discounts block above.
+        const checkoutFormatMoney = await resolveMoneyFormatter(locationContext?.countryId || null, companyMasterData, companySettingsData);
+        const { dropped: droppedFreeCash } = await recalculateAppliedFreeCash(
+            vendorId, cart, eligibleLineItems.map((i) => ({ productId: i.productId, amount: i.amount })),
+            companyMasterData, websiteMasterData, companySettingsData, checkoutFormatMoney
+        );
 
         cart.checkedOutDate = new Date();
         cart.updatedBy = userId;

@@ -6,6 +6,7 @@ const Discount = require('../models/Discount');
 const Product = require('../models/Product');
 const Category = require('../models/Category');
 const User = require('../models/User');
+const promotionEmailService = require('./promotionEmailService');
 
 const logger = require('../utils/logger');
 const common = require('../utils/common');
@@ -563,7 +564,10 @@ const countDiscountsCreatedThisMonth = async (vendorId) => {
 |--------------------------------------------------------------------------
 */
 
-const createDiscount = async (vendorId, userId, payload, files, companyMasterData) => {
+// emailContext = { notifyCustomers, companyMasterData, websiteMasterData,
+// companySettingsData } - notifyCustomers is the form's "Notify customers by
+// email" checkbox (or the re-activate dialog's answer).
+const createDiscount = async (vendorId, userId, payload, files, companyMasterData, emailContext = {}) => {
   try {
     const basicCheck = validateBasicFields(payload);
     if (!basicCheck.valid) {
@@ -665,6 +669,10 @@ const createDiscount = async (vendorId, userId, payload, files, companyMasterDat
 
     await discountDoc.save();
 
+    if (emailContext.notifyCustomers && discountDoc.status === 'A') {
+      promotionEmailService.notifyDiscountAvailable({ vendorId, discount: discountDoc, ...emailContext, userId });
+    }
+
     logger.logInfo(1, 0, 'Discount created successfully', { vendorId, discountId: discountDoc._id });
 
     return common.returnResult(true, 201, 'Discount created successfully', { data: discountDoc, excelReports: resolution.excelReports });
@@ -673,7 +681,10 @@ const createDiscount = async (vendorId, userId, payload, files, companyMasterDat
   }
 };
 
-const updateDiscount = async (vendorId, discountId, userId, payload, files, companyMasterData) => {
+// emailContext = { notifyCustomers, companyMasterData, websiteMasterData,
+// companySettingsData } - notifyCustomers is the form's "Notify customers by
+// email" checkbox (or the re-activate dialog's answer).
+const updateDiscount = async (vendorId, discountId, userId, payload, files, companyMasterData, emailContext = {}) => {
   try {
     const idCheck = common.validateObjectId(discountId);
     if (!idCheck.valid) {
@@ -729,6 +740,13 @@ const updateDiscount = async (vendorId, discountId, userId, payload, files, comp
     if (!resolution.valid) {
       return common.returnResult(false, 400, resolution.message, { excelReports: resolution.excelReports });
     }
+
+    // Captured before the edit, for the "Discount Available" email: a
+    // re-activated discount goes to everyone it's for, an active one only to
+    // the customers this edit adds.
+    const previousStatus = existingDiscount.status;
+    const previousTargetUserIds = await promotionEmailService.resolveDiscountTargetUserIds(vendorId, existingDiscount);
+    const previousEndDate = existingDiscount.endDate ? new Date(existingDiscount.endDate).getTime() : null;
 
     const isOngoing = payload.isOngoingDiscount === true;
     const isMinQty = payload.isMinimumDiscountQuantityDiscount === true;
@@ -794,7 +812,23 @@ const updateDiscount = async (vendorId, discountId, userId, payload, files, comp
 
     existingDiscount.updatedBy = userId;
 
+    // A moved end date gets its own "Expiring Soon" reminder.
+    const newEndDate = existingDiscount.endDate ? new Date(existingDiscount.endDate).getTime() : null;
+    if (newEndDate !== previousEndDate) {
+      existingDiscount.expiryReminderSentAt = null;
+    }
+
     await existingDiscount.save();
+
+    if (emailContext.notifyCustomers && existingDiscount.status === 'A') {
+      promotionEmailService.notifyDiscountAvailable({
+        vendorId,
+        discount: existingDiscount,
+        previousTargetUserIds: previousStatus === 'A' ? previousTargetUserIds : null,
+        ...emailContext,
+        userId
+      });
+    }
 
     logger.logInfo(1, 0, 'Discount updated successfully', { vendorId, discountId });
 
@@ -807,12 +841,13 @@ const updateDiscount = async (vendorId, discountId, userId, payload, files, comp
 // Single-discount status flip used only by the bulk endpoint below - mirrors
 // the status branch inside updateDiscount, kept separate so a bulk call
 // never touches any of updateDiscount's other required payload fields.
-const setDiscountStatusForBulk = async (vendorId, userId, discountId, status) => {
+const setDiscountStatusForBulk = async (vendorId, userId, discountId, status, emailContext = {}) => {
   try {
     const discount = await Discount.findOne({ _id: discountId, vendorId, status: { $ne: 'D' } });
     if (!discount) {
       return common.returnResult(false, 404, 'Discount not found.');
     }
+    const wasActive = discount.status === 'A';
 
     if (status === 'A') {
       discount.activeMarkedBy = userId;
@@ -825,17 +860,21 @@ const setDiscountStatusForBulk = async (vendorId, userId, discountId, status) =>
     discount.updatedBy = userId;
 
     await discount.save();
+
+    if (emailContext.notifyCustomers && status === 'A' && !wasActive) {
+      promotionEmailService.notifyDiscountAvailable({ vendorId, discount, ...emailContext, userId });
+    }
     return common.returnResult(true, 200, `Discount ${status === 'A' ? 'activated' : 'deactivated'} successfully`);
   } catch (err) {
     throw err;
   }
 };
 
-const bulkSetDiscountStatus = async (vendorId, userId, discountIds, status) => {
+const bulkSetDiscountStatus = async (vendorId, userId, discountIds, status, emailContext = {}) => {
   try {
     const { results, successCount, failureCount } = await common.runBulkOperation(
       discountIds,
-      (id) => setDiscountStatusForBulk(vendorId, userId, id, status)
+      (id) => setDiscountStatusForBulk(vendorId, userId, id, status, emailContext)
     );
 
     logger.logInfo(successCount, failureCount, 'Bulk discount status update completed', { vendorId, status, successCount, failureCount });

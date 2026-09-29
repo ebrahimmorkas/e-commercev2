@@ -173,7 +173,6 @@ const downloadInvoice = (isAdmin) => async (req, res) => {
         return sendInvoicePdf(res, result.meta);
     } catch (error) {
         logger.logException('orderController: downloadInvoice - Exception while generating invoice', { vendorId, id, error });
-        return common.sendError(res, 500, 'Could not generate the invoice. Please try again.');
     }
 };
 

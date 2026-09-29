@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import Card from '../../../../components/common/Card';
 import Table from '../../../../components/common/tables';
 import Button from '../../../../components/common/Buttons';
@@ -118,11 +118,37 @@ const DiscountsPage = () => {
   // and would otherwise light up every bulk button at once for any one of them.
   const [bulkAction, setBulkAction] = useState(null);
 
-  const handleBulkActivate = async () => {
-    setBulkAction('activate');
-    await bulkToggleStatus(activateEligibleIds, 'A');
-    setBulkAction(null);
-    setSelectedIds([]);
+
+  // Activating (switch or bulk "Mark Active") asks whether to email the
+  // customers again - the list has no form with the checkbox. Holds
+  // { label, run(notifyCustomers) } while the question is open.
+  const [activateConfirm, setActivateConfirm] = useState(null);
+  const [activating, setActivating] = useState(false);
+
+  const handleToggleStatus = useCallback((item) => {
+    if (item.status === 'A') return toggleStatus(item);
+    setActivateConfirm({ label: `"${item.name}"`, run: (notifyCustomers) => toggleStatus(item, notifyCustomers) });
+    return undefined;
+  }, [toggleStatus]);
+
+  const handleConfirmActivate = async (notifyCustomers) => {
+    setActivating(true);
+    await activateConfirm.run(notifyCustomers);
+    setActivating(false);
+    setActivateConfirm(null);
+  };
+
+  const handleBulkActivate = () => {
+    const ids = activateEligibleIds;
+    setActivateConfirm({
+      label: `${ids.length} discount${ids.length === 1 ? '' : 's'}`,
+      run: async (notifyCustomers) => {
+        setBulkAction('activate');
+        await bulkToggleStatus(ids, 'A', notifyCustomers);
+        setBulkAction(null);
+        setSelectedIds([]);
+      },
+    });
   };
 
   const handleBulkDeactivate = async () => {
@@ -215,7 +241,7 @@ const DiscountsPage = () => {
           <div className="flex items-center justify-center">
             <Switch
               checked={row.status === 'A'}
-              onChange={() => toggleStatus(row)}
+              onChange={() => handleToggleStatus(row)}
               disabled={mutating}
               color={theme.switch.color}
               aria-label={`Toggle status for ${row.name}`}
@@ -224,7 +250,7 @@ const DiscountsPage = () => {
         ),
       },
     ],
-    [mutating, toggleStatus, formatMoney]
+    [mutating, handleToggleStatus, formatMoney]
   );
 
   const actions = [
@@ -314,7 +340,7 @@ const DiscountsPage = () => {
                     </div>
                     <Switch
                       checked={discount.status === 'A'}
-                      onChange={() => toggleStatus(discount)}
+                      onChange={() => handleToggleStatus(discount)}
                       disabled={mutating}
                       color={theme.switch.color}
                       aria-label={`Toggle status for ${discount.name}`}
@@ -378,6 +404,30 @@ const DiscountsPage = () => {
       >
         <p className={`text-sm ${theme.text.body}`}>
           Are you sure you want to delete <span className={`font-medium ${theme.text.heading}`}>{selectedIds.length}</span> discount{selectedIds.length === 1 ? '' : 's'}? This action cannot be undone.
+        </p>
+      </Modal>
+      <Modal
+        isOpen={!!activateConfirm}
+        onClose={() => !activating && setActivateConfirm(null)}
+        title="Email customers?"
+        size="sm"
+        footer={
+          <>
+            <Button variant={theme.button.ghost} onClick={() => setActivateConfirm(null)} disabled={activating}>
+              Cancel
+            </Button>
+            <Button variant={theme.button.secondary} onClick={() => handleConfirmActivate(false)} disabled={activating}>
+              Activate only
+            </Button>
+            <Button variant={theme.button.primary} onClick={() => handleConfirmActivate(true)} loading={activating}>
+              Activate and notify
+            </Button>
+          </>
+        }
+      >
+        <p className={`text-sm ${theme.text.body}`}>
+          You are activating {activateConfirm?.label}. Do you also want to email the customers it is for? (Who gets
+          the email is set in Company Settings &gt; Discount and Free Cash.)
         </p>
       </Modal>
     </div>

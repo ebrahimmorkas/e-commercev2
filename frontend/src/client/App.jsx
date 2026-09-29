@@ -105,6 +105,9 @@ const ClientApp = () => {
     cartItems,
     cartCount,
     subtotal,
+    appliedFreeCash,
+    totalFreeCashAmount,
+    replaceCart,
     loading: cartLoading,
     error: cartError,
     reload: reloadCart,
@@ -302,6 +305,10 @@ const ClientApp = () => {
             addressId={deliveryAddressId}
             onAddressChange={setDeliveryAddressId}
             reload={reloadCart}
+            appliedFreeCash={appliedFreeCash}
+            totalFreeCashAmount={totalFreeCashAmount}
+            onCartUpdated={replaceCart}
+            onSignIn={handleLoginClick}
           />
         )}
         {(route.type === 'checkout' ||
@@ -315,6 +322,7 @@ const ClientApp = () => {
           <CheckoutPage
             lineItems={lineItems}
             subtotal={subtotal}
+            totalFreeCashAmount={totalFreeCashAmount}
             cartLoading={cartLoading}
             initialAddressId={deliveryAddressId}
             onBack={openCart}
