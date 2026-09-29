@@ -36,11 +36,16 @@ export const getAssignedOrderSteps = () => apiRequest(`${BASE}/order-steps`);
  * @param {Object} fields - plain field values (string/boolean/number/array)
  * @param {Object} files - { companyLogo?: File, paymentScanner?: File, partnerCertificate?: File }
  */
+// Lists that can be emptied: an empty one is sent as a single '' (which the
+// backend drops), otherwise it would be omitted and never cleared.
+const CLEARABLE_LISTS = ['ccList', 'bccList'];
+
 const buildFormData = (fields, files = {}) => {
   const formData = new FormData();
   Object.entries(fields).forEach(([key, value]) => {
     if (value === undefined) return;
     if (Array.isArray(value)) {
+      if (value.length === 0 && CLEARABLE_LISTS.includes(key)) formData.append(`${key}[]`, '');
       value.forEach((item) => formData.append(`${key}[]`, item));
     } else if (value === null) {
       formData.append(key, '');
@@ -99,6 +104,25 @@ export const addEmailImage = (file, name) => {
 
 export const removeEmailImage = (imageId) => apiRequest(`${BASE}/email-images/${imageId}`, { method: 'DELETE' });
 
+/**
+ * The vendor's own email account (every email of the store is sent through it).
+ * The password is never returned - only hasPassword.
+ * @returns {Promise<{ emailAccount: Object|null }>}
+ */
+export const getEmailAccount = () => apiRequest(`${BASE}/email-account`);
+
+/**
+ * Signs in to the email server first and saves only if that works. Leave
+ * password out to keep the saved one.
+ * @returns {Promise<{ emailAccount: Object }>}
+ */
+export const saveEmailAccount = (fields) => apiRequest(`${BASE}/email-account`, { method: 'PUT', body: fields });
+
+export const removeEmailAccount = () => apiRequest(`${BASE}/email-account`, { method: 'DELETE' });
+
+/** Sends a test email through the saved account - to `to`, or the account's own address when empty. */
+export const sendTestEmail = (to) => apiRequest(`${BASE}/email-account/test`, { method: 'POST', body: to ? { to } : {} });
+
 export default {
   getCompanySettings,
   getAssignedOrderSteps,
@@ -108,4 +132,8 @@ export default {
   removeEmailAttachment,
   addEmailImage,
   removeEmailImage,
+  getEmailAccount,
+  saveEmailAccount,
+  removeEmailAccount,
+  sendTestEmail,
 };

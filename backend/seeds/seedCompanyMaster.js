@@ -55,6 +55,12 @@ const COMPANY_MASTER = {
 
     // Email - Free Tier Node Mailer, 1,100 in total, 100 per month
     isSendingEmailFeatureOn: true,
+    isSendEmailModuleOn: true,
+    isSendingEmailToUsersOutOfStoreAllowed: false,
+    numberOfAttachmentsAllowedInSendEmail: 5,
+    attachmentSizeAllowedInSendEmail: 10,
+    numberOfImagesAllowedInSendEmail: 5,
+    imageSizeAllowedInSendEmail: 2,
     isEmailVerificationFeatureOn: false,
     emailService: 'nodemailer',
     numberOfEmailsAllowed: 1100,

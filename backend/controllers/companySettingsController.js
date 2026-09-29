@@ -62,10 +62,17 @@ const formatCompanySettingsForResponse = (doc) => {
 // Every settings response also says what the Email tab may show (CC/BCC,
 // attachments, images) and their limits - the page replaces its copy of the
 // settings with each response, so this must travel with all of them.
-const withEmailFeatureAccess = (req, formatted) => ({
-    ...formatted,
-    emailFeatureAccess: companySettingsService.getEmailFeatureAccess(req.companyMasterData, req.websiteMasterData),
-});
+const withEmailFeatureAccess = (req, formatted) => {
+    // The email account is private (this route is public): it's only served
+    // by GET /email-account, and never with its password. Only whether one
+    // is set up travels here.
+    const { emailAccount, ...rest } = formatted;
+    return {
+        ...rest,
+        hasEmailAccount: !!(emailAccount && emailAccount.host && emailAccount.encryptedPassword),
+        emailFeatureAccess: companySettingsService.getEmailFeatureAccess(req.companyMasterData, req.websiteMasterData),
+    };
+};
 
 // currencyId/storeCountryId/storeStateId/storeCityId are dropdown-sourced FK fields -
 // decode when present (both create and update send them optionally).
@@ -300,7 +307,65 @@ const removeEmailImage = async (req, res) => {
   }
 };
 
+// --- Email tab: the vendor's own email account ------------------------------
+
+const getEmailAccount = async (req, res) => {
+  const vendorId = req.vendorId;
+  try {
+    const result = await companySettingsService.fetchEmailAccount(vendorId, req.companyMasterData, req.websiteMasterData);
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+  } catch (error) {
+    logger.logException('companySettingsController: getEmailAccount - Exception while fetching the email account', { vendorId, error });
+  }
+};
+
+const saveEmailAccount = async (req, res) => {
+  const vendorId = req.vendorId;
+  try {
+    const result = await companySettingsService.saveEmailAccount(vendorId, req.user._id, req.body, req.companyMasterData, req.websiteMasterData);
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+  } catch (error) {
+    logger.logException('companySettingsController: saveEmailAccount - Exception while saving the email account', { vendorId, error });
+  }
+};
+
+const removeEmailAccount = async (req, res) => {
+  const vendorId = req.vendorId;
+  try {
+    const result = await companySettingsService.removeEmailAccount(vendorId, req.user._id);
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+    return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+  } catch (error) {
+    logger.logException('companySettingsController: removeEmailAccount - Exception while removing the email account', { vendorId, error });
+  }
+};
+
+const sendTestEmail = async (req, res) => {
+  const vendorId = req.vendorId;
+  try {
+    const result = await companySettingsService.sendTestEmail(vendorId, req.user._id, req.body.to, req.companyMasterData, req.websiteMasterData);
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+    return common.sendSuccess(res, result.statusCode, result.message);
+  } catch (error) {
+    logger.logException('companySettingsController: sendTestEmail - Exception while sending a test email', { vendorId, error });
+  }
+};
+
 module.exports = {
+  getEmailAccount,
+  saveEmailAccount,
+  removeEmailAccount,
+  sendTestEmail,
   addEmailAttachment,
   removeEmailAttachment,
   addEmailImage,

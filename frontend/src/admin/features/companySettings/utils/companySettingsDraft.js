@@ -228,6 +228,20 @@ const BANK_TRANSFER_FIELDS = [
  * @param {Object} [options]
  * @param {boolean} [options.bankTransferEnabled] - CompanyMaster.showPaymentQRCodeAndBankDetails
  */
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// "a@x.com, b@x.com; c@x.com" -> ['a@x.com', 'b@x.com', 'c@x.com'] (lowercased, no duplicates).
+export const toEmailList = (text) => [
+  ...new Set(
+    String(text || '')
+      .split(/[\s,;]+/)
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean)
+  ),
+];
+
+export const invalidEmails = (list) => (list || []).filter((email) => !EMAIL_PATTERN.test(email));
+
 export const buildSavePayload = (draft, { bankTransferEnabled = false } = {}) => {
   const {
     companyLogo, paymentScanner, partnerCertificate,

@@ -446,6 +446,24 @@ const companySettingsSchema = new mongoose.Schema({
     type: [String],
     default: []
   },
+  // The vendor's own email account - every email of the vendor is sent
+  // through it (there is no platform fallback: without it nothing is sent).
+  // See services/emailProviders/vendorSmtpProvider.js. Saved only after the
+  // server accepted the sign-in; the password is stored encrypted
+  // (common.encryptSecret) and never returned by the API. Managed through its
+  // own endpoints, never through create/update.
+  emailAccount: {
+    host: { type: String, trim: true, default: null },
+    port: { type: Number, min: 1, max: 65535, default: null },
+    // SSL (usually 465), STARTTLS (usually 587) or NONE.
+    security: { type: String, enum: ['SSL', 'STARTTLS', 'NONE'], default: 'SSL' },
+    username: { type: String, trim: true, default: null },
+    encryptedPassword: { type: String, default: null },
+    // The From address - the account's own address unless the server allows another.
+    fromEmail: { type: String, trim: true, lowercase: true, default: null },
+    fromName: { type: String, trim: true, maxlength: 100, default: null },
+    verifiedAt: { type: Date, default: null }
+  },
   // Whether the platform's DefaultEmailTemplateMaster is sent when the vendor
   // has no template assigned for a module (or, with step-wise order
   // templates on, no template for the Order module at all). false = send

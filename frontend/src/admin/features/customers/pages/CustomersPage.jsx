@@ -53,12 +53,24 @@ const validateNewPassword = (value) => {
   return '';
 };
 
+const MailIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+  </svg>
+);
+
+// Who the Send Email module can email: active customers (not staff roles) with an address.
+const isEmailable = (customer) => customer.status === 'A' && customer.role === 'user' && !!customer.email;
+const toRecipient = (customer) => ({ _id: customer._id, name: customer.name, email: customer.email });
+
 /**
  * @param {Function} props.onAddUser - navigates to the separate Add User
  * module (App.jsx wires this to its own top-level page, not a view swap
  * inside this one - see the ADD_USER ModuleMaster entry).
+ * @param {(customers: {_id, name, email}[]) => void} props.onSendEmail - opens
+ * the Send Email module with these customers in the To field.
  */
-const CustomersPage = ({ onAddUser }) => {
+const CustomersPage = ({ onAddUser, onSendEmail }) => {
   const {
     customers, loading, error, mutating,
     fetchCustomerById, editCustomer, changeCustomerPassword, removeCustomer, toggleStatus,
@@ -67,6 +79,10 @@ const CustomersPage = ({ onAddUser }) => {
   const lookups = useCustomerLookups();
   const { companyMaster } = lookups;
   const { assignedCodes } = useAssignedModules(true);
+  // Send Email only while its module is assigned - the server only reports it
+  // when the master email switch and isSendEmailModuleOn are both on. Unknown
+  // (still loading / failed) counts as not available.
+  const canSendEmail = !!onSendEmail && !!assignedCodes && assignedCodes.has('SEND_EMAIL');
 
   const [editTarget, setEditTarget] = useState(null);
   const [editingDraft, setEditingDraft] = useState(null);
@@ -156,6 +172,7 @@ const CustomersPage = ({ onAddUser }) => {
     () => selectedCustomers.filter((c) => c.status === 'A').map((c) => c._id),
     [selectedCustomers]
   );
+  const emailEligibleCustomers = useMemo(() => selectedCustomers.filter(isEmailable), [selectedCustomers]);
 
   // Tracks which specific bulk action is in flight so only that button shows
   // a spinner - `mutating` alone is shared across every mutation in the hook
@@ -202,6 +219,19 @@ const CustomersPage = ({ onAddUser }) => {
       loading: bulkAction === 'deactivate',
       disabled: mutating,
       hidden: deactivateEligibleIds.length === 0,
+    },
+    {
+      key: 'sendEmail',
+      label: `Send Email (${emailEligibleCustomers.length})`,
+      icon: <MailIcon />,
+      variant: theme.button.secondary,
+      onClick: () => {
+        onSendEmail(emailEligibleCustomers.map(toRecipient));
+        setSelectedIds([]);
+      },
+      disabled: mutating,
+      // Inactive customers and ones without an email address can't be emailed.
+      hidden: !canSendEmail || emailEligibleCustomers.length === 0,
     },
     {
       key: 'delete',
@@ -279,6 +309,9 @@ const CustomersPage = ({ onAddUser }) => {
     { label: 'Edit', icon: <PencilIcon />, variant: theme.button.secondary, onClick: openEdit },
     ...(isChangePasswordAllowed
       ? [{ label: 'Change Password', icon: <KeyIcon />, variant: theme.button.outline, onClick: setPasswordTarget }]
+      : []),
+    ...(canSendEmail
+      ? [{ label: 'Send Email', icon: <MailIcon />, variant: theme.button.secondary, onClick: (row) => onSendEmail([toRecipient(row)]), show: isEmailable }]
       : []),
     { label: 'Delete', icon: <TrashIcon />, variant: theme.button.danger, onClick: setDeleteTarget },
   ];
@@ -397,6 +430,11 @@ const CustomersPage = ({ onAddUser }) => {
                     {isChangePasswordAllowed && (
                       <Button variant={theme.button.outline} size="sm" leftIcon={<KeyIcon />} onClick={() => setPasswordTarget(customer)} fullWidth>
                         Password
+                      </Button>
+                    )}
+                    {canSendEmail && isEmailable(customer) && (
+                      <Button variant={theme.button.secondary} size="sm" leftIcon={<MailIcon />} onClick={() => onSendEmail([toRecipient(customer)])} fullWidth>
+                        Email
                       </Button>
                     )}
                     <Button variant={theme.button.danger} size="sm" leftIcon={<TrashIcon />} onClick={() => setDeleteTarget(customer)} fullWidth>

@@ -12,6 +12,42 @@ const companyMasterSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // "Send Email" module: the vendor composes and sends emails themselves.
+    // Also needs isSendingEmailFeatureOn (the master email switch).
+    isSendEmailModuleOn: {
+        type: Boolean,
+        default: false
+    },
+    // Send Email: may the vendor type in addresses of people who aren't
+    // customers of their store? false = store customers only.
+    isSendingEmailToUsersOutOfStoreAllowed: {
+        type: Boolean,
+        default: false
+    },
+    // Per-email limits for the Send Email module - everything on one email:
+    // Company Settings library files ticked + files uploaded for that email.
+    // Extensions are shared with the rest of email (allowedAttachmentExtensions
+    // / allowedImageExtensions). MB values are per file.
+    numberOfAttachmentsAllowedInSendEmail: {
+        type: Number,
+        min: 0,
+        default: 5
+    },
+    attachmentSizeAllowedInSendEmail: {
+        type: Number,
+        min: 0,
+        default: 10
+    },
+    numberOfImagesAllowedInSendEmail: {
+        type: Number,
+        min: 0,
+        default: 5
+    },
+    imageSizeAllowedInSendEmail: {
+        type: Number,
+        min: 0,
+        default: 2
+    },
     isEmailVerificationFeatureOn: {
         type: Boolean,
         default: false

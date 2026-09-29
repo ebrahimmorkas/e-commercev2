@@ -79,7 +79,9 @@ const MODULE_FEATURE_FLAG = {
     ABANDONED_CART: 'isAbondonedCartFeatureOn',
     FREE_CASH: 'isFreeCashFeatureOn',
     GROUP: 'isGroupFeatureOn',
-    EMAIL_TEMPLATE: 'isEmailTemplateFeatureOn',
+    // Email modules also need the master email switch.
+    EMAIL_TEMPLATE: ['isEmailTemplateFeatureOn', 'isSendingEmailFeatureOn'],
+    SEND_EMAIL: ['isSendEmailModuleOn', 'isSendingEmailFeatureOn'],
     ADMIN_PLACE_ORDER: 'isAdminPlacingOrderOnBehalfOfUserIsOn',
     DELIVERY_AGENTS: 'isOrderStatusUpdationAllowedByDeliveryAgents',
     COURIER: 'isCourierFeatureOn'
@@ -91,10 +93,13 @@ const MODULE_FEATURE_FLAG = {
 // realizing the feature itself is off) - this catches that mismatch for
 // sidebar display. Modules with no mapped flag (system modules) are always
 // considered enabled here.
+// A module's flag(s) - a module mapped to a list needs every one of them on.
+const getModuleFeatureFlags = (moduleCode) => [].concat(MODULE_FEATURE_FLAG[moduleCode] || []);
+
 const isModuleFeatureEnabled = (moduleCode, websiteMasterData, companyMasterData) => {
-    const flag = MODULE_FEATURE_FLAG[moduleCode];
-    if (!flag) return true;
-    return !!(websiteMasterData?.[flag] && companyMasterData?.[flag]);
+    const flags = getModuleFeatureFlags(moduleCode);
+    if (flags.length === 0) return true;
+    return flags.every((flag) => !!(websiteMasterData?.[flag] && companyMasterData?.[flag]));
 };
 
 // Resolves companyMasterData.assignedModules (raw moduleId + dates) into the
@@ -133,6 +138,7 @@ module.exports = {
     fetchModuleByCode,
     isAssignmentActive,
     MODULE_FEATURE_FLAG,
+    getModuleFeatureFlags,
     isModuleFeatureEnabled,
     fetchAssignedModulesForVendor
 };

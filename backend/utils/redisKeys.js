@@ -19,6 +19,8 @@ const redisKeys = {
   cartTotal: (vendorId, ownerKey) => `cart-total:${vendorId}:${ownerKey}`,
   abandonedCartScanLock: () => `abandoned-cart-scan-lock`,
   expiryReminderScanLock: () => `expiry-reminder-scan-lock`,
+  sendEmailCleanupLock: () => `send-email-cleanup-lock`,
+  sendEmailResumeLock: () => `send-email-resume-lock`,
   moduleMaster: () => `module-master`,
 };
 

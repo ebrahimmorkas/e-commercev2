@@ -18,6 +18,7 @@ import {
   FreeCashIcon,
   GroupIcon,
   EmailTemplateIcon,
+  SendEmailIcon,
 } from './icons';
 
 // moduleCode ties each nav item to its backend ModuleMaster.code (see
@@ -42,6 +43,7 @@ export const DEFAULT_NAV_ITEMS = [
   { key: 'freeCash', label: 'Free Cash', icon: FreeCashIcon, moduleCode: 'FREE_CASH' },
   { key: 'groups', label: 'Groups', icon: GroupIcon, moduleCode: 'GROUP' },
   { key: 'emailTemplates', label: 'Email Templates', icon: EmailTemplateIcon, moduleCode: 'EMAIL_TEMPLATE' },
+  { key: 'sendEmail', label: 'Send Email', icon: SendEmailIcon, moduleCode: 'SEND_EMAIL' },
   { key: 'companySettings', label: 'Company Settings', icon: CompanySettingsIcon, moduleCode: 'COMPANY_SETTINGS' },
 ];
 

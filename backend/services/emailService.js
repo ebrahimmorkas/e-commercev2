@@ -2,7 +2,7 @@ const EmailLog = require('../models/EmailLog');
 const CompanyMaster = require('../models/CompanyMaster');
 const WebsiteMaster = require('../models/WebsiteMaster');
 const CompanySettings = require('../models/CompanySettings');
-const { getProvider } = require('./emailProviders/emailProviderFactory');
+const vendorSmtpProvider = require('./emailProviders/vendorSmtpProvider');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
 
@@ -222,7 +222,11 @@ const sendEmail = async ({
     // template decides this with its own checkboxes; everything else
     // (platform default templates, built-in emails) keeps getting them.
     includeCompanyCc = true,
-    includeCompanyBcc = true
+    includeCompanyBcc = true,
+    // Per-email limits that replace the CompanyMaster ones for this send -
+    // { maxAttachments, maxAttachmentSizeMB, maxImages, maxImageSizeMB }
+    // (used by the Send Email module). Extensions still come from CompanyMaster.
+    limits = null
 }) => {
     try {
         if (!module) {
@@ -257,32 +261,37 @@ const sendEmail = async ({
             }
         }
 
-        const attachmentCheck = validateAttachments(attachments, companyMasterData, websiteMasterData);
+        const limitData = limits
+            ? {
+                isAddingOfAttachmentAllowed: companyMasterData?.isAddingOfAttachmentAllowed,
+                isAddingOfImageAllowed: companyMasterData?.isAddingOfImageAllowed,
+                allowedAttachmentExtensions: companyMasterData?.allowedAttachmentExtensions,
+                allowedImageExtensions: companyMasterData?.allowedImageExtensions,
+                numberOfAttachmentsAllowed: limits.maxAttachments,
+                attachmentSizeAllowed: limits.maxAttachmentSizeMB,
+                numberOfImageAllowed: limits.maxImages,
+                imageSizeAllowed: limits.maxImageSizeMB
+            }
+            : companyMasterData;
+
+        const attachmentCheck = validateAttachments(attachments, limitData, websiteMasterData);
         if (!attachmentCheck.isSuccess) {
             return attachmentCheck;
         }
 
-        const imageCheck = validateImages(images, companyMasterData, websiteMasterData);
+        const imageCheck = validateImages(images, limitData, websiteMasterData);
         if (!imageCheck.isSuccess) {
             return imageCheck;
         }
 
-        const providerName = resolveEmailProvider(companyMasterData, websiteMasterData);
-        if (!providerName) {
-            return common.returnResult(false, 400, 'No email service configured for this vendor.');
+        // Every vendor sends through their own email account (Company
+        // Settings > Email) - there is no platform fallback.
+        const emailAccount = companySettingsData && companySettingsData.emailAccount;
+        if (!vendorSmtpProvider.isAccountReady(emailAccount)) {
+            return common.returnResult(false, 400, 'Your email account is not set up yet. Add it in Company Settings > Email.');
         }
-
-        // SES's Simple content type (see sesProvider.js) can't carry
-        // attachments or inline images - fail clearly here instead of
-        // silently dropping them.
-        if (providerName === 'ses' && ((attachments && attachments.length) || (images && images.length))) {
-            return common.returnResult(false, 400, 'The SES email provider does not support attachments or embedded images.');
-        }
-
-        const from = (companySettingsData && (companySettingsData.senderEmail || companySettingsData.adminEmail)) || null;
-        if (!from) {
-            return common.returnResult(false, 400, 'No sender email configured for this vendor.');
-        }
+        const providerName = 'smtp';
+        const from = vendorSmtpProvider.formatFrom(emailAccount);
 
         // Saved Company Settings lists are only added while CC/BCC is on for
         // the account - with it off they're simply left out (the email still
@@ -297,8 +306,6 @@ const sendEmail = async ({
 
         const ccList = dedupeEmails([...normalizeList(cc), ...companyCc]);
         const bccList = dedupeEmails([...normalizeList(bcc), ...companyBcc]);
-
-        const provider = getProvider(providerName);
 
         // Images are just inline attachments (they carry a cid) as far as
         // the provider adapters are concerned - merge them in.
@@ -327,7 +334,7 @@ const sendEmail = async ({
             createdBy: userId
         });
 
-        const result = await provider.send({
+        const result = await vendorSmtpProvider.send(vendorId, emailAccount, {
             from,
             to: toList,
             cc: ccList,

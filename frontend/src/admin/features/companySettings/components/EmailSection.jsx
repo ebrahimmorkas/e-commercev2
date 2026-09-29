@@ -2,34 +2,47 @@ import { useState } from 'react';
 import InputField from '../../../../components/common/InputField';
 import Switch from '../../../../components/common/Switch';
 import EmailContentSection from './EmailContentSection';
+import EmailAccountSection from './EmailAccountSection';
+import { useEmailAccount } from '../hooks/useEmailAccount';
+import { toEmailList, invalidEmails } from '../utils/companySettingsDraft';
 import theme from '../theme/theme';
 
-const toEmailList = (text) =>
-  text
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-
 /**
- * A comma-separated list of email addresses, editable as free text and
- * committed to the draft's array field on blur.
+ * A list of email addresses, typed as free text (commas, semicolons, spaces
+ * or new lines between them) and written to the draft's array field on every
+ * change - so Save always sends what the box shows. Invalid addresses are
+ * shown right under the box (the page's Save refuses them too).
  */
 const EmailListField = ({ label, value, onCommit }) => {
   const [text, setText] = useState((value || []).join(', '));
+  const [shown, setShown] = useState(value);
+
+  // The saved list changed from outside (loaded / saved) - show it.
+  if (shown !== value) {
+    setShown(value);
+    if (toEmailList(text).join(',') !== (value || []).join(',')) setText((value || []).join(', '));
+  }
+
+  const invalid = invalidEmails(toEmailList(text));
 
   return (
     <InputField
       label={label}
       value={text}
-      onChange={(e) => setText(e.target.value)}
-      onBlur={() => onCommit(toEmailList(text))}
+      onChange={(e) => {
+        setText(e.target.value);
+        onCommit(toEmailList(e.target.value));
+      }}
+      onBlur={() => setText(toEmailList(text).join(', '))}
       placeholder="name1@example.com, name2@example.com"
+      error={invalid.length ? `Not a valid email address: ${invalid.join(', ')}` : ''}
     />
   );
 };
 
 /**
- * senderEmail + always-cc'd/bcc'd address lists used by emailService.js,
+ * The vendor's own email account (every email is sent through it - it also
+ * decides the From name/address), the always-cc'd/bcc'd address lists used by emailService.js,
  * whether the platform default template is sent when no template is
  * assigned, and the vendor's email attachments / images.
  *
@@ -48,20 +61,11 @@ const EmailListField = ({ label, value, onCommit }) => {
 const EmailSection = ({ draft, onChange, access = null, companyMaster = null, exists = false, emailContent }) => {
   const set = (patch) => onChange(patch);
   const isCcAndBccOn = access ? access.isCcAndBccOn : companyMaster?.isCcAndBccFeatureOn !== false;
+  const emailAccount = useEmailAccount(exists);
 
   return (
     <div className="space-y-5">
-      <div>
-        <InputField
-          type="email"
-          label="Sender Email"
-          name="senderEmail"
-          placeholder="Falls back to the admin email when left blank"
-          value={draft.senderEmail}
-          onChange={(e) => set({ senderEmail: e.target.value })}
-        />
-        <p className={`mt-1 text-xs ${theme.text.muted}`}>Used as the "From" address when the system sends email.</p>
-      </div>
+      <EmailAccountSection emailAccount={emailAccount} exists={exists} />
 
       {isCcAndBccOn && (
         <>
@@ -71,7 +75,7 @@ const EmailSection = ({ draft, onChange, access = null, companyMaster = null, ex
               value={draft.ccList}
               onCommit={(list) => set({ ccList: list })}
             />
-            <p className={`mt-1 text-xs ${theme.text.muted}`}>Comma-separated. Always cc'd on every system email.</p>
+            <p className={`mt-1 text-xs ${theme.text.muted}`}>Separate addresses with commas. Added as CC on every email whose template includes the company CC list.</p>
           </div>
 
           <div>
@@ -80,7 +84,7 @@ const EmailSection = ({ draft, onChange, access = null, companyMaster = null, ex
               value={draft.bccList}
               onCommit={(list) => set({ bccList: list })}
             />
-            <p className={`mt-1 text-xs ${theme.text.muted}`}>Comma-separated. Always bcc'd on every system email.</p>
+            <p className={`mt-1 text-xs ${theme.text.muted}`}>Separate addresses with commas. Added as BCC on every email whose template includes the company BCC list.</p>
           </div>
         </>
       )}

@@ -22,6 +22,9 @@ const WEBSITE_MASTER = {
 
     // Email / SMS
     isSendingEmailFeatureOn: true,
+    isSendEmailModuleOn: true,
+    isSendingEmailToUsersOutOfStoreAllowed: true,
+    sendEmailFileRetentionDays: 90,
     isEmailVerificationFeatureOn: false,
     isSendingSMSFeatureOn: false,
     isMobileVerificationFeatureOn: false,

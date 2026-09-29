@@ -10,6 +10,26 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // "Send Email" module: the vendor composes and sends emails themselves.
+    // Also needs isSendingEmailFeatureOn (the master email switch).
+    isSendEmailModuleOn: {
+        type: Boolean,
+        default: false
+    },
+    // Send Email: may the vendor type in addresses of people who aren't
+    // customers of their store? false = store customers only.
+    isSendingEmailToUsersOutOfStoreAllowed: {
+        type: Boolean,
+        default: false
+    },
+    // Files uploaded for a single Send Email email are deleted this many days
+    // after it was sent (the history entry stays). 0 = keep forever. See
+    // services/sentEmailCleanupService.js.
+    sendEmailFileRetentionDays: {
+        type: Number,
+        min: 0,
+        default: 90
+    },
     isEmailVerificationFeatureOn: {
         type: Boolean,
         default: false

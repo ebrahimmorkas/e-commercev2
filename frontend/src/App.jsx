@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useSessionStorageState } from './hooks/useSessionStorageState';
 import AnnouncementsPage from './admin/features/anoucements/pages/AnnouncementsPage';
 import CategoriesPage from './admin/masters/category/pages/CategoriesPage';
@@ -17,6 +18,7 @@ import EmailTemplatesPage from './admin/masters/emailTemplate/pages/EmailTemplat
 import CompanySettingsPage from './admin/features/companySettings/pages/CompanySettingsPage';
 import DeliveryAgentsPage from './admin/features/deliveryAgents/pages/DeliveryAgentsPage';
 import CouriersPage from './admin/masters/courier/pages/CouriersPage';
+import SendEmailPage from './admin/features/sendEmail/pages/SendEmailPage';
 import MyDeliveriesPage from './admin/features/myDeliveries/pages/MyDeliveriesPage';
 import { DeliveryAgentIcon } from './components/ui/Sidebar/icons';
 import LoginPage from './admin/features/login/pages/LoginPage';
@@ -40,6 +42,17 @@ function App() {
   const { assignedCodes } = useAssignedModules(isAuthenticated && !isDeliveryAgent);
   const navItems = filterNavItemsByAssignedModules(DEFAULT_NAV_ITEMS, assignedCodes);
   const [activePage, setActivePage] = useSessionStorageState('ecom.admin.activePage', 'announcements');
+  // Customers picked on the Customers page for the Send Email module's To
+  // field. Cleared when navigating anywhere through the sidebar.
+  const [sendEmailPrefill, setSendEmailPrefill] = useState(null);
+  const navigate = (page) => {
+    setSendEmailPrefill(null);
+    setActivePage(page);
+  };
+  const openSendEmailFor = (customers) => {
+    setSendEmailPrefill(customers);
+    setActivePage('sendEmail');
+  };
 
   // The hardcoded initial 'announcements' page may not be assigned to this
   // vendor - fall back to the first section that actually is, once
@@ -73,7 +86,7 @@ function App() {
 
   return (
     <div className="App md:flex min-h-screen bg-gray-50">
-      <Sidebar items={navItems} activeKey={effectiveActivePage} onNavigate={setActivePage} user={user} onLogout={logout} />
+      <Sidebar items={navItems} activeKey={effectiveActivePage} onNavigate={navigate} user={user} onLogout={logout} />
 
       <div className="flex-1 min-w-0">
         {effectiveActivePage === 'announcements' ? (
@@ -93,13 +106,16 @@ function App() {
         ) : effectiveActivePage === 'adminPlaceOrder' ? (
           <AdminPlaceOrderPage />
         ) : effectiveActivePage === 'customers' ? (
-          <CustomersPage onAddUser={() => setActivePage('addUser')} />
+          <CustomersPage onAddUser={() => setActivePage('addUser')} onSendEmail={openSendEmailFor} />
         ) : effectiveActivePage === 'addUser' ? (
           <AddUserPage onDone={() => setActivePage('customers')} />
         ) : effectiveActivePage === 'deliveryAgents' ? (
           <DeliveryAgentsPage />
         ) : effectiveActivePage === 'couriers' ? (
           <CouriersPage />
+        ) : effectiveActivePage === 'sendEmail' ? (
+          // Keyed so a new hand-off from Customers starts a fresh form.
+          <SendEmailPage key={sendEmailPrefill ? sendEmailPrefill.map((c) => c._id).join(',') : 'blank'} prefillCustomers={sendEmailPrefill} />
         ) : effectiveActivePage === 'abandonedCarts' ? (
           <AbandonedCartsPage />
         ) : effectiveActivePage === 'banners' ? (

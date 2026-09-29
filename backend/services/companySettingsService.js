@@ -6,6 +6,8 @@ const logger = require('../utils/logger');
 const common = require('../utils/common');
 const imageUploadService = require('./imageUploadService');
 const fileUploadService = require('./fileUploadService');
+const emailService = require('./emailService');
+const vendorSmtpProvider = require('./emailProviders/vendorSmtpProvider');
 const emailTemplateMasterService = require('./emailTemplateMasterService');
 const CountryMaster = require('../models/CountryMaster');
 const StateMaster = require('../models/StateMaster');
@@ -585,8 +587,10 @@ const isTwoLevelOn = (flag, companyMasterData, websiteMasterData) => {
 // worked out here.
 const getEmailFeatureAccess = (companyMasterData, websiteMasterData) => {
     try {
-        const emailProvider = (websiteMasterData && websiteMasterData.mainEmailService) || (companyMasterData && companyMasterData.emailService) || null;
         return {
+            // The master email switch - off = no email at all, so the Email and
+            // "Discount and Free Cash" tabs are hidden.
+            isEmailOn: isTwoLevelOn('isSendingEmailFeatureOn', companyMasterData, websiteMasterData),
             isCcAndBccOn: isTwoLevelOn('isCcAndBccFeatureOn', companyMasterData, websiteMasterData),
             attachments: {
                 isOn: isTwoLevelOn('isAddingOfAttachmentAllowed', companyMasterData, websiteMasterData),
@@ -600,9 +604,10 @@ const getEmailFeatureAccess = (companyMasterData, websiteMasterData) => {
                 maxSizeMB: companyMasterData?.imageSizeAllowed ?? null,
                 allowedExtensions: companyMasterData?.allowedImageExtensions || []
             },
-            // SES can't carry attachments or embedded images (see emailService.sendEmail).
-            emailProvider,
-            canSendAttachments: emailProvider !== 'ses'
+            // Every email goes through the vendor's own SMTP account, which
+            // carries attachments and images.
+            emailProvider: 'smtp',
+            canSendAttachments: true
         };
     } catch (err) {
         throw err;
@@ -803,6 +808,170 @@ const removeEmailImage = async (vendorId, userId, imageId) => {
     }
 };
 
+
+/*
+|--------------------------------------------------------------------------
+| THE VENDOR'S OWN EMAIL ACCOUNT (SMTP)
+|--------------------------------------------------------------------------
+| Only while email is granted to the vendor (isSendingEmailFeatureOn at both
+| levels). Saved only after the server accepted the sign-in, so a wrong
+| password is caught at once. The password is encrypted and never returned.
+*/
+
+// What the page may see of the account - never the password.
+const toPublicEmailAccount = (account) => {
+    try {
+        if (!account || !account.host) return null;
+        return {
+            host: account.host,
+            port: account.port,
+            security: account.security,
+            username: account.username,
+            fromEmail: account.fromEmail,
+            fromName: account.fromName,
+            hasPassword: !!account.encryptedPassword,
+            verifiedAt: account.verifiedAt
+        };
+    } catch (err) {
+        throw err;
+    }
+};
+
+const checkEmailGranted = (companyMasterData, websiteMasterData) => {
+    try {
+        if (!isTwoLevelOn('isSendingEmailFeatureOn', companyMasterData, websiteMasterData)) {
+            return common.returnResult(false, 403, 'Email is not available for your account.');
+        }
+        return common.returnResult(true, 200, 'Email is on');
+    } catch (err) {
+        throw err;
+    }
+};
+
+const fetchEmailAccount = async (vendorId, companyMasterData, websiteMasterData) => {
+    try {
+        const gate = checkEmailGranted(companyMasterData, websiteMasterData);
+        if (!gate.isSuccess) return gate;
+        const settings = await CompanySettings.findOne({ vendorId }, { emailAccount: 1 }).lean();
+        return common.returnResult(true, 200, 'Email account fetched successfully', { emailAccount: toPublicEmailAccount(settings?.emailAccount) });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Turns an SMTP sign-in failure into something a vendor can act on.
+const describeSmtpError = (err) => {
+    try {
+        const raw = String((err && (err.response || err.message)) || 'Unknown error');
+        if (err && (err.code === 'EAUTH' || /535|534|auth/i.test(raw))) {
+            return `The email server rejected the username or password (${raw.slice(0, 160)}). For Gmail, use an App Password - not your normal password - and make sure 2-Step Verification is on.`;
+        }
+        if (err && (['ECONNECTION', 'ETIMEDOUT', 'ESOCKET', 'ENOTFOUND', 'ECONNREFUSED', 'EDNS', 'EHOSTUNREACH'].includes(err.code)
+            || /ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EHOSTUNREACH/.test(raw))) {
+            return `Could not connect to ${err.address || 'the email server'} - check the server, port and security setting (${raw.slice(0, 160)}).`;
+        }
+        return `The email server said: ${raw.slice(0, 200)}`;
+    } catch (e) {
+        throw e;
+    }
+};
+
+// data: { host, port, security, username, password?, fromEmail?, fromName? }.
+// password may be left out to keep the saved one.
+const saveEmailAccount = async (vendorId, userId, data, companyMasterData, websiteMasterData) => {
+    try {
+        const gate = checkEmailGranted(companyMasterData, websiteMasterData);
+        if (!gate.isSuccess) return gate;
+
+        const settings = await CompanySettings.findOne({ vendorId }, { emailAccount: 1 }).lean();
+        if (!settings) {
+            return common.returnResult(false, 404, 'Please save your company settings first, then add your email account.');
+        }
+        const saved = settings.emailAccount || {};
+
+        const password = data.password
+            ? data.password
+            : (saved.encryptedPassword ? common.decryptSecret(saved.encryptedPassword) : null);
+        if (!password) {
+            return common.returnResult(false, 400, 'Please enter the password (for Gmail, the App Password).');
+        }
+        const account = {
+            host: data.host,
+            port: data.port,
+            security: data.security,
+            username: data.username,
+            fromEmail: data.fromEmail || (String(data.username).includes('@') ? String(data.username).toLowerCase() : null),
+            fromName: data.fromName || null
+        };
+        if (!account.fromEmail) {
+            return common.returnResult(false, 400, 'Please enter the From address - the username is not an email address.');
+        }
+
+        try {
+            await vendorSmtpProvider.verifyAccount(account, password);
+        } catch (smtpErr) {
+            logger.logInfo(0, 1, 'Vendor email account sign-in failed', { vendorId, host: account.host, code: smtpErr && smtpErr.code });
+            return common.returnResult(false, 400, describeSmtpError(smtpErr));
+        }
+
+        const emailAccount = { ...account, encryptedPassword: common.encryptSecret(password), verifiedAt: new Date() };
+        await CompanySettings.updateOne({ vendorId }, { $set: { emailAccount, updatedBy: { userID: userId, vendorID: vendorId } } });
+        await redisService.del(redisKeys.companySettings(vendorId));
+        vendorSmtpProvider.forgetVendor(vendorId);
+
+        logger.logInfo(1, 0, 'Vendor email account saved', { vendorId, host: account.host });
+        return common.returnResult(true, 200, 'Email account saved - the server accepted the sign-in.', { emailAccount: toPublicEmailAccount(emailAccount) });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Removing it stops every email of the vendor until a new one is added.
+const removeEmailAccount = async (vendorId, userId) => {
+    try {
+        await CompanySettings.updateOne({ vendorId }, { $unset: { emailAccount: 1 }, $set: { updatedBy: { userID: userId, vendorID: vendorId } } });
+        await redisService.del(redisKeys.companySettings(vendorId));
+        vendorSmtpProvider.forgetVendor(vendorId);
+        logger.logInfo(1, 0, 'Vendor email account removed', { vendorId });
+        return common.returnResult(true, 200, 'Email account removed. No emails will be sent until you add one again.', { emailAccount: null });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Sends a short test email through the saved account (to `to`, else the
+// account's own address) - goes through the normal checks (feature, quota).
+const sendTestEmail = async (vendorId, userId, to, companyMasterData, websiteMasterData) => {
+    try {
+        const gate = checkEmailGranted(companyMasterData, websiteMasterData);
+        if (!gate.isSuccess) return gate;
+        const settings = await CompanySettings.findOne({ vendorId }).lean();
+        if (!vendorSmtpProvider.isAccountReady(settings?.emailAccount)) {
+            return common.returnResult(false, 400, 'Save your email account first.');
+        }
+        const recipient = to || settings.emailAccount.fromEmail || settings.emailAccount.username;
+        const result = await emailService.sendEmail({
+            vendorId,
+            module: 'emailAccountTest',
+            to: recipient,
+            subject: 'Test email from your store',
+            html: '<p>This is a test email. Your email account is set up correctly - your store\'s emails will be sent from this account.</p>',
+            text: 'This is a test email. Your email account is set up correctly - your store\'s emails will be sent from this account.',
+            userId,
+            companyMasterData,
+            websiteMasterData,
+            companySettingsData: settings,
+            isDefaultTemplate: true,
+            includeCompanyCc: false,
+            includeCompanyBcc: false
+        }).catch((sendErr) => common.returnResult(false, 400, describeSmtpError(sendErr)));
+        if (!result.isSuccess) return result;
+        return common.returnResult(true, 200, `Test email sent to ${recipient}.`);
+    } catch (err) {
+        throw err;
+    }
+};
+
 module.exports = {
   createCompanySettings,
   updateCompanySettings,
@@ -814,5 +983,9 @@ module.exports = {
   addEmailAttachment,
   removeEmailAttachment,
   addEmailImage,
-  removeEmailImage
+  removeEmailImage,
+  fetchEmailAccount,
+  saveEmailAccount,
+  removeEmailAccount,
+  sendTestEmail
 };

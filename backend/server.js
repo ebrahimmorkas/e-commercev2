@@ -16,6 +16,7 @@ const {connectRedis} = require('./config/redisConfig');
 const realtimeService = require('./services/realtimeService');
 const abandonedCartService = require('./services/abandonedCartService');
 const expiryReminderService = require('./services/expiryReminderService');
+const sentEmailCleanupService = require('./services/sentEmailCleanupService');
 // Middlewares
 const { requestContext } = require('./middlewares/requestContext');
 const vendorDetection = require('./middlewares/vendorDetection');
@@ -49,6 +50,7 @@ const orderReturnRoutes = require('./routes/orderReturnRoutes.js');
 const orderExchangeRoutes = require('./routes/orderExchangeRoutes.js');
 const brandMasterRoutes = require('./routes/brandMasterRoutes.js');
 const courierMasterRoutes = require('./routes/courierMasterRoutes.js');
+const sentEmailRoutes = require('./routes/sentEmailRoutes.js');
 const emailTemplateMasterRoutes = require('./routes/emailTemplateMasterRoutes.js');
 const favoriteRoutes = require('./routes/favoriteRoutes.js');
 const paymentRoutes = require('./routes/paymentRoutes.js');
@@ -125,6 +127,7 @@ app.use('/api/order-returns', orderReturnRoutes);
 app.use('/api/order-exchanges', orderExchangeRoutes);
 app.use('/api/brands', brandMasterRoutes);
 app.use('/api/couriers', courierMasterRoutes);
+app.use('/api/send-email', sentEmailRoutes);
 app.use('/api/email-templates', emailTemplateMasterRoutes);
 app.use('/api/favorites', favoriteRoutes);
 app.use('/api/payments', paymentRoutes);
@@ -153,6 +156,8 @@ realtimeService.init(httpServer);
 abandonedCartService.startAbandonedCartScanner();
 // Discount / Free Cash "Expiring Soon" emails.
 expiryReminderService.startExpiryReminderScanner();
+// Deletes files uploaded for one Send Email email after the retention period.
+sentEmailCleanupService.startSendEmailCleanup();
 
 const PORT = process.env.PORT || 5000;
 httpServer.listen(PORT, () => {

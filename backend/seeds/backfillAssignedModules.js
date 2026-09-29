@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 
 const ModuleMaster = require('../models/ModuleMaster');
 const CompanyMaster = require('../models/CompanyMaster');
-const { MODULE_FEATURE_FLAG } = require('../services/moduleMasterService');
+const { getModuleFeatureFlags } = require('../services/moduleMasterService');
 
 // One-time (but safe to re-run - it never touches an existing assignedModules
 // entry, only adds missing ones) migration: run this after seedModuleMaster.js
@@ -36,8 +36,9 @@ async function backfillAssignedModules() {
             for (const module of modules) {
                 if (existingModuleIds.has(module._id.toString())) continue;
 
-                const featureFlag = MODULE_FEATURE_FLAG[module.code];
-                const shouldAssign = module.isSystemModule || (featureFlag && company[featureFlag] === true);
+                // Every flag the module needs must be on for this vendor.
+                const featureFlags = getModuleFeatureFlags(module.code);
+                const shouldAssign = module.isSystemModule || (featureFlags.length > 0 && featureFlags.every((flag) => company[flag] === true));
 
                 if (!shouldAssign) continue;
 

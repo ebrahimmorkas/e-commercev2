@@ -1,6 +1,6 @@
 const express = require('express');
-const { createCompanySettings, updateCompanySettings, getCompanySettings, getCompanySettingsAdmin, getAssignedOrderSteps, assignEmailTemplate, unassignEmailTemplate, addEmailAttachment, removeEmailAttachment, addEmailImage, removeEmailImage } = require('../controllers/companySettingsController');
-const { createCompanySettingsSchema, updateCompanySettingsSchema, assignEmailTemplateSchema, unassignEmailTemplateSchema, addEmailAttachmentSchema, addEmailImageSchema, emailContentIdParamSchema } = require('../middlewares/validations/companySettingsValidations');
+const { createCompanySettings, updateCompanySettings, getCompanySettings, getCompanySettingsAdmin, getAssignedOrderSteps, assignEmailTemplate, unassignEmailTemplate, addEmailAttachment, removeEmailAttachment, addEmailImage, removeEmailImage, getEmailAccount, saveEmailAccount, removeEmailAccount, sendTestEmail } = require('../controllers/companySettingsController');
+const { createCompanySettingsSchema, updateCompanySettingsSchema, assignEmailTemplateSchema, unassignEmailTemplateSchema, addEmailAttachmentSchema, addEmailImageSchema, emailContentIdParamSchema, saveEmailAccountSchema, sendTestEmailSchema } = require('../middlewares/validations/companySettingsValidations');
 const emailContentUpload = require('../middlewares/emailContentUpload');
 const validate = require('../middlewares/validate');
 const authenticate = require('../middlewares/authenticate');
@@ -34,5 +34,12 @@ router.post('/email-attachments', ...emailContentAccess, emailContentUpload.sing
 router.delete('/email-attachments/:id', ...emailContentAccess, validate(emailContentIdParamSchema, 'params'), removeEmailAttachment);
 router.post('/email-images', ...emailContentAccess, emailContentUpload.single('file'), validate(addEmailImageSchema, 'body'), addEmailImage);
 router.delete('/email-images/:id', ...emailContentAccess, validate(emailContentIdParamSchema, 'params'), removeEmailImage);
+
+// Email tab: the vendor's own email account (SMTP) - admin only; the
+// password is never returned.
+router.get('/email-account', ...emailContentAccess, getEmailAccount);
+router.put('/email-account', ...emailContentAccess, validate(saveEmailAccountSchema, 'body'), saveEmailAccount);
+router.delete('/email-account', ...emailContentAccess, removeEmailAccount);
+router.post('/email-account/test', ...emailContentAccess, validate(sendTestEmailSchema, 'body'), sendTestEmail);
 
 module.exports = router;

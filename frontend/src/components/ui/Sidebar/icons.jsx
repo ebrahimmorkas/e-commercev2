@@ -151,6 +151,13 @@ export const EmailTemplateIcon = (props) => (
   </svg>
 );
 
+// A paper plane - the Send Email module.
+export const SendEmailIcon = (props) => (
+  <svg {...base} {...props}>
+    <path d="M6 12 3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+  </svg>
+);
+
 export const MenuIcon = (props) => (
   <svg {...base} {...props}>
     <path d="M4 6h16M4 12h16M4 18h16" />

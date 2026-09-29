@@ -19,7 +19,8 @@ const emailLogSchema = new mongoose.Schema({
 
     provider: {
         type: String,
-        enum: ['nodemailer', 'sendgrid', 'ses'],
+        // 'smtp' = the vendor's own email account (Company Settings > Email).
+        enum: ['nodemailer', 'sendgrid', 'ses', 'smtp'],
         required: true
     },
 

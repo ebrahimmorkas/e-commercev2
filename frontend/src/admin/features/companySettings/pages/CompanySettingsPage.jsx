@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Card from '../../../../components/common/Card';
 import Tabs from '../../../../components/common/Tabs';
 import Button from '../../../../components/common/Buttons';
 import Spinner from '../../../../components/common/Spinner';
 import { useCompanySettings } from '../hooks/useCompanySettings';
-import { emptyDraft, mapApiSettingsToDraft, buildSavePayload } from '../utils/companySettingsDraft';
+import { emptyDraft, mapApiSettingsToDraft, buildSavePayload, invalidEmails } from '../utils/companySettingsDraft';
+import { useToast } from '../../../../components/common/Toast';
 import GeneralInfoSection from '../components/GeneralInfoSection';
 import PoliciesSection from '../components/PoliciesSection';
 import StorefrontSection from '../components/StorefrontSection';
@@ -33,10 +34,14 @@ const CompanySettingsPage = () => {
   const [draft, setDraft] = useState(emptyDraft());
   const [activeTab, setActiveTab] = useState('general');
   const [formErrors, setFormErrors] = useState({});
+  const toast = useToast();
 
-  useEffect(() => {
-    if (settings) setDraft(mapApiSettingsToDraft(settings));
-  }, [settings]);
+  // Load the form from the settings whenever they change (loaded / saved).
+  const [draftFor, setDraftFor] = useState(null);
+  if (settings && draftFor !== settings) {
+    setDraftFor(settings);
+    setDraft(mapApiSettingsToDraft(settings));
+  }
 
   const patchDraft = (patch) => setDraft((prev) => ({ ...prev, ...patch }));
 
@@ -47,6 +52,9 @@ const CompanySettingsPage = () => {
     if (draft.taxRegistrationNumber && !/^\d{15}$/.test(draft.taxRegistrationNumber)) {
       nextErrors.taxRegistrationNumber = 'TRN must be exactly 15 digits';
     }
+    if (invalidEmails(draft.ccList).length || invalidEmails(draft.bccList).length) {
+      nextErrors.emailLists = 'Fix the invalid CC/BCC email addresses';
+    }
     setFormErrors(nextErrors);
     return nextErrors;
   };
@@ -54,8 +62,17 @@ const CompanySettingsPage = () => {
   const handleSave = async () => {
     const errors = validate();
     if (Object.keys(errors).length > 0) {
-      // Jump to the tab that holds the first problem.
-      setActiveTab(errors.adminName || errors.adminEmail ? 'general' : 'invoice');
+      // Jump to the tab that holds the first problem, and say so - the jump alone is easy to miss.
+      if (errors.adminName || errors.adminEmail) {
+        setActiveTab('general');
+        toast.error('Not saved - please fill in the fields marked in red on the General tab.');
+      } else if (errors.taxRegistrationNumber) {
+        setActiveTab('invoice');
+        toast.error('Not saved - please fix the fields marked in red on the Invoice tab.');
+      } else {
+        setActiveTab('email');
+        toast.error(`Not saved - ${errors.emailLists}.`);
+      }
       return;
     }
     const { fields, files } = buildSavePayload(draft, { bankTransferEnabled: !!companyMaster?.showPaymentQRCodeAndBankDetails });
@@ -63,6 +80,11 @@ const CompanySettingsPage = () => {
   };
 
   const sectionProps = { draft, onChange: patchDraft };
+  // The master email switch (WebsiteMaster AND CompanyMaster); before the
+  // settings exist only CompanyMaster is known.
+  const isEmailOn = settings?.emailFeatureAccess
+    ? settings.emailFeatureAccess.isEmailOn !== false
+    : companyMaster?.isSendingEmailFeatureOn !== false;
 
   const tabs = [
     { key: 'general', label: 'General', content: <GeneralInfoSection {...sectionProps} errors={formErrors} /> },
@@ -71,22 +93,30 @@ const CompanySettingsPage = () => {
     { key: 'product', label: 'Product', content: <ProductSection {...sectionProps} /> },
     { key: 'cartOrder', label: 'Cart & Order', content: <CartOrderSection {...sectionProps} orderSteps={orderSteps} /> },
     { key: 'payment', label: 'Payment & Bank', content: <PaymentBankSection {...sectionProps} companyMaster={companyMaster} /> },
-    {
-      key: 'email',
-      label: 'Email',
-      content: (
-        <EmailSection
-          {...sectionProps}
-          access={settings?.emailFeatureAccess || null}
-          companyMaster={companyMaster}
-          exists={exists}
-          emailContent={emailContent}
-        />
-      ),
-    },
+    // Email and its Discount/Free Cash email settings only while email is on
+    // for the account (the master isSendingEmailFeatureOn switch).
+    ...(isEmailOn
+      ? [
+          {
+            key: 'email',
+            label: 'Email',
+            content: (
+              <EmailSection
+                {...sectionProps}
+                access={settings?.emailFeatureAccess || null}
+                companyMaster={companyMaster}
+                exists={exists}
+                emailContent={emailContent}
+              />
+            ),
+          },
+        ]
+      : []),
     { key: 'invoice', label: 'Invoice', content: <InvoiceSection {...sectionProps} errors={formErrors} /> },
     { key: 'freeCash', label: 'Free Cash', content: <FreeCashSection {...sectionProps} /> },
-    { key: 'discountFreeCash', label: 'Discount and Free Cash', content: <DiscountFreeCashSection {...sectionProps} /> },
+    ...(isEmailOn
+      ? [{ key: 'discountFreeCash', label: 'Discount and Free Cash', content: <DiscountFreeCashSection {...sectionProps} /> }]
+      : []),
     { key: 'abandonedCart', label: 'Abandoned Cart', content: <AbandonedCartSection {...sectionProps} /> },
     // Hidden entirely unless the platform has enabled shipping pricing for this vendor.
     ...(companyMaster?.isShippingPriceFeatureOn
