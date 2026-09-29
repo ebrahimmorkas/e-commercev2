@@ -24,7 +24,13 @@ export const emptyDraft = () => ({
   privacyPolicy: '',
   cancelPolicy: '',
   termsAndConditions: '',
+  returnRefundPolicy: '',
   aboutUs: '',
+  policyDisplayMode: 'PAGE',
+
+  contactEmail: '',
+  contactPhoneNumber: '',
+  contactAddress: '',
 
   showAnnouncements: true,
   isAnnouncementRotationOn: false,
@@ -122,7 +128,13 @@ export const mapApiSettingsToDraft = (doc) => ({
   privacyPolicy: doc.privacyPolicy || '',
   cancelPolicy: doc.cancelPolicy || '',
   termsAndConditions: doc.termsAndConditions || '',
+  returnRefundPolicy: doc.returnRefundPolicy || '',
   aboutUs: doc.aboutUs || '',
+  policyDisplayMode: doc.policyDisplayMode === 'MODAL' ? 'MODAL' : 'PAGE',
+
+  contactEmail: doc.contactEmail || '',
+  contactPhoneNumber: doc.contactPhoneNumber || '',
+  contactAddress: doc.contactAddress || '',
 
   showAnnouncements: !!doc.showAnnouncements,
   isAnnouncementRotationOn: !!doc.isAnnouncementRotationOn,

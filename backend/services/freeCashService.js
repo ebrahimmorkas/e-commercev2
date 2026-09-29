@@ -828,6 +828,7 @@ const revokeFreeCashForAllUsers = async (vendorId, freeCashId, adminUserId, emai
 module.exports = {
   countFreeCashCreatedThisMonth,
   countFreeCashCreatedTotal,
+  issueUserFreeCash,
   createFreeCash,
   updateFreeCash,
   fetchFreeCashById,

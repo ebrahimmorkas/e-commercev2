@@ -78,6 +78,34 @@ const decodeCompanySettingsRefFields = (payload) => {
     return decoded;
 };
 
+// The subset of CompanySettings safe to serve with NO authentication (the
+// storefront route resolves the vendor from the hostname alone - see
+// vendorDetection.js). contactEmail/contactPhoneNumber/contactAddress are
+// the storefront's own public "Contact Us" fields (footer) - deliberately
+// separate from adminEmail/adminPhoneNumber/adminAddress, which are the
+// admin's own contact details for internal order/system notifications and
+// must stay private. Bank transfer fields, TRN/invoice settings and email
+// config also have no legitimate storefront use and must never be
+// reachable by an anonymous request.
+const PUBLIC_COMPANY_SETTINGS_FIELDS = [
+    'companyName', 'companyLogo', 'instagramId', 'facebookId',
+    'contactEmail', 'contactPhoneNumber', 'contactAddress',
+    'privacyPolicy', 'cancelPolicy', 'termsAndConditions', 'returnRefundPolicy', 'aboutUs', 'policyDisplayMode',
+    'showAnnouncements', 'isAnnouncementRotationOn', 'showBanners', 'isBannerRotationOn',
+    'showReviewsToCustomers',
+];
+
+const formatPublicCompanySettings = (doc) => {
+    if (!doc) return doc;
+    const settings = doc.toObject ? doc.toObject() : doc;
+    const publicSettings = {};
+    for (const field of PUBLIC_COMPANY_SETTINGS_FIELDS) {
+        publicSettings[field] = settings[field];
+    }
+    publicSettings.companyLogo = encodeNestedImage(settings.companyLogo);
+    return publicSettings;
+};
+
 const createCompanySettings = async (req, res) => {
     const vendorId = req.vendorId;
     try {
@@ -94,6 +122,7 @@ const createCompanySettings = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, withEmailFeatureAccess(req, formatCompanySettingsForResponse(result.meta.settings)));
     } catch (error) {
         logger.logException('companySettingsController: createCompanySettings - Exception while creating company settings', { vendorId, error });
+        return common.sendError(res, 500, 'Failed to create company settings');
     }
 };
 
@@ -119,10 +148,31 @@ const updateCompanySettings = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, withEmailFeatureAccess(req, formatCompanySettingsForResponse(result.meta.settings)));
     } catch (error) {
         logger.logException('companySettingsController: updateCompanySettings - Exception while updating company settings', { vendorId, error });
+        return common.sendError(res, 500, 'Failed to update company settings');
     }
 };
 
+// Public/storefront read - no authentication (mirrors get-all-announcement /
+// get-all-banner: vendor is resolved from the hostname, and the response is
+// filtered down to fields that have a legitimate public use). Admins should
+// use getCompanySettingsAdmin instead, which returns the full document.
 const getCompanySettings = async (req, res) => {
+  const vendorId = req.vendorId;
+  try {
+    const settings = await companySettingsService.fetchCompanySettingsByVendorId(vendorId);
+    if (!settings) {
+      return common.sendError(res, 404, "Company settings not found");
+    }
+    return common.sendSuccess(res, 200, "Company settings fetched successfully", formatPublicCompanySettings(settings));
+  } catch (error) {
+    logger.logException('Error fetching company settings', { vendorId, error });
+  }
+};
+
+// Admin-only read of the full CompanySettings document (bank details, admin
+// contact info, TRN/invoice settings, email config, ...) - gated by
+// authenticate + authorize('admin') on the route.
+const getCompanySettingsAdmin = async (req, res) => {
   const vendorId = req.vendorId;
   try {
     const settings = await companySettingsService.fetchCompanySettingsByVendorId(vendorId);
@@ -148,6 +198,7 @@ const getAssignedOrderSteps = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message, result.meta);
   } catch (error) {
     logger.logException('companySettingsController: getAssignedOrderSteps - Exception while fetching order steps', { vendorId, error });
+    return common.sendError(res, 500, 'Failed to fetch order steps');
   }
 };
 
@@ -173,6 +224,7 @@ const assignEmailTemplate = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message, withEmailFeatureAccess(req, formatCompanySettingsForResponse(result.meta.settings)));
   } catch (error) {
     logger.logException('companySettingsController: assignEmailTemplate - Exception while assigning email template', { vendorId, error });
+    return common.sendError(res, 500, 'Failed to assign email template');
   }
 };
 
@@ -187,6 +239,7 @@ const unassignEmailTemplate = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message, withEmailFeatureAccess(req, formatCompanySettingsForResponse(result.meta.settings)));
   } catch (error) {
     logger.logException('companySettingsController: unassignEmailTemplate - Exception while unassigning email template', { vendorId, error });
+    return common.sendError(res, 500, 'Failed to unassign email template');
   }
 };
 
@@ -260,6 +313,7 @@ module.exports = {
   createCompanySettings,
   updateCompanySettings,
   getCompanySettings,
+  getCompanySettingsAdmin,
   getAssignedOrderSteps,
   assignEmailTemplate,
   unassignEmailTemplate

@@ -1,5 +1,5 @@
 const express = require('express');
-const { createCompanySettings, updateCompanySettings, getCompanySettings, getAssignedOrderSteps, assignEmailTemplate, unassignEmailTemplate, addEmailAttachment, removeEmailAttachment, addEmailImage, removeEmailImage } = require('../controllers/companySettingsController');
+const { createCompanySettings, updateCompanySettings, getCompanySettings, getCompanySettingsAdmin, getAssignedOrderSteps, assignEmailTemplate, unassignEmailTemplate, addEmailAttachment, removeEmailAttachment, addEmailImage, removeEmailImage } = require('../controllers/companySettingsController');
 const { createCompanySettingsSchema, updateCompanySettingsSchema, assignEmailTemplateSchema, unassignEmailTemplateSchema, addEmailAttachmentSchema, addEmailImageSchema, emailContentIdParamSchema } = require('../middlewares/validations/companySettingsValidations');
 const emailContentUpload = require('../middlewares/emailContentUpload');
 const validate = require('../middlewares/validate');
@@ -15,7 +15,12 @@ const companySettingsFileFields = companySettingsUpload.fields([
     { name: 'partnerCertificate', maxCount: 1 }
 ]);
 
+// Public/storefront read - filtered to fields safe for an anonymous visitor
+// (see formatPublicCompanySettings). The full document, including bank
+// details and admin contact info, is only ever served from the -admin route
+// below, which requires authentication.
 router.get('/get-company-settings', checkModuleAssigned('COMPANY_SETTINGS'), getCompanySettings);
+router.get('/get-company-settings-admin', authenticate, authorize('admin'), checkModuleAssigned('COMPANY_SETTINGS'), getCompanySettingsAdmin);
 router.get('/order-steps', authenticate, authorize('admin'), checkModuleAssigned('COMPANY_SETTINGS'), getAssignedOrderSteps);
 router.post('/create-company-settings', authenticate, authorize('admin'), checkModuleAssigned('COMPANY_SETTINGS'), companySettingsFileFields, validate(createCompanySettingsSchema, 'body'), createCompanySettings);
 router.put('/update-company-settings', authenticate, authorize('admin'), checkModuleAssigned('COMPANY_SETTINGS'), companySettingsFileFields, validate(updateCompanySettingsSchema, 'body'), updateCompanySettings);

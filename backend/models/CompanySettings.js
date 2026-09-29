@@ -186,6 +186,44 @@ const companySettingsSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  returnRefundPolicy: {
+    type: String,
+    default: ''
+  },
+  // How the storefront shows a policy's content when a customer clicks it -
+  // the vendor's own choice, read by the client Footer (client/features/
+  // companySettings). 'PAGE' navigates to a dedicated URL (e.g.
+  // /privacy-policy); 'MODAL' opens it in a popup on the current page.
+  policyDisplayMode: {
+    type: String,
+    enum: ['PAGE', 'MODAL'],
+    default: 'PAGE'
+  },
+
+  // Start of Storefront Contact Us
+  // Deliberately separate from adminEmail/adminPhoneNumber/adminAddress
+  // above - those are the admin's own contact details, used internally for
+  // order/system notifications, and are NOT meant to be public. These are
+  // what the storefront footer's Contact Us section shows customers -
+  // independent values the vendor fills in on purpose for public display.
+  contactEmail: {
+    type: String,
+    trim: true,
+    lowercase: true,
+    default: ''
+  },
+  contactPhoneNumber: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  contactAddress: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  // End of Storefront Contact Us
+
   createdBy: {
     userID: mongoose.Types.ObjectId,
     vendorID: mongoose.Types.ObjectId,

@@ -32,7 +32,18 @@ export const useCompanySettings = () => {
       if (settingsResult.status === 'fulfilled') {
         setSettings(settingsResult.value);
         setExists(true);
-      } else if (settingsResult.reason?.statusCode === 404) {
+      } else if (
+        settingsResult.reason?.statusCode === 404 &&
+        settingsResult.reason?.message === 'Company settings not found'
+      ) {
+        // Only THIS exact 404 means "no settings document yet for this
+        // vendor". A 404 can also come from checkModuleAssigned (e.g.
+        // "Module with code ... not found" - an unrelated config/infra
+        // problem, most likely right after a backend restart before
+        // everything settles) - that must surface as a real error, not be
+        // misread as "show the create form", or the user gets stuck: they
+        // fill the form in again and creating fails with 409 "already
+        // exists" since settings were there all along.
         setSettings(null);
         setExists(false);
       } else {
@@ -59,12 +70,27 @@ export const useCompanySettings = () => {
   const save = async (fields, files) => {
     setSaving(true);
     try {
-      const result = exists
-        ? await companySettingsApi.updateCompanySettings(fields, files)
-        : await companySettingsApi.createCompanySettings(fields, files);
+      let result;
+      let usedUpdate = exists;
+      if (exists) {
+        result = await companySettingsApi.updateCompanySettings(fields, files);
+      } else {
+        try {
+          result = await companySettingsApi.createCompanySettings(fields, files);
+        } catch (err) {
+          // Self-heal: if create says settings already exist (409), our
+          // `exists` state was wrong (e.g. the initial load 404'd for an
+          // unrelated reason - see fetchAll) - fall back to update instead
+          // of leaving the admin stuck re-submitting a "Create" that can
+          // never succeed.
+          if (err.statusCode !== 409) throw err;
+          result = await companySettingsApi.updateCompanySettings(fields, files);
+          usedUpdate = true;
+        }
+      }
       setSettings(result);
       setExists(true);
-      toast.success(exists ? 'Company settings updated successfully' : 'Company settings created successfully');
+      toast.success(usedUpdate ? 'Company settings updated successfully' : 'Company settings created successfully');
       return true;
     } catch (err) {
       toast.error(err.message || 'Failed to save company settings');

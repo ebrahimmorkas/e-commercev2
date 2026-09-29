@@ -3,11 +3,16 @@ import { apiRequest } from '../../../../utils/apiClient';
 const BASE = '/company-settings';
 
 /**
- * Fetches the current vendor's CompanySettings document. Rejects with a 404
- * ApiError when the vendor hasn't created one yet - callers should treat that
- * as "show the create form", not as an error to surface.
+ * Fetches the current vendor's full CompanySettings document (bank details,
+ * admin contact info, TRN/invoice settings, email config, ...). Rejects with
+ * a 404 ApiError when the vendor hasn't created one yet - callers should
+ * treat that as "show the create form", not as an error to surface.
+ *
+ * Uses the -admin endpoint (authenticated): the plain get-company-settings
+ * route is public/unauthenticated for the storefront and only returns a
+ * filtered subset of fields - see backend/controllers/companySettingsController.js.
  */
-export const getCompanySettings = () => apiRequest(`${BASE}/get-company-settings`);
+export const getCompanySettings = () => apiRequest(`${BASE}/get-company-settings-admin`);
 
 /**
  * The order workflow the platform assigned to this store - what the order step

@@ -51,6 +51,12 @@ const companySettingsFieldsSchema = {
     cancelPolicy: Joi.string().allow('', null).label('Cancel policy'),
     termsAndConditions: Joi.string().allow('', null).label('Terms and conditions'),
     aboutUs: Joi.string().allow('', null).label('About us'),
+    returnRefundPolicy: Joi.string().allow('', null).label('Return and refund policy'),
+    policyDisplayMode: Joi.string().valid('PAGE', 'MODAL').label('Policy display mode'),
+    // Storefront Contact Us - separate from adminEmail/adminPhoneNumber/adminAddress above.
+    contactEmail: Joi.string().trim().lowercase().email().allow('', null).label('Contact email'),
+    contactPhoneNumber: Joi.string().trim().pattern(phonePattern).allow('', null).label('Contact phone number'),
+    contactAddress: Joi.string().trim().max(300).allow('', null).label('Contact address'),
     showAnnouncements: Joi.boolean().label('Show announcements'),
     isAnnouncementRotationOn: Joi.boolean().label('Announcement rotation'),
     showBanners: Joi.boolean().label('Show banners'),
