@@ -122,7 +122,6 @@ const createCompanySettings = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, withEmailFeatureAccess(req, formatCompanySettingsForResponse(result.meta.settings)));
     } catch (error) {
         logger.logException('companySettingsController: createCompanySettings - Exception while creating company settings', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to create company settings');
     }
 };
 
@@ -148,7 +147,6 @@ const updateCompanySettings = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, withEmailFeatureAccess(req, formatCompanySettingsForResponse(result.meta.settings)));
     } catch (error) {
         logger.logException('companySettingsController: updateCompanySettings - Exception while updating company settings', { vendorId, error });
-        return common.sendError(res, 500, 'Failed to update company settings');
     }
 };
 
@@ -198,7 +196,6 @@ const getAssignedOrderSteps = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message, result.meta);
   } catch (error) {
     logger.logException('companySettingsController: getAssignedOrderSteps - Exception while fetching order steps', { vendorId, error });
-    return common.sendError(res, 500, 'Failed to fetch order steps');
   }
 };
 
@@ -224,7 +221,6 @@ const assignEmailTemplate = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message, withEmailFeatureAccess(req, formatCompanySettingsForResponse(result.meta.settings)));
   } catch (error) {
     logger.logException('companySettingsController: assignEmailTemplate - Exception while assigning email template', { vendorId, error });
-    return common.sendError(res, 500, 'Failed to assign email template');
   }
 };
 
@@ -239,7 +235,6 @@ const unassignEmailTemplate = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message, withEmailFeatureAccess(req, formatCompanySettingsForResponse(result.meta.settings)));
   } catch (error) {
     logger.logException('companySettingsController: unassignEmailTemplate - Exception while unassigning email template', { vendorId, error });
-    return common.sendError(res, 500, 'Failed to unassign email template');
   }
 };
 
