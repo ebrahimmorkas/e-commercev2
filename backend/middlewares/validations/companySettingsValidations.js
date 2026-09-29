@@ -163,7 +163,26 @@ const unassignEmailTemplateSchema = Joi.object({
     module: Joi.string().valid(...VALID_EMAIL_MODULES).required().label('Module')
 });
 
+// --- Email tab: attachments and images (multipart: the file is req.file) ---
+const addEmailAttachmentSchema = Joi.object({
+    // The file name the customer sees; the uploaded file's name when left empty.
+    displayName: Joi.string().trim().max(150).allow('', null).label('Display name')
+});
+
+const addEmailImageSchema = Joi.object({
+    // The short name a template uses to place the image, e.g. {{image:logo}}.
+    name: Joi.string().trim().lowercase().min(2).max(40).pattern(/^[a-z0-9][a-z0-9_-]*$/).required().label('Image name')
+        .messages({ 'string.pattern.base': 'Image name may only contain lowercase letters, numbers, - and _, and must start with a letter or number.' })
+});
+
+const emailContentIdParamSchema = Joi.object({
+    id: objectId().required().label('Id')
+});
+
 module.exports = {
+    addEmailAttachmentSchema,
+    addEmailImageSchema,
+    emailContentIdParamSchema,
     createCompanySettingsSchema,
     updateCompanySettingsSchema,
     assignEmailTemplateSchema,

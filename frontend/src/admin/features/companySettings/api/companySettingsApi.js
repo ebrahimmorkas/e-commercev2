@@ -63,9 +63,44 @@ export const createCompanySettings = (fields, files = {}) =>
 export const updateCompanySettings = (fields, files = {}) =>
   apiRequest(`${BASE}/update-company-settings`, { method: 'PUT', body: buildFormData(fields, files) });
 
+// --- Email tab: attachments and images ------------------------------------
+// Saved immediately (not through create/update). Each returns the current
+// { emailAttachments, emailImages } lists.
+
+/**
+ * @param {File} file
+ * @param {string} displayName - the file name customers see (optional)
+ */
+export const addEmailAttachment = (file, displayName = '') => {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (displayName) formData.append('displayName', displayName);
+  return apiRequest(`${BASE}/email-attachments`, { method: 'POST', body: formData });
+};
+
+export const removeEmailAttachment = (attachmentId) =>
+  apiRequest(`${BASE}/email-attachments/${attachmentId}`, { method: 'DELETE' });
+
+/**
+ * @param {File} file
+ * @param {string} name - short name a template uses to place it, e.g. "logo" for {{image:logo}}
+ */
+export const addEmailImage = (file, name) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('name', name);
+  return apiRequest(`${BASE}/email-images`, { method: 'POST', body: formData });
+};
+
+export const removeEmailImage = (imageId) => apiRequest(`${BASE}/email-images/${imageId}`, { method: 'DELETE' });
+
 export default {
   getCompanySettings,
   getAssignedOrderSteps,
   createCompanySettings,
   updateCompanySettings,
+  addEmailAttachment,
+  removeEmailAttachment,
+  addEmailImage,
+  removeEmailImage,
 };

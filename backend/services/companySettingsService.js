@@ -5,6 +5,7 @@ const redisKeys = require('../utils/redisKeys');
 const logger = require('../utils/logger');
 const common = require('../utils/common');
 const imageUploadService = require('./imageUploadService');
+const fileUploadService = require('./fileUploadService');
 const CountryMaster = require('../models/CountryMaster');
 const StateMaster = require('../models/StateMaster');
 const CityMaster = require('../models/CityMaster');
@@ -281,6 +282,8 @@ const createCompanySettings = async (vendorId, userId, data, files, companyMaste
             return common.returnResult(false, 409, 'Company settings already exist for this vendor. Use update instead.');
         }
 
+        dropDisabledEmailFields(data, companyMasterData, websiteMasterData);
+
         const entitlementFailure = await checkPaymentDetailsEntitlements(vendorId, data, files, companyMasterData, websiteMasterData);
         if (entitlementFailure) {
             return entitlementFailure;
@@ -363,6 +366,8 @@ const updateCompanySettings = async (vendorId, userId, data, files, companyMaste
         if (!settings) {
             return common.returnResult(false, 404, 'Company settings not found. Please create them first.');
         }
+
+        dropDisabledEmailFields(data, companyMasterData, websiteMasterData);
 
         const entitlementFailure = await checkPaymentDetailsEntitlements(vendorId, data, files, companyMasterData, websiteMasterData, settings);
         if (entitlementFailure) {
@@ -548,11 +553,260 @@ const unassignEmailTemplate = async (vendorId, module, userId) => {
     }
 };
 
+
+/*
+|--------------------------------------------------------------------------
+| EMAIL TAB: CC/BCC, ATTACHMENTS AND IMAGES
+|--------------------------------------------------------------------------
+| Each is a two-level feature (WebsiteMaster AND CompanyMaster):
+| isCcAndBccFeatureOn, isAddingOfAttachmentAllowed, isAddingOfImageAllowed.
+| Attachments and images are stored here ready to use; whether a given email
+| includes them is decided per email/template (a later step). Limits come
+| from CompanyMaster: numberOfAttachmentsAllowed / attachmentSizeAllowed /
+| allowedAttachmentExtensions and numberOfImageAllowed / imageSizeAllowed /
+| allowedImageExtensions.
+*/
+
+const EMAIL_ATTACHMENT_MODULE = 'emailAttachment';
+const EMAIL_IMAGE_MODULE = 'emailImage';
+
+const isTwoLevelOn = (flag, companyMasterData, websiteMasterData) => {
+    try {
+        return websiteMasterData?.[flag] === true && companyMasterData?.[flag] === true;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// What the Email tab may show, and the limits it should enforce - the
+// frontend only has CompanyMaster, so the effective (both-level) state is
+// worked out here.
+const getEmailFeatureAccess = (companyMasterData, websiteMasterData) => {
+    try {
+        const emailProvider = (websiteMasterData && websiteMasterData.mainEmailService) || (companyMasterData && companyMasterData.emailService) || null;
+        return {
+            isCcAndBccOn: isTwoLevelOn('isCcAndBccFeatureOn', companyMasterData, websiteMasterData),
+            attachments: {
+                isOn: isTwoLevelOn('isAddingOfAttachmentAllowed', companyMasterData, websiteMasterData),
+                maxCount: companyMasterData?.numberOfAttachmentsAllowed ?? null,
+                maxSizeMB: companyMasterData?.attachmentSizeAllowed ?? null,
+                allowedExtensions: companyMasterData?.allowedAttachmentExtensions || []
+            },
+            images: {
+                isOn: isTwoLevelOn('isAddingOfImageAllowed', companyMasterData, websiteMasterData),
+                maxCount: companyMasterData?.numberOfImageAllowed ?? null,
+                maxSizeMB: companyMasterData?.imageSizeAllowed ?? null,
+                allowedExtensions: companyMasterData?.allowedImageExtensions || []
+            },
+            // SES can't carry attachments or embedded images (see emailService.sendEmail).
+            emailProvider,
+            canSendAttachments: emailProvider !== 'ses'
+        };
+    } catch (err) {
+        throw err;
+    }
+};
+
+// With CC/BCC off, the lists can't be changed (what's saved is kept, just unused/hidden).
+const dropDisabledEmailFields = (data, companyMasterData, websiteMasterData) => {
+    try {
+        if (!isTwoLevelOn('isCcAndBccFeatureOn', companyMasterData, websiteMasterData)) {
+            delete data.ccList;
+            delete data.bccList;
+        }
+    } catch (err) {
+        throw err;
+    }
+};
+
+const emailContentLists = (settings) => ({
+    emailAttachments: settings?.emailAttachments || [],
+    emailImages: settings?.emailImages || []
+});
+
+const addEmailAttachment = async (vendorId, userId, file, displayName, companyMasterData, websiteMasterData) => {
+    try {
+        if (!isTwoLevelOn('isAddingOfAttachmentAllowed', companyMasterData, websiteMasterData)) {
+            return common.returnResult(false, 403, 'Email attachments are not available for your account.');
+        }
+        const settings = await CompanySettings.findOne({ vendorId }, { emailAttachments: 1 }).lean();
+        if (!settings) {
+            return common.returnResult(false, 404, 'Please save your company settings first, then add attachments.');
+        }
+        const maxCount = companyMasterData?.numberOfAttachmentsAllowed;
+        if (maxCount != null && (settings.emailAttachments || []).length >= maxCount) {
+            return common.returnResult(false, 400, `You can keep at most ${maxCount} attachment(s). Remove one to add another.`);
+        }
+
+        const upload = await fileUploadService.uploadFile({
+            vendorId,
+            module: EMAIL_ATTACHMENT_MODULE,
+            file,
+            userId,
+            maxSizeField: 'attachmentSizeAllowed',
+            allowedFormatsField: 'allowedAttachmentExtensions',
+            maxCountField: 'numberOfAttachmentsAllowed',
+            companyMasterData,
+            websiteMasterData
+        });
+        if (!upload.isSuccess) {
+            return upload;
+        }
+        const asset = upload.meta.file;
+
+        const updated = await CompanySettings.findOneAndUpdate(
+            { vendorId },
+            {
+                $push: {
+                    emailAttachments: {
+                        fileAssetId: asset._id,
+                        url: asset.url,
+                        originalName: asset.originalName,
+                        displayName: (displayName && displayName.trim()) || asset.originalName,
+                        mimeType: asset.mimeType,
+                        size: asset.size,
+                        uploadedAt: new Date()
+                    }
+                }
+            },
+            { new: true, projection: { emailAttachments: 1, emailImages: 1 } }
+        ).lean();
+        await redisService.del(redisKeys.companySettings(vendorId));
+
+        logger.logInfo(1, 0, 'Email attachment added', { vendorId, fileAssetId: asset._id });
+        return common.returnResult(true, 201, 'Attachment added successfully', emailContentLists(updated));
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Removal isn't gated by the feature - a vendor can always clear out files.
+const removeEmailAttachment = async (vendorId, userId, attachmentId) => {
+    try {
+        const settings = await CompanySettings.findOne({ vendorId, 'emailAttachments._id': attachmentId }, { emailAttachments: 1 }).lean();
+        const entry = settings && settings.emailAttachments.find((a) => String(a._id) === String(attachmentId));
+        if (!entry) {
+            return common.returnResult(false, 404, 'Attachment not found.');
+        }
+
+        const removal = await fileUploadService.deleteFile({ vendorId, fileId: entry.fileAssetId, userId });
+        if (!removal.isSuccess && removal.statusCode !== 404) {
+            return removal;
+        }
+
+        const updated = await CompanySettings.findOneAndUpdate(
+            { vendorId },
+            { $pull: { emailAttachments: { _id: entry._id } } },
+            { new: true, projection: { emailAttachments: 1, emailImages: 1 } }
+        ).lean();
+        await redisService.del(redisKeys.companySettings(vendorId));
+
+        logger.logInfo(1, 0, 'Email attachment removed', { vendorId, attachmentId });
+        return common.returnResult(true, 200, 'Attachment removed successfully', emailContentLists(updated));
+    } catch (err) {
+        throw err;
+    }
+};
+
+// name: the short name a template uses to place the image, e.g. {{image:logo}}.
+const addEmailImage = async (vendorId, userId, file, name, companyMasterData, websiteMasterData) => {
+    try {
+        if (!isTwoLevelOn('isAddingOfImageAllowed', companyMasterData, websiteMasterData)) {
+            return common.returnResult(false, 403, 'Email images are not available for your account.');
+        }
+        const settings = await CompanySettings.findOne({ vendorId }, { emailImages: 1 }).lean();
+        if (!settings) {
+            return common.returnResult(false, 404, 'Please save your company settings first, then add images.');
+        }
+        const images = settings.emailImages || [];
+        const maxCount = companyMasterData?.numberOfImageAllowed;
+        if (maxCount != null && images.length >= maxCount) {
+            return common.returnResult(false, 400, `You can keep at most ${maxCount} image(s). Remove one to add another.`);
+        }
+        const imageName = String(name).trim().toLowerCase();
+        if (images.some((img) => img.name === imageName)) {
+            return common.returnResult(false, 409, `An image named "${imageName}" already exists. Please choose another name.`);
+        }
+
+        const upload = await imageUploadService.uploadImage({
+            vendorId,
+            module: EMAIL_IMAGE_MODULE,
+            file,
+            userId,
+            maxSizeField: 'imageSizeAllowed',
+            allowedFormatsField: 'allowedImageExtensions',
+            maxCountField: 'numberOfImageAllowed',
+            companyMasterData,
+            websiteMasterData
+        });
+        if (!upload.isSuccess) {
+            return upload;
+        }
+        const asset = upload.meta.image;
+
+        const updated = await CompanySettings.findOneAndUpdate(
+            { vendorId },
+            {
+                $push: {
+                    emailImages: {
+                        imageAssetId: asset._id,
+                        name: imageName,
+                        url: asset.url,
+                        originalName: asset.originalName,
+                        mimeType: asset.mimeType,
+                        size: asset.size,
+                        uploadedAt: new Date()
+                    }
+                }
+            },
+            { new: true, projection: { emailAttachments: 1, emailImages: 1 } }
+        ).lean();
+        await redisService.del(redisKeys.companySettings(vendorId));
+
+        logger.logInfo(1, 0, 'Email image added', { vendorId, imageAssetId: asset._id, name: imageName });
+        return common.returnResult(true, 201, 'Image added successfully', emailContentLists(updated));
+    } catch (err) {
+        throw err;
+    }
+};
+
+const removeEmailImage = async (vendorId, userId, imageId) => {
+    try {
+        const settings = await CompanySettings.findOne({ vendorId, 'emailImages._id': imageId }, { emailImages: 1 }).lean();
+        const entry = settings && settings.emailImages.find((img) => String(img._id) === String(imageId));
+        if (!entry) {
+            return common.returnResult(false, 404, 'Image not found.');
+        }
+
+        const removal = await imageUploadService.deleteImage({ imageId: entry.imageAssetId, userId });
+        if (!removal.isSuccess && removal.statusCode !== 404) {
+            return removal;
+        }
+
+        const updated = await CompanySettings.findOneAndUpdate(
+            { vendorId },
+            { $pull: { emailImages: { _id: entry._id } } },
+            { new: true, projection: { emailAttachments: 1, emailImages: 1 } }
+        ).lean();
+        await redisService.del(redisKeys.companySettings(vendorId));
+
+        logger.logInfo(1, 0, 'Email image removed', { vendorId, imageId });
+        return common.returnResult(true, 200, 'Image removed successfully', emailContentLists(updated));
+    } catch (err) {
+        throw err;
+    }
+};
+
 module.exports = {
   createCompanySettings,
   updateCompanySettings,
   fetchCompanySettingsByVendorId,
   assignEmailTemplate,
   unassignEmailTemplate,
-  fetchAssignedOrderSteps
+  fetchAssignedOrderSteps,
+  getEmailFeatureAccess,
+  addEmailAttachment,
+  removeEmailAttachment,
+  addEmailImage,
+  removeEmailImage
 };

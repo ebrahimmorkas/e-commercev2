@@ -14,6 +14,7 @@ import PaymentBankSection from '../components/PaymentBankSection';
 import EmailSection from '../components/EmailSection';
 import FreeCashSection from '../components/FreeCashSection';
 import DiscountFreeCashSection from '../components/DiscountFreeCashSection';
+import { useEmailContent } from '../hooks/useEmailContent';
 import InvoiceSection from '../components/InvoiceSection';
 import AbandonedCartSection from '../components/AbandonedCartSection';
 import ShippingSection from '../components/ShippingSection';
@@ -27,6 +28,8 @@ import theme from '../theme/theme';
  */
 const CompanySettingsPage = () => {
   const { settings, exists, companyMaster, orderSteps, loading, error, saving, save } = useCompanySettings();
+  // Email attachments/images - saved on their own, never through the draft/Save.
+  const emailContent = useEmailContent(settings);
   const [draft, setDraft] = useState(emptyDraft());
   const [activeTab, setActiveTab] = useState('general');
   const [formErrors, setFormErrors] = useState({});
@@ -68,7 +71,19 @@ const CompanySettingsPage = () => {
     { key: 'product', label: 'Product', content: <ProductSection {...sectionProps} /> },
     { key: 'cartOrder', label: 'Cart & Order', content: <CartOrderSection {...sectionProps} orderSteps={orderSteps} /> },
     { key: 'payment', label: 'Payment & Bank', content: <PaymentBankSection {...sectionProps} companyMaster={companyMaster} /> },
-    { key: 'email', label: 'Email', content: <EmailSection {...sectionProps} /> },
+    {
+      key: 'email',
+      label: 'Email',
+      content: (
+        <EmailSection
+          {...sectionProps}
+          access={settings?.emailFeatureAccess || null}
+          companyMaster={companyMaster}
+          exists={exists}
+          emailContent={emailContent}
+        />
+      ),
+    },
     { key: 'invoice', label: 'Invoice', content: <InvoiceSection {...sectionProps} errors={formErrors} /> },
     { key: 'freeCash', label: 'Free Cash', content: <FreeCashSection {...sectionProps} /> },
     { key: 'discountFreeCash', label: 'Discount and Free Cash', content: <DiscountFreeCashSection {...sectionProps} /> },

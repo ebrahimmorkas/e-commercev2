@@ -132,6 +132,14 @@ const companyMasterSchema = mongoose.Schema({
         default: 'cloudinary'
     },
 
+    // File (non-image-only uploads, e.g. email attachments - see
+    // services/fileUploadService.js). null = use WebsiteMaster.mainFileService.
+    fileService: {
+        type: String,
+        enum: ['cloudinary', 'aws', 'r2', 'local', null],
+        default: null
+    },
+
     // Video
     // Per-vendor entitlement, off by default - an admin has to explicitly grant
     // this to a vendor (same spirit as needing to assign videoService), unlike

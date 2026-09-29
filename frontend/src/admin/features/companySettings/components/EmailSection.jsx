@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import InputField from '../../../../components/common/InputField';
 import Switch from '../../../../components/common/Switch';
+import EmailContentSection from './EmailContentSection';
 import theme from '../theme/theme';
 
 const toEmailList = (text) =>
@@ -28,14 +29,25 @@ const EmailListField = ({ label, value, onCommit }) => {
 };
 
 /**
- * senderEmail + always-cc'd/bcc'd address lists used by emailService.js, and
- * whether the platform default template is sent when no template is assigned.
+ * senderEmail + always-cc'd/bcc'd address lists used by emailService.js,
+ * whether the platform default template is sent when no template is
+ * assigned, and the vendor's email attachments / images.
+ *
+ * CC/BCC, attachments and images each show only while that feature is on for
+ * the account (WebsiteMaster AND CompanyMaster - settings.emailFeatureAccess).
+ * Before the settings exist there's no emailFeatureAccess yet, so CC/BCC
+ * falls back to the CompanyMaster flag alone.
  *
  * @param {Object} props.draft
  * @param {(patch: Object) => void} props.onChange
+ * @param {Object|null} props.access - settings.emailFeatureAccess
+ * @param {Object|null} props.companyMaster
+ * @param {boolean} props.exists - company settings have been created
+ * @param {Object} props.emailContent - useEmailContent() result
  */
-const EmailSection = ({ draft, onChange }) => {
+const EmailSection = ({ draft, onChange, access = null, companyMaster = null, exists = false, emailContent }) => {
   const set = (patch) => onChange(patch);
+  const isCcAndBccOn = access ? access.isCcAndBccOn : companyMaster?.isCcAndBccFeatureOn !== false;
 
   return (
     <div className="space-y-5">
@@ -51,23 +63,27 @@ const EmailSection = ({ draft, onChange }) => {
         <p className={`mt-1 text-xs ${theme.text.muted}`}>Used as the "From" address when the system sends email.</p>
       </div>
 
-      <div>
-        <EmailListField
-          label="CC List"
-          value={draft.ccList}
-          onCommit={(list) => set({ ccList: list })}
-        />
-        <p className={`mt-1 text-xs ${theme.text.muted}`}>Comma-separated. Always cc'd on every system email.</p>
-      </div>
+      {isCcAndBccOn && (
+        <>
+          <div>
+            <EmailListField
+              label="CC List"
+              value={draft.ccList}
+              onCommit={(list) => set({ ccList: list })}
+            />
+            <p className={`mt-1 text-xs ${theme.text.muted}`}>Comma-separated. Always cc'd on every system email.</p>
+          </div>
 
-      <div>
-        <EmailListField
-          label="BCC List"
-          value={draft.bccList}
-          onCommit={(list) => set({ bccList: list })}
-        />
-        <p className={`mt-1 text-xs ${theme.text.muted}`}>Comma-separated. Always bcc'd on every system email.</p>
-      </div>
+          <div>
+            <EmailListField
+              label="BCC List"
+              value={draft.bccList}
+              onCommit={(list) => set({ bccList: list })}
+            />
+            <p className={`mt-1 text-xs ${theme.text.muted}`}>Comma-separated. Always bcc'd on every system email.</p>
+          </div>
+        </>
+      )}
 
       <Switch
         label="Use the default email template"
@@ -76,6 +92,8 @@ const EmailSection = ({ draft, onChange }) => {
         onChange={(e) => set({ useDefaultEmailTemplate: e.target.checked })}
         color={theme.switch.color}
       />
+
+      {emailContent && <EmailContentSection access={access} exists={exists} content={emailContent} />}
     </div>
   );
 };

@@ -8,6 +8,19 @@ const encodeNestedImage = (field) => {
     return { ...field, imageAssetId: field.imageAssetId ? common.encodeId(field.imageAssetId) : field.imageAssetId };
 };
 
+// emailAttachments / emailImages entries - their own _id (used to remove
+// them) and the stored asset's id are encoded like every other id.
+const encodeEmailContentEntry = (entry, assetField) => ({
+    ...entry,
+    _id: entry._id ? common.encodeId(entry._id) : entry._id,
+    [assetField]: entry[assetField] ? common.encodeId(entry[assetField]) : entry[assetField],
+});
+
+const formatEmailContentLists = (lists) => ({
+    emailAttachments: (lists.emailAttachments || []).map((entry) => encodeEmailContentEntry(entry, 'fileAssetId')),
+    emailImages: (lists.emailImages || []).map((entry) => encodeEmailContentEntry(entry, 'imageAssetId')),
+});
+
 // createdBy/updatedBy here are non-standard: { userID, vendorID } (capital
 // ID), not the app-wide audit boilerplate.
 const encodeAuditSubfield = (field) => {
@@ -42,8 +55,17 @@ const formatCompanySettingsForResponse = (doc) => {
             ...entry,
             templateId: entry.templateId ? common.encodeId(entry.templateId) : entry.templateId,
         })),
+        ...formatEmailContentLists(settings),
     };
 };
+
+// Every settings response also says what the Email tab may show (CC/BCC,
+// attachments, images) and their limits - the page replaces its copy of the
+// settings with each response, so this must travel with all of them.
+const withEmailFeatureAccess = (req, formatted) => ({
+    ...formatted,
+    emailFeatureAccess: companySettingsService.getEmailFeatureAccess(req.companyMasterData, req.websiteMasterData),
+});
 
 // currencyId/storeCountryId/storeStateId/storeCityId are dropdown-sourced FK fields -
 // decode when present (both create and update send them optionally).
@@ -69,7 +91,7 @@ const createCompanySettings = async (req, res) => {
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, result.statusCode, result.message, formatCompanySettingsForResponse(result.meta.settings));
+        return common.sendSuccess(res, result.statusCode, result.message, withEmailFeatureAccess(req, formatCompanySettingsForResponse(result.meta.settings)));
     } catch (error) {
         logger.logException('companySettingsController: createCompanySettings - Exception while creating company settings', { vendorId, error });
     }
@@ -94,7 +116,7 @@ const updateCompanySettings = async (req, res) => {
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        return common.sendSuccess(res, result.statusCode, result.message, formatCompanySettingsForResponse(result.meta.settings));
+        return common.sendSuccess(res, result.statusCode, result.message, withEmailFeatureAccess(req, formatCompanySettingsForResponse(result.meta.settings)));
     } catch (error) {
         logger.logException('companySettingsController: updateCompanySettings - Exception while updating company settings', { vendorId, error });
     }
@@ -107,7 +129,7 @@ const getCompanySettings = async (req, res) => {
     if (!settings) {
       return common.sendError(res, 404, "Company settings not found");
     }
-    return common.sendSuccess(res, 200, "Company settings fetched successfully", formatCompanySettingsForResponse(settings));
+    return common.sendSuccess(res, 200, "Company settings fetched successfully", withEmailFeatureAccess(req, formatCompanySettingsForResponse(settings)));
   } catch (error) {
     logger.logException('Error fetching company settings', { vendorId, error });
   }
@@ -148,7 +170,7 @@ const assignEmailTemplate = async (req, res) => {
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message);
     }
-    return common.sendSuccess(res, result.statusCode, result.message, formatCompanySettingsForResponse(result.meta.settings));
+    return common.sendSuccess(res, result.statusCode, result.message, withEmailFeatureAccess(req, formatCompanySettingsForResponse(result.meta.settings)));
   } catch (error) {
     logger.logException('companySettingsController: assignEmailTemplate - Exception while assigning email template', { vendorId, error });
   }
@@ -162,13 +184,79 @@ const unassignEmailTemplate = async (req, res) => {
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message);
     }
-    return common.sendSuccess(res, result.statusCode, result.message, formatCompanySettingsForResponse(result.meta.settings));
+    return common.sendSuccess(res, result.statusCode, result.message, withEmailFeatureAccess(req, formatCompanySettingsForResponse(result.meta.settings)));
   } catch (error) {
     logger.logException('companySettingsController: unassignEmailTemplate - Exception while unassigning email template', { vendorId, error });
   }
 };
 
+// --- Email tab: attachments and images -------------------------------------
+
+const addEmailAttachment = async (req, res) => {
+  const vendorId = req.vendorId;
+  try {
+    const result = await companySettingsService.addEmailAttachment(
+      vendorId, req.user._id, req.file, req.body.displayName, req.companyMasterData, req.websiteMasterData
+    );
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+    return common.sendSuccess(res, result.statusCode, result.message, formatEmailContentLists(result.meta));
+  } catch (error) {
+    logger.logException('companySettingsController: addEmailAttachment - Exception while adding email attachment', { vendorId, error });
+  }
+};
+
+const removeEmailAttachment = async (req, res) => {
+  const vendorId = req.vendorId;
+  let attachmentId;
+  try {
+    attachmentId = common.decodeId(req.params.id);
+    const result = await companySettingsService.removeEmailAttachment(vendorId, req.user._id, attachmentId);
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+    return common.sendSuccess(res, result.statusCode, result.message, formatEmailContentLists(result.meta));
+  } catch (error) {
+    logger.logException('companySettingsController: removeEmailAttachment - Exception while removing email attachment', { vendorId, attachmentId, error });
+  }
+};
+
+const addEmailImage = async (req, res) => {
+  const vendorId = req.vendorId;
+  try {
+    const result = await companySettingsService.addEmailImage(
+      vendorId, req.user._id, req.file, req.body.name, req.companyMasterData, req.websiteMasterData
+    );
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+    return common.sendSuccess(res, result.statusCode, result.message, formatEmailContentLists(result.meta));
+  } catch (error) {
+    logger.logException('companySettingsController: addEmailImage - Exception while adding email image', { vendorId, error });
+  }
+};
+
+const removeEmailImage = async (req, res) => {
+  const vendorId = req.vendorId;
+  let imageId;
+  try {
+    imageId = common.decodeId(req.params.id);
+    const result = await companySettingsService.removeEmailImage(vendorId, req.user._id, imageId);
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+    return common.sendSuccess(res, result.statusCode, result.message, formatEmailContentLists(result.meta));
+  } catch (error) {
+    logger.logException('companySettingsController: removeEmailImage - Exception while removing email image', { vendorId, imageId, error });
+  }
+};
+
 module.exports = {
+  addEmailAttachment,
+  removeEmailAttachment,
+  addEmailImage,
+  removeEmailImage,
   createCompanySettings,
   updateCompanySettings,
   getCompanySettings,

@@ -416,6 +416,42 @@ const companySettingsSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  // Files the vendor keeps ready to attach to emails (Company Settings >
+  // Email). Uploading them here doesn't attach them to anything - whether an
+  // email includes them is chosen per email/template (a later step).
+  // Gated by isAddingOfAttachmentAllowed; count/size/extensions come from
+  // CompanyMaster (numberOfAttachmentsAllowed, attachmentSizeAllowed,
+  // allowedAttachmentExtensions). Added/removed through their own endpoints,
+  // never through create/update.
+  emailAttachments: {
+    type: [{
+      fileAssetId: { type: mongoose.Types.ObjectId, ref: 'FileAsset', required: true },
+      url: { type: String, required: true },
+      originalName: { type: String, trim: true },
+      // The file name the customer sees; originalName when not given.
+      displayName: { type: String, trim: true, maxlength: 150 },
+      mimeType: { type: String },
+      size: { type: Number },
+      uploadedAt: { type: Date, default: Date.now }
+    }],
+    default: []
+  },
+  // Images to show inside an email's body. Each has a short name (unique per
+  // vendor) so a template can place it, e.g. {{image:logo}}. Gated by
+  // isAddingOfImageAllowed; count/size/extensions from CompanyMaster
+  // (numberOfImageAllowed, imageSizeAllowed, allowedImageExtensions).
+  emailImages: {
+    type: [{
+      imageAssetId: { type: mongoose.Types.ObjectId, ref: 'ImageAsset', required: true },
+      name: { type: String, required: true, trim: true, lowercase: true, maxlength: 40 },
+      url: { type: String, required: true },
+      originalName: { type: String, trim: true },
+      mimeType: { type: String },
+      size: { type: Number },
+      uploadedAt: { type: Date, default: Date.now }
+    }],
+    default: []
+  },
   // End of Email
 
   // Start of Discount and Free Cash emails (Company Settings > "Discount and

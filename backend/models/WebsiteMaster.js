@@ -88,6 +88,17 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // Where non-image-only files (e.g. email attachments) are stored - same
+    // pattern as the image/video services (see fileUploadService.js).
+    mainFileService: {
+        type: String,
+        enum: ['cloudinary', 'aws', 'r2', 'local'],
+        default: 'local'
+    },
+    enforceMainFileService: {
+        type: Boolean,
+        default: false
+    },
     // Global kill switch, on by default like isBannerFeatureOn/isCategoryFeatureOn -
     // CompanyMaster.isVideoUploadingFeatureOn (off by default, per-vendor entitlement)
     // is the actual gate for whether a given vendor can use video.
