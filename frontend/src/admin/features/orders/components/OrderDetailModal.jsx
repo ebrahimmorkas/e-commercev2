@@ -44,25 +44,31 @@ const AddressBlock = ({ title, snapshot }) => {
   );
 };
 
-// Cash counter customer details - only shown for walk-in orders, which have no
-// user account. Optional fields the admin left blank are skipped.
-const WalkInCustomerBlock = ({ customer }) => {
+// Customer contact details (order.customer, sent by the admin order API):
+// the account's current details, or for a walk-in order what the admin typed
+// at the cash counter (plus the typed address). Blank fields are skipped.
+const CustomerBlock = ({ order }) => {
+  const customer = order.customer;
   if (!customer) return null;
   const rows = [
     ['Name', customer.name],
+    ['Email', customer.email],
     ['Phone', customer.phone],
     ['WhatsApp', customer.whatsapp],
-    ['Email', customer.email],
-    ['Address', customer.address],
+    ['Address', order.isWalkInCustomer ? order.walkInCustomer?.address : null],
   ].filter(([, value]) => value);
+  if (rows.length === 0) return null;
   return (
-    <div>
-      <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Walk-in customer</h4>
-      <dl className="mt-1 text-sm text-gray-700 space-y-0.5">
+    <div className="min-w-0">
+      <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+        {order.isWalkInCustomer ? 'Walk-in customer' : 'Customer'}
+      </h4>
+      {/* Label above value, and long values (emails) wrap, so nothing spills into the next column. */}
+      <dl className="mt-1 text-sm text-gray-700 space-y-2">
         {rows.map(([label, value]) => (
-          <div key={label} className="flex gap-2">
-            <dt className="text-gray-500 w-20 shrink-0">{label}</dt>
-            <dd className="whitespace-pre-line">{value}</dd>
+          <div key={label}>
+            <dt className="text-xs text-gray-500">{label}</dt>
+            <dd className="whitespace-pre-line break-words [overflow-wrap:anywhere]">{value}</dd>
           </div>
         ))}
       </dl>
@@ -212,7 +218,7 @@ const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
                 <Badge variant={orderSourceVariant(order)}>{orderSourceLabel(order)}</Badge>
               </div>
             )}
-            {order.isWalkInCustomer && <WalkInCustomerBlock customer={order.walkInCustomer} />}
+            <CustomerBlock order={order} />
             <AddressBlock title="Shipping address" snapshot={order.shippingAddressSnapshot} />
             {order.adminEnteredAddress && (
               <div>

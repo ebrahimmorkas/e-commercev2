@@ -1653,6 +1653,41 @@ const enrichOrderItemsForDetail = async (vendorId, order) => {
     }
 };
 
+// Basic contact details for the admin order view. Account orders read the
+// customer's current details live from their User (nothing is copied onto the
+// order); walk-in orders have no User, so what the admin typed is used. A
+// deleted/inactive customer is still shown - the order is history.
+const getOrderCustomerInfo = async (vendorId, order) => {
+    try {
+        if (order.isWalkInCustomer) {
+            const walkIn = order.walkInCustomer || {};
+            return {
+                name: walkIn.name || null,
+                email: walkIn.email || null,
+                phone: walkIn.phone || null,
+                whatsapp: walkIn.whatsapp || null,
+            };
+        }
+        if (!order.userId) {
+            return null;
+        }
+        const user = await User.findOne({ _id: order.userId, vendorId })
+            .select('name email phone_no whatsapp_no')
+            .lean();
+        if (!user) {
+            return null;
+        }
+        return {
+            name: user.name || null,
+            email: user.email || null,
+            phone: user.phone_no || null,
+            whatsapp: user.whatsapp_no || null,
+        };
+    } catch (err) {
+        throw err;
+    }
+};
+
 const fetchOrderById = async (vendorId, orderId, userId, isAdmin, companySettingsData, companyMasterData, websiteMasterData) => {
     try {
         const filter = { _id: orderId, vendorId, status: { $ne: 'D' } };
@@ -1686,6 +1721,7 @@ const fetchOrderById = async (vendorId, orderId, userId, isAdmin, companySetting
             // feature is on; the page shows why it's disabled when an agent
             // is on the order.
             orderWithItems.isCourierFeatureOn = isCourierFeatureOn(websiteMasterData, companyMasterData);
+            orderWithItems.customer = await getOrderCustomerInfo(vendorId, order);
         } else {
             orderWithItems.canBeCancelled = !!stepMaster && !orderStepService.getCustomerCancellationBlock(order, stepMaster, companySettingsData);
         }
