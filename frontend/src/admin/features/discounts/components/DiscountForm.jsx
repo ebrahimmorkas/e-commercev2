@@ -8,7 +8,7 @@ import TargetingStep from './TargetingStep';
 import TimingStep from './TimingStep';
 import RulesStep from './RulesStep';
 import ReviewStep from './ReviewStep';
-import { emptyDraft, buildSubmitFields, needsExcelFor } from '../utils/discountDraft';
+import { emptyDraft, buildSubmitFields, needsExcelFor, canKeepExistingExcelTargets, isValidTimezone } from '../utils/discountDraft';
 import { GIVE_DISCOUNT_TO_CONFIG } from '../constants';
 import theme from '../theme/theme';
 
@@ -22,7 +22,7 @@ const STEPS = [
 
 const validateBasics = (draft) => {
   if (!draft.name.trim()) return 'Discount name is required.';
-  if (draft.discountValue === '' || Number(draft.discountValue) < 0) return 'A valid discount value is required.';
+  if (draft.discountValue === '' || !(Number(draft.discountValue) > 0)) return 'Discount value must be greater than 0.';
   if (draft.discountType === 'PERCENTAGE' && Number(draft.discountValue) > 100) return 'Percentage discount value cannot exceed 100.';
   return null;
 };
@@ -31,7 +31,9 @@ const validateTargeting = (draft) => {
   const config = GIVE_DISCOUNT_TO_CONFIG[draft.giveDiscountTo];
   if (!config) return 'Choose who this discount applies to.';
   if (config.notSupported) return 'This targeting option is not supported yet - choose a different one.';
-  if (needsExcelFor(draft.giveDiscountTo) && !draft.excelFile) return 'An excel file is required for this targeting option.';
+  if (needsExcelFor(draft.giveDiscountTo) && !draft.excelFile && !canKeepExistingExcelTargets(draft)) {
+    return 'An excel file is required for this targeting option.';
+  }
   if (config.needsProductGroupIds && draft.productGroupIds.length === 0) return 'Select at least one product group.';
   if (config.needsCategoryGroupIds && draft.categoryGroupIds.length === 0) return 'Select at least one category group.';
   if (config.needsUserGroupIds && draft.userGroupIds.length === 0) return 'Select at least one user group.';
@@ -42,12 +44,15 @@ const validateTiming = (draft) => {
   if (draft.discountFlow === 'MIN_QTY' && (!draft.minimumQuantity || Number(draft.minimumQuantity) < 1)) {
     return 'A valid minimum quantity is required.';
   }
-  if (draft.discountFlow === 'COUPON' && !draft.couponCode.trim()) {
-    return 'A coupon code is required.';
+  if (draft.discountFlow === 'COUPON') {
+    const code = draft.couponCode.trim();
+    if (!code) return 'A coupon code is required.';
+    if (!/^[A-Z0-9_-]{3,30}$/.test(code)) return 'Coupon code must be 3-30 characters: letters, numbers, "-" or "_".';
   }
   if (draft.discountFlow !== 'ONGOING') {
     if (!draft.startDate || !draft.endDate) return 'Start date and end date are required.';
     if (draft.endDate < draft.startDate) return 'End date cannot be before start date.';
+    if (!isValidTimezone(draft.timezone)) return 'Enter a valid timezone, e.g. Asia/Kolkata.';
   }
   return null;
 };
@@ -58,6 +63,16 @@ const validateRules = (draft) => {
     if (draft.isDiscountOpenForSpecificHours && (!draft.specificHoursStartTime || !draft.specificHoursEndTime)) {
       return 'Start and end time are required when restricting to specific hours.';
     }
+    if (draft.isDiscountOpenForSpecificHours && draft.specificHoursStartTime === draft.specificHoursEndTime) {
+      return 'Start time and end time cannot be the same.';
+    }
+  }
+  if (!draft.firstOrderOnly && draft.numberOfUsersCanUseDiscount !== '' && draft.numberOfUsersCanUseDiscount !== null
+    && !(Number.isInteger(Number(draft.numberOfUsersCanUseDiscount)) && Number(draft.numberOfUsersCanUseDiscount) >= 1)) {
+    return 'Max number of customers must be a whole number of at least 1, or blank for unlimited.';
+  }
+  if (draft.firstOrderOnly && draft.isDiscountReusable) {
+    return 'A first-order-only discount cannot also be reusable.';
   }
   if (draft.isDiscountBasedOnPaymentMethods && draft.discountOnPaymentMethods.length === 0) {
     return 'Select at least one eligible payment method.';
@@ -74,7 +89,7 @@ const VALIDATORS = [validateBasics, validateTargeting, validateTiming, validateR
  * Multi-step discount create/edit form, mirroring
  * admin/features/products/components/ProductForm.jsx's pattern: local draft
  * state, per-step validation gating "Next", final authority still the
- * backend (discountService.js's Joi-less hand-rolled validators).
+ * backend (discountValidations.js's Joi schemas + discountService.js).
  *
  * @param {'add'|'edit'} props.mode
  * @param {Object} [props.initialDraft]

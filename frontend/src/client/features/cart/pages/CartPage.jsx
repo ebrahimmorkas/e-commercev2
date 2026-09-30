@@ -256,7 +256,7 @@ const CartPage = ({
 
           <div className="h-fit space-y-4">
             <DiscountPanel
-              key={`${discounts.info ? 'loaded' : 'loading'}|${appliedDiscounts.map((d) => `${d.discountId}:${d.discountAmount}`).join(',')}`}
+              key={`${discounts.info ? 'loaded' : 'loading'}|${appliedDiscounts.map((d) => `${d.discountId}:${d.discountAmount}`).join(',')}|${(discounts.info?.discounts || []).filter((d) => !d.isLocked).map((d) => d.discountId).join(',')}`}
               info={discounts.info}
               appliedDiscounts={appliedDiscounts}
               saving={discounts.saving}

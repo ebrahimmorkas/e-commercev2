@@ -1,5 +1,5 @@
 const path = require('path');
-const { parseExcelBuffer } = require('../utils/excelParser');
+const { safeParseExcelSheet } = require('../utils/excelParser');
 const { extractZipEntries } = require('../utils/zipExtractor');
 const { processExcelRows } = require('../utils/excelRowProcessor');
 const Category = require('../models/Category');
@@ -608,7 +608,12 @@ const normalizePath = (segments) => segments.map((s) => s.trim().toLowerCase()).
 
 const bulkUploadCategories = async (vendorId, userId, excelBuffer, zipBuffer, websiteMasterData, companyMasterData) => {
     try {
-        const { rows } = await parseExcelBuffer(excelBuffer, BULK_CATEGORY_COLUMNS);
+        // A missing column or unreadable file is the admin's to fix - a 400, never the error page.
+        const parsed = await safeParseExcelSheet(excelBuffer, BULK_CATEGORY_COLUMNS);
+        if (!parsed.ok) {
+            return common.returnResult(false, 400, parsed.message);
+        }
+        const { rows } = parsed;
 
         if (rows.length === 0) {
             return common.returnResult(false, 400, 'Excel file contains no data rows');

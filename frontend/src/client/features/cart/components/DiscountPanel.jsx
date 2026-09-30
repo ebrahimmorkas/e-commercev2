@@ -9,11 +9,16 @@ const sameIds = (a, b) => a.length === b.length && a.every((id) => b.includes(id
 /**
  * Cart page Discounts box, from a /cart/eligible-discounts result (see
  * hooks/useDiscounts.js): a checkbox per eligible discount plus a coupon code
- * field. Auto-apply discounts start ticked when nothing is applied yet.
+ * field. Discounts meant for the shopper that the cart can't use yet
+ * (isLocked) are listed greyed out with the reason (lockedReason, e.g. "Add
+ * items worth ₹3 more to unlock this discount.") and can't be ticked. The
+ * coupon field only shows when the store has a coupon this shopper could use
+ * (hasCouponDiscounts) or one is already applied.
+ * Auto-apply discounts start ticked when nothing is applied yet.
  * Applied coupon discounts aren't in the list (codes are never listed), so
  * they show on their own and are kept whenever the selection is re-applied.
- * Render it with `key` = the applied ids (and whether the list has loaded) so
- * the selection resets whenever the server changes what is applied.
+ * Render it with `key` = the applied ids and the usable ids so the selection
+ * resets whenever the server changes what is applied or usable.
  *
  * @param {Object|null} props.info
  * @param {Array} props.appliedDiscounts - cart.discounts
@@ -27,6 +32,7 @@ const sameIds = (a, b) => a.length === b.length && a.every((id) => b.includes(id
 const DiscountPanel = ({ info, appliedDiscounts = [], saving, rejections = [], onApply, onRemove, onSignIn, formatMoney }) => {
   const options = info?.discounts || [];
   const listedIds = options.map((d) => String(d.discountId));
+  const usableIds = options.filter((d) => !d.isLocked).map((d) => String(d.discountId));
   const appliedIds = appliedDiscounts.map((d) => String(d.discountId));
   const appliedAmountById = new Map(appliedDiscounts.map((d) => [String(d.discountId), d.discountAmount]));
   // Applied but not listed = entered as a coupon code.
@@ -34,8 +40,8 @@ const DiscountPanel = ({ info, appliedDiscounts = [], saving, rejections = [], o
 
   const [selectedIds, setSelectedIds] = useState(() =>
     appliedIds.length > 0
-      ? appliedIds.filter((id) => listedIds.includes(id))
-      : options.filter((d) => d.autoApply).map((d) => String(d.discountId))
+      ? appliedIds.filter((id) => usableIds.includes(id))
+      : options.filter((d) => d.autoApply && !d.isLocked).map((d) => String(d.discountId))
   );
   const [couponCode, setCouponCode] = useState('');
 
@@ -63,8 +69,11 @@ const DiscountPanel = ({ info, appliedDiscounts = [], saving, rejections = [], o
     setSelectedIds((current) => (current.includes(id) ? current.filter((x) => x !== id) : [...current, id]));
 
   const couponIds = appliedCoupons.map((d) => String(d.discountId));
-  const wantedIds = [...selectedIds, ...couponIds];
-  const canApply = !saving && selectedIds.length > 0 && !sameIds(wantedIds, appliedIds);
+  // A discount that became locked since it was ticked is never sent.
+  const usableSelectedIds = selectedIds.filter((id) => usableIds.includes(id));
+  const wantedIds = [...usableSelectedIds, ...couponIds];
+  const canApply = !saving && usableSelectedIds.length > 0 && !sameIds(wantedIds, appliedIds);
+  const showCouponField = info.hasCouponDiscounts === true || appliedCoupons.length > 0;
 
   const applyCoupon = async (event) => {
     event.preventDefault();
@@ -83,33 +92,49 @@ const DiscountPanel = ({ info, appliedDiscounts = [], saving, rejections = [], o
         <ul className="mt-3 space-y-2">
           {options.map((option) => {
             const id = String(option.discountId);
-            const isSelected = selectedIds.includes(id);
+            const isLocked = option.isLocked === true;
+            const isSelected = !isLocked && selectedIds.includes(id);
             const appliedAmount = appliedAmountById.get(id);
             const endDate = formatEndDate(option.endDate);
+            let labelClass = 'border-slate-200 hover:border-slate-300 cursor-pointer';
+            if (isLocked) labelClass = 'border-slate-200 bg-slate-50 opacity-70 cursor-not-allowed';
+            else if (isSelected) labelClass = 'border-amber-400 bg-amber-50 cursor-pointer';
             return (
               <li key={id}>
                 <label
-                  className={`flex gap-3 rounded-lg border p-3 cursor-pointer transition-colors duration-150 ${
-                    isSelected ? 'border-amber-400 bg-amber-50' : 'border-slate-200 hover:border-slate-300'
-                  }`}
+                  className={`flex gap-3 rounded-lg border p-3 transition-colors duration-150 ${labelClass}`}
+                  aria-disabled={isLocked}
                 >
                   <input
                     type="checkbox"
                     checked={isSelected}
                     onChange={() => toggle(id)}
-                    disabled={saving}
-                    className="mt-0.5 accent-amber-600"
+                    disabled={saving || isLocked}
+                    className="mt-0.5 accent-amber-600 disabled:cursor-not-allowed"
                   />
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-baseline justify-between gap-x-2">
                       <span className="text-sm font-semibold text-slate-900 break-words">{option.name}</span>
-                      <span className="text-xs font-semibold text-emerald-600">
-                        {appliedAmount !== undefined ? `Applied · − ${formatMoney(appliedAmount)}` : `− ${formatMoney(option.discountAmount)}`}
-                      </span>
+                      {isLocked ? (
+                        <span className="text-xs font-semibold text-slate-500">Not available yet</span>
+                      ) : (
+                        <span className="text-xs font-semibold text-emerald-600">
+                          {appliedAmount !== undefined ? `Applied · − ${formatMoney(appliedAmount)}` : `− ${formatMoney(option.discountAmount)}`}
+                        </span>
+                      )}
                     </span>
+                    {isLocked && option.lockedReason && (
+                      <span className="mt-0.5 block text-xs font-medium text-amber-700">{option.lockedReason}</span>
+                    )}
                     <span className="mt-0.5 block text-xs text-slate-500">
                       {option.discountType === 'PERCENTAGE' ? `${option.discountValue}% off` : `${formatMoney(option.discountValue)} off`}
-                      {option.discountValidAboveAmount > 0 && <> · Min. order {formatMoney(option.discountValidAboveAmount)}</>}
+                      {option.discountValidAboveAmount > 0 && (
+                        <>
+                          {' · '}
+                          {option.appliesToWholeCart === false ? 'Min. spend on eligible items' : 'Min. order'}{' '}
+                          {formatMoney(option.discountValidAboveAmount)}
+                        </>
+                      )}
                       {option.minimumQuantity && <> · Min. {option.minimumQuantity} items</>}
                     </span>
                     {option.description && <span className="mt-0.5 block text-xs text-slate-500">{option.description}</span>}
@@ -141,25 +166,27 @@ const DiscountPanel = ({ info, appliedDiscounts = [], saving, rejections = [], o
         </ul>
       )}
 
-      <form onSubmit={applyCoupon} className="mt-3 flex gap-2">
-        <input
-          type="text"
-          value={couponCode}
-          onChange={(event) => setCouponCode(event.target.value.toUpperCase())}
-          placeholder="Coupon code"
-          aria-label="Coupon code"
-          maxLength={50}
-          disabled={saving}
-          className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm uppercase focus:outline-none focus:border-amber-500"
-        />
-        <button
-          type="submit"
-          disabled={saving || !couponCode.trim()}
-          className="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer border border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Apply code
-        </button>
-      </form>
+      {showCouponField && (
+        <form onSubmit={applyCoupon} className="mt-3 flex gap-2">
+          <input
+            type="text"
+            value={couponCode}
+            onChange={(event) => setCouponCode(event.target.value.toUpperCase())}
+            placeholder="Coupon code"
+            aria-label="Coupon code"
+            maxLength={50}
+            disabled={saving}
+            className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm uppercase focus:outline-none focus:border-amber-500"
+          />
+          <button
+            type="submit"
+            disabled={saving || !couponCode.trim()}
+            className="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer border border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Apply code
+          </button>
+        </form>
+      )}
 
       {rejections.length > 0 && (
         <ul className="mt-3 space-y-1" role="alert">
@@ -172,9 +199,9 @@ const DiscountPanel = ({ info, appliedDiscounts = [], saving, rejections = [], o
         </ul>
       )}
 
-      {(options.length > 0 || appliedIds.length > 0) && (
+      {(usableIds.length > 0 || appliedIds.length > 0) && (
         <div className="mt-3 flex gap-2">
-          {options.length > 0 && (
+          {usableIds.length > 0 && (
             <button
               type="button"
               onClick={() => onApply({ discountIds: wantedIds })}

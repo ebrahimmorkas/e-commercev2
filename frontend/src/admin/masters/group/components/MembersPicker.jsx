@@ -114,10 +114,16 @@ const MembersPicker = ({
     );
   }
 
+  // Only active records can be picked; an existing member that has since been
+  // made inactive stays listed (marked) so it isn't silently dropped on save.
+  const pickableOptions = options
+    .filter((option) => option.isActive !== false || value.includes(option.value))
+    .map((option) => (option.isActive === false ? { ...option, label: `${option.label} (Inactive)` } : option));
+
   return (
     <Dropdown
       label="Members"
-      options={options}
+      options={pickableOptions}
       value={value}
       onChange={(ids) => onChange(ids)}
       multiple

@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as discountApi from '../api/discountApi';
 import { useToast } from '../../../../components/common/Toast';
-import { mapApiDiscountToDraft, buildSubmitFields, needsExcelFor } from '../utils/discountDraft';
+
+// A failed request's most useful message: the first field error of a
+// 'Validation failed' response, else the message itself.
+const errorMessage = (err, fallback) => {
+  const firstFieldError = Array.isArray(err?.errors) ? err.errors.find((e) => e && e.message) : null;
+  if (firstFieldError) return firstFieldError.message;
+  return err?.message || fallback;
+};
 
 /**
  * Owns the discounts list state for the admin page: fetching, and the
@@ -52,7 +59,7 @@ export const useDiscounts = () => {
       await fetchDiscounts();
       return { success: true, excelReports: result?.excelReports };
     } catch (err) {
-      toast.error(err.message || 'Failed to create discount');
+      toast.error(errorMessage(err, 'Failed to create discount'));
       return { success: false, error: err };
     } finally {
       setMutating(false);
@@ -67,7 +74,7 @@ export const useDiscounts = () => {
       await fetchDiscounts();
       return { success: true, excelReports: result?.excelReports };
     } catch (err) {
-      toast.error(err.message || 'Failed to update discount');
+      toast.error(errorMessage(err, 'Failed to update discount'));
       return { success: false, error: err };
     } finally {
       setMutating(false);
@@ -89,42 +96,40 @@ export const useDiscounts = () => {
     }
   };
 
-  /**
-   * updateDiscount always re-validates and re-resolves the full targeting
-   * payload (see discountService.updateDiscount), so a status flip can't be
-   * a lightweight PATCH - it resends every field, reconstructed from the
-   * list row (which already carries the full doc). That's only possible when
-   * giveDiscountTo doesn't depend on a re-uploaded excel file; otherwise the
-   * caller is directed to the edit form instead.
-   */
-  // notifyCustomers: when re-activating, email its customers again.
+  // A single row's Active/Inactive switch - the same minimal status flip as
+  // the bulk action (discountService's setDiscountStatusForBulk), so it works
+  // for every discount, including excel-targeted ones, and never re-validates
+  // the rest of the discount. notifyCustomers: when re-activating, email its customers again.
   const toggleStatus = async (discount, notifyCustomers = false) => {
-    if (needsExcelFor(discount.giveDiscountTo)) {
-      toast.error('This discount\'s targeting was set via an excel upload - open Edit and re-upload the file to change its status.');
+    const status = discount.status === 'A' ? 'I' : 'A';
+    setMutating(true);
+    try {
+      const data = await discountApi.bulkSetDiscountStatus([discount._id], status, status === 'A' && notifyCustomers);
+      const failed = (data?.results || []).find((r) => !r.isSuccess);
+      if (failed) {
+        toast.error(failed.message || 'Failed to update discount status');
+        return false;
+      }
+      toast.success(status === 'A' ? 'Discount activated' : 'Discount deactivated');
+      await fetchDiscounts();
+      return true;
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to update discount status'));
       return false;
+    } finally {
+      setMutating(false);
     }
-    const draft = mapApiDiscountToDraft(discount);
-    draft.status = discount.status === 'A' ? 'I' : 'A';
-    draft.notifyCustomers = draft.status === 'A' && notifyCustomers;
-    const fields = buildSubmitFields(draft, { includeStatus: true });
-    const result = await editDiscount(discount._id, fields, null);
-    return result.success;
   };
 
   // --- Bulk multi-select actions (checkbox column) --------------------------
-  // Unlike the single-row toggleStatus above, the bulk status endpoint is a
-  // dedicated, minimal status flip on the backend (discountService's
-  // setDiscountStatusForBulk) - it never re-validates/re-resolves the full
-  // targeting payload the way updateDiscount does, so the "targeting was set
-  // via excel, re-upload to change status" restriction simply doesn't apply
-  // here and every selected discount is eligible regardless of giveDiscountTo.
   const describeBulkOutcome = (data, pastTenseVerb) => {
     const successCount = data?.successCount ?? 0;
     const failureCount = data?.failureCount ?? 0;
     if (failureCount === 0) {
       toast.success(`${successCount} discount(s) ${pastTenseVerb}`);
     } else if (successCount === 0) {
-      toast.error(`Could not ${pastTenseVerb === 'deleted' ? 'delete' : 'update'} the selected discount(s)`);
+      const firstFailure = (data?.results || []).find((r) => !r.isSuccess);
+      toast.error(firstFailure?.message || `Could not ${pastTenseVerb === 'deleted' ? 'delete' : 'update'} the selected discount(s)`);
     } else {
       toast.warning(`${successCount} discount(s) ${pastTenseVerb}, ${failureCount} could not be processed`);
     }
@@ -139,7 +144,7 @@ export const useDiscounts = () => {
       await fetchDiscounts();
       return data;
     } catch (err) {
-      toast.error(err.message || 'Failed to update discount status');
+      toast.error(errorMessage(err, 'Failed to update discount status'));
       return null;
     } finally {
       setMutating(false);

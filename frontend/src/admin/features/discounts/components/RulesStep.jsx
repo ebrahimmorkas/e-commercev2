@@ -15,6 +15,12 @@ const RulesStep = ({ draft, onChange }) => {
   // days/hours restriction only applies to Minimum-Quantity or Coupon-Code discounts.
   const eligibleForSpecificDays = draft.discountFlow === 'MIN_QTY' || draft.discountFlow === 'COUPON';
 
+  // "Max number of users" and "First order only" exclude each other (first
+  // order only already means one order in total).
+  // While First order only is on, the limit is ignored (never sent), so an
+  // older discount that has both can still be switched off/saved.
+  const hasCustomerLimit = !draft.firstOrderOnly && String(draft.numberOfUsersCanUseDiscount ?? '').trim() !== '';
+
   return (
     <div className="space-y-6">
       <div className="space-y-3">
@@ -47,32 +53,31 @@ const RulesStep = ({ draft, onChange }) => {
             />
 
             {draft.isDiscountOpenForSpecificHours && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <InputField
-                  label="Start Time"
-                  name="specificHoursStartTime"
-                  type="time"
-                  value={draft.specificHoursStartTime}
-                  onChange={(e) => set({ specificHoursStartTime: e.target.value })}
-                  required
-                />
-                <InputField
-                  label="End Time"
-                  name="specificHoursEndTime"
-                  type="time"
-                  value={draft.specificHoursEndTime}
-                  onChange={(e) => set({ specificHoursEndTime: e.target.value })}
-                  required
-                />
-              </div>
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <InputField
+                    label="Start Time"
+                    name="specificHoursStartTime"
+                    type="time"
+                    value={draft.specificHoursStartTime}
+                    onChange={(e) => set({ specificHoursStartTime: e.target.value })}
+                    required
+                  />
+                  <InputField
+                    label="End Time"
+                    name="specificHoursEndTime"
+                    type="time"
+                    value={draft.specificHoursEndTime}
+                    onChange={(e) => set({ specificHoursEndTime: e.target.value })}
+                    required
+                  />
+                </div>
+                <p className={`text-xs ${theme.text.muted}`}>
+                  Open from the start time until just before the end time, in the timezone set on the Timing step. An end time
+                  earlier than the start time runs overnight (e.g. 22:00 - 02:00 on Friday is open until 01:59 on Saturday).
+                </p>
+              </>
             )}
-
-            <InputField
-              label="Timezone"
-              name="timezone"
-              value={draft.timezone}
-              onChange={(e) => set({ timezone: e.target.value })}
-            />
           </div>
         )}
       </div>
@@ -84,6 +89,12 @@ const RulesStep = ({ draft, onChange }) => {
           onChange={(e) => set({ isDiscountBasedOnPaymentMethods: e.target.checked })}
           color={theme.switch.color}
         />
+        {draft.isDiscountBasedOnPaymentMethods && (
+          <p className={`text-xs rounded-lg border px-3 py-2 ${theme.alert.warning.background} ${theme.alert.warning.border} ${theme.alert.warning.text}`}>
+            Customers can't use payment-method discounts yet - checkout doesn't ask for the payment method before the order is placed,
+            so these discounts are never offered in the cart.
+          </p>
+        )}
         {draft.isDiscountBasedOnPaymentMethods && (
           <Dropdown
             label="Eligible Payment Methods"
@@ -100,15 +111,22 @@ const RulesStep = ({ draft, onChange }) => {
       <div className="space-y-4 pt-2 border-t border-gray-100">
         <p className={`text-sm font-medium ${theme.text.heading}`}>Usage Limits</p>
 
-        <InputField
-          label="Max number of distinct users who can use this discount"
-          name="numberOfUsersCanUseDiscount"
-          type="number"
-          min={1}
-          placeholder="Leave blank for unlimited"
-          value={draft.numberOfUsersCanUseDiscount}
-          onChange={(e) => set({ numberOfUsersCanUseDiscount: e.target.value })}
-        />
+        <div>
+          <InputField
+            label="Max number of distinct users who can use this discount"
+            name="numberOfUsersCanUseDiscount"
+            type="number"
+            min={1}
+            placeholder={draft.firstOrderOnly ? 'Not used with First order only' : 'Leave blank for unlimited'}
+            value={draft.firstOrderOnly ? '' : draft.numberOfUsersCanUseDiscount}
+            disabled={draft.firstOrderOnly}
+            onChange={(e) => set({ numberOfUsersCanUseDiscount: e.target.value })}
+            showError={false}
+          />
+          {draft.firstOrderOnly && (
+            <p className={`mt-1 text-xs ${theme.text.muted}`}>Turn off &quot;First order only&quot; to set a customer limit.</p>
+          )}
+        </div>
 
         <Switch
           label="Allow the same discount to be combined with other discounts"
@@ -119,8 +137,9 @@ const RulesStep = ({ draft, onChange }) => {
 
         <Switch
           label="Reusable by the same user"
-          description="Allow one user to use this discount more than once"
+          description={draft.firstOrderOnly ? 'Not available for a first-order-only discount' : 'Allow one user to use this discount more than once'}
           checked={draft.isDiscountReusable}
+          disabled={draft.firstOrderOnly}
           onChange={(e) => set({ isDiscountReusable: e.target.checked })}
           color={theme.switch.color}
         />
@@ -138,9 +157,14 @@ const RulesStep = ({ draft, onChange }) => {
 
         <Switch
           label="First order only"
-          description="Only valid on a customer's very first order"
+          description={
+            hasCustomerLimit
+              ? 'Not available while a max number of users is set - clear that field first'
+              : 'Only one order can ever use this discount - the first customer to place an order with it claims it (released again if that order is cancelled or fully returned)'
+          }
           checked={draft.firstOrderOnly}
-          onChange={(e) => set({ firstOrderOnly: e.target.checked })}
+          disabled={hasCustomerLimit}
+          onChange={(e) => set({ firstOrderOnly: e.target.checked, ...(e.target.checked ? { isDiscountReusable: false, numberOfUsersCanUseDiscount: '' } : {}) })}
           color={theme.switch.color}
         />
       </div>

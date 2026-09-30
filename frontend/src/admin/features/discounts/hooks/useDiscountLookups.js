@@ -40,18 +40,12 @@ export const useDiscountLookups = () => {
     fetchAll();
   }, [fetchAll]);
 
-  const productGroupOptions = useMemo(
-    () => productGroups.map((g) => ({ value: String(g._id), label: g.groupName })),
-    [productGroups]
-  );
-  const categoryGroupOptions = useMemo(
-    () => categoryGroups.map((g) => ({ value: String(g._id), label: g.groupName })),
-    [categoryGroups]
-  );
-  const userGroupOptions = useMemo(
-    () => userGroups.map((g) => ({ value: String(g._id), label: g.groupName })),
-    [userGroups]
-  );
+  // isActive: an inactive group never matches anything in a cart, so the form
+  // offers only active ones (see TargetingStep's toGroupDropdownOptions).
+  const toOption = (g) => ({ value: String(g._id), label: g.groupName, isActive: (g.status ?? 'A') === 'A' });
+  const productGroupOptions = useMemo(() => productGroups.map(toOption), [productGroups]);
+  const categoryGroupOptions = useMemo(() => categoryGroups.map(toOption), [categoryGroups]);
+  const userGroupOptions = useMemo(() => userGroups.map(toOption), [userGroups]);
 
   return {
     loading,

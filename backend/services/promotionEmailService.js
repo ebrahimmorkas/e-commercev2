@@ -6,6 +6,7 @@ const emailTemplateMasterService = require('./emailTemplateMasterService');
 const currencyService = require('./currencyService');
 const { EMAIL_MODULES, PROMOTION_EMAIL_FLAGS } = require('../constants/emailModuleConstants');
 const logger = require('../utils/logger');
+const { isValidTimezone, toDateKey } = require('../utils/discountSchedule');
 
 /*
 |--------------------------------------------------------------------------
@@ -36,12 +37,18 @@ const DAY_LABELS = {
     FRIDAY: 'Friday', SATURDAY: 'Saturday', SUNDAY: 'Sunday'
 };
 
-// "28 Sep 2026" - same format as the order emails.
-const formatEmailDate = (date) => {
+// "28 Sep 2026" - same format as the order emails. A discount's dates are
+// read in its own timezone (its start is 00:00 there, which is the previous
+// day in UTC for zones ahead of UTC).
+const formatEmailDate = (date, timeZone = null) => {
     try {
         if (!date) return '';
         const d = new Date(date);
         if (Number.isNaN(d.getTime())) return '';
+        if (timeZone && isValidTimezone(timeZone)) {
+            const [year, month, day] = toDateKey(d, timeZone).split('-').map(Number);
+            return `${String(day).padStart(2, '0')} ${SHORT_MONTHS[month - 1]} ${year}`;
+        }
         return `${String(d.getUTCDate()).padStart(2, '0')} ${SHORT_MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
     } catch (err) {
         throw err;
@@ -137,8 +144,8 @@ const buildDiscountTokens = (discount, money) => {
             discountDescription: discount.description || '',
             discountValue: discount.discountType === 'PERCENTAGE' ? `${discount.discountValue}%` : money(discount.discountValue),
             couponCode: discount.isCouponCodeDiscount ? discount.couponCode || '' : '',
-            startDate: formatEmailDate(discount.startDate) || 'Now',
-            endDate: formatEmailDate(discount.endDate) || 'No end date',
+            startDate: formatEmailDate(discount.startDate, discount.timezone) || 'Now',
+            endDate: formatEmailDate(discount.endDate, discount.timezone) || 'No end date',
             minimumOrderAmount: discount.discountValidAboveAmount > 0 ? money(discount.discountValidAboveAmount) : '',
             minimumQuantity: discount.isMinimumDiscountQuantityDiscount && discount.minimumQuantity ? String(discount.minimumQuantity) : '',
             validDays: discount.isDiscountOpenForSpecificDays ? (discount.specificDays || []).map((d) => DAY_LABELS[d] || d).join(', ') : '',

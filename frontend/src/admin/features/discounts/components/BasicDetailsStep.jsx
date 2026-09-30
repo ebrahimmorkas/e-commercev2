@@ -98,7 +98,7 @@ const BasicDetailsStep = ({ draft, onChange, allowedDiscountTypes = [] }) => {
 
       <Switch
         label="Auto-apply"
-        description="Apply automatically at checkout without the customer entering anything"
+        description="Pre-selected for the customer in the cart's discount list. Not used by Coupon Code discounts (the customer must enter the code)."
         checked={draft.autoApply}
         onChange={(e) => set({ autoApply: e.target.checked })}
         color={theme.switch.color}

@@ -26,8 +26,10 @@ import { useCurrency } from '../../../currency/useCurrency';
  * @param {string|null} [initialAddressId] - Address already chosen on the cart page.
  * @param {Function} onBack - Back to cart.
  * @param {Function} onPlaced - Called with the new order's _id on success.
+ * @param {Function} [onOrderFailed] - Called when placing fails, so the cart is re-read (e.g. a
+ *   discount that no longer applies was taken off and the totals changed).
  */
-const CheckoutPage = ({ lineItems = [], subtotal = 0, totalFreeCashAmount = 0, totalDiscountAmount = 0, cartLoading, initialAddressId = null, onBack, onPlaced }) => {
+const CheckoutPage = ({ lineItems = [], subtotal = 0, totalFreeCashAmount = 0, totalDiscountAmount = 0, cartLoading, initialAddressId = null, onBack, onPlaced, onOrderFailed }) => {
   // Amounts here are in the store currency; shown in the shopper's (the one the order is charged in).
   const { formatMoney } = useCurrency();
   const [selectedAddressId, setSelectedAddressId] = useState(initialAddressId);
@@ -63,6 +65,7 @@ const CheckoutPage = ({ lineItems = [], subtotal = 0, totalFreeCashAmount = 0, t
       onPlaced(result.order._id);
     } catch (err) {
       setError(err.message || 'Could not place order');
+      onOrderFailed?.();
     } finally {
       setPlacing(false);
     }

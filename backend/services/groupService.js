@@ -5,7 +5,7 @@ const Category = require('../models/Category');
 const User = require('../models/User');
 const logger = require('../utils/logger');
 const common = require('../utils/common');
-const { parseExcelBuffer } = require('../utils/excelParser');
+const { safeParseExcelSheet } = require('../utils/excelParser');
 const { processExcelRows } = require('../utils/excelRowProcessor');
 const {
   bulkGroupProductNameRowSchema,
@@ -128,15 +128,12 @@ const resolveMembersFromExcel = async (vendorId, groupType, excelBuffer, isNesti
       USER: bulkGroupUserEmailRowSchema
     };
 
-    let rows;
-    try {
-      ({ rows } = await parseExcelBuffer(excelBuffer, columnsByType[groupType], { sheetName }));
-    } catch (err) {
-      if (String(err.message).includes('was not found')) {
-        return common.returnResult(false, 400, `"${sheetName}" sheet is required in the excel file for this group type.`);
-      }
-      throw err;
+    // A missing sheet/column or unreadable file is the admin's to fix - a 400, never the error page.
+    const parsed = await safeParseExcelSheet(excelBuffer, columnsByType[groupType], { sheetName });
+    if (!parsed.ok) {
+      return common.returnResult(false, 400, parsed.message);
     }
+    const { rows } = parsed;
 
     if (rows.length === 0) {
       return common.returnResult(false, 400, 'Excel file contains no data rows.');
@@ -182,7 +179,7 @@ const resolveMembersFromExcel = async (vendorId, groupType, excelBuffer, isNesti
 
         if (groupType === 'USER') {
           const doc = await User.findOne({
-            vendorId, status: { $ne: 'D' },
+            vendorId, status: 'A',
             email: { $regex: `^${escapeRegex(value.email.trim())}$`, $options: 'i' }
           });
           if (!doc) {
@@ -211,11 +208,17 @@ const resolveMembersFromExcel = async (vendorId, groupType, excelBuffer, isNesti
   }
 };
 
+// Group types whose records can be Inactive ('I') - those can't be added to a
+// group (an inactive product/category/user/brand would sit in it unused).
+// Orders have no active/inactive meaning, so any non-deleted one is fine.
+const ACTIVE_ONLY_MEMBER_GROUP_TYPES = ['PRODUCT', 'CATEGORY', 'USER', 'BRAND'];
+
 // Validates that every member ID actually exists in the collection that
 // corresponds to the group's groupType, belongs to this vendor and is not
 // soft-deleted - an id from another vendor's collection, or a deleted
-// record, counts as not found.
-const validateMembersAgainstGroupType = async (vendorId, groupType, members) => {
+// record, counts as not found. Newly added members must also be active;
+// existingMembers (on update) may stay even if they have since been made inactive.
+const validateMembersAgainstGroupType = async (vendorId, groupType, members, existingMembers = []) => {
   try {
     if (groupType === 'CUSTOM') {
       return { valid: true };
@@ -248,6 +251,17 @@ const validateMembersAgainstGroupType = async (vendorId, groupType, members) => 
     const foundCount = await Model.countDocuments({ _id: { $in: members }, vendorId, status: { $ne: 'D' } });
     if (foundCount !== members.length) {
       return { valid: false, message: `One or more members are invalid for group type ${groupType}.` };
+    }
+
+    if (ACTIVE_ONLY_MEMBER_GROUP_TYPES.includes(groupType)) {
+      const existing = new Set((existingMembers || []).map((id) => id.toString()));
+      const added = members.filter((id) => !existing.has(id.toString()));
+      if (added.length > 0) {
+        const activeCount = await Model.countDocuments({ _id: { $in: added }, vendorId, status: 'A' });
+        if (activeCount !== added.length) {
+          return { valid: false, message: 'Inactive records cannot be added to a group - activate them first or remove them.' };
+        }
+      }
     }
 
     return { valid: true };
@@ -405,7 +419,9 @@ const updateGroup = async (vendorId, userId, groupId, payload, files, companyMas
         return common.returnResult(false, 400, `A group can have at most ${companyMasterData.numberOfMembersPerGroup} members.`);
       }
 
-      const memberValidation = await validateMembersAgainstGroupType(vendorId, effectiveGroupType, members);
+      // Existing members only count as "already there" if the group type isn't changing.
+      const existingMembers = effectiveGroupType === group.groupType ? group.members : [];
+      const memberValidation = await validateMembersAgainstGroupType(vendorId, effectiveGroupType, members, existingMembers);
       if (!memberValidation.valid) {
         return common.returnResult(false, 400, memberValidation.message);
       }

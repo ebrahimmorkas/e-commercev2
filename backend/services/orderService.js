@@ -211,7 +211,19 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
             return common.returnResult(false, checkoutResult.statusCode, checkoutResult.message);
         }
 
-        const { cart, eligibleLineItems, shippingBreakdown, ineligibleItems } = checkoutResult.meta;
+        const { cart, eligibleLineItems, shippingBreakdown, ineligibleItems, droppedDiscounts = [], droppedFreeCash = [] } = checkoutResult.meta;
+
+        // A discount / Free Cash the shopper applied that no longer holds (expired,
+        // used up, cart changed) must never silently vanish from a placed order -
+        // the re-check above already took it off the cart, so they can review the
+        // new total and place the order again.
+        const dropped = [
+            ...droppedDiscounts.map((d) => `${d.discountName}: ${d.reason}`),
+            ...droppedFreeCash.map((f) => `${f.freeCashName}: ${f.reason}`)
+        ];
+        if (dropped.length > 0) {
+            return common.returnResult(false, 409, `Your cart total has changed - please review it and place the order again. ${dropped.join(' ')}`);
+        }
 
         // Manual (CUSTOM) shipping: the admin enters the price after the order
         // is placed, so shipping stays null and the total excludes it (including

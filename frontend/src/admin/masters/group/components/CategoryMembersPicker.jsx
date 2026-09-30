@@ -32,11 +32,14 @@ const CategoryMembersPicker = ({ categories = [], value = [], onChange, nestingA
   const [draftMain, setDraftMain] = useState('');
   const [draftSub, setDraftSub] = useState('');
 
+  // Every category (for the chips' labels), but only active ones can be picked.
   const categoryById = useMemo(() => {
     const map = new Map();
     categories.forEach((c) => map.set(String(c._id), c));
     return map;
   }, [categories]);
+  const activeCategories = useMemo(() => categories.filter((c) => (c.status ?? 'A') === 'A'), [categories]);
+  const isInactive = (id) => (categoryById.get(String(id))?.status ?? 'A') !== 'A';
 
   const draftLeafId = draftSub || draftMain;
   const alreadyAdded = draftLeafId && value.includes(draftLeafId);
@@ -59,7 +62,7 @@ const CategoryMembersPicker = ({ categories = [], value = [], onChange, nestingA
       <div className="flex items-start gap-2">
         <div className="flex-1">
           <CategoryPathPicker
-            categories={categories}
+            categories={activeCategories}
             mainCategoryId={draftMain}
             subCategoryId={draftSub}
             nestingAllowed={nestingAllowed}
@@ -86,6 +89,7 @@ const CategoryMembersPicker = ({ categories = [], value = [], onChange, nestingA
           {value.map((id) => (
             <Badge key={id} variant="purple" onRemove={() => removeMember(id)} removeLabel={`Remove ${buildBreadcrumbLabel(categoryById, id)}`}>
               {buildBreadcrumbLabel(categoryById, id)}
+              {isInactive(id) && ' (Inactive)'}
             </Badge>
           ))}
         </div>

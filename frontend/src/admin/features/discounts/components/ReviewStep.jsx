@@ -56,13 +56,14 @@ const ReviewStep = ({ draft, onChange, isEdit = false }) => {
           <Badge variant={theme.badge[draft.discountFlow === 'MIN_QTY' ? 'minQty' : draft.discountFlow.toLowerCase()] || 'gray'} size="sm">
             {flow?.label}
           </Badge>
-          {draft.autoApply && <Badge variant="blue" size="sm">Auto-apply</Badge>}
+          {draft.autoApply && draft.discountFlow !== 'COUPON' && <Badge variant="blue" size="sm">Auto-apply</Badge>}
           {isEdit && <Badge variant={draft.status === 'A' ? theme.badge.active : theme.badge.inactive} size="sm">{draft.status === 'A' ? 'Active' : 'Inactive'}</Badge>}
         </div>
 
         <Row label="Applies To" value={giveDiscountToLabel} />
         {draft.discountFlow !== 'ONGOING' && <Row label="Start Date" value={draft.startDate || '—'} />}
         {draft.discountFlow !== 'ONGOING' && <Row label="End Date" value={draft.endDate || '—'} />}
+        {draft.discountFlow !== 'ONGOING' && <Row label="Timezone" value={draft.timezone || '—'} />}
         {draft.discountFlow === 'MIN_QTY' && <Row label="Minimum Quantity" value={draft.minimumQuantity || '—'} />}
         {draft.discountFlow === 'COUPON' && <Row label="Coupon Code" value={draft.couponCode || '—'} />}
         {draft.discountFlow !== 'MIN_QTY' && <Row label="Minimum Cart Value" value={formatMoney(draft.discountValidAboveAmount || 0)} />}
@@ -70,7 +71,7 @@ const ReviewStep = ({ draft, onChange, isEdit = false }) => {
         {draft.isDiscountOpenForSpecificDays && <Row label="Active Days" value={draft.specificDays.join(', ') || '—'} />}
         {draft.isDiscountOpenForSpecificHours && <Row label="Active Hours" value={`${draft.specificHoursStartTime} – ${draft.specificHoursEndTime}`} />}
         {draft.isDiscountBasedOnPaymentMethods && <Row label="Payment Methods" value={draft.discountOnPaymentMethods.join(', ') || '—'} />}
-        {draft.numberOfUsersCanUseDiscount && <Row label="Max Users" value={draft.numberOfUsersCanUseDiscount} />}
+        {draft.numberOfUsersCanUseDiscount && !draft.firstOrderOnly && <Row label="Max Users" value={draft.numberOfUsersCanUseDiscount} />}
         {draft.isDiscountReusable && <Row label="Reusable / User" value={draft.discountReusableNumber || '—'} />}
         {draft.firstOrderOnly && <Row label="First Order Only" value="Yes" />}
       </div>

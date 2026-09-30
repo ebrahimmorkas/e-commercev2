@@ -70,10 +70,12 @@ export const applyFreeCash = (freeCashIds) =>
 export const removeFreeCash = () => apiRequest('/cart/remove-free-cash', { method: 'DELETE' });
 
 /**
- * Discounts the logged-in shopper could apply to the current cart (coupon
- * discounts are never listed). isEnabled false = no discounts in this store;
- * requiresLogin = a guest.
- * @returns {Promise<{ isEnabled: boolean, requiresLogin: boolean, discounts: Array }>}
+ * Discounts the logged-in shopper could apply to the current cart, followed by
+ * the ones meant for them that the cart can't use yet (isLocked, with
+ * lockedReason). Coupon discounts are never listed - hasCouponDiscounts says
+ * whether a coupon this shopper could use exists. isEnabled false = no
+ * discounts in this store; requiresLogin = a guest.
+ * @returns {Promise<{ isEnabled: boolean, requiresLogin: boolean, hasCouponDiscounts: boolean, discounts: Array }>}
  */
 export const getEligibleDiscounts = () => apiRequest('/cart/eligible-discounts');
 

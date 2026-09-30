@@ -9,7 +9,13 @@ const ensureVendorDataCached = require('../middlewares/ensureVendorDataCached');
 const checkModuleAssigned = require('../middlewares/checkModuleAssigned');
 const createBulkUploader = require('../middlewares/multer/bulkFileUpload');
 const validate = require('../middlewares/validate');
-const { bulkDiscountStatusSchema, bulkDeleteDiscountSchema } = require('../middlewares/validations/discountValidations');
+const {
+  createDiscountSchema,
+  updateDiscountSchema,
+  excelSampleQuerySchema,
+  bulkDiscountStatusSchema,
+  bulkDeleteDiscountSchema
+} = require('../middlewares/validations/discountValidations');
 
 // ONE excel file, with sheets named "Products" / "Categories" / "Users" -
 // only the sheet(s) relevant to the chosen giveDiscountTo need data.
@@ -28,7 +34,21 @@ router.post(
   authorize('admin'),
   checkModuleAssigned('DISCOUNT'),
   discountExcelFields,
+  validate(createDiscountSchema, 'body'),
   discountController.createDiscount
+);
+
+// Sample excel for the chosen giveDiscountTo - registered before the "/:id"
+// routes below so "/excel-sample" is never taken for an id.
+router.get(
+  '/excel-sample',
+  authenticate,
+  vendorDetection,
+  ensureVendorDataCached,
+  authorize('admin'),
+  checkModuleAssigned('DISCOUNT'),
+  validate(excelSampleQuerySchema, 'query'),
+  discountController.downloadTargetingSampleFile
 );
 
 // Bulk multi-select actions (frontend checkbox selection) - registered
@@ -64,6 +84,7 @@ router.put(
   authorize('admin'),
   checkModuleAssigned('DISCOUNT'),
   discountExcelFields,
+  validate(updateDiscountSchema, 'body'),
   discountController.updateDiscount
 );
 

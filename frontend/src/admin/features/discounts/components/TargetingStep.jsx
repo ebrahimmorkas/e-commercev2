@@ -1,8 +1,20 @@
+import { useState } from 'react';
 import Dropdown from '../../../../components/common/DropDown';
 import FileUpload from '../../../../components/common/FileUpload';
+import Button from '../../../../components/common/Buttons';
+import { useToast } from '../../../../components/common/Toast';
+import { saveBlob } from '../../../../utils/saveBlob';
+import { downloadTargetingSampleFile } from '../api/discountApi';
 import { GIVE_DISCOUNT_TO_CONFIG, GIVE_DISCOUNT_TO_OPTIONS } from '../constants';
-import { needsExcelFor, requiredExcelSheetsFor } from '../utils/discountDraft';
+import { needsExcelFor, requiredExcelSheetsFor, canKeepExistingExcelTargets } from '../utils/discountDraft';
 import theme from '../theme/theme';
+
+// Only active groups can be picked (an inactive one never matches a cart); one
+// the discount already uses stays listed, marked, so it can be seen and removed.
+const toGroupDropdownOptions = (options, selectedIds = []) =>
+  options
+    .filter((option) => option.isActive !== false || selectedIds.includes(option.value))
+    .map((option) => (option.isActive === false ? { ...option, label: `${option.label} (Inactive)` } : option));
 
 /**
  * @param {Object} props.draft
@@ -23,6 +35,8 @@ const TargetingStep = ({
   isEdit = false,
 }) => {
   const set = (patch) => onChange({ ...draft, ...patch });
+  const toast = useToast();
+  const [downloadingSample, setDownloadingSample] = useState(false);
 
   const giveDiscountToOptions =
     allowedGiveDiscountTo.length > 0
@@ -32,6 +46,19 @@ const TargetingStep = ({
   const config = GIVE_DISCOUNT_TO_CONFIG[draft.giveDiscountTo] || {};
   const requiredSheets = requiredExcelSheetsFor(draft.giveDiscountTo);
   const usesExcel = needsExcelFor(draft.giveDiscountTo);
+
+  // The sample only has the sheet(s) the selected option reads.
+  const handleDownloadSample = async () => {
+    setDownloadingSample(true);
+    try {
+      const { blob, filename } = await downloadTargetingSampleFile(draft.giveDiscountTo);
+      saveBlob(blob, filename || 'discount-sample.xlsx');
+    } catch (err) {
+      toast.error(err.message || 'Could not download the sample file');
+    } finally {
+      setDownloadingSample(false);
+    }
+  };
 
   const handleGiveDiscountToChange = (val) => {
     set({
@@ -68,8 +95,10 @@ const TargetingStep = ({
             <p className={`text-sm ${theme.text.body}`}>
               Currently targeting <strong>{draft.existingTargetCounts.products}</strong> product(s),{' '}
               <strong>{draft.existingTargetCounts.categories}</strong> categor{draft.existingTargetCounts.categories === 1 ? 'y' : 'ies'} and{' '}
-              <strong>{draft.existingTargetCounts.users}</strong> user(s). Re-upload the excel file below to keep or change this - saving
-              without a new file will fail.
+              <strong>{draft.existingTargetCounts.users}</strong> user(s).{' '}
+              {canKeepExistingExcelTargets(draft)
+                ? 'Save without a file to keep these, or upload a new excel file to replace them.'
+                : 'Upload an excel file below for the selected option.'}
             </p>
           )}
           <p className={`text-sm ${theme.text.body}`}>
@@ -87,18 +116,20 @@ const TargetingStep = ({
             {requiredSheets.includes('Users') && <code className="px-1 py-0.5 rounded bg-gray-100">Email</code>} column matching an existing
             active record.
           </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button type="button" variant={theme.button.secondary} size="sm" onClick={handleDownloadSample} loading={downloadingSample}>
+              Download sample file
+            </Button>
+            <span className={`text-xs ${theme.text.muted}`}>
+              One .xlsx with the {requiredSheets.join(' and ')} sheet{requiredSheets.length > 1 ? 's' : ''} ready to fill in.
+            </span>
+          </div>
           <FileUpload
             label="Excel File (.xlsx)"
             accept=".xlsx"
             onFilesSelected={(files) => set({ excelFile: files[0] || null })}
-            helperText={isEdit ? 'Required on every save for this option.' : 'Required for this option.'}
+            helperText={isEdit && canKeepExistingExcelTargets(draft) ? 'Optional - only needed to change the current list.' : 'Required for this option.'}
           />
-          <p className={`text-sm rounded-lg border px-4 py-2 ${theme.alert.warning.background} ${theme.alert.warning.border} ${theme.alert.warning.text}`}>
-            Because this option uploads a file, the server receives this whole form as multipart data instead of JSON - toggle-based settings
-            elsewhere in this form (Ongoing / Minimum Quantity / Coupon Code, Specific Days &amp; Hours, Payment Methods, Auto-apply, etc.) are
-            not reliably applied together with an excel upload in the current backend. Prefer a Product/Category/User Group targeting option
-            if you need those together.
-          </p>
         </div>
       )}
 
@@ -106,13 +137,13 @@ const TargetingStep = ({
         <Dropdown
           label="Product Group(s)"
           name="productGroupIds"
-          options={productGroupOptions}
+          options={toGroupDropdownOptions(productGroupOptions, draft.productGroupIds)}
           value={draft.productGroupIds}
           onChange={(val) => set({ productGroupIds: val })}
           multiple
           searchable
           required
-          helperText={productGroupOptions.length === 0 ? 'No PRODUCT groups found - create one under Groups first.' : ''}
+          helperText={!productGroupOptions.some((g) => g.isActive !== false) ? 'No active PRODUCT groups found - create or activate one under Groups first.' : ''}
         />
       )}
 
@@ -120,13 +151,13 @@ const TargetingStep = ({
         <Dropdown
           label="Category Group(s)"
           name="categoryGroupIds"
-          options={categoryGroupOptions}
+          options={toGroupDropdownOptions(categoryGroupOptions, draft.categoryGroupIds)}
           value={draft.categoryGroupIds}
           onChange={(val) => set({ categoryGroupIds: val })}
           multiple
           searchable
           required
-          helperText={categoryGroupOptions.length === 0 ? 'No CATEGORY groups found - create one under Groups first.' : ''}
+          helperText={!categoryGroupOptions.some((g) => g.isActive !== false) ? 'No active CATEGORY groups found - create or activate one under Groups first.' : ''}
         />
       )}
 
@@ -134,13 +165,13 @@ const TargetingStep = ({
         <Dropdown
           label="User Group(s)"
           name="userGroupIds"
-          options={userGroupOptions}
+          options={toGroupDropdownOptions(userGroupOptions, draft.userGroupIds)}
           value={draft.userGroupIds}
           onChange={(val) => set({ userGroupIds: val })}
           multiple
           searchable
           required
-          helperText={userGroupOptions.length === 0 ? 'No USER groups found - create one under Groups first.' : ''}
+          helperText={!userGroupOptions.some((g) => g.isActive !== false) ? 'No active USER groups found - create or activate one under Groups first.' : ''}
         />
       )}
     </div>

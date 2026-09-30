@@ -49,7 +49,7 @@ const decodeDiscountPayloadIds = (body) => {
   delete payload.notifyCustomers;
   ['productGroupIds', 'categoryGroupIds', 'userGroupIds'].forEach((field) => {
     if (Array.isArray(payload[field])) {
-      payload[field] = payload[field].map((id) => common.decodeId(id));
+      payload[field] = payload[field].map((id) => common.tryDecodeId(id));
     }
   });
   return payload;
@@ -171,7 +171,7 @@ const updateDiscount = async (req, res) => {
       return common.sendError(res, blockReason.statusCode, blockReason.message);
     }
 
-    discountId = common.decodeId(req.params.id);
+    discountId = common.tryDecodeId(req.params.id);
     const files = req.files || {};
     const payload = decodeDiscountPayloadIds(req.body);
     const result = await discountService.updateDiscount(vendorId, discountId, userId, payload, files, req.companyMasterData, {
@@ -203,7 +203,7 @@ const getDiscountById = async (req, res) => {
       return common.sendError(res, blockReason.statusCode, blockReason.message);
     }
 
-    discountId = common.decodeId(req.params.id);
+    discountId = common.tryDecodeId(req.params.id);
     const result = await discountService.fetchDiscountById(vendorId, discountId);
 
     if (!result.isSuccess) {
@@ -266,7 +266,7 @@ const deleteDiscount = async (req, res) => {
       return common.sendError(res, blockReason.statusCode, blockReason.message);
     }
 
-    discountId = common.decodeId(req.params.id);
+    discountId = common.tryDecodeId(req.params.id);
     const result = await discountService.deleteDiscount(vendorId, discountId, userId);
 
     if (!result.isSuccess) {
@@ -284,7 +284,12 @@ const bulkSetDiscountStatus = async (req, res) => {
   const userId = req.user._id;
   const { status } = req.body;
   try {
-    const decodedIds = req.body.discountIds.map((id) => common.decodeId(id));
+    const blockReason = await getDiscountFeatureBlockReason(req);
+    if (blockReason) {
+      return common.sendError(res, blockReason.statusCode, blockReason.message);
+    }
+
+    const decodedIds = req.body.discountIds.map((id) => common.tryDecodeId(id));
     const result = await discountService.bulkSetDiscountStatus(vendorId, userId, decodedIds, status, {
       notifyCustomers: req.body.notifyCustomers === true,
       companyMasterData: req.companyMasterData,
@@ -308,7 +313,12 @@ const bulkDeleteDiscounts = async (req, res) => {
   const vendorId = req.vendorId;
   const userId = req.user._id;
   try {
-    const decodedIds = req.body.discountIds.map((id) => common.decodeId(id));
+    const blockReason = await getDiscountFeatureBlockReason(req);
+    if (blockReason) {
+      return common.sendError(res, blockReason.statusCode, blockReason.message);
+    }
+
+    const decodedIds = req.body.discountIds.map((id) => common.tryDecodeId(id));
     const result = await discountService.bulkDeleteDiscounts(vendorId, userId, decodedIds);
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message);
@@ -323,7 +333,32 @@ const bulkDeleteDiscounts = async (req, res) => {
   }
 };
 
+// The sample .xlsx for an excel-based giveDiscountTo option (only its sheets).
+const downloadTargetingSampleFile = async (req, res) => {
+  const vendorId = req.vendorId;
+  try {
+    const blockReason = await getDiscountFeatureBlockReason(req);
+    if (blockReason) {
+      return common.sendError(res, blockReason.statusCode, blockReason.message);
+    }
+
+    const result = await discountService.buildTargetingSampleFile(req.query.giveDiscountTo);
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+
+    const { buffer, fileName } = result.meta;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Length', buffer.length);
+    return res.status(200).end(buffer);
+  } catch (error) {
+    logger.logException('discountController: downloadTargetingSampleFile - Exception while building sample file', { vendorId, error });
+  }
+};
+
 module.exports = {
+  downloadTargetingSampleFile,
   createDiscount,
   updateDiscount,
   getDiscountById,

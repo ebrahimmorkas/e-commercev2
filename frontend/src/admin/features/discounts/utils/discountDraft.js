@@ -1,11 +1,36 @@
 import { GIVE_DISCOUNT_TO_CONFIG } from '../constants';
 
-const pad = (n) => String(n).padStart(2, '0');
-const toDateInputValue = (value) => {
+export const DEFAULT_TIMEZONE = 'Asia/Kolkata';
+
+export const isValidTimezone = (timezone) => {
+  if (!timezone || !String(timezone).trim()) return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// A stored start/end instant as its "YYYY-MM-DD" calendar day in the
+// discount's own timezone - the backend saves whole days there (00:00 on the
+// start day, 23:59:59.999 on the end day), so the browser's zone must not be used.
+export const toDateInputValue = (value, timezone = DEFAULT_TIMEZONE) => {
   if (!value) return '';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '';
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const zone = isValidTimezone(timezone) ? timezone : DEFAULT_TIMEZONE;
+  // en-CA formats as YYYY-MM-DD.
+  return new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+};
+
+/** "1 Oct 2026" for a stored start/end instant, read in the discount's timezone. */
+export const formatDiscountDate = (value, timezone = DEFAULT_TIMEZONE) => {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  const zone = isValidTimezone(timezone) ? timezone : DEFAULT_TIMEZONE;
+  return d.toLocaleDateString('en-IN', { timeZone: zone, day: 'numeric', month: 'short', year: 'numeric' });
 };
 
 export const needsExcelFor = (giveDiscountTo) => {
@@ -23,6 +48,21 @@ export const requiredExcelSheetsFor = (giveDiscountTo) => {
   return sheets;
 };
 
+/**
+ * Editing a discount whose targeting came from an excel upload: while the
+ * targeting option is unchanged the server keeps the products/categories/users
+ * it already has, so saving without a new file is fine. A new file replaces them.
+ */
+export const canKeepExistingExcelTargets = (draft) => {
+  if (!draft.savedGiveDiscountTo || draft.savedGiveDiscountTo !== draft.giveDiscountTo) return false;
+  const config = GIVE_DISCOUNT_TO_CONFIG[draft.giveDiscountTo];
+  const counts = draft.existingTargetCounts;
+  if (!config || !counts) return false;
+  return (!config.needsProductsFile || counts.products > 0)
+    && (!config.needsCategoriesFile || counts.categories > 0)
+    && (!config.needsUsersFile || counts.users > 0);
+};
+
 export const emptyDraft = () => ({
   _id: null,
   // "Notify customers by email" - a per-save choice, never stored on the discount.
@@ -37,6 +77,7 @@ export const emptyDraft = () => ({
   autoApply: false,
 
   giveDiscountTo: 'ALL_PRODUCTS_ALL_USERS',
+  savedGiveDiscountTo: null,
   excelFile: null,
   productGroupIds: [],
   categoryGroupIds: [],
@@ -89,6 +130,9 @@ export const mapApiDiscountToDraft = (doc) => ({
   autoApply: !!doc.autoApply,
 
   giveDiscountTo: doc.giveDiscountTo || 'ALL_PRODUCTS_ALL_USERS',
+  // What it was saved with - while unchanged, the excel it was built from is
+  // kept server-side, so a new upload is optional (see canKeepExistingExcelTargets).
+  savedGiveDiscountTo: doc.giveDiscountTo || null,
   excelFile: null,
   productGroupIds: (doc.productGroupIds || []).map(String),
   categoryGroupIds: (doc.categoryGroupIds || []).map(String),
@@ -100,8 +144,8 @@ export const mapApiDiscountToDraft = (doc) => ({
   },
 
   discountFlow: doc.isOngoingDiscount ? 'ONGOING' : doc.isMinimumDiscountQuantityDiscount ? 'MIN_QTY' : doc.isCouponCodeDiscount ? 'COUPON' : 'SCHEDULED',
-  startDate: toDateInputValue(doc.startDate),
-  endDate: toDateInputValue(doc.endDate),
+  startDate: toDateInputValue(doc.startDate, doc.timezone),
+  endDate: toDateInputValue(doc.endDate, doc.timezone),
   minimumQuantity: doc.minimumQuantity ?? '',
   couponCode: doc.couponCode || '',
   discountValidAboveAmount: String(doc.discountValidAboveAmount ?? 0),
@@ -152,7 +196,8 @@ export const buildSubmitFields = (draft, { includeStatus = false } = {}) => {
     discountValue: Number(draft.discountValue),
     giveDiscountTo: draft.giveDiscountTo,
     precedence: Number(draft.precedence) || 0,
-    autoApply: !!draft.autoApply,
+    // A coupon discount is only ever reachable by its code.
+    autoApply: !!draft.autoApply && !isCoupon,
 
     isOngoingDiscount: isOngoing,
     isMinimumDiscountQuantityDiscount: isMinQty,
@@ -164,7 +209,7 @@ export const buildSubmitFields = (draft, { includeStatus = false } = {}) => {
 
     isDiscountOpenForSpecificDays: !!draft.isDiscountOpenForSpecificDays,
     isDiscountOpenForSpecificHours: !!draft.isDiscountOpenForSpecificDays && !!draft.isDiscountOpenForSpecificHours,
-    timezone: draft.timezone || 'Asia/Kolkata',
+    timezone: (draft.timezone || '').trim() || DEFAULT_TIMEZONE,
 
     isDiscountBasedOnPaymentMethods: !!draft.isDiscountBasedOnPaymentMethods,
 
@@ -197,7 +242,8 @@ export const buildSubmitFields = (draft, { includeStatus = false } = {}) => {
     fields.discountOnPaymentMethods = draft.discountOnPaymentMethods;
   }
 
-  if (draft.numberOfUsersCanUseDiscount !== '' && draft.numberOfUsersCanUseDiscount !== null && draft.numberOfUsersCanUseDiscount !== undefined) {
+  // First order only already means one order in total - a customer limit is never sent with it.
+  if (!draft.firstOrderOnly && draft.numberOfUsersCanUseDiscount !== '' && draft.numberOfUsersCanUseDiscount !== null && draft.numberOfUsersCanUseDiscount !== undefined) {
     fields.numberOfUsersCanUseDiscount = Number(draft.numberOfUsersCanUseDiscount);
   }
   if (draft.isDiscountReusable) {
@@ -219,4 +265,8 @@ export default {
   buildSubmitFields,
   needsExcelFor,
   requiredExcelSheetsFor,
+  canKeepExistingExcelTargets,
+  toDateInputValue,
+  formatDiscountDate,
+  isValidTimezone,
 };

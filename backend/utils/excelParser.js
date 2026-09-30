@@ -1,5 +1,26 @@
 const ExcelJS = require('exceljs');
 
+// A problem with the uploaded file itself that the user can fix (not a server
+// fault): unreadable file, missing sheet, missing column. Callers check
+// err.isExcelInputError and answer with a 400 message instead of a 500.
+const EXCEL_INPUT_ERROR_TYPES = {
+  UNREADABLE_FILE: 'UNREADABLE_FILE',
+  SHEET_NOT_FOUND: 'SHEET_NOT_FOUND',
+  MISSING_COLUMNS: 'MISSING_COLUMNS'
+};
+
+const createExcelInputError = (type, message, details = {}) => {
+  try {
+    const error = new Error(message);
+    error.isExcelInputError = true;
+    error.excelErrorType = type;
+    Object.assign(error, details);
+    return error;
+  } catch (err) {
+    throw err;
+  }
+};
+
 /**
  * Generic, reusable excel parser. NOT tied to any specific module (Discount, etc.)
  * Caller passes the column configuration it expects; this util only knows how to
@@ -33,14 +54,27 @@ const parseExcelBuffer = async (fileBuffer, columnsConfig, options = {}) => {
     const sheetIndex = options.sheetIndex || 0;
 
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(fileBuffer);
+    try {
+      await workbook.xlsx.load(fileBuffer);
+    } catch (loadErr) {
+      // Not an .xlsx (renamed file, .xls, .csv, corrupted download...).
+      throw createExcelInputError(
+        EXCEL_INPUT_ERROR_TYPES.UNREADABLE_FILE,
+        'The uploaded file could not be read as an Excel (.xlsx) file.',
+        { cause: loadErr }
+      );
+    }
 
     const worksheet = options.sheetName
       ? workbook.getWorksheet(options.sheetName)
       : workbook.worksheets[sheetIndex];
     if (!worksheet) {
       const identifier = options.sheetName ? `named "${options.sheetName}"` : `at index ${sheetIndex}`;
-      throw new Error(`Worksheet ${identifier} was not found in the uploaded excel file`);
+      throw createExcelInputError(
+        EXCEL_INPUT_ERROR_TYPES.SHEET_NOT_FOUND,
+        `Worksheet ${identifier} was not found in the uploaded excel file`,
+        { sheetName: options.sheetName || null }
+      );
     }
 
     const headerRow = worksheet.getRow(headerRowNumber);
@@ -63,7 +97,11 @@ const parseExcelBuffer = async (fileBuffer, columnsConfig, options = {}) => {
     });
 
     if (missingHeaders.length > 0) {
-      throw new Error(`Missing required column(s) in excel file: ${missingHeaders.join(', ')}`);
+      throw createExcelInputError(
+        EXCEL_INPUT_ERROR_TYPES.MISSING_COLUMNS,
+        `Missing required column(s) in excel file: ${missingHeaders.join(', ')}`,
+        { sheetName: options.sheetName || null, missingColumns: missingHeaders }
+      );
     }
 
     const rows = [];
@@ -131,6 +169,49 @@ const extractCellText = (cellValue) => {
   return cellValue;
 };
 
+// The message an admin sees for an isExcelInputError - what is wrong and how to fix it.
+const describeExcelInputError = (err, columnsConfig = [], sheetName = null) => {
+  try {
+    if (err.excelErrorType === EXCEL_INPUT_ERROR_TYPES.UNREADABLE_FILE) {
+      return 'The uploaded file could not be read. Please upload an Excel (.xlsx) file.';
+    }
+    if (err.excelErrorType === EXCEL_INPUT_ERROR_TYPES.SHEET_NOT_FOUND) {
+      return sheetName ? `The excel file needs a sheet named "${sheetName}".` : 'The excel file has no sheets.';
+    }
+    const quote = (list) => list.map((c) => `"${c}"`).join(', ');
+    const where = sheetName ? `The "${sheetName}" sheet` : 'The excel file';
+    const required = columnsConfig.filter((c) => c.required !== false).map((c) => c.header);
+    const missing = err.missingColumns || [];
+    // Short column lists are spelled out; long ones (product sheets) would drown the message.
+    const headingHint = required.length <= 5
+      ? `Its first row must be the column heading(s): ${quote(required)}.`
+      : 'Its first row must hold the column headings.';
+    return `${where} is missing the column${missing.length === 1 ? '' : 's'} ${quote(missing)}. ${headingHint}`;
+  } catch (e) {
+    throw e;
+  }
+};
+
+/**
+ * parseExcelBuffer for an uploaded file: a problem with the file itself comes
+ * back as { ok: false, message } (for a 400) instead of being thrown, so the
+ * admin sees what to fix rather than the server error page. Any other error
+ * (a real fault) is still thrown.
+ * @returns {Promise<{ ok: true, rows: Array, rowCount: Number, headers: Array } | { ok: false, message: String }>}
+ */
+const safeParseExcelSheet = async (fileBuffer, columnsConfig, options = {}) => {
+  try {
+    const result = await parseExcelBuffer(fileBuffer, columnsConfig, options);
+    return { ok: true, ...result };
+  } catch (err) {
+    if (!err.isExcelInputError) throw err;
+    return { ok: false, message: describeExcelInputError(err, columnsConfig, options.sheetName || null) };
+  }
+};
+
 module.exports = {
-  parseExcelBuffer
+  parseExcelBuffer,
+  safeParseExcelSheet,
+  describeExcelInputError,
+  EXCEL_INPUT_ERROR_TYPES
 };

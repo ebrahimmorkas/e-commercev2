@@ -7,7 +7,7 @@ const Group = require('../models/Group');
 
 const logger = require('../utils/logger');
 const common = require('../utils/common');
-const { parseExcelBuffer } = require('../utils/excelParser');
+const { safeParseExcelSheet } = require('../utils/excelParser');
 const { processExcelRows } = require('../utils/excelRowProcessor');
 const { bulkUserEmailRowSchema } = require('../middlewares/validations/freeCashValidations');
 const { GIVE_FREE_CASH_TO_CONFIG, USERS_EXCEL_COLUMNS } = require('../constants/freeCashConstants');
@@ -185,14 +185,14 @@ const resolveGiveFreeCashToTargets = async (vendorId, payload, files = {}) => {
         return { valid: false, message: 'excelFile is required for this giveFreeCashTo option.' };
       }
 
-      let rows;
-      try {
-        ({ rows } = await parseExcelBuffer(excelFile.buffer, USERS_EXCEL_COLUMNS, { sheetName: 'Users' }));
-      } catch (err) {
-        if (String(err.message).includes('was not found')) {
-          return { valid: false, message: '"Users" sheet is required in the excel file for this giveFreeCashTo option.' };
-        }
-        throw err;
+      // A missing sheet/column or unreadable file is the admin's to fix - a 400, never the error page.
+      const parsed = await safeParseExcelSheet(excelFile.buffer, USERS_EXCEL_COLUMNS, { sheetName: 'Users' });
+      if (!parsed.ok) {
+        return { valid: false, message: parsed.message };
+      }
+      const { rows } = parsed;
+      if (rows.length === 0) {
+        return { valid: false, message: 'The "Users" sheet has no rows. Add the customers\' emails below the "Email" heading in row 1.' };
       }
 
       const report = await processExcelRows(
@@ -837,5 +837,9 @@ module.exports = {
   bulkSetFreeCashStatus,
   bulkDeleteFreeCash,
   revokeFreeCashForUser,
-  revokeFreeCashForAllUsers
+  revokeFreeCashForAllUsers,
+  // For tests only (tests/excelUploadErrors.test.js).
+  _internal: {
+    resolveGiveFreeCashToTargets
+  }
 };

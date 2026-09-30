@@ -1,4 +1,4 @@
-import { apiRequest } from '../../../../utils/apiClient';
+import { apiRequest, apiDownload } from '../../../../utils/apiClient';
 
 const BASE = '/discount';
 
@@ -57,6 +57,14 @@ export const updateDiscount = (discountId, fields, excelFile) =>
 
 export const deleteDiscount = (discountId) => apiRequest(`${BASE}/${discountId}`, { method: 'DELETE' });
 
+/**
+ * The sample .xlsx for an excel-based giveDiscountTo option - one file with
+ * just the sheet(s) that option reads (Products / Categories / Users).
+ * @returns {Promise<{ blob: Blob, filename: string|null }>}
+ */
+export const downloadTargetingSampleFile = (giveDiscountTo) =>
+  apiDownload(`${BASE}/excel-sample?giveDiscountTo=${encodeURIComponent(giveDiscountTo)}`);
+
 // --- Bulk multi-select actions (checkbox selection in the admin table) ------
 // Both return { results, successCount, failureCount } - see
 // backend/utils/common.js's runBulkOperation.
@@ -74,6 +82,7 @@ export default {
   addDiscount,
   updateDiscount,
   deleteDiscount,
+  downloadTargetingSampleFile,
   bulkSetDiscountStatus,
   bulkDeleteDiscounts,
 };

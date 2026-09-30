@@ -11,7 +11,8 @@ const promotionEmailService = require('./promotionEmailService');
 
 const logger = require('../utils/logger');
 const common = require('../utils/common');
-const { parseExcelBuffer } = require('../utils/excelParser');
+const { safeParseExcelSheet } = require('../utils/excelParser');
+const { buildExcelTemplate } = require('../utils/excelTemplateBuilder');
 const { processExcelRows } = require('../utils/excelRowProcessor');
 const {
   bulkProductNameRowSchema,
@@ -27,6 +28,13 @@ const {
   VALID_DAYS,
   DISCOUNT_FEATURE_TYPES
 } = require('../constants/discountConstants');
+const {
+  DEFAULT_DISCOUNT_TIMEZONE,
+  normalizeDateKey,
+  startOfDayInZone,
+  endOfDayInZone,
+  isDateBeforeToday
+} = require('../utils/discountSchedule');
 
 const escapeRegex = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -72,6 +80,11 @@ const validateBasicFields = (payload) => {
       }
     }
 
+    const hasCustomerLimit = payload.numberOfUsersCanUseDiscount !== undefined && payload.numberOfUsersCanUseDiscount !== null && payload.numberOfUsersCanUseDiscount !== '';
+    if (payload.firstOrderOnly === true && hasCustomerLimit) {
+      return { valid: false, message: 'Use either firstOrderOnly or numberOfUsersCanUseDiscount, not both.' };
+    }
+
     if (payload.isDiscountBasedOnPaymentMethods === true) {
       if (!Array.isArray(payload.discountOnPaymentMethods) || payload.discountOnPaymentMethods.length === 0) {
         return { valid: false, message: 'discountOnPaymentMethods is required when isDiscountBasedOnPaymentMethods is true.' };
@@ -84,31 +97,39 @@ const validateBasicFields = (payload) => {
   }
 };
 
-const isStartDateInThePast = (startDate) => {
-  const start = new Date(startDate);
-  start.setHours(0, 0, 0, 0);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return start < today;
-};
-
 const validateDiscountTimingFlow = (payload, options = {}) => {
   try {
-    const { isUpdate = false, existingStartDate = null } = options;
+    const { isUpdate = false, existingStartDate = null, existingEndDate = null, existingTimezone = null } = options;
 
     const isOngoing = payload.isOngoingDiscount === true;
     const isMinQty = payload.isMinimumDiscountQuantityDiscount === true;
     const isCoupon = payload.isCouponCodeDiscount === true;
+    const timezone = payload.timezone || DEFAULT_DISCOUNT_TIMEZONE;
 
-    // On update, only re-check "not in the past" if startDate is actually changing.
+    // Dates are whole calendar days in the discount's timezone. On update,
+    // "not in the past" is only re-checked when the start day actually changes.
     const startDateChanged = !isUpdate
       || !existingStartDate
-      || new Date(payload.startDate).getTime() !== new Date(existingStartDate).getTime();
+      || normalizeDateKey(payload.startDate, timezone) !== normalizeDateKey(existingStartDate, existingTimezone || timezone);
+    // An already-expired discount can still be edited (e.g. renamed) as long as its end day is left alone.
+    const endDateChanged = !isUpdate
+      || !existingEndDate
+      || normalizeDateKey(payload.endDate, timezone) !== normalizeDateKey(existingEndDate, existingTimezone || timezone);
 
     const checkStartDateNotInPast = () => {
-      if (!startDateChanged) return { valid: true };
-      if (isStartDateInThePast(payload.startDate)) {
+      const startKey = normalizeDateKey(payload.startDate, timezone);
+      const endKey = normalizeDateKey(payload.endDate, timezone);
+      if (!startKey || !endKey) {
+        return { valid: false, message: 'startDate and endDate must be valid dates.' };
+      }
+      if (endKey < startKey) {
+        return { valid: false, message: 'endDate cannot be before startDate.' };
+      }
+      if (startDateChanged && isDateBeforeToday(startKey, timezone)) {
         return { valid: false, message: 'startDate cannot be before today.' };
+      }
+      if (endDateChanged && isDateBeforeToday(endKey, timezone)) {
+        return { valid: false, message: 'endDate cannot be before today.' };
       }
       return { valid: true };
     };
@@ -182,6 +203,9 @@ const validateSpecificDaysAndHours = (payload) => {
         if (!payload.specificHoursStartTime || !payload.specificHoursEndTime) {
           return { valid: false, message: 'specificHoursStartTime and specificHoursEndTime are required when isDiscountOpenForSpecificHours is true.' };
         }
+      }
+      if (payload.isDiscountOpenForSpecificHours === true && payload.specificHoursStartTime === payload.specificHoursEndTime) {
+        return { valid: false, message: 'specificHoursStartTime and specificHoursEndTime cannot be the same.' };
       }
     } else if (payload.isDiscountOpenForSpecificHours === true) {
       return { valid: false, message: 'isDiscountOpenForSpecificHours requires isDiscountOpenForSpecificDays to be true.' };
@@ -367,13 +391,15 @@ const validateObjectIdArray = (ids, fieldLabel) => {
 
 // Every selected group must exist for this vendor and be of the type the
 // targeting option needs (PRODUCT / CATEGORY / USER) - otherwise the
-// discount could be saved but never match anything in a cart.
-const validateGroupIds = async (vendorId, groupIds, groupType, fieldLabel) => {
+// discount could be saved but never match anything in a cart. A newly
+// selected group must also be active (the cart ignores inactive groups); one
+// the discount already had (existingGroupIds) may stay after being deactivated.
+const validateGroupIds = async (vendorId, groupIds, groupType, fieldLabel, existingGroupIds = []) => {
   try {
     const check = validateObjectIdArray(groupIds, fieldLabel);
     if (!check.valid) return check;
 
-    const groups = await Group.find({ _id: { $in: groupIds }, vendorId, status: { $ne: 'D' } }, { groupName: 1, groupType: 1 });
+    const groups = await Group.find({ _id: { $in: groupIds }, vendorId, status: { $ne: 'D' } }, { groupName: 1, groupType: 1, status: 1 });
     const foundIds = new Set(groups.map((g) => g._id.toString()));
     if (groupIds.some((id) => !foundIds.has(id.toString()))) {
       return { valid: false, message: `One or more of the selected ${fieldLabel} were not found.` };
@@ -383,7 +409,35 @@ const validateGroupIds = async (vendorId, groupIds, groupType, fieldLabel) => {
     if (wrongType.length > 0) {
       return { valid: false, message: `These groups are not ${groupType} groups: ${wrongType.map((g) => g.groupName).join(', ')}` };
     }
+
+    const existing = new Set((existingGroupIds || []).map((id) => id.toString()));
+    const newlyInactive = groups.filter((g) => g.status !== 'A' && !existing.has(g._id.toString()));
+    if (newlyInactive.length > 0) {
+      return { valid: false, message: `These groups are inactive - activate them first: ${newlyInactive.map((g) => g.groupName).join(', ')}` };
+    }
     return { valid: true };
+  } catch (err) {
+    throw err;
+  }
+};
+
+// Reads one targeting sheet ("Products" / "Categories" / "Users") of the
+// uploaded excel. Anything wrong with the file itself (not an .xlsx, sheet or
+// column missing, no data rows) comes back as { valid: false, message } for a
+// 400 - never thrown, so the admin gets a message instead of the error page.
+const readTargetSheet = async (excelFile, columns, sheetName) => {
+  try {
+    const columnList = columns.map((c) => `"${c.header}"`).join(', ');
+    const parsed = await safeParseExcelSheet(excelFile.buffer, columns, { sheetName });
+    if (!parsed.ok) {
+      return { valid: false, message: parsed.message };
+    }
+
+    const { rows } = parsed;
+    if (rows.length === 0) {
+      return { valid: false, message: `The "${sheetName}" sheet has no rows. Add them below the ${columnList} heading in row 1.` };
+    }
+    return { valid: true, rows };
   } catch (err) {
     throw err;
   }
@@ -391,10 +445,13 @@ const validateGroupIds = async (vendorId, groupIds, groupType, fieldLabel) => {
 
 /**
  * @param {Object} payload - discount body fields (may include productGroupIds, categoryGroupIds, userGroupIds as arrays)
- * @param {Object} files - req.files from multer .fields([{ name: 'productsFile' }, { name: 'categoriesFile' }, { name: 'usersFile' }])
+ * @param {Object} files - req.files from multer .fields([{ name: 'excelFile' }])
+ * @param {Object} [existingDiscount] - on update: when no new excel is uploaded and
+ *   giveDiscountTo is unchanged, the products/categories/users it already
+ *   targets are kept, so editing e.g. only the name never needs a re-upload.
  * @returns {Promise<{ valid: Boolean, message?: String, resolved: Object }>}
  */
-const resolveGiveDiscountToTargets = async (vendorId, payload, files = {}) => {
+const resolveGiveDiscountToTargets = async (vendorId, payload, files = {}, existingDiscount = null) => {
   try {
     const config = GIVE_DISCOUNT_TO_CONFIG[payload.giveDiscountTo];
 
@@ -422,20 +479,28 @@ const resolveGiveDiscountToTargets = async (vendorId, payload, files = {}) => {
     const excelFile = files.excelFile && files.excelFile[0];
 
     const needsExcel = config.needsProductsFile || config.needsCategoriesFile || config.needsUsersFile;
-    if (needsExcel && !excelFile) {
+    const keepExistingTargets = needsExcel && !excelFile && existingDiscount
+      && existingDiscount.giveDiscountTo === payload.giveDiscountTo;
+
+    if (keepExistingTargets) {
+      const idStrings = (ids) => (ids || []).map((id) => id.toString());
+      if (config.needsProductsFile) resolved.productIds = idStrings(existingDiscount.productIds);
+      if (config.needsCategoriesFile) resolved.categoryIds = idStrings(existingDiscount.categoryIds);
+      if (config.needsUsersFile) resolved.userIds = idStrings(existingDiscount.userIds);
+      const missing = (config.needsProductsFile && resolved.productIds.length === 0)
+        || (config.needsCategoriesFile && resolved.categoryIds.length === 0)
+        || (config.needsUsersFile && resolved.userIds.length === 0);
+      if (missing) {
+        return { valid: false, message: 'excelFile is required for this giveDiscountTo option.' };
+      }
+    } else if (needsExcel && !excelFile) {
       return { valid: false, message: 'excelFile is required for this giveDiscountTo option.' };
     }
 
-    if (config.needsProductsFile) {
-      let rows;
-      try {
-        ({ rows } = await parseExcelBuffer(excelFile.buffer, PRODUCTS_EXCEL_COLUMNS, { sheetName: 'Products' }));
-      } catch (err) {
-        if (String(err.message).includes('was not found')) {
-          return { valid: false, message: '"Products" sheet is required in the excel file for this giveDiscountTo option.' };
-        }
-        throw err;
-      }
+    if (config.needsProductsFile && !keepExistingTargets) {
+      const sheet = await readTargetSheet(excelFile, PRODUCTS_EXCEL_COLUMNS, 'Products');
+      if (!sheet.valid) return sheet;
+      const { rows } = sheet;
 
       const report = await processExcelRows(
         rows,
@@ -463,16 +528,10 @@ const resolveGiveDiscountToTargets = async (vendorId, payload, files = {}) => {
       }
     }
 
-    if (config.needsCategoriesFile) {
-      let rows;
-      try {
-        ({ rows } = await parseExcelBuffer(excelFile.buffer, CATEGORIES_EXCEL_COLUMNS, { sheetName: 'Categories' }));
-      } catch (err) {
-        if (String(err.message).includes('was not found')) {
-          return { valid: false, message: '"Categories" sheet is required in the excel file for this giveDiscountTo option.' };
-        }
-        throw err;
-      }
+    if (config.needsCategoriesFile && !keepExistingTargets) {
+      const sheet = await readTargetSheet(excelFile, CATEGORIES_EXCEL_COLUMNS, 'Categories');
+      if (!sheet.valid) return sheet;
+      const { rows } = sheet;
 
       const report = await processExcelRows(
         rows,
@@ -500,16 +559,10 @@ const resolveGiveDiscountToTargets = async (vendorId, payload, files = {}) => {
       }
     }
 
-    if (config.needsUsersFile) {
-      let rows;
-      try {
-        ({ rows } = await parseExcelBuffer(excelFile.buffer, USERS_EXCEL_COLUMNS, { sheetName: 'Users' }));
-      } catch (err) {
-        if (String(err.message).includes('was not found')) {
-          return { valid: false, message: '"Users" sheet is required in the excel file for this giveDiscountTo option.' };
-        }
-        throw err;
-      }
+    if (config.needsUsersFile && !keepExistingTargets) {
+      const sheet = await readTargetSheet(excelFile, USERS_EXCEL_COLUMNS, 'Users');
+      if (!sheet.valid) return sheet;
+      const { rows } = sheet;
 
       const report = await processExcelRows(
         rows,
@@ -518,7 +571,9 @@ const resolveGiveDiscountToTargets = async (vendorId, payload, files = {}) => {
           if (error) {
             return { success: false, errors: error.details.map((d) => d.message.replace(/"/g, '')) };
           }
+          // Only this vendor's own active customers - never another store's user with the same email.
           const doc = await User.findOne({
+            vendorId, role: 'user', status: 'A',
             email: { $regex: `^${escapeRegex(value.email.trim())}$`, $options: 'i' }
           });
           if (!doc) {
@@ -536,25 +591,69 @@ const resolveGiveDiscountToTargets = async (vendorId, payload, files = {}) => {
       }
     }
 
+    const existingGroups = (field) => (existingDiscount ? existingDiscount[field] || [] : []);
+
     if (config.needsProductGroupIds) {
-      const check = await validateGroupIds(vendorId, payload.productGroupIds, 'PRODUCT', 'product groups');
+      const check = await validateGroupIds(vendorId, payload.productGroupIds, 'PRODUCT', 'product groups', existingGroups('productGroupIds'));
       if (!check.valid) return check;
       resolved.productGroupIds = payload.productGroupIds;
     }
 
     if (config.needsCategoryGroupIds) {
-      const check = await validateGroupIds(vendorId, payload.categoryGroupIds, 'CATEGORY', 'category groups');
+      const check = await validateGroupIds(vendorId, payload.categoryGroupIds, 'CATEGORY', 'category groups', existingGroups('categoryGroupIds'));
       if (!check.valid) return check;
       resolved.categoryGroupIds = payload.categoryGroupIds;
     }
 
     if (config.needsUserGroupIds) {
-      const check = await validateGroupIds(vendorId, payload.userGroupIds, 'USER', 'user groups');
+      const check = await validateGroupIds(vendorId, payload.userGroupIds, 'USER', 'user groups', existingGroups('userGroupIds'));
       if (!check.valid) return check;
       resolved.userGroupIds = payload.userGroupIds;
     }
 
+    // The same product/category/user listed twice in the excel counts once.
+    ['productIds', 'categoryIds', 'userIds'].forEach((key) => {
+      resolved[key] = [...new Set(resolved[key])];
+    });
+
     return { valid: true, resolved, excelReports };
+  } catch (err) {
+    throw err;
+  }
+};
+
+/*
+|--------------------------------------------------------------------------
+| EXCEL SAMPLE FILE
+|--------------------------------------------------------------------------
+| The sample for a giveDiscountTo option that is set up by excel: one file
+| with exactly the sheet(s) that option reads (Products / Categories /
+| Users), the same single file the form uploads.
+*/
+
+const TARGETING_SAMPLE_SHEETS = [
+  { flag: 'needsProductsFile', name: 'Products', columns: PRODUCTS_EXCEL_COLUMNS },
+  { flag: 'needsCategoriesFile', name: 'Categories', columns: CATEGORIES_EXCEL_COLUMNS },
+  { flag: 'needsUsersFile', name: 'Users', columns: USERS_EXCEL_COLUMNS }
+];
+
+const buildTargetingSampleFile = async (giveDiscountTo) => {
+  try {
+    const config = GIVE_DISCOUNT_TO_CONFIG[giveDiscountTo];
+    const sheets = config ? TARGETING_SAMPLE_SHEETS.filter((s) => config[s.flag]) : [];
+    if (sheets.length === 0) {
+      return common.returnResult(false, 400, 'This targeting option does not use an excel file.');
+    }
+
+    const buffer = await buildExcelTemplate({
+      sheets: sheets.map((s) => ({
+        name: s.name,
+        columns: s.columns.map((c) => ({ header: c.header, width: 40 }))
+      }))
+    });
+
+    const fileName = `discount-sample-${sheets.map((s) => s.name.toLowerCase()).join('-')}.xlsx`;
+    return common.returnResult(true, 200, 'Sample file generated', { buffer, fileName });
   } catch (err) {
     throw err;
   }
@@ -631,13 +730,14 @@ const createDiscount = async (vendorId, userId, payload, files, companyMasterDat
       }
     }
 
-        const resolution = await resolveGiveDiscountToTargets(vendorId, payload, files);
+    const resolution = await resolveGiveDiscountToTargets(vendorId, payload, files);
     if (!resolution.valid) {
-      return common.returnResult(false, 400, resolution.message, { notFoundSummary: resolution.notFoundSummary });
+      return common.returnResult(false, 400, resolution.message, { excelReports: resolution.excelReports });
     }
 
     const isOngoing = payload.isOngoingDiscount === true;
     const isMinQty = payload.isMinimumDiscountQuantityDiscount === true;
+    const timezone = payload.timezone || DEFAULT_DISCOUNT_TIMEZONE;
 
     const discountDoc = new Discount({
       vendorId,
@@ -658,15 +758,17 @@ const createDiscount = async (vendorId, userId, payload, files, companyMasterDat
 
       discountValidAboveAmount: isMinQty ? 0 : (payload.discountValidAboveAmount || 0),
       isOngoingDiscount: isOngoing,
-      startDate: isOngoing ? null : payload.startDate,
-      endDate: isOngoing ? null : payload.endDate,
+      // Whole days in the discount's timezone: 00:00 on the first, 23:59:59.999 on the last.
+      startDate: isOngoing ? null : startOfDayInZone(payload.startDate, timezone),
+      endDate: isOngoing ? null : endOfDayInZone(payload.endDate, timezone),
 
       precedence: payload.precedence || 0,
-      numberOfUsersCanUseDiscount: payload.numberOfUsersCanUseDiscount || null,
+      numberOfUsersCanUseDiscount: payload.firstOrderOnly === true ? null : (payload.numberOfUsersCanUseDiscount || null),
       isMultipleDiscountUsageOn: payload.isMultipleDiscountUsageOn === true,
       isDiscountReusable: payload.isDiscountReusable === true,
       discountReusableNumber: payload.isDiscountReusable ? payload.discountReusableNumber : null,
-      autoApply: payload.autoApply === true,
+      // A coupon discount is only ever reachable by its code.
+      autoApply: payload.autoApply === true && payload.isCouponCodeDiscount !== true,
 
       isMinimumDiscountQuantityDiscount: isMinQty,
       minimumQuantity: isMinQty ? payload.minimumQuantity : null,
@@ -686,7 +788,7 @@ const createDiscount = async (vendorId, userId, payload, files, companyMasterDat
       specificHoursStartTime: payload.isDiscountOpenForSpecificHours ? payload.specificHoursStartTime : null,
       specificHoursEndTime: payload.isDiscountOpenForSpecificHours ? payload.specificHoursEndTime : null,
 
-      timezone: payload.timezone || 'Asia/Kolkata',
+      timezone,
 
       status: 'A',
       createdBy: userId
@@ -728,7 +830,9 @@ const updateDiscount = async (vendorId, discountId, userId, payload, files, comp
 
     const timingCheck = validateDiscountTimingFlow(payload, {
       isUpdate: true,
-      existingStartDate: existingDiscount.startDate
+      existingStartDate: existingDiscount.startDate,
+      existingEndDate: existingDiscount.endDate,
+      existingTimezone: existingDiscount.timezone
     });
     if (!timingCheck.valid) {
       return common.returnResult(false, 400, timingCheck.message);
@@ -754,14 +858,16 @@ const updateDiscount = async (vendorId, discountId, userId, payload, files, comp
       return common.returnResult(false, 403, featureTypePermissionCheck.message);
     }
 
-    if (payload.isCouponCodeDiscount === true) {
+    // Only a discount that stays/becomes active can clash with another active one's code.
+    const willBeActive = (payload.status || existingDiscount.status) === 'A';
+    if (payload.isCouponCodeDiscount === true && willBeActive) {
       const couponAvailabilityCheck = await checkCouponCodeAvailability(vendorId, payload.couponCode, discountId);
       if (!couponAvailabilityCheck.valid) {
         return common.returnResult(false, 409, couponAvailabilityCheck.message);
       }
     }
 
-    const resolution = await resolveGiveDiscountToTargets(vendorId, payload, files);
+    const resolution = await resolveGiveDiscountToTargets(vendorId, payload, files, existingDiscount);
     if (!resolution.valid) {
       return common.returnResult(false, 400, resolution.message, { excelReports: resolution.excelReports });
     }
@@ -775,6 +881,7 @@ const updateDiscount = async (vendorId, discountId, userId, payload, files, comp
 
     const isOngoing = payload.isOngoingDiscount === true;
     const isMinQty = payload.isMinimumDiscountQuantityDiscount === true;
+    const timezone = payload.timezone || existingDiscount.timezone || DEFAULT_DISCOUNT_TIMEZONE;
 
     existingDiscount.name = payload.name;
     existingDiscount.description = payload.description || '';
@@ -793,15 +900,15 @@ const updateDiscount = async (vendorId, discountId, userId, payload, files, comp
 
     existingDiscount.discountValidAboveAmount = isMinQty ? 0 : (payload.discountValidAboveAmount || 0);
     existingDiscount.isOngoingDiscount = isOngoing;
-    existingDiscount.startDate = isOngoing ? null : payload.startDate;
-    existingDiscount.endDate = isOngoing ? null : payload.endDate;
+    existingDiscount.startDate = isOngoing ? null : startOfDayInZone(payload.startDate, timezone);
+    existingDiscount.endDate = isOngoing ? null : endOfDayInZone(payload.endDate, timezone);
 
     existingDiscount.precedence = payload.precedence || 0;
-    existingDiscount.numberOfUsersCanUseDiscount = payload.numberOfUsersCanUseDiscount || null;
+    existingDiscount.numberOfUsersCanUseDiscount = payload.firstOrderOnly === true ? null : (payload.numberOfUsersCanUseDiscount || null);
     existingDiscount.isMultipleDiscountUsageOn = payload.isMultipleDiscountUsageOn === true;
     existingDiscount.isDiscountReusable = payload.isDiscountReusable === true;
     existingDiscount.discountReusableNumber = payload.isDiscountReusable ? payload.discountReusableNumber : null;
-    existingDiscount.autoApply = payload.autoApply === true;
+    existingDiscount.autoApply = payload.autoApply === true && payload.isCouponCodeDiscount !== true;
 
     existingDiscount.isMinimumDiscountQuantityDiscount = isMinQty;
     existingDiscount.minimumQuantity = isMinQty ? payload.minimumQuantity : null;
@@ -821,7 +928,7 @@ const updateDiscount = async (vendorId, discountId, userId, payload, files, comp
     existingDiscount.specificHoursStartTime = payload.isDiscountOpenForSpecificHours ? payload.specificHoursStartTime : null;
     existingDiscount.specificHoursEndTime = payload.isDiscountOpenForSpecificHours ? payload.specificHoursEndTime : null;
 
-    existingDiscount.timezone = payload.timezone || existingDiscount.timezone;
+    existingDiscount.timezone = timezone;
 
     // Status transition bookkeeping - only if caller explicitly changed status.
     if (payload.status && payload.status !== existingDiscount.status && ['A', 'I'].includes(payload.status)) {
@@ -873,6 +980,14 @@ const setDiscountStatusForBulk = async (vendorId, userId, discountId, status, em
       return common.returnResult(false, 404, 'Discount not found.');
     }
     const wasActive = discount.status === 'A';
+
+    // Re-activating a coupon discount must not create a second live discount with the same code.
+    if (status === 'A' && !wasActive && discount.isCouponCodeDiscount && discount.couponCode) {
+      const couponAvailabilityCheck = await checkCouponCodeAvailability(vendorId, discount.couponCode, discount._id);
+      if (!couponAvailabilityCheck.valid) {
+        return common.returnResult(false, 409, couponAvailabilityCheck.message);
+      }
+    }
 
     if (status === 'A') {
       discount.activeMarkedBy = userId;
@@ -977,10 +1092,12 @@ const fetchActiveDiscountsForUser = async (vendorId, userId) => {
     const discounts = await Discount.find({
       vendorId,
       status: 'A',
-      isDiscountForceClosed: false,
+      isDiscountForceClosed: { $ne: true },
       isCouponCodeDiscount: { $ne: true },
+      isDiscountBasedOnPaymentMethods: { $ne: true },
       $and: [
         { $or: [{ isOngoingDiscount: true }, { endDate: null }, { endDate: { $gte: now } }] },
+        { $or: [{ isOngoingDiscount: true }, { startDate: null }, { startDate: { $lte: now } }] },
         {
           $or: [
             { giveDiscountTo: { $nin: ['USER_GROUP', 'ALL_PRODUCTS_SPECIFIC_USERS', 'SPECIFIC_PRODUCTS_SPECIFIC_USERS', 'SPECIFIC_CATEGORIES_SPECIFIC_USERS', 'CATEGORY_GROUP_SPECIFIC_USERS', 'PRODUCT_GROUP_SPECIFIC_USERS', 'PRODUCT_VARIANTS_SPECIFIC_USERS'] } },
@@ -1023,6 +1140,7 @@ const deleteDiscount = async (vendorId, discountId, userId) => {
 };
 
 module.exports = {
+  buildTargetingSampleFile,
   countDiscountsCreatedThisMonth,
   createDiscount,
   updateDiscount,

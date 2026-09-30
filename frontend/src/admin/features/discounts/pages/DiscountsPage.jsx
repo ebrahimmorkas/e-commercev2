@@ -11,7 +11,7 @@ import BulkActionBar from '../../../../components/common/BulkActionBar';
 import { useDiscounts } from '../hooks/useDiscounts';
 import { useDiscountLookups } from '../hooks/useDiscountLookups';
 import DiscountForm from '../components/DiscountForm';
-import { mapApiDiscountToDraft } from '../utils/discountDraft';
+import { mapApiDiscountToDraft, formatDiscountDate } from '../utils/discountDraft';
 import { GIVE_DISCOUNT_TO_CONFIG, DISCOUNT_FLOW_OPTIONS } from '../constants';
 import theme from '../theme/theme';
 import { useStoreCurrency } from '../../../currency/useStoreCurrency';
@@ -224,7 +224,7 @@ const DiscountsPage = () => {
           row.isOngoingDiscount
             ? 'Ongoing'
             : row.startDate || row.endDate
-              ? `${row.startDate ? new Date(row.startDate).toLocaleDateString() : '—'} – ${row.endDate ? new Date(row.endDate).toLocaleDateString() : '—'}`
+              ? `${formatDiscountDate(row.startDate, row.timezone)} – ${formatDiscountDate(row.endDate, row.timezone)}`
               : '—',
       },
       {

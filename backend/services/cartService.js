@@ -14,6 +14,7 @@ const freeCashService = require('./freeCashService');
 const discountUsageService = require('./discountUsageService');
 const abandonedCartService = require('./abandonedCartService');
 const bulkPricing = require('../utils/bulkPricing');
+const { checkDaysAndHoursWindow } = require('../utils/discountSchedule');
 const taxCalculationService = require('./taxCalculationService');
 const currencyService = require('./currencyService');
 const promotionEmailService = require('./promotionEmailService');
@@ -748,13 +749,22 @@ const buildDiscountContext = async ({ vendorId, userId, discounts, lines, freeCa
     }
 };
 
+// Storewide targeting (every item in the cart) vs product/category-specific.
+const appliesToWholeCart = (discount) => {
+    try {
+        return discount.giveDiscountTo.startsWith('ALL_PRODUCTS') || discount.giveDiscountTo === 'USER_GROUP';
+    } catch (err) {
+        throw err;
+    }
+};
+
 // The cart lines a discount applies to.
 const matchDiscountLines = (discount, ctx) => {
     try {
         const target = discount.giveDiscountTo;
         const categoriesOf = (line) => ctx.productCategoryMap.get(line.productId.toString()) || [];
 
-        if (target.startsWith('ALL_PRODUCTS') || target === 'USER_GROUP') return ctx.lines;
+        if (appliesToWholeCart(discount)) return ctx.lines;
         if (target.startsWith('SPECIFIC_PRODUCTS')) return ctx.lines.filter((l) => idIn(discount.productIds, l.productId));
         if (target.startsWith('SPECIFIC_CATEGORIES')) {
             return ctx.lines.filter((l) => categoriesOf(l).some((catId) => idIn(discount.categoryIds, catId)));
@@ -773,7 +783,15 @@ const matchDiscountLines = (discount, ctx) => {
     }
 };
 
-// { eligible, discountAmount, matchedLines } or { eligible: false, reason }.
+// Why an ineligible discount failed, for the cart page's list: a customer is
+// shown a discount they could unlock (LOCK_CART: add more / the right items;
+// LOCK_SCHEDULE: only open on certain days/hours) greyed out with the reason.
+// Anything else (not theirs, used up, expired, closed) is never shown.
+const DISCOUNT_LOCK = { CART: 'CART', SCHEDULE: 'SCHEDULE' };
+
+// { eligible, discountAmount, matchedLines } or { eligible: false, reason, lock? }.
+// Order matters: who-may-use-it and usage limits come before the schedule and
+// cart checks, so a `lock` is only ever reported to a customer the discount is really for.
 const resolveDiscountEligibility = (discount, ctx) => {
     try {
         const { userId, formatMoney } = ctx;
@@ -783,23 +801,10 @@ const resolveDiscountEligibility = (discount, ctx) => {
             return { eligible: false, reason: discount.forceClosedReason || 'This discount is currently closed.' };
         }
 
-        const now = new Date();
+        const now = ctx.now || new Date();
         if (!discount.isOngoingDiscount) {
             if (discount.startDate && now < discount.startDate) return { eligible: false, reason: 'This discount has not started yet.' };
             if (discount.endDate && now > discount.endDate) return { eligible: false, reason: 'This discount has expired.' };
-        }
-
-        if (discount.isDiscountOpenForSpecificDays) {
-            const dayName = now.toLocaleString('en-US', { weekday: 'long', timeZone: discount.timezone || 'UTC' }).toUpperCase();
-            if (!discount.specificDays.includes(dayName)) {
-                return { eligible: false, reason: 'This discount is not available today.' };
-            }
-            if (discount.isDiscountOpenForSpecificHours) {
-                const currentTime = now.toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: discount.timezone || 'UTC' });
-                if (currentTime < discount.specificHoursStartTime || currentTime > discount.specificHoursEndTime) {
-                    return { eligible: false, reason: 'This discount is not available at this time.' };
-                }
-            }
         }
 
         if (discount.isDiscountBasedOnPaymentMethods) {
@@ -834,28 +839,52 @@ const resolveDiscountEligibility = (discount, ctx) => {
             return { eligible: false, reason: allowedUses === 1 ? 'You have already used this discount.' : `You have already used this discount ${allowedUses} times.` };
         }
 
-        // What in the cart it applies to.
-        if (discount.discountValidAboveAmount > 0 && ctx.availableForThreshold < discount.discountValidAboveAmount) {
-            return { eligible: false, reason: `Add items worth ${formatMoney(discount.discountValidAboveAmount - ctx.availableForThreshold)} more to unlock this discount.` };
+        // When it is open (days / hours, in the discount's own timezone).
+        const window = checkDaysAndHoursWindow(discount, now);
+        if (!window.open) {
+            return { eligible: false, reason: window.reason, lock: DISCOUNT_LOCK.SCHEDULE };
         }
 
+        // What in the cart it applies to.
         const matchedLines = matchDiscountLines(discount, ctx);
         if (matchedLines.length === 0) {
-            return { eligible: false, reason: 'No items in your cart qualify for this discount.' };
+            return { eligible: false, reason: 'No items in your cart qualify for this discount.', lock: DISCOUNT_LOCK.CART };
+        }
+
+        // The minimum spend counts only the items the discount applies to (the
+        // whole cart for a storewide one), less their share of any Free Cash.
+        const matchedAmount = matchedLines.reduce((sum, l) => sum + l.amount, 0);
+        if (discount.discountValidAboveAmount > 0) {
+            const freeCashTotal = Math.max(ctx.subtotal - ctx.availableForThreshold, 0);
+            const freeCashShare = ctx.subtotal > 0 ? freeCashTotal * (matchedAmount / ctx.subtotal) : 0;
+            const qualifyingAmount = Math.round((matchedAmount - freeCashShare) * 100) / 100;
+            if (qualifyingAmount < discount.discountValidAboveAmount) {
+                const shortBy = formatMoney(Math.round((discount.discountValidAboveAmount - qualifyingAmount) * 100) / 100);
+                return {
+                    eligible: false,
+                    reason: appliesToWholeCart(discount)
+                        ? `Add items worth ${shortBy} more to unlock this discount.`
+                        : `Add eligible items worth ${shortBy} more to unlock this discount.`,
+                    lock: DISCOUNT_LOCK.CART
+                };
+            }
         }
 
         if (discount.isMinimumDiscountQuantityDiscount && discount.minimumQuantity) {
             const matchedQuantity = matchedLines.reduce((sum, l) => sum + l.quantity, 0);
             if (matchedQuantity < discount.minimumQuantity) {
-                return { eligible: false, reason: `Add ${discount.minimumQuantity - matchedQuantity} more qualifying item(s) to unlock this discount.` };
+                return {
+                    eligible: false,
+                    reason: `Add ${discount.minimumQuantity - matchedQuantity} more qualifying item(s) to unlock this discount.`,
+                    lock: DISCOUNT_LOCK.CART
+                };
             }
         }
 
-        const base = matchedLines.reduce((sum, l) => sum + l.amount, 0);
         const rawAmount = discount.discountType === 'PERCENTAGE'
-            ? base * (discount.discountValue / 100)
+            ? matchedAmount * (discount.discountValue / 100)
             : discount.discountValue;
-        const discountAmount = Math.round(Math.min(rawAmount, base) * 100) / 100;
+        const discountAmount = Math.round(Math.min(rawAmount, matchedAmount) * 100) / 100;
 
         return { eligible: true, discountAmount, matchedLines };
     } catch (err) {
@@ -975,6 +1004,39 @@ const recalculateCartPromotions = async (vendorId, cart, lines, companyMasterDat
     }
 };
 
+// A running (not expired, not yet-to-start, not force-closed) discount -
+// what "live" means for the coupon lookup and the coupon-box check.
+const isDiscountLive = (discount, now = new Date()) => {
+    try {
+        if (discount.isDiscountForceClosed) return false;
+        if (discount.isOngoingDiscount) return true;
+        if (discount.startDate && now < discount.startDate) return false;
+        if (discount.endDate && now > discount.endDate) return false;
+        return true;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// The discount a typed coupon code refers to. A code can be reused once its
+// old discount has expired (see discountService.checkCouponCodeAvailability),
+// so several discounts may share it - the live one wins; otherwise the
+// newest, so the shopper is told why it can't be used ("has expired").
+const findCouponDiscount = async (vendorId, couponCode) => {
+    try {
+        const matches = await Discount.find({
+            vendorId,
+            status: 'A',
+            isCouponCodeDiscount: true,
+            couponCode: String(couponCode).trim().toUpperCase()
+        }).sort({ createdAt: -1 });
+        if (matches.length === 0) return null;
+        return matches.find((d) => isDiscountLive(d)) || matches[0];
+    } catch (err) {
+        throw err;
+    }
+};
+
 // countryId + companySettingsData only format amounts in messages (shopper's currency).
 const applyDiscountsToCart = async (vendorId, cartOwner, userId, companyMasterData, websiteMasterData, payload, countryId = null, companySettingsData = null) => {
     try {
@@ -1004,7 +1066,7 @@ const applyDiscountsToCart = async (vendorId, cartOwner, userId, companyMasterDa
 
         let couponDiscount = null;
         if (couponCode) {
-            couponDiscount = await Discount.findOne({ vendorId, status: 'A', isCouponCodeDiscount: true, couponCode: couponCode.trim().toUpperCase() });
+            couponDiscount = await findCouponDiscount(vendorId, couponCode);
             if (!couponDiscount) {
                 return common.returnResult(false, 404, 'Invalid coupon code.');
             }
@@ -1088,11 +1150,14 @@ const removeDiscountsFromCart = async (vendorId, cartOwner, userId, companyMaste
 };
 
 // Storefront listing - every discount this customer could apply to their
-// cart right now, with what it would take off. Coupon discounts are never
-// listed. isEnabled / requiresLogin tell the cart page what to render.
+// cart right now, with what it would take off, followed by the ones meant for
+// them that the cart can't use yet (isLocked, with lockedReason: "Add items
+// worth X more", "Only available on Monday"). Coupon discounts are never
+// listed; hasCouponDiscounts says whether a coupon box is worth showing.
+// isEnabled / requiresLogin tell the cart page what to render.
 const listEligibleDiscountsForCart = async (vendorId, cartOwner, userId, companyMasterData, websiteMasterData, companySettingsData, countryId = null) => {
     try {
-        const response = { isEnabled: false, requiresLogin: false, discounts: [] };
+        const response = { isEnabled: false, requiresLogin: false, hasCouponDiscounts: false, discounts: [] };
 
         const enabled = await isDiscountEnabled(vendorId, websiteMasterData, companyMasterData);
         if (!enabled) {
@@ -1111,23 +1176,56 @@ const listEligibleDiscountsForCart = async (vendorId, cartOwner, userId, company
         }
 
         const now = new Date();
-        const candidates = await Discount.find({
+        const running = await Discount.find({
             vendorId,
             status: 'A',
             isDiscountForceClosed: { $ne: true },
-            isCouponCodeDiscount: { $ne: true },
             isDiscountBasedOnPaymentMethods: { $ne: true },
-            $or: [{ isOngoingDiscount: true }, { endDate: null }, { endDate: { $gte: now } }]
-        });
+            $and: [
+                { $or: [{ isOngoingDiscount: true }, { endDate: null }, { endDate: { $gte: now } }] },
+                { $or: [{ isOngoingDiscount: true }, { startDate: null }, { startDate: { $lte: now } }] }
+            ]
+        }).sort({ precedence: -1, createdAt: -1 });
+        const candidates = running.filter((d) => d.isCouponCodeDiscount !== true);
+        const coupons = running.filter((d) => d.isCouponCodeDiscount === true);
 
         const formatMoney = await resolveMoneyFormatter(countryId, companyMasterData, companySettingsData);
-        const ctx = await buildDiscountContext({ vendorId, userId, discounts: candidates, lines: cartLines(cart), freeCashAmount: cart.totalFreeCashAmount, formatMoney });
+        const ctx = await buildDiscountContext({ vendorId, userId, discounts: running, lines: cartLines(cart), freeCashAmount: cart.totalFreeCashAmount, formatMoney });
 
+        // Only a coupon this customer could actually use (now, or once the cart qualifies) counts.
+        response.hasCouponDiscounts = coupons.some((d) => {
+            const result = resolveDiscountEligibility(d, ctx);
+            return result.eligible || Boolean(result.lock);
+        });
+
+        const locked = [];
         for (const discount of candidates) {
             const result = resolveDiscountEligibility(discount, ctx);
-            if (!result.eligible) continue;
+            if (!result.eligible) {
+                if (result.lock) {
+                    locked.push({
+                        discountId: discount._id,
+                        name: discount.name,
+                        description: discount.description || '',
+                        discountType: discount.discountType,
+                        discountValue: discount.discountValue,
+                        discountAmount: 0,
+                        discountValidAboveAmount: discount.discountValidAboveAmount || 0,
+                        minimumQuantity: discount.isMinimumDiscountQuantityDiscount ? discount.minimumQuantity : null,
+                        endDate: discount.isOngoingDiscount ? null : discount.endDate,
+                        autoApply: false,
+                        isMultipleDiscountUsageOn: discount.isMultipleDiscountUsageOn === true,
+                        firstOrderOnly: discount.firstOrderOnly === true,
+                        validOnItems: [],
+                        appliesToWholeCart: appliesToWholeCart(discount),
+                        isLocked: true,
+                        lockedReason: result.reason
+                    });
+                }
+                continue;
+            }
 
-            const appliesToEverything = discount.giveDiscountTo.startsWith('ALL_PRODUCTS') || discount.giveDiscountTo === 'USER_GROUP';
+            const appliesToEverything = appliesToWholeCart(discount);
             response.discounts.push({
                 discountId: discount._id,
                 name: discount.name,
@@ -1143,9 +1241,14 @@ const listEligibleDiscountsForCart = async (vendorId, cartOwner, userId, company
                 isMultipleDiscountUsageOn: discount.isMultipleDiscountUsageOn === true,
                 firstOrderOnly: discount.firstOrderOnly === true,
                 // Names of the cart items it applies to (empty = the whole cart).
-                validOnItems: appliesToEverything ? [] : [...new Set(result.matchedLines.map((l) => l.productName))]
+                validOnItems: appliesToEverything ? [] : [...new Set(result.matchedLines.map((l) => l.productName))],
+                appliesToWholeCart: appliesToEverything,
+                isLocked: false,
+                lockedReason: null
             });
         }
+        // Usable ones first, then the ones still to unlock.
+        response.discounts.push(...locked);
 
         return common.returnResult(true, 200, 'Eligible discounts fetched successfully', response);
     } catch (err) {
@@ -2014,5 +2117,13 @@ module.exports = {
     refundFreeCashForReturn,
     checkoutCart,
     decrementStockForOrder,
-    restoreStockForOrder
+    restoreStockForOrder,
+    // For tests only (tests/discountEligibility.test.js).
+    _internal: {
+        resolveDiscountEligibility,
+        findUncombinableDiscount,
+        isDiscountLive,
+        recalculateAppliedDiscounts,
+        DISCOUNT_LOCK
+    }
 };

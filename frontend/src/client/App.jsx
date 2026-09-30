@@ -337,6 +337,7 @@ const ClientApp = () => {
             initialAddressId={deliveryAddressId}
             onBack={openCart}
             onPlaced={handleOrderPlaced}
+            onOrderFailed={reloadCart}
           />
         )}
         {route.type === 'orders' && isAuthenticated && <OrdersPage onBack={goHome} onOpenOrder={openOrderDetail} />}

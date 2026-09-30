@@ -91,6 +91,19 @@ const TimingStep = ({ draft, onChange, allowedFeatureTypes = [] }) => {
             onChange={(date) => set({ endDate: toDateInputValue(date) })}
             required
           />
+          <div className="sm:col-span-2">
+            <InputField
+              label="Timezone"
+              name="timezone"
+              placeholder="e.g. Asia/Kolkata"
+              value={draft.timezone}
+              onChange={(e) => set({ timezone: e.target.value })}
+              showError={false}
+            />
+            <p className={`mt-1 text-xs ${theme.text.muted}`}>
+              The discount runs from 00:00 on the start date to 23:59 on the end date in this timezone (also used for specific days and hours).
+            </p>
+          </div>
         </div>
       )}
 
@@ -106,7 +119,10 @@ const TimingStep = ({ draft, onChange, allowedFeatureTypes = [] }) => {
             onChange={(e) => set({ discountValidAboveAmount: e.target.value })}
             showError={false}
           />
-          <p className={`mt-1 text-xs ${theme.text.muted}`}>Cart subtotal must reach this amount for the discount to apply.</p>
+          <p className={`mt-1 text-xs ${theme.text.muted}`}>
+            The items this discount applies to must add up to this amount - the whole cart for an All Products / User Group discount,
+            only the products in the selected products, categories or groups otherwise.
+          </p>
         </div>
       )}
 

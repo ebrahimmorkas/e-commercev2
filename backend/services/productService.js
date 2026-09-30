@@ -14,7 +14,7 @@ const CityMaster = require('../models/CityMaster');
 const imageUploadService = require('./imageUploadService');
 const counterService = require('./counterService');
 const { extractZipEntries, createZipBuffer } = require('../utils/zipExtractor');
-const { parseExcelBuffer } = require('../utils/excelParser');
+const { safeParseExcelSheet } = require('../utils/excelParser');
 const { processExcelRows } = require('../utils/excelRowProcessor');
 const { createProductSchema, bulkUpdateProductRowSchema } = require('../middlewares/validations/productValidations');
 const slugify = require('../utils/slugify');
@@ -1745,14 +1745,39 @@ const parseCsv = (val) => {
     return String(val).split(',').map(s => s.trim()).filter(Boolean);
 };
 
+// The six sheets of a bulk product upload/update workbook. A missing sheet or
+// column, or a file that isn't an .xlsx, comes back as { ok: false, message }
+// (a 400 for the admin to fix) instead of being thrown into the error page.
+const PRODUCT_WORKBOOK_SHEETS = [
+    { key: 'productRows', sheetName: 'Products', columns: () => PRODUCT_SHEET_COLUMNS },
+    { key: 'variantRows', sheetName: 'Variants', columns: () => VARIANT_SHEET_COLUMNS },
+    { key: 'sizeRows', sheetName: 'Sizes', columns: () => SIZE_SHEET_COLUMNS },
+    { key: 'measurementValueRows', sheetName: 'MeasurementValues', columns: () => MEASUREMENT_VALUE_SHEET_COLUMNS },
+    { key: 'descriptionRows', sheetName: 'Descriptions', columns: () => DESCRIPTION_SHEET_COLUMNS },
+    { key: 'bulkPricingRows', sheetName: 'BulkPricing', columns: () => BULK_PRICING_SHEET_COLUMNS }
+];
+
+const parseProductWorkbook = async (excelBuffer) => {
+    try {
+        const sheets = {};
+        for (const sheet of PRODUCT_WORKBOOK_SHEETS) {
+            const parsed = await safeParseExcelSheet(excelBuffer, sheet.columns(), { sheetName: sheet.sheetName });
+            if (!parsed.ok) return { ok: false, message: parsed.message };
+            sheets[sheet.key] = parsed.rows;
+        }
+        return { ok: true, ...sheets };
+    } catch (err) {
+        throw err;
+    }
+};
+
 const bulkUploadProducts = async (vendorId, userId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, companyMasterData, websiteMasterData, companySettingsData) => {
     try {
-        const { rows: productRows } = await parseExcelBuffer(excelBuffer, PRODUCT_SHEET_COLUMNS, { sheetName: 'Products' });
-        const { rows: variantRows } = await parseExcelBuffer(excelBuffer, VARIANT_SHEET_COLUMNS, { sheetName: 'Variants' });
-        const { rows: sizeRows } = await parseExcelBuffer(excelBuffer, SIZE_SHEET_COLUMNS, { sheetName: 'Sizes' });
-        const { rows: measurementValueRows } = await parseExcelBuffer(excelBuffer, MEASUREMENT_VALUE_SHEET_COLUMNS, { sheetName: 'MeasurementValues' });
-        const { rows: descriptionRows } = await parseExcelBuffer(excelBuffer, DESCRIPTION_SHEET_COLUMNS, { sheetName: 'Descriptions' });
-        const { rows: bulkPricingRows } = await parseExcelBuffer(excelBuffer, BULK_PRICING_SHEET_COLUMNS, { sheetName: 'BulkPricing' });
+        const workbook = await parseProductWorkbook(excelBuffer);
+        if (!workbook.ok) {
+            return common.returnResult(false, 400, workbook.message);
+        }
+        const { productRows, variantRows, sizeRows, measurementValueRows, descriptionRows, bulkPricingRows } = workbook;
 
         if (productRows.length === 0) {
             return common.returnResult(false, 400, 'Products sheet contains no data rows');
@@ -2226,12 +2251,11 @@ const bulkUploadProducts = async (vendorId, userId, excelBuffer, mainImagesZipBu
 // mergeVariantsIntoProduct.
 const bulkUpdateProducts = async (vendorId, userId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, companyMasterData, websiteMasterData, companySettingsData) => {
     try {
-        const { rows: productRows } = await parseExcelBuffer(excelBuffer, PRODUCT_SHEET_COLUMNS, { sheetName: 'Products' });
-        const { rows: variantRows } = await parseExcelBuffer(excelBuffer, VARIANT_SHEET_COLUMNS, { sheetName: 'Variants' });
-        const { rows: sizeRows } = await parseExcelBuffer(excelBuffer, SIZE_SHEET_COLUMNS, { sheetName: 'Sizes' });
-        const { rows: measurementValueRows } = await parseExcelBuffer(excelBuffer, MEASUREMENT_VALUE_SHEET_COLUMNS, { sheetName: 'MeasurementValues' });
-        const { rows: descriptionRows } = await parseExcelBuffer(excelBuffer, DESCRIPTION_SHEET_COLUMNS, { sheetName: 'Descriptions' });
-        const { rows: bulkPricingRows } = await parseExcelBuffer(excelBuffer, BULK_PRICING_SHEET_COLUMNS, { sheetName: 'BulkPricing' });
+        const workbook = await parseProductWorkbook(excelBuffer);
+        if (!workbook.ok) {
+            return common.returnResult(false, 400, workbook.message);
+        }
+        const { productRows, variantRows, sizeRows, measurementValueRows, descriptionRows, bulkPricingRows } = workbook;
 
         if (productRows.length === 0) {
             return common.returnResult(false, 400, 'Products sheet contains no data rows');

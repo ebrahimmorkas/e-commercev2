@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import * as lookupApi from '../api/lookupApi';
 
-// Resolves a groupType to { value, label } options for the members picker.
+// Only active ('A') records can be added to a group; a record without a
+// status (older data) counts as active.
+const isActiveRecord = (record) => (record?.status ?? 'A') === 'A';
+
+// Resolves a groupType to { value, label, isActive } options for the members
+// picker - inactive ones are kept only so a group's existing members still
+// show by name (MembersPicker never offers them for picking).
 // CUSTOM has no backing collection - members are hand-typed ids - so it
 // resolves to an empty, non-fetching option list. CATEGORY is handled
 // separately below (it needs the raw category docs, not flattened options,
@@ -9,21 +15,21 @@ import * as lookupApi from '../api/lookupApi';
 const MEMBER_FETCHERS = {
   PRODUCT: async () => {
     const data = await lookupApi.getAdminProducts();
-    return (data?.products || []).map((p) => ({ value: p._id, label: p.name }));
+    return (data?.products || []).map((p) => ({ value: p._id, label: p.name, isActive: isActiveRecord(p) }));
   },
   BRAND: async () => {
     const data = await lookupApi.getAdminBrands();
     const brands = Array.isArray(data) ? data : [];
-    return brands.map((b) => ({ value: b._id, label: b.brandName }));
+    return brands.map((b) => ({ value: b._id, label: b.brandName, isActive: isActiveRecord(b) }));
   },
   ORDER: async () => {
     const data = await lookupApi.getAdminOrders();
-    return (data?.orders || []).map((o) => ({ value: o._id, label: o.orderNumber }));
+    return (data?.orders || []).map((o) => ({ value: o._id, label: o.orderNumber, isActive: isActiveRecord(o) }));
   },
   USER: async () => {
     const data = await lookupApi.getAdminUsers();
     const users = Array.isArray(data) ? data : [];
-    return users.map((u) => ({ value: u._id, label: `${u.name} (${u.email})` }));
+    return users.map((u) => ({ value: u._id, label: `${u.name} (${u.email})`, isActive: isActiveRecord(u) }));
   },
 };
 
