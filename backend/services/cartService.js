@@ -1152,12 +1152,13 @@ const removeDiscountsFromCart = async (vendorId, cartOwner, userId, companyMaste
 // Storefront listing - every discount this customer could apply to their
 // cart right now, with what it would take off, followed by the ones meant for
 // them that the cart can't use yet (isLocked, with lockedReason: "Add items
-// worth X more", "Only available on Monday"). Coupon discounts are never
-// listed; hasCouponDiscounts says whether a coupon box is worth showing.
+// worth X more", "Only available on Monday"). Coupon discounts come
+// separately in `coupons` (same shape, never the code - it must still be
+// typed in); hasCouponDiscounts says whether a coupon box is worth showing.
 // isEnabled / requiresLogin tell the cart page what to render.
 const listEligibleDiscountsForCart = async (vendorId, cartOwner, userId, companyMasterData, websiteMasterData, companySettingsData, countryId = null) => {
     try {
-        const response = { isEnabled: false, requiresLogin: false, hasCouponDiscounts: false, discounts: [] };
+        const response = { isEnabled: false, requiresLogin: false, hasCouponDiscounts: false, discounts: [], coupons: [] };
 
         const enabled = await isDiscountEnabled(vendorId, websiteMasterData, companyMasterData);
         if (!enabled) {
@@ -1192,11 +1193,30 @@ const listEligibleDiscountsForCart = async (vendorId, cartOwner, userId, company
         const formatMoney = await resolveMoneyFormatter(countryId, companyMasterData, companySettingsData);
         const ctx = await buildDiscountContext({ vendorId, userId, discounts: running, lines: cartLines(cart), freeCashAmount: cart.totalFreeCashAmount, formatMoney });
 
-        // Only a coupon this customer could actually use (now, or once the cart qualifies) counts.
-        response.hasCouponDiscounts = coupons.some((d) => {
-            const result = resolveDiscountEligibility(d, ctx);
-            return result.eligible || Boolean(result.lock);
-        });
+        // The coupons this customer could use - now, or once the cart qualifies
+        // (never one that isn't theirs, used up or closed). Listed so they know
+        // what's on offer and how much more to add, but WITHOUT the code: it
+        // still has to be entered (applying a coupon by id is refused).
+        for (const coupon of coupons) {
+            const result = resolveDiscountEligibility(coupon, ctx);
+            if (!result.eligible && !result.lock) continue;
+            response.coupons.push({
+                discountId: coupon._id,
+                name: coupon.name,
+                description: coupon.description || '',
+                discountType: coupon.discountType,
+                discountValue: coupon.discountValue,
+                discountAmount: result.eligible ? result.discountAmount : 0,
+                discountValidAboveAmount: coupon.discountValidAboveAmount || 0,
+                minimumQuantity: coupon.isMinimumDiscountQuantityDiscount ? coupon.minimumQuantity : null,
+                endDate: coupon.isOngoingDiscount ? null : coupon.endDate,
+                appliesToWholeCart: appliesToWholeCart(coupon),
+                isMultipleDiscountUsageOn: coupon.isMultipleDiscountUsageOn === true,
+                isLocked: !result.eligible,
+                lockedReason: result.eligible ? null : result.reason
+            });
+        }
+        response.hasCouponDiscounts = response.coupons.length > 0;
 
         const locked = [];
         for (const discount of candidates) {

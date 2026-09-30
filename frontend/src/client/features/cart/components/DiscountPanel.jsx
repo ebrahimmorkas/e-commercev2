@@ -13,7 +13,9 @@ const sameIds = (a, b) => a.length === b.length && a.every((id) => b.includes(id
  * (isLocked) are listed greyed out with the reason (lockedReason, e.g. "Add
  * items worth ₹3 more to unlock this discount.") and can't be ticked. The
  * coupon field only shows when the store has a coupon this shopper could use
- * (hasCouponDiscounts) or one is already applied.
+ * (hasCouponDiscounts) or one is already applied; those coupons (info.coupons)
+ * are listed above it - name, value, minimum and "Add X more" - but never
+ * their codes, which still have to be typed in.
  * Auto-apply discounts start ticked when nothing is applied yet.
  * Applied coupon discounts aren't in the list (codes are never listed), so
  * they show on their own and are kept whenever the selection is re-applied.
@@ -74,6 +76,8 @@ const DiscountPanel = ({ info, appliedDiscounts = [], saving, rejections = [], o
   const wantedIds = [...usableSelectedIds, ...couponIds];
   const canApply = !saving && usableSelectedIds.length > 0 && !sameIds(wantedIds, appliedIds);
   const showCouponField = info.hasCouponDiscounts === true || appliedCoupons.length > 0;
+  // Coupons the shopper could use (never their codes), minus any already applied.
+  const offeredCoupons = (info.coupons || []).filter((c) => !appliedIds.includes(String(c.discountId)));
 
   const applyCoupon = async (event) => {
     event.preventDefault();
@@ -152,7 +156,8 @@ const DiscountPanel = ({ info, appliedDiscounts = [], saving, rejections = [], o
           })}
         </ul>
       ) : (
-        <p className="mt-2 text-xs text-slate-400">No discounts available for this cart right now.</p>
+        // Only coupons on offer: point at the code box instead of saying there's nothing.
+        !showCouponField && <p className="mt-2 text-xs text-slate-400">No discounts available for this cart right now.</p>
       )}
 
       {appliedCoupons.length > 0 && (
@@ -161,6 +166,40 @@ const DiscountPanel = ({ info, appliedDiscounts = [], saving, rejections = [], o
             <li key={String(coupon.discountId)} className="flex justify-between gap-2 text-xs">
               <span className="font-semibold text-slate-700 break-words">Coupon: {coupon.discountName}</span>
               <span className="font-semibold text-emerald-600 shrink-0">− {formatMoney(coupon.discountAmount)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {showCouponField && (
+        <p className={`${options.length > 0 || appliedCoupons.length > 0 ? 'mt-4' : 'mt-2'} text-xs font-medium text-slate-600`}>
+          Have a coupon code? Enter it below.
+        </p>
+      )}
+
+      {offeredCoupons.length > 0 && (
+        <ul className="mt-2 space-y-1.5">
+          {offeredCoupons.map((coupon) => (
+            <li
+              key={String(coupon.discountId)}
+              className={`rounded-lg border border-dashed px-3 py-2 ${coupon.isLocked ? 'border-slate-300 bg-slate-50' : 'border-emerald-300 bg-emerald-50'}`}
+            >
+              <span className="flex flex-wrap items-baseline justify-between gap-x-2">
+                <span className="text-xs font-semibold text-slate-900 break-words">{coupon.name}</span>
+                <span className={`text-xs font-semibold ${coupon.isLocked ? 'text-slate-500' : 'text-emerald-600'}`}>
+                  {coupon.discountType === 'PERCENTAGE' ? `${coupon.discountValue}% off` : `${formatMoney(coupon.discountValue)} off`}
+                </span>
+              </span>
+              <span className="mt-0.5 block text-xs text-slate-500">
+                {coupon.discountValidAboveAmount > 0
+                  ? `${coupon.appliesToWholeCart === false ? 'Min. spend on eligible items' : 'Min. order'} ${formatMoney(coupon.discountValidAboveAmount)}`
+                  : 'No minimum order'}
+                {coupon.minimumQuantity && <> · Min. {coupon.minimumQuantity} items</>}
+                {!coupon.isLocked && <> · usable now, saves {formatMoney(coupon.discountAmount)}</>}
+              </span>
+              {coupon.isLocked && coupon.lockedReason && (
+                <span className="mt-0.5 block text-xs font-medium text-amber-700">{coupon.lockedReason}</span>
+              )}
             </li>
           ))}
         </ul>

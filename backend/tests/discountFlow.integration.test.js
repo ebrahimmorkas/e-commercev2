@@ -205,9 +205,37 @@ test('the storefront list: usable, locked for members, hidden from outsiders; co
     await create({ name: 'VIP code', isCouponCodeDiscount: true, couponCode: 'VIPONLY', giveDiscountTo: 'USER_GROUP', userGroupIds: [group._id.toString()] });
     assert.equal((await list(MEMBER)).meta.hasCouponDiscounts, true);
     assert.equal((await list(OUTSIDER)).meta.hasCouponDiscounts, false);
-    assert.equal((await list(MEMBER)).meta.discounts.some((d) => d.name === 'VIP code'), false, 'coupon discounts are never listed');
+    assert.equal((await list(MEMBER)).meta.discounts.some((d) => d.name === 'VIP code'), false, 'coupons are not in the tickable list');
+    // ...but they are offered separately, without their code.
+    const memberCoupons = (await list(MEMBER)).meta.coupons;
+    assert.deepEqual(memberCoupons.map((c) => c.name), ['VIP code']);
+    assert.equal(memberCoupons[0].isLocked, false);
+    assert.equal(memberCoupons[0].discountAmount, 25);
+    assert.equal('couponCode' in memberCoupons[0], false, 'the code is never sent');
+    assert.equal(JSON.stringify(memberCoupons).includes('VIPONLY'), false);
+    assert.deepEqual((await list(OUTSIDER)).meta.coupons, []);
     const outsiderCode = await apply(OUTSIDER, { couponCode: 'VIPONLY' });
     assert.equal(outsiderCode.message, 'This discount is not available for your account.');
+});
+
+test('a coupon-only store: the coupon is offered with how much more to add', async (t) => {
+    if (skipUnlessDb(t)) return;
+    await clearDiscounts();
+    await create({ name: 'Big basket coupon', isCouponCodeDiscount: true, couponCode: 'BIG300', discountValidAboveAmount: 300 });
+    await makeCart(MEMBER);
+
+    const info = (await list(MEMBER)).meta;
+    assert.deepEqual(info.discounts, []);
+    assert.equal(info.hasCouponDiscounts, true);
+    assert.equal(info.coupons.length, 1);
+    assert.equal(info.coupons[0].isLocked, true);
+    assert.equal(info.coupons[0].discountValidAboveAmount, 300);
+    assert.equal(info.coupons[0].lockedReason, 'Add items worth 50 more to unlock this discount.');
+
+    // Applying the offered coupon by id is refused - the code is still needed.
+    const byId = await apply(MEMBER, { discountIds: [info.coupons[0].discountId] });
+    assert.equal(byId.isSuccess, false);
+    assert.equal(byId.message, 'Enter the coupon code to use this discount.');
 });
 
 test('applying: locked and uncombinable discounts are refused, eligible ones applied', async (t) => {
