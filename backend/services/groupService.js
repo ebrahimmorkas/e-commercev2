@@ -142,7 +142,25 @@ const resolveMembersFromExcel = async (vendorId, groupType, excelBuffer, isNesti
       return common.returnResult(false, 400, 'Excel file contains no data rows.');
     }
 
+    // A row that resolves to a member an earlier row already added is
+    // reported as a failed row and skipped, instead of pushing the id twice
+    // (which would make validateMembersAgainstGroupType reject the group).
     const memberIds = [];
+    const seenMemberIds = new Set();
+    const addMember = (docId, duplicateMessage) => {
+      try {
+        const id = docId.toString();
+        if (seenMemberIds.has(id)) {
+          return { success: false, errors: [duplicateMessage] };
+        }
+        seenMemberIds.add(id);
+        memberIds.push(id);
+        return { success: true };
+      } catch (err) {
+        throw err;
+      }
+    };
+
     const excelReport = await processExcelRows(
       rows,
       async (row) => {
@@ -159,8 +177,7 @@ const resolveMembersFromExcel = async (vendorId, groupType, excelBuffer, isNesti
           if (!doc) {
             return { success: false, errors: [`Product "${value.productName}" not found`] };
           }
-          memberIds.push(doc._id.toString());
-          return { success: true };
+          return addMember(doc._id, `Duplicate row - product "${value.productName}" is already added`);
         }
 
         if (groupType === 'USER') {
@@ -171,8 +188,7 @@ const resolveMembersFromExcel = async (vendorId, groupType, excelBuffer, isNesti
           if (!doc) {
             return { success: false, errors: [`User with email "${value.email}" not found`] };
           }
-          memberIds.push(doc._id.toString());
-          return { success: true };
+          return addMember(doc._id, `Duplicate row - user with email "${value.email}" is already added`);
         }
 
         // CATEGORY
@@ -180,8 +196,7 @@ const resolveMembersFromExcel = async (vendorId, groupType, excelBuffer, isNesti
         if (!resolved.found) {
           return { success: false, errors: [resolved.message] };
         }
-        memberIds.push(resolved.category._id.toString());
-        return { success: true };
+        return addMember(resolved.category._id, `Duplicate row - category "${resolved.category.categoryName}" is already added`);
       },
       { allowPartialSuccess: true, useTransaction: false }
     );
@@ -197,8 +212,10 @@ const resolveMembersFromExcel = async (vendorId, groupType, excelBuffer, isNesti
 };
 
 // Validates that every member ID actually exists in the collection that
-// corresponds to the group's groupType.
-const validateMembersAgainstGroupType = async (groupType, members) => {
+// corresponds to the group's groupType, belongs to this vendor and is not
+// soft-deleted - an id from another vendor's collection, or a deleted
+// record, counts as not found.
+const validateMembersAgainstGroupType = async (vendorId, groupType, members) => {
   try {
     if (groupType === 'CUSTOM') {
       return { valid: true };
@@ -228,7 +245,7 @@ const validateMembersAgainstGroupType = async (groupType, members) => {
       }
     }
 
-    const foundCount = await Model.countDocuments({ _id: { $in: members } });
+    const foundCount = await Model.countDocuments({ _id: { $in: members }, vendorId, status: { $ne: 'D' } });
     if (foundCount !== members.length) {
       return { valid: false, message: `One or more members are invalid for group type ${groupType}.` };
     }
@@ -276,7 +293,7 @@ const createGroup = async (vendorId, userId, payload, files, companyMasterData) 
       return common.returnResult(false, 400, `A group can have at most ${companyMasterData.numberOfMembersPerGroup} members.`);
     }
 
-    const memberValidation = await validateMembersAgainstGroupType(groupType, members);
+    const memberValidation = await validateMembersAgainstGroupType(vendorId, groupType, members);
     if (!memberValidation.valid) {
       return common.returnResult(false, 400, memberValidation.message);
     }
@@ -388,7 +405,7 @@ const updateGroup = async (vendorId, userId, groupId, payload, files, companyMas
         return common.returnResult(false, 400, `A group can have at most ${companyMasterData.numberOfMembersPerGroup} members.`);
       }
 
-      const memberValidation = await validateMembersAgainstGroupType(effectiveGroupType, members);
+      const memberValidation = await validateMembersAgainstGroupType(vendorId, effectiveGroupType, members);
       if (!memberValidation.valid) {
         return common.returnResult(false, 400, memberValidation.message);
       }

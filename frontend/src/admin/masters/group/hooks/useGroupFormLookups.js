@@ -22,7 +22,8 @@ const MEMBER_FETCHERS = {
   },
   USER: async () => {
     const data = await lookupApi.getAdminUsers();
-    return (data?.users || []).map((u) => ({ value: u._id, label: `${u.name} (${u.email})` }));
+    const users = Array.isArray(data) ? data : [];
+    return users.map((u) => ({ value: u._id, label: `${u.name} (${u.email})` }));
   },
 };
 
