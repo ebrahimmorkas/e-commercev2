@@ -1,4 +1,6 @@
 import DatePicker from '../../../../components/common/DatePicker';
+import InputField from '../../../../components/common/InputField';
+import theme from '../theme/theme';
 
 const pad = (n) => String(n).padStart(2, '0');
 // Formats using local calendar fields, not toISOString() - a UTC conversion
@@ -29,6 +31,20 @@ const TimingStep = ({ draft, onChange }) => {
           onChange={(date) => set({ endDate: toDateInputValue(date) })}
           required
         />
+      </div>
+      <div>
+        <InputField
+          label="Timezone"
+          name="timezone"
+          placeholder="e.g. Asia/Kolkata"
+          value={draft.timezone}
+          onChange={(e) => set({ timezone: e.target.value })}
+          showError={false}
+        />
+        <p className={`mt-1 text-xs ${theme.text.muted}`}>
+          The Free Cash can be used from 00:00 on the start date until 23:59 on the end date in this timezone. Start and end can be the
+          same day for a one-day campaign.
+        </p>
       </div>
     </div>
   );

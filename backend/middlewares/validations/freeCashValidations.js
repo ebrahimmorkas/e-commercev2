@@ -1,5 +1,6 @@
 const Joi = require('joi');
-const { FREE_CASH_OPTIONS } = require('../../constants/freeCashConstants');
+const { FREE_CASH_OPTIONS, GIVE_FREE_CASH_TO_CONFIG } = require('../../constants/freeCashConstants');
+const { DEFAULT_DISCOUNT_TIMEZONE, DATE_ONLY_PATTERN, isValidTimezone } = require('../../utils/discountSchedule');
 
 // Free Cash ids (own id, target user/group/category ids) are
 // common.encodeId-encoded, never raw hex ObjectIds - loose opaque-string
@@ -8,56 +9,95 @@ const objectId = () => Joi.string().trim().min(1).messages({
     'string.min': '{{#label}} must be a valid id.',
 });
 
-const objectIdArray = (label) => Joi.array().items(objectId()).label(label);
+// The body is JSON, or multipart/form-data when an excel file is attached -
+// then every value is a string ("true", "250") and a one-item array a plain
+// string. Joi's conversion (and .single()) turns them back into real types.
+const bool = () => Joi.boolean().truthy('true').falsy('false');
+
+const optionsNeeding = (flag) => FREE_CASH_OPTIONS.filter((key) => GIVE_FREE_CASH_TO_CONFIG[key][flag]);
+
+// Ids required (non-empty) for the targeting options that use them, dropped otherwise.
+const idsFor = (flag, label, { required = true } = {}) => Joi.when('giveFreeCashTo', {
+    is: Joi.valid(...optionsNeeding(flag)),
+    then: required
+        ? Joi.array().items(objectId()).single().min(1).max(200).unique().required().label(label)
+        : Joi.array().items(objectId()).single().max(500).unique().label(label),
+    otherwise: Joi.any().strip()
+});
+
+const dateOnly = (label) => Joi.string().trim().pattern(DATE_ONLY_PATTERN).label(label)
+    .messages({ 'string.pattern.base': '{{#label}} must be a date in YYYY-MM-DD format.' });
+
+const amount = (label) => Joi.number().precision(2).max(100000000).label(label);
 
 const freeCashFieldsSchema = {
     freeCashName: Joi.string().trim().min(2).max(150).required().label('Free Cash name'),
-    freeCashAmount: Joi.number().min(0).required().label('Free Cash amount'),
-    maxCashUsagePerOrder: Joi.number().min(0).allow(null).label('Max cash usage per order'),
+    freeCashAmount: amount('Free Cash amount').greater(0).required(),
+    // Blank = no per-order limit. Never more than the amount itself.
+    maxCashUsagePerOrder: amount('Max usage per order').greater(0).empty('').allow(null).default(null)
+        .when('freeCashAmount', { is: Joi.number().required(), then: Joi.number().max(Joi.ref('freeCashAmount')) })
+        .messages({ 'number.max': 'Max usage per order cannot be more than the Free Cash amount.' }),
     giveFreeCashTo: Joi.string().valid(...FREE_CASH_OPTIONS).required().label('Give Free Cash to'),
-    userGroupIds: objectIdArray('User group(s)'),
-    mainCategoryIds: objectIdArray('Main category/categories'),
-    subCategoryIds: objectIdArray('Sub category/categories'),
-    startDate: Joi.date().required().label('Start date'),
-    endDate: Joi.date().greater(Joi.ref('startDate')).required().label('End date').messages({
-        'date.greater': 'End date must be after start date.'
-    }),
-    validAbove: Joi.number().min(0).label('Valid above amount'),
-    canBeUsedWithOtherDiscounts: Joi.boolean().label('Can be used with other discounts'),
-    remarks: Joi.string().trim().allow('').max(500).label('Remarks'),
+    userGroupIds: idsFor('needsUserGroupIds', 'User group(s)'),
+    mainCategoryIds: idsFor('needsMainCategoryIds', 'Main category/categories'),
+    // Optional - left empty, the whole main category/categories qualify.
+    subCategoryIds: idsFor('needsSubCategoryIds', 'Sub category/categories', { required: false }),
+    // Whole calendar days in `timezone` (see utils/discountSchedule.js).
+    startDate: dateOnly('Start date').required(),
+    endDate: dateOnly('End date').required(),
+    timezone: Joi.string().trim().empty('').default(DEFAULT_DISCOUNT_TIMEZONE).label('Timezone')
+        .custom((value, helpers) => (isValidTimezone(value) ? value : helpers.error('timezone.invalid')))
+        .messages({ 'timezone.invalid': '{{#label}} must be a valid IANA timezone, e.g. Asia/Kolkata.' }),
+    validAbove: amount('Valid above amount').min(0).empty('').default(0),
+    canBeUsedWithOtherDiscounts: bool().default(false).label('Can be used with other discounts'),
+    remarks: Joi.string().trim().allow('').max(500).default('').label('Remarks'),
     // "Notify customers by email" checkbox - see promotionEmailService.
-    notifyCustomers: Joi.boolean().label('Notify customers by email')
+    notifyCustomers: bool().default(false).label('Notify customers by email')
 };
 
-const createFreeCashSchema = Joi.object(freeCashFieldsSchema);
+const endNotBeforeStart = (value, helpers) => {
+    if (value.startDate && value.endDate && value.endDate < value.startDate) {
+        return helpers.message('End date cannot be before start date.');
+    }
+    return value;
+};
 
-// endDate has no startDate to compare against unless startDate is also sent
-// in the same request, so the cross-field .greater() check only fires when
-// both are present - the service re-validates ordering against the existing
-// document's stored startDate when only one of the two is being changed.
+const createFreeCashSchema = Joi.object(freeCashFieldsSchema).custom(endNotBeforeStart);
+
+// The edit form sends every field, but a partial update (e.g. only a new
+// name) is still accepted - whatever is left out keeps its stored value.
 const updateFreeCashSchema = Joi.object({
+    ...freeCashFieldsSchema,
     freeCashName: freeCashFieldsSchema.freeCashName.optional(),
-    freeCashAmount: freeCashFieldsSchema.freeCashAmount.optional(),
-    maxCashUsagePerOrder: freeCashFieldsSchema.maxCashUsagePerOrder,
-    giveFreeCashTo: freeCashFieldsSchema.giveFreeCashTo.optional(),
-    userGroupIds: freeCashFieldsSchema.userGroupIds,
-    mainCategoryIds: freeCashFieldsSchema.mainCategoryIds,
-    subCategoryIds: freeCashFieldsSchema.subCategoryIds,
-    startDate: Joi.date().label('Start date'),
-    endDate: Joi.date().label('End date'),
-    validAbove: freeCashFieldsSchema.validAbove,
-    canBeUsedWithOtherDiscounts: freeCashFieldsSchema.canBeUsedWithOtherDiscounts,
-    remarks: freeCashFieldsSchema.remarks,
+    freeCashAmount: amount('Free Cash amount').greater(0),
+    // null or '' (a multipart null) = remove the limit; left out = keep it.
+    maxCashUsagePerOrder: amount('Max usage per order').greater(0).allow(null, '')
+        .when('freeCashAmount', { is: Joi.number().required(), then: Joi.number().max(Joi.ref('freeCashAmount')) })
+        .messages({ 'number.max': 'Max usage per order cannot be more than the Free Cash amount.' }),
+    giveFreeCashTo: Joi.string().valid(...FREE_CASH_OPTIONS).label('Give Free Cash to'),
+    userGroupIds: Joi.when('giveFreeCashTo', { not: Joi.exist(), then: Joi.array().items(objectId()).single().min(1).unique(), otherwise: freeCashFieldsSchema.userGroupIds }),
+    mainCategoryIds: Joi.when('giveFreeCashTo', { not: Joi.exist(), then: Joi.array().items(objectId()).single().min(1).unique(), otherwise: freeCashFieldsSchema.mainCategoryIds }),
+    subCategoryIds: Joi.when('giveFreeCashTo', { not: Joi.exist(), then: Joi.array().items(objectId()).single().unique(), otherwise: freeCashFieldsSchema.subCategoryIds }),
+    startDate: dateOnly('Start date'),
+    endDate: dateOnly('End date'),
+    timezone: Joi.string().trim().empty('').label('Timezone')
+        .custom((value, helpers) => (isValidTimezone(value) ? value : helpers.error('timezone.invalid')))
+        .messages({ 'timezone.invalid': '{{#label}} must be a valid IANA timezone, e.g. Asia/Kolkata.' }),
+    validAbove: amount('Valid above amount').min(0).empty(''),
+    canBeUsedWithOtherDiscounts: bool().label('Can be used with other discounts'),
+    remarks: Joi.string().trim().allow('').max(500).label('Remarks'),
     status: Joi.string().valid('A', 'I').label('Status'),
-    notifyCustomers: freeCashFieldsSchema.notifyCustomers
-});
+    notifyCustomers: bool().default(false).label('Notify customers by email')
+}).custom(endNotBeforeStart);
 
 const freeCashIdParamSchema = Joi.object({
     id: objectId().required().label('Free Cash id')
 });
 
+// The admin never sees customer ids, so a customer is picked by email
+// (matched within this store only, case-insensitively).
 const revokeFreeCashForUserSchema = Joi.object({
-    userId: objectId().required().label('User id'),
+    email: Joi.string().trim().lowercase().email({ tlds: { allow: false } }).max(254).required().label('Customer email'),
     freeCashId: objectId().required().label('Free Cash id')
 });
 

@@ -173,8 +173,8 @@ const buildFreeCashTokens = (freeCash, grant, money) => {
             remainingAmount: money(remaining),
             maxUsagePerOrder: freeCash.maxCashUsagePerOrder != null ? money(freeCash.maxCashUsagePerOrder) : '',
             minimumOrderAmount: freeCash.validAbove > 0 ? money(freeCash.validAbove) : '',
-            startDate: formatEmailDate(freeCash.startDate),
-            endDate: formatEmailDate(freeCash.endDate),
+            startDate: formatEmailDate(freeCash.startDate, freeCash.timezone),
+            endDate: formatEmailDate(freeCash.endDate, freeCash.timezone),
             canCombineWithDiscounts: yesNo(freeCash.canBeUsedWithOtherDiscounts)
         };
     } catch (err) {

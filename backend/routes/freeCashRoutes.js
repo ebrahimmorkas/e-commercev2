@@ -38,6 +38,18 @@ router.post(
   freeCashController.createFreeCash
 );
 
+// Sample excel for the Specific Users option - registered before the "/:id"
+// routes below so "/excel-sample" is never taken for an id.
+router.get(
+  '/excel-sample',
+  authenticate,
+  vendorDetection,
+  ensureVendorDataCached,
+  authorize('admin'),
+  checkModuleAssigned('FREE_CASH'),
+  freeCashController.downloadUsersSampleFile
+);
+
 // Bulk multi-select actions (frontend checkbox selection) - registered
 // before the "/:id" routes below so "/bulk-status"/"/bulk-delete" are never
 // swallowed by the ":id" param match.

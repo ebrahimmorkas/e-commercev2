@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as freeCashApi from '../api/freeCashApi';
 import { useToast } from '../../../../components/common/Toast';
-import { mapApiFreeCashToDraft, buildSubmitFields, needsExcelFor } from '../utils/freeCashDraft';
+
+// A failed request's most useful message: the first field error of a
+// 'Validation failed' response, else the message itself.
+const errorMessage = (err, fallback) => {
+  const firstFieldError = Array.isArray(err?.errors) ? err.errors.find((e) => e && e.message) : null;
+  if (firstFieldError) return firstFieldError.message;
+  return err?.message || fallback;
+};
 
 /**
  * Owns the Free Cash list state for the admin page: fetching, and the
@@ -52,7 +59,7 @@ export const useFreeCash = () => {
       await fetchFreeCash();
       return { success: true, excelReports: result?.excelReports, issuedCount: result?.issuedCount };
     } catch (err) {
-      toast.error(err.message || 'Failed to create Free Cash campaign');
+      toast.error(errorMessage(err, 'Failed to create Free Cash campaign'));
       return { success: false, error: err };
     } finally {
       setMutating(false);
@@ -63,11 +70,15 @@ export const useFreeCash = () => {
     setMutating(true);
     try {
       const result = await freeCashApi.updateFreeCash(freeCashId, fields, excelFile);
-      toast.success('Free Cash campaign updated successfully');
+      const changes = [
+        result?.issuedCount ? `given to ${result.issuedCount} more customer(s)` : '',
+        result?.revokedCount ? `unused balance removed from ${result.revokedCount} customer(s)` : '',
+      ].filter(Boolean);
+      toast.success(`Free Cash campaign updated successfully${changes.length ? ` - ${changes.join(', ')}` : ''}`);
       await fetchFreeCash();
       return { success: true, excelReports: result?.excelReports };
     } catch (err) {
-      toast.error(err.message || 'Failed to update Free Cash campaign');
+      toast.error(errorMessage(err, 'Failed to update Free Cash campaign'));
       return { success: false, error: err };
     } finally {
       setMutating(false);
@@ -89,36 +100,39 @@ export const useFreeCash = () => {
     }
   };
 
-  /**
-   * updateFreeCash always re-validates and re-resolves the full targeting
-   * payload (see freeCashService.updateFreeCash), so a status flip can't be
-   * a lightweight PATCH - it resends every field, reconstructed from the
-   * list row (which already carries the full doc). That's only possible when
-   * giveFreeCashTo doesn't depend on a re-uploaded excel file; otherwise the
-   * caller is directed to the edit form instead. Mirrors useDiscounts.toggleStatus.
-   */
-  // notifyCustomers: when re-activating, email its customers again.
+  // A single row's Active/Inactive switch - the same minimal status flip as
+  // the bulk action (freeCashService's setFreeCashStatusForBulk), so it works
+  // for every campaign, excel-targeted ones included, and never re-validates
+  // the rest of the campaign. notifyCustomers: when re-activating, email its customers again.
   const toggleStatus = async (freeCash, notifyCustomers = false) => {
-    if (needsExcelFor(freeCash.giveFreeCashTo)) {
-      toast.error('This campaign\'s targeting was set via an excel upload - open Edit and re-upload the file to change its status.');
-      return false;
-    }
-    const draft = mapApiFreeCashToDraft(freeCash);
-    draft.notifyCustomers = freeCash.status !== 'A' && notifyCustomers;
-    draft.status = freeCash.status === 'A' ? 'I' : 'A';
-    const fields = buildSubmitFields(draft, { includeStatus: true });
-    const result = await editFreeCash(freeCash._id, fields, null);
-    return result.success;
-  };
-
-  const revokeForUser = async (userId, freeCashId) => {
+    const status = freeCash.status === 'A' ? 'I' : 'A';
     setMutating(true);
     try {
-      const result = await freeCashApi.revokeFreeCashForUser(userId, freeCashId);
-      toast.success('Free Cash revoked for the user successfully');
+      const data = await freeCashApi.bulkSetFreeCashStatus([freeCash._id], status, status === 'A' && notifyCustomers);
+      const failed = (data?.results || []).find((r) => !r.isSuccess);
+      if (failed) {
+        toast.error(failed.message || 'Failed to update Free Cash status');
+        return false;
+      }
+      toast.success(status === 'A' ? 'Free Cash campaign activated' : 'Free Cash campaign deactivated');
+      await fetchFreeCash();
+      return true;
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to update Free Cash status'));
+      return false;
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const revokeForUser = async (email, freeCashId) => {
+    setMutating(true);
+    try {
+      const result = await freeCashApi.revokeFreeCashForUser(email, freeCashId);
+      toast.success(`Free Cash revoked for ${email}`);
       return { success: true, revokedCount: result?.revokedCount };
     } catch (err) {
-      toast.error(err.message || 'Failed to revoke Free Cash for this user');
+      toast.error(errorMessage(err, 'Failed to revoke Free Cash for this customer'));
       return { success: false };
     } finally {
       setMutating(false);
@@ -140,18 +154,14 @@ export const useFreeCash = () => {
   };
 
   // --- Bulk multi-select actions (checkbox column) --------------------------
-  // Unlike the single-row toggleStatus above, the bulk status endpoint is a
-  // dedicated, minimal status flip on the backend (freeCashService's
-  // setFreeCashStatusForBulk) - it never re-validates/re-resolves the full
-  // targeting payload the way updateFreeCash does, so the "targeting was set
-  // via excel, re-upload to change status" restriction doesn't apply here.
   const describeBulkOutcome = (data, pastTenseVerb) => {
     const successCount = data?.successCount ?? 0;
     const failureCount = data?.failureCount ?? 0;
     if (failureCount === 0) {
       toast.success(`${successCount} Free Cash campaign(s) ${pastTenseVerb}`);
     } else if (successCount === 0) {
-      toast.error(`Could not ${pastTenseVerb === 'deleted' ? 'delete' : 'update'} the selected campaign(s)`);
+      const firstFailure = (data?.results || []).find((r) => !r.isSuccess);
+      toast.error(firstFailure?.message || `Could not ${pastTenseVerb === 'deleted' ? 'delete' : 'update'} the selected campaign(s)`);
     } else {
       toast.warning(`${successCount} campaign(s) ${pastTenseVerb}, ${failureCount} could not be processed`);
     }

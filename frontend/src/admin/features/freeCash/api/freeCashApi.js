@@ -1,13 +1,11 @@
-import { apiRequest } from '../../../../utils/apiClient';
+import { apiRequest, apiDownload } from '../../../../utils/apiClient';
 
 const BASE = '/free-cash';
 
 /**
- * Same "JSON when possible, multipart only when an excel file is involved"
- * convention as admin/features/discounts/api/discountApi.js - freeCashController
- * reads req.body fields directly and freeCashService does strict `=== true` /
- * `Array.isArray()` checks on them, so a multipart body (which flattens every
- * value to a string) is only used when giveFreeCashTo actually requires excelFile.
+ * JSON, or multipart/form-data when an excel file is attached (the server's
+ * Joi validation converts the multipart strings back to real types). A null
+ * is sent as an empty string ("no per-order limit") rather than dropped.
  *
  * @param {Object} fields
  * @param {File} [excelFile] - required only when giveFreeCashTo === 'SPECIFIC_USERS'
@@ -15,7 +13,11 @@ const BASE = '/free-cash';
 const buildFreeCashFormData = (fields, excelFile) => {
   const formData = new FormData();
   Object.entries(fields).forEach(([key, value]) => {
-    if (value === undefined || value === null) return;
+    if (value === undefined) return;
+    if (value === null) {
+      formData.append(key, '');
+      return;
+    }
     if (Array.isArray(value)) {
       // append-field (multer's body parser) only guarantees array output for
       // a repeated field when the key ends in "[]" - a bare repeated key
@@ -50,10 +52,17 @@ export const updateFreeCash = (freeCashId, fields, excelFile) =>
     body: excelFile ? buildFreeCashFormData(fields, excelFile) : fields,
   });
 
+/**
+ * The sample .xlsx for the Specific Users option (a "Users" sheet with its "Email" heading).
+ * @returns {Promise<{ blob: Blob, filename: string|null }>}
+ */
+export const downloadUsersSampleFile = () => apiDownload(`${BASE}/excel-sample`);
+
 export const deleteFreeCash = (freeCashId) => apiRequest(`${BASE}/${freeCashId}`, { method: 'DELETE' });
 
-export const revokeFreeCashForUser = (userId, freeCashId) =>
-  apiRequest(`${BASE}/revoke/user`, { method: 'POST', body: { userId, freeCashId } });
+/** Revokes one customer's unused balance - the customer is picked by email. */
+export const revokeFreeCashForUser = (email, freeCashId) =>
+  apiRequest(`${BASE}/revoke/user`, { method: 'POST', body: { email, freeCashId } });
 
 export const revokeFreeCashForAllUsers = (freeCashId) =>
   apiRequest(`${BASE}/revoke/all-users`, { method: 'POST', body: { freeCashId } });
@@ -74,6 +83,7 @@ export default {
   addFreeCash,
   updateFreeCash,
   deleteFreeCash,
+  downloadUsersSampleFile,
   revokeFreeCashForUser,
   revokeFreeCashForAllUsers,
   bulkSetFreeCashStatus,

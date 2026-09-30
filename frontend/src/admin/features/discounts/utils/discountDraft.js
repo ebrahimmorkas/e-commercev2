@@ -1,37 +1,9 @@
 import { GIVE_DISCOUNT_TO_CONFIG } from '../constants';
+import { DEFAULT_TIMEZONE, isValidTimezone, toDateInputValue, formatZonedDate } from '../../../../utils/zonedDate';
 
-export const DEFAULT_TIMEZONE = 'Asia/Kolkata';
-
-export const isValidTimezone = (timezone) => {
-  if (!timezone || !String(timezone).trim()) return false;
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: timezone });
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-// A stored start/end instant as its "YYYY-MM-DD" calendar day in the
-// discount's own timezone - the backend saves whole days there (00:00 on the
-// start day, 23:59:59.999 on the end day), so the browser's zone must not be used.
-export const toDateInputValue = (value, timezone = DEFAULT_TIMEZONE) => {
-  if (!value) return '';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  const zone = isValidTimezone(timezone) ? timezone : DEFAULT_TIMEZONE;
-  // en-CA formats as YYYY-MM-DD.
-  return new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
-};
-
-/** "1 Oct 2026" for a stored start/end instant, read in the discount's timezone. */
-export const formatDiscountDate = (value, timezone = DEFAULT_TIMEZONE) => {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '—';
-  const zone = isValidTimezone(timezone) ? timezone : DEFAULT_TIMEZONE;
-  return d.toLocaleDateString('en-IN', { timeZone: zone, day: 'numeric', month: 'short', year: 'numeric' });
-};
+// Dates are whole days in the discount's own timezone - see utils/zonedDate.js.
+export { DEFAULT_TIMEZONE, isValidTimezone, toDateInputValue };
+export const formatDiscountDate = formatZonedDate;
 
 export const needsExcelFor = (giveDiscountTo) => {
   const config = GIVE_DISCOUNT_TO_CONFIG[giveDiscountTo];

@@ -9,8 +9,12 @@ const sameIds = (a, b) => a.length === b.length && a.every((id) => b.includes(id
 /**
  * Cart page Free Cash box, from a /cart/eligible-free-cash result (see
  * hooks/useFreeCash.js). Checkboxes when the store lets several be applied
- * together, radio buttons otherwise. Render it with `key` = the applied ids
- * so the selection resets whenever the server changes what is applied.
+ * together, radio buttons otherwise. Each usable one says what it would take
+ * off this cart (applicableAmount); one the cart can't use yet (isLocked) is
+ * greyed out with the reason (lockedReason, e.g. "Add items worth ₹50 more to
+ * unlock this Free Cash.") and can't be picked. Render it with `key` = the
+ * applied ids and the usable ids so the selection resets whenever the server
+ * changes what is applied or usable.
  *
  * @param {Object|null} props.info
  * @param {Array} props.appliedFreeCash - cart.freeCash
@@ -59,7 +63,10 @@ const FreeCashPanel = ({ info, appliedFreeCash = [], saving, rejections = [], on
     setSelectedIds((current) => (current.includes(id) ? current.filter((x) => x !== id) : [...current, id]));
   };
 
-  const canApply = !saving && selectedIds.length > 0 && !sameIds(selectedIds, appliedIds);
+  const usableIds = options.filter((o) => !o.isLocked).map((o) => String(o.freeCashId));
+  // Something that became locked since it was picked is never sent.
+  const usableSelectedIds = selectedIds.filter((id) => usableIds.includes(id) || appliedIds.includes(id));
+  const canApply = !saving && usableSelectedIds.length > 0 && !sameIds(usableSelectedIds, appliedIds);
 
   return (
     <div className={`rounded-xl border p-4 sm:p-5 ${theme.card.background} ${theme.card.border}`}>
@@ -71,34 +78,49 @@ const FreeCashPanel = ({ info, appliedFreeCash = [], saving, rejections = [], on
       <ul className="mt-3 space-y-2">
         {options.map((option) => {
           const id = String(option.freeCashId);
-          const isSelected = selectedIds.includes(id);
           const appliedAmount = appliedAmountById.get(id);
+          // An applied one stays pickable even if the cart changed since (the server re-checks it).
+          const isLocked = option.isLocked === true && appliedAmount === undefined;
+          const isSelected = !isLocked && selectedIds.includes(id);
           const expiry = formatExpiry(option.endDate);
+          let labelClass = 'border-slate-200 hover:border-slate-300 cursor-pointer';
+          if (isLocked) labelClass = 'border-slate-200 bg-slate-50 opacity-70 cursor-not-allowed';
+          else if (isSelected) labelClass = 'border-amber-400 bg-amber-50 cursor-pointer';
           return (
             <li key={id}>
-              <label
-                className={`flex gap-3 rounded-lg border p-3 cursor-pointer transition-colors duration-150 ${
-                  isSelected ? 'border-amber-400 bg-amber-50' : 'border-slate-200 hover:border-slate-300'
-                }`}
-              >
+              <label className={`flex gap-3 rounded-lg border p-3 transition-colors duration-150 ${labelClass}`} aria-disabled={isLocked}>
                 <input
                   type={multiple ? 'checkbox' : 'radio'}
                   name="free-cash"
                   checked={isSelected}
                   onChange={() => toggle(id)}
-                  disabled={saving}
-                  className="mt-0.5 accent-amber-600"
+                  disabled={saving || isLocked}
+                  className="mt-0.5 accent-amber-600 disabled:cursor-not-allowed"
                 />
                 <span className="min-w-0 flex-1">
                   <span className="flex flex-wrap items-baseline justify-between gap-x-2">
                     <span className="text-sm font-semibold text-slate-900 break-words">{option.freeCashName}</span>
-                    {appliedAmount !== undefined && (
+                    {appliedAmount !== undefined ? (
                       <span className="text-xs font-semibold text-emerald-600">Applied · − {formatMoney(appliedAmount)}</span>
+                    ) : isLocked ? (
+                      <span className="text-xs font-semibold text-slate-500">Not available yet</span>
+                    ) : (
+                      option.applicableAmount > 0 && (
+                        <span className="text-xs font-semibold text-emerald-600">− {formatMoney(option.applicableAmount)}</span>
+                      )
                     )}
                   </span>
+                  {isLocked && option.lockedReason && (
+                    <span className="mt-0.5 block text-xs font-medium text-amber-700">{option.lockedReason}</span>
+                  )}
                   <span className="mt-0.5 block text-xs text-slate-500">
                     Balance {formatMoney(option.remainingAmount)}
-                    {option.validAbove > 0 && <> · Min. order {formatMoney(option.validAbove)}</>}
+                    {option.validAbove > 0 && (
+                      <>
+                        {' · '}
+                        {option.isCategoryRestricted ? 'Min. spend on eligible items' : 'Min. order'} {formatMoney(option.validAbove)}
+                      </>
+                    )}
                     {option.maxCashUsagePerOrder !== null && option.maxCashUsagePerOrder !== undefined && (
                       <> · Up to {formatMoney(option.maxCashUsagePerOrder)} per order</>
                     )}
@@ -131,7 +153,7 @@ const FreeCashPanel = ({ info, appliedFreeCash = [], saving, rejections = [], on
       <div className="mt-3 flex gap-2">
         <button
           type="button"
-          onClick={() => onApply(selectedIds)}
+          onClick={() => onApply(usableSelectedIds)}
           disabled={!canApply}
           className="flex-1 py-2 rounded-lg text-sm font-semibold cursor-pointer bg-slate-900 hover:bg-amber-600 text-white transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-900"
         >

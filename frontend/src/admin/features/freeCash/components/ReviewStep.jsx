@@ -57,6 +57,7 @@ const ReviewStep = ({ draft, onChange, isEdit = false }) => {
         <Row label="Given To" value={giveFreeCashToLabel} />
         <Row label="Start Date" value={draft.startDate || '—'} />
         <Row label="End Date" value={draft.endDate || '—'} />
+        <Row label="Timezone" value={draft.timezone || '—'} />
         <Row label="Valid Above" value={formatMoney(draft.validAbove || 0)} />
         <Row label="Max Usage Per Order" value={draft.maxCashUsagePerOrder !== '' ? formatMoney(draft.maxCashUsagePerOrder) : 'No limit'} />
         {draft.giveFreeCashTo === 'GROUPS' && <Row label="User Groups" value={draft.userGroupIds.length} />}

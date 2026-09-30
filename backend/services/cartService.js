@@ -1471,14 +1471,21 @@ const resolveEligibleUserFreeCash = async (vendorId, userId, cart, productCatego
 
         const validGrants = existingGrants.filter((grant) => isGrantUsable(grant, now));
 
+        // GROUPS campaigns follow their groups live: someone who joined a
+        // group after the campaign was created gets it here, like everyone else.
         const lazyCandidates = await FreeCash.find({
             vendorId,
             status: 'A',
-            giveFreeCashTo: { $in: ['ALL_USERS', ...CATEGORY_FREE_CASH_TYPES] },
+            giveFreeCashTo: { $in: ['ALL_USERS', 'GROUPS', ...CATEGORY_FREE_CASH_TYPES] },
             startDate: { $lte: now },
             endDate: { $gte: now }
         });
         if (lazyCandidates.length === 0) return validGrants;
+
+        const groupCampaignIds = lazyCandidates.filter((fc) => fc.giveFreeCashTo === 'GROUPS').flatMap((fc) => fc.userGroupIds || []);
+        const myActiveGroupIds = groupCampaignIds.length > 0
+            ? new Set((await Group.find({ _id: { $in: groupCampaignIds }, vendorId, groupType: 'USER', status: 'A', members: userId }).distinct('_id')).map((id) => id.toString()))
+            : new Set();
 
         // Any grant this customer ever had for a campaign - used up, expired or
         // revoked included - means they were already given it once.
@@ -1493,13 +1500,18 @@ const resolveEligibleUserFreeCash = async (vendorId, userId, cart, productCatego
         for (const fc of lazyCandidates) {
             if (alreadyIssued.has(fc._id.toString())) continue;
 
+            if (fc.giveFreeCashTo === 'GROUPS' && !(fc.userGroupIds || []).some((id) => myActiveGroupIds.has(id.toString()))) {
+                continue;
+            }
             if (isCategoryFreeCash(fc) && !lines.some((line) => lineMatchesFreeCash(line, fc, productCategoryMap))) {
                 continue;
             }
 
+            // Idempotent (one grant per customer per campaign), so two cart
+            // requests arriving together can't hand it out twice.
             await freeCashService.issueUserFreeCash(vendorId, fc, [userId], userId, companySettingsData, null, false);
-            const freshGrant = await UserFreeCash.findOne({ vendorId, freeCashId: fc._id, userId }).sort({ createdAt: -1 });
-            if (freshGrant) {
+            const freshGrant = await UserFreeCash.findOne({ vendorId, freeCashId: fc._id, userId });
+            if (freshGrant && !freshGrant.isRevoked && !freshGrant.isCashExpired && freshGrant.remainingAmount > 0) {
                 // A plain wrapper (not freshGrant.freeCashId = fc) - assigning a
                 // full document to a Mongoose ObjectId ref path silently casts
                 // it back down to just the id, discarding freeCashName/etc.
@@ -1661,7 +1673,8 @@ const removeFreeCashFromCart = async (vendorId, cartOwner, userId) => {
 // current cart right now, without actually applying anything. isEnabled /
 // requiresLogin / isMultipleFreeCashUsageAllowed tell the cart page what to
 // render (nothing, a login prompt, a single choice or multiple choices).
-const listEligibleFreeCashForCart = async (vendorId, cartOwner, userId, companyMasterData, websiteMasterData, companySettingsData) => {
+// countryId only formats amounts in messages (shopper's currency).
+const listEligibleFreeCashForCart = async (vendorId, cartOwner, userId, companyMasterData, websiteMasterData, companySettingsData, countryId = null) => {
     try {
         const response = {
             isEnabled: false,
@@ -1704,11 +1717,29 @@ const listEligibleFreeCashForCart = async (vendorId, cartOwner, userId, companyM
             : [];
         const categoryNameById = new Map(categories.map((c) => [c._id.toString(), c.categoryName]));
 
+        // What each one would take off this cart on its own right now - or,
+        // when it can't be used yet, why (isLocked + lockedReason: "Add items
+        // worth X more...", "can't be combined with an active discount").
+        const lines = cartLines(cart);
+        const formatMoney = await resolveMoneyFormatter(countryId, companyMasterData, companySettingsData);
+        const grantMap = new Map(grants.map((g) => [g.freeCashId._id.toString(), g]));
+        const preview = (freeCashId) => allocateFreeCash({
+            freeCashIds: [freeCashId],
+            grantMap,
+            lines,
+            productCategoryMap,
+            discounts: cart.discounts,
+            totalDiscountAmount: cart.totalDiscountAmount,
+            multipleAllowed: true,
+            formatMoney
+        });
+
         response.freeCash = grants.map((g) => {
             const fc = g.freeCashId;
             const validOnIds = fc.giveFreeCashTo === 'MAIN_CATEGORY_AND_SUB_CATEGORY' && (fc.subCategoryIds || []).length > 0
                 ? fc.subCategoryIds
                 : fc.mainCategoryIds;
+            const { applied, rejected } = preview(fc._id);
             return {
                 freeCashId: fc._id,
                 freeCashName: fc.freeCashName,
@@ -1717,11 +1748,17 @@ const listEligibleFreeCashForCart = async (vendorId, cartOwner, userId, companyM
                 maxCashUsagePerOrder: fc.maxCashUsagePerOrder,
                 canBeUsedWithOtherDiscounts: fc.canBeUsedWithOtherDiscounts === true,
                 endDate: fc.endDate,
+                isCategoryRestricted: isCategoryFreeCash(fc),
                 validOnCategories: isCategoryFreeCash(fc)
                     ? (validOnIds || []).map((id) => categoryNameById.get(id.toString())).filter(Boolean)
-                    : []
+                    : [],
+                applicableAmount: applied.length > 0 ? applied[0].amountApplied : 0,
+                isLocked: applied.length === 0,
+                lockedReason: applied.length === 0 && rejected.length > 0 ? rejected[0].reason : null
             };
         });
+        // Usable ones first, then the ones still to unlock.
+        response.freeCash.sort((a, b) => Number(a.isLocked) - Number(b.isLocked));
 
         return common.returnResult(true, 200, 'Eligible Free Cash fetched successfully', response);
     } catch (err) {
@@ -1801,17 +1838,16 @@ const refundFreeCashForReturn = async (vendorId, order, orderReturn, companyMast
         const returnedShare = Math.min(orderReturn.totalRefundAmount / order.subtotal, 1);
         if (returnedShare <= 0) return;
 
-        const eligibleFreeCashPool = order.totalFreeCashAmount * returnedShare;
-        const totalToRefund = Math.round(eligibleFreeCashPool * (refundPercentage / 100) * 100) / 100;
-        if (totalToRefund <= 0) return;
-
+        // Worked out in the STORE currency, the one grants are kept in:
+        // cart.freeCash[].amountApplied is store currency, while the order's
+        // own totals are in the customer's (converted) currency - only their
+        // ratio (returnedShare) is taken from the order.
         const now = new Date();
 
         for (const f of cart.freeCash) {
-            // This specific grant's own share of the refund pool,
-            // proportional to how much of the order's total Free Cash
-            // usage it originally contributed.
-            const grantShare = (f.amountApplied / order.totalFreeCashAmount) * totalToRefund;
+            // This grant's share: what it took off the order x the returned
+            // share of the order x the refund percentage.
+            const grantShare = f.amountApplied * returnedShare * (refundPercentage / 100);
             if (grantShare <= 0) continue;
 
             const grant = await UserFreeCash.findOne({ _id: f.userFreeCashId, vendorId });

@@ -1,17 +1,26 @@
 import { GIVE_FREE_CASH_TO_CONFIG } from '../constants';
+import { DEFAULT_TIMEZONE, isValidTimezone, toDateInputValue, formatZonedDate } from '../../../../utils/zonedDate';
 
-const pad = (n) => String(n).padStart(2, '0');
-const toDateInputValue = (value) => {
-  if (!value) return '';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
+// Dates are whole days in the campaign's own timezone - see utils/zonedDate.js.
+export { DEFAULT_TIMEZONE, isValidTimezone };
+export const formatFreeCashDate = formatZonedDate;
 
 export const needsExcelFor = (giveFreeCashTo) => {
   const config = GIVE_FREE_CASH_TO_CONFIG[giveFreeCashTo];
   return !!(config && config.needsUsersFile);
 };
+
+/**
+ * Editing a Specific Users campaign without changing the option: the server
+ * keeps the customers it already has, so a new excel is optional (uploading
+ * one replaces the list - new customers get it, removed ones lose their
+ * unused balance).
+ */
+export const canKeepExistingUsers = (draft) =>
+  !!draft.savedGiveFreeCashTo
+  && draft.savedGiveFreeCashTo === draft.giveFreeCashTo
+  && needsExcelFor(draft.giveFreeCashTo)
+  && (draft.existingTargetCount || 0) > 0;
 
 export const emptyDraft = () => ({
   _id: null,
@@ -22,6 +31,7 @@ export const emptyDraft = () => ({
   maxCashUsagePerOrder: '',
 
   giveFreeCashTo: 'ALL_USERS',
+  savedGiveFreeCashTo: null,
   excelFile: null,
   userGroupIds: [],
   mainCategoryIds: [],
@@ -30,6 +40,7 @@ export const emptyDraft = () => ({
 
   startDate: '',
   endDate: '',
+  timezone: DEFAULT_TIMEZONE,
   validAbove: '0',
   canBeUsedWithOtherDiscounts: false,
 
@@ -40,10 +51,8 @@ export const emptyDraft = () => ({
 /**
  * Converts a FreeCash doc returned by the API (get-by-id / admin list) into
  * form draft shape. giveToUsers resolved via a previous excel upload cannot
- * be re-displayed by name (the API doesn't populate it, and there's no
- * by-ids lookup endpoint) - only its count is shown, and the excel must be
- * re-uploaded to change or keep it when giveFreeCashTo is SPECIFIC_USERS
- * (see needsExcelFor above).
+ * be re-displayed by name (the API doesn't populate it) - only its count is
+ * shown; saving without a new excel keeps it (see canKeepExistingUsers).
  */
 export const mapApiFreeCashToDraft = (doc) => ({
   _id: doc._id,
@@ -53,14 +62,16 @@ export const mapApiFreeCashToDraft = (doc) => ({
   maxCashUsagePerOrder: doc.maxCashUsagePerOrder ?? '',
 
   giveFreeCashTo: doc.giveFreeCashTo || 'ALL_USERS',
+  savedGiveFreeCashTo: doc.giveFreeCashTo || null,
   excelFile: null,
   userGroupIds: (doc.userGroupIds || []).map(String),
   mainCategoryIds: (doc.mainCategoryIds || []).map(String),
   subCategoryIds: (doc.subCategoryIds || []).map(String),
   existingTargetCount: (doc.giveToUsers || []).length,
 
-  startDate: toDateInputValue(doc.startDate),
-  endDate: toDateInputValue(doc.endDate),
+  startDate: toDateInputValue(doc.startDate, doc.timezone),
+  endDate: toDateInputValue(doc.endDate, doc.timezone),
+  timezone: doc.timezone || DEFAULT_TIMEZONE,
   validAbove: String(doc.validAbove ?? 0),
   canBeUsedWithOtherDiscounts: !!doc.canBeUsedWithOtherDiscounts,
 
@@ -87,19 +98,21 @@ export const buildSubmitFields = (draft, { includeStatus = false } = {}) => {
     giveFreeCashTo: draft.giveFreeCashTo,
     startDate: draft.startDate,
     endDate: draft.endDate,
+    timezone: (draft.timezone || '').trim() || DEFAULT_TIMEZONE,
     validAbove: Number(draft.validAbove) || 0,
     canBeUsedWithOtherDiscounts: !!draft.canBeUsedWithOtherDiscounts,
     remarks: draft.remarks || '',
     notifyCustomers: !!draft.notifyCustomers,
   };
 
-  if (draft.maxCashUsagePerOrder !== '' && draft.maxCashUsagePerOrder !== null && draft.maxCashUsagePerOrder !== undefined) {
-    fields.maxCashUsagePerOrder = Number(draft.maxCashUsagePerOrder);
-  }
+  // Blank = no per-order limit (sent as null so an edit can remove a limit).
+  fields.maxCashUsagePerOrder = draft.maxCashUsagePerOrder !== '' && draft.maxCashUsagePerOrder !== null && draft.maxCashUsagePerOrder !== undefined
+    ? Number(draft.maxCashUsagePerOrder)
+    : null;
 
   if (config.needsUserGroupIds) fields.userGroupIds = draft.userGroupIds;
   if (config.needsMainCategoryIds) fields.mainCategoryIds = draft.mainCategoryIds;
-  if (config.needsSubCategoryIds && draft.subCategoryIds.length > 0) fields.subCategoryIds = draft.subCategoryIds;
+  if (config.needsSubCategoryIds) fields.subCategoryIds = draft.subCategoryIds;
 
   if (includeStatus) fields.status = draft.status;
 
@@ -111,4 +124,7 @@ export default {
   mapApiFreeCashToDraft,
   buildSubmitFields,
   needsExcelFor,
+  canKeepExistingUsers,
+  formatFreeCashDate,
+  isValidTimezone,
 };

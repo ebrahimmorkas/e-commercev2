@@ -7,7 +7,7 @@ import BasicDetailsStep from './BasicDetailsStep';
 import TargetingStep from './TargetingStep';
 import TimingStep from './TimingStep';
 import ReviewStep from './ReviewStep';
-import { emptyDraft, buildSubmitFields, needsExcelFor } from '../utils/freeCashDraft';
+import { emptyDraft, buildSubmitFields, needsExcelFor, canKeepExistingUsers, isValidTimezone } from '../utils/freeCashDraft';
 import { GIVE_FREE_CASH_TO_CONFIG } from '../constants';
 import theme from '../theme/theme';
 
@@ -18,19 +18,27 @@ const STEPS = [
   { key: 'review', label: 'Review & Submit' },
 ];
 
+const hasValue = (value) => value !== '' && value !== null && value !== undefined;
+
 const validateBasics = (draft) => {
-  if (!draft.freeCashName.trim()) return 'Free Cash name is required.';
-  if (draft.freeCashAmount === '' || Number(draft.freeCashAmount) < 0) return 'A valid Free Cash amount is required.';
-  if (draft.maxCashUsagePerOrder !== '' && Number(draft.maxCashUsagePerOrder) > Number(draft.freeCashAmount)) {
-    return 'Max usage per order cannot exceed the Free Cash amount.';
+  const name = draft.freeCashName.trim();
+  if (!name) return 'Free Cash name is required.';
+  if (name.length < 2) return 'Free Cash name must be at least 2 characters.';
+  if (!hasValue(draft.freeCashAmount) || !(Number(draft.freeCashAmount) > 0)) return 'Free Cash amount must be greater than 0.';
+  if (hasValue(draft.maxCashUsagePerOrder)) {
+    if (!(Number(draft.maxCashUsagePerOrder) > 0)) return 'Max usage per order must be greater than 0, or blank for no limit.';
+    if (Number(draft.maxCashUsagePerOrder) > Number(draft.freeCashAmount)) return 'Max usage per order cannot be more than the Free Cash amount.';
   }
+  if (hasValue(draft.validAbove) && Number(draft.validAbove) < 0) return 'Valid above amount cannot be negative.';
   return null;
 };
 
 const validateTargeting = (draft) => {
   const config = GIVE_FREE_CASH_TO_CONFIG[draft.giveFreeCashTo];
   if (!config) return 'Choose who this Free Cash applies to.';
-  if (needsExcelFor(draft.giveFreeCashTo) && !draft.excelFile) return 'An excel file is required for this targeting option.';
+  if (needsExcelFor(draft.giveFreeCashTo) && !draft.excelFile && !canKeepExistingUsers(draft)) {
+    return 'An excel file is required for this targeting option.';
+  }
   if (config.needsUserGroupIds && draft.userGroupIds.length === 0) return 'Select at least one user group.';
   if (config.needsMainCategoryIds && draft.mainCategoryIds.length === 0) return 'Select at least one main category.';
   return null;
@@ -38,7 +46,9 @@ const validateTargeting = (draft) => {
 
 const validateTiming = (draft) => {
   if (!draft.startDate || !draft.endDate) return 'Start date and end date are required.';
+  // Same day is fine: a one-day campaign runs from 00:00 to 23:59 that day.
   if (draft.endDate < draft.startDate) return 'End date cannot be before start date.';
+  if (!isValidTimezone(draft.timezone)) return 'Enter a valid timezone, e.g. Asia/Kolkata.';
   return null;
 };
 
@@ -48,7 +58,7 @@ const VALIDATORS = [validateBasics, validateTargeting, validateTiming, null];
  * Multi-step Free Cash create/edit form, mirroring
  * admin/features/discounts/components/DiscountForm.jsx's pattern: local
  * draft state, per-step validation gating "Next", final authority still the
- * backend (freeCashService.js's hand-rolled validators).
+ * backend (freeCashValidations.js's Joi schemas + freeCashService.js).
  *
  * @param {'add'|'edit'} props.mode
  * @param {Object} [props.initialDraft]
@@ -98,7 +108,7 @@ const FreeCashForm = ({ mode = 'add', initialDraft, lookups, onSubmit, onCancel,
           <Stepper steps={STEPS} currentStep={step} onStepClick={setStep} />
         </div>
         <div className="p-4 sm:p-6 space-y-4">
-          {step === 0 && <BasicDetailsStep draft={draft} onChange={setDraft} />}
+          {step === 0 && <BasicDetailsStep draft={draft} onChange={setDraft} isEdit={mode === 'edit'} />}
           {step === 1 && (
             <TargetingStep
               draft={draft}

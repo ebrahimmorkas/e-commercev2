@@ -88,6 +88,8 @@ const freeCashSchema = new mongoose.Schema(
             default: true
         },
 
+        // Whole calendar days in `timezone`: 00:00:00.000 on the start day to
+        // 23:59:59.999 on the end day (see utils/discountSchedule.js).
         startDate: {
             type: Date,
             required: true
@@ -96,6 +98,11 @@ const freeCashSchema = new mongoose.Schema(
         endDate: {
             type: Date,
             required: true
+        },
+
+        timezone: {
+            type: String,
+            default: "Asia/Kolkata"
         },
 
         // Minimum cart/order subtotal required before this free cash can be

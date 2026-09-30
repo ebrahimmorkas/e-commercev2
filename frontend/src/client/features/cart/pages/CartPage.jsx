@@ -267,7 +267,7 @@ const CartPage = ({
               formatMoney={formatMoney}
             />
             <FreeCashPanel
-              key={appliedFreeCash.map((f) => `${f.freeCashId}:${f.amountApplied}`).join(',')}
+              key={`${appliedFreeCash.map((f) => `${f.freeCashId}:${f.amountApplied}`).join(',')}|${(freeCash.info?.freeCash || []).filter((f) => !f.isLocked).map((f) => f.freeCashId).join(',')}`}
               info={freeCash.info}
               appliedFreeCash={appliedFreeCash}
               saving={freeCash.saving}

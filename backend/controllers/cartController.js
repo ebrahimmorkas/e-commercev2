@@ -225,8 +225,10 @@ const getEligibleFreeCash = async (req, res) => {
     const vendorId = req.vendorId;
     try {
         const userId = req.user ? req.user._id : null;
+        // The shopper's country only formats amounts in messages ("Add items worth X more").
         const result = await cartService.listEligibleFreeCashForCart(
-            vendorId, req.cartOwner, userId, req.companyMasterData, req.websiteMasterData, req.companySettingsData
+            vendorId, req.cartOwner, userId, req.companyMasterData, req.websiteMasterData, req.companySettingsData,
+            req.cookies?.Country || req.user?.country || null
         );
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);

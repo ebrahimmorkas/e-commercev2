@@ -12,7 +12,7 @@ import BulkActionBar from '../../../../components/common/BulkActionBar';
 import { useFreeCash } from '../hooks/useFreeCash';
 import { useFreeCashLookups } from '../hooks/useFreeCashLookups';
 import FreeCashForm from '../components/FreeCashForm';
-import { mapApiFreeCashToDraft } from '../utils/freeCashDraft';
+import { mapApiFreeCashToDraft, formatFreeCashDate } from '../utils/freeCashDraft';
 import { GIVE_FREE_CASH_TO_CONFIG } from '../constants';
 import theme from '../theme/theme';
 import { useStoreCurrency } from '../../../currency/useStoreCurrency';
@@ -43,9 +43,12 @@ const BackIcon = () => (
   </svg>
 );
 
+// Loose shape check for the revoke-by-email field; the server does the real match.
+const isEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+
 const givenToLabel = (row) => GIVE_FREE_CASH_TO_CONFIG[row.giveFreeCashTo]?.label || row.giveFreeCashTo;
 const windowLabel = (row) => (row.startDate || row.endDate
-  ? `${row.startDate ? new Date(row.startDate).toLocaleDateString() : '—'} – ${row.endDate ? new Date(row.endDate).toLocaleDateString() : '—'}`
+  ? `${formatFreeCashDate(row.startDate, row.timezone)} – ${formatFreeCashDate(row.endDate, row.timezone)}`
   : '—');
 
 const FreeCashPage = () => {
@@ -64,7 +67,9 @@ const FreeCashPage = () => {
   const [loadingEdit, setLoadingEdit] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [revokeTarget, setRevokeTarget] = useState(null);
-  const [revokeUserId, setRevokeUserId] = useState('');
+  const [revokeEmail, setRevokeEmail] = useState('');
+  // Which revoke is running ('all' | 'user') - only that button spins, the other just waits.
+  const [revokingAction, setRevokingAction] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
 
@@ -104,20 +109,30 @@ const FreeCashPage = () => {
   };
 
   const closeRevokeModal = () => {
+    if (revokingAction) return;
     setRevokeTarget(null);
-    setRevokeUserId('');
+    setRevokeEmail('');
   };
 
-  const handleRevokeAllUsers = async () => {
-    if (!revokeTarget) return;
-    const result = await revokeForAllUsers(revokeTarget._id);
-    if (result.success) closeRevokeModal();
+  const runRevoke = async (action, request) => {
+    if (!revokeTarget || revokingAction) return;
+    setRevokingAction(action);
+    try {
+      const result = await request();
+      if (result.success) {
+        setRevokeTarget(null);
+        setRevokeEmail('');
+      }
+    } finally {
+      setRevokingAction(null);
+    }
   };
 
-  const handleRevokeUser = async () => {
-    if (!revokeTarget || !revokeUserId.trim()) return;
-    const result = await revokeForUser(revokeUserId.trim(), revokeTarget._id);
-    if (result.success) closeRevokeModal();
+  const handleRevokeAllUsers = () => runRevoke('all', () => revokeForAllUsers(revokeTarget._id));
+
+  const handleRevokeUser = () => {
+    if (!isEmail(revokeEmail)) return;
+    return runRevoke('user', () => revokeForUser(revokeEmail.trim().toLowerCase(), revokeTarget._id));
   };
 
   // --- Bulk multi-select actions (checkbox column) --------------------------
@@ -438,22 +453,45 @@ const FreeCashPage = () => {
           <div className="rounded-xl border border-gray-200 p-4 space-y-3">
             <p className={`text-sm font-medium ${theme.text.heading}`}>Revoke for all users</p>
             <p className={`text-xs ${theme.text.muted}`}>Immediately revokes every currently unused grant of this Free Cash.</p>
-            <Button variant={theme.button.danger} size="sm" onClick={handleRevokeAllUsers} loading={mutating} fullWidth>
+            <Button
+              variant={theme.button.danger}
+              size="sm"
+              onClick={handleRevokeAllUsers}
+              loading={revokingAction === 'all'}
+              disabled={!!revokingAction}
+              fullWidth
+            >
               Revoke for All Users
             </Button>
           </div>
 
           <div className="rounded-xl border border-gray-200 p-4 space-y-3">
-            <p className={`text-sm font-medium ${theme.text.heading}`}>Revoke for a specific user</p>
+            <p className={`text-sm font-medium ${theme.text.heading}`}>Revoke for a specific customer</p>
+            <p className={`text-xs ${theme.text.muted}`}>Removes this customer&apos;s unused balance of this Free Cash. Amounts already used are not affected.</p>
             <InputField
-              label="User ID"
-              name="revokeUserId"
-              placeholder="Paste the user's ID"
-              value={revokeUserId}
-              onChange={(e) => setRevokeUserId(e.target.value)}
+              label="Customer Email"
+              name="revokeEmail"
+              type="email"
+              placeholder="e.g. customer@example.com"
+              value={revokeEmail}
+              onChange={(e) => setRevokeEmail(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && isEmail(revokeEmail) && !revokingAction) handleRevokeUser();
+              }}
+              showError={false}
             />
-            <Button variant={theme.button.danger} size="sm" onClick={handleRevokeUser} loading={mutating} disabled={!revokeUserId.trim()} fullWidth>
-              Revoke for This User
+            {revokeEmail.trim() && !isEmail(revokeEmail) && (
+              <p className="-mt-1 text-xs text-red-600">Enter a valid email address.</p>
+            )}
+            <Button
+              variant={theme.button.danger}
+              size="sm"
+              onClick={handleRevokeUser}
+              loading={revokingAction === 'user'}
+              disabled={!isEmail(revokeEmail) || !!revokingAction}
+              fullWidth
+            >
+              Revoke for This Customer
             </Button>
           </div>
         </div>

@@ -36,7 +36,7 @@ const decodeFreeCashPayloadIds = (body) => {
   const payload = { ...body };
   ['userGroupIds', 'mainCategoryIds', 'subCategoryIds'].forEach((field) => {
     if (Array.isArray(payload[field])) {
-      payload[field] = payload[field].map((id) => common.decodeId(id));
+      payload[field] = payload[field].map((id) => common.tryDecodeId(id));
     }
   });
   return payload;
@@ -155,7 +155,7 @@ const updateFreeCash = async (req, res) => {
       return common.sendError(res, blockReason.statusCode, blockReason.message);
     }
 
-    freeCashId = common.decodeId(req.params.id);
+    freeCashId = common.tryDecodeId(req.params.id);
     const files = req.files || {};
     const payload = decodeFreeCashPayloadIds(req.body);
     const notifyCustomers = payload.notifyCustomers === true || payload.notifyCustomers === 'true';
@@ -187,7 +187,7 @@ const getFreeCashById = async (req, res) => {
       return common.sendError(res, blockReason.statusCode, blockReason.message);
     }
 
-    freeCashId = common.decodeId(req.params.id);
+    freeCashId = common.tryDecodeId(req.params.id);
     const result = await freeCashService.fetchFreeCashById(vendorId, freeCashId);
 
     if (!result.isSuccess) {
@@ -230,7 +230,7 @@ const deleteFreeCash = async (req, res) => {
       return common.sendError(res, blockReason.statusCode, blockReason.message);
     }
 
-    freeCashId = common.decodeId(req.params.id);
+    freeCashId = common.tryDecodeId(req.params.id);
     const result = await freeCashService.deleteFreeCash(vendorId, freeCashId, userId);
 
     if (!result.isSuccess) {
@@ -257,9 +257,8 @@ const revokeFreeCashForUser = async (req, res) => {
       return common.sendError(res, revokeBlockReason.statusCode, revokeBlockReason.message);
     }
 
-    const targetUserId = common.decodeId(req.body.userId);
-    const freeCashId = common.decodeId(req.body.freeCashId);
-    const result = await freeCashService.revokeFreeCashForUser(vendorId, targetUserId, freeCashId, adminUserId, {
+    const freeCashId = common.tryDecodeId(req.body.freeCashId);
+    const result = await freeCashService.revokeFreeCashForUser(vendorId, req.body.email, freeCashId, adminUserId, {
       companyMasterData: req.companyMasterData, websiteMasterData: req.websiteMasterData, companySettingsData: req.companySettingsData
     });
 
@@ -287,7 +286,7 @@ const revokeFreeCashForAllUsers = async (req, res) => {
       return common.sendError(res, revokeBlockReason.statusCode, revokeBlockReason.message);
     }
 
-    const freeCashId = common.decodeId(req.body.freeCashId);
+    const freeCashId = common.tryDecodeId(req.body.freeCashId);
     const result = await freeCashService.revokeFreeCashForAllUsers(vendorId, freeCashId, adminUserId, {
       companyMasterData: req.companyMasterData, websiteMasterData: req.websiteMasterData, companySettingsData: req.companySettingsData
     });
@@ -307,7 +306,12 @@ const bulkSetFreeCashStatus = async (req, res) => {
   const userId = req.user && req.user._id;
   const { status } = req.body;
   try {
-    const decodedIds = req.body.freeCashIds.map((id) => common.decodeId(id));
+    const blockReason = await getFreeCashFeatureBlockReason(req);
+    if (blockReason) {
+      return common.sendError(res, blockReason.statusCode, blockReason.message);
+    }
+
+    const decodedIds = req.body.freeCashIds.map((id) => common.tryDecodeId(id));
     const result = await freeCashService.bulkSetFreeCashStatus(vendorId, userId, decodedIds, status, {
       notifyCustomers: req.body.notifyCustomers === true,
       companyMasterData: req.companyMasterData,
@@ -331,7 +335,12 @@ const bulkDeleteFreeCash = async (req, res) => {
   const vendorId = req.vendorId;
   const userId = req.user && req.user._id;
   try {
-    const decodedIds = req.body.freeCashIds.map((id) => common.decodeId(id));
+    const blockReason = await getFreeCashFeatureBlockReason(req);
+    if (blockReason) {
+      return common.sendError(res, blockReason.statusCode, blockReason.message);
+    }
+
+    const decodedIds = req.body.freeCashIds.map((id) => common.tryDecodeId(id));
     const result = await freeCashService.bulkDeleteFreeCash(vendorId, userId, decodedIds);
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message);
@@ -346,7 +355,32 @@ const bulkDeleteFreeCash = async (req, res) => {
   }
 };
 
+// The sample .xlsx for the Specific Users option (a "Users" sheet with its "Email" heading).
+const downloadUsersSampleFile = async (req, res) => {
+  const vendorId = req.vendorId;
+  try {
+    const blockReason = await getFreeCashFeatureBlockReason(req);
+    if (blockReason) {
+      return common.sendError(res, blockReason.statusCode, blockReason.message);
+    }
+
+    const result = await freeCashService.buildUsersSampleFile();
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+
+    const { buffer, fileName } = result.meta;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Length', buffer.length);
+    return res.status(200).end(buffer);
+  } catch (error) {
+    logger.logException('freeCashController: downloadUsersSampleFile - Exception while building sample file', { vendorId, error });
+  }
+};
+
 module.exports = {
+  downloadUsersSampleFile,
   createFreeCash,
   updateFreeCash,
   getFreeCashById,

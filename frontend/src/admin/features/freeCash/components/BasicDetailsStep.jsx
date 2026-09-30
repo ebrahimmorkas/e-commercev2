@@ -7,8 +7,9 @@ import { useStoreCurrency } from '../../../currency/useStoreCurrency';
 /**
  * @param {Object} props.draft
  * @param {(patch: Object) => void} props.onChange
+ * @param {boolean} [props.isEdit]
  */
-const BasicDetailsStep = ({ draft, onChange }) => {
+const BasicDetailsStep = ({ draft, onChange, isEdit = false }) => {
   // Amounts are entered in the store currency (Company Settings).
   const { symbol } = useStoreCurrency();
   const set = (patch) => onChange({ ...draft, ...patch });
@@ -30,7 +31,7 @@ const BasicDetailsStep = ({ draft, onChange }) => {
           label={`Free Cash Amount (${symbol})`}
           name="freeCashAmount"
           type="number"
-          min={0}
+          min={1}
           placeholder="e.g. 100"
           value={draft.freeCashAmount}
           onChange={(e) => set({ freeCashAmount: e.target.value })}
@@ -40,14 +41,15 @@ const BasicDetailsStep = ({ draft, onChange }) => {
           label={`Max Usage Per Order (${symbol})`}
           name="maxCashUsagePerOrder"
           type="number"
-          min={0}
+          min={1}
           placeholder="Optional - no limit if left blank"
           value={draft.maxCashUsagePerOrder}
           onChange={(e) => set({ maxCashUsagePerOrder: e.target.value })}
         />
       </div>
       <p className={`-mt-3 text-xs ${theme.text.muted}`}>
-        Leave "Max Usage Per Order" blank to allow the full granted amount to be used on a single order.
+        Leave &quot;Max Usage Per Order&quot; blank to allow the full granted amount to be used on a single order.
+        {isEdit && ' Changing the amount only affects customers who get this Free Cash from now on - anyone already given it keeps the amount they received.'}
       </p>
 
       <InputField
@@ -58,7 +60,7 @@ const BasicDetailsStep = ({ draft, onChange }) => {
         placeholder="e.g. 500"
         value={draft.validAbove}
         onChange={(e) => set({ validAbove: e.target.value })}
-        helperText="Minimum cart value required before this Free Cash can be applied."
+        helperText="Minimum cart value before this Free Cash can be used (after any discount). For a category campaign, only the items from its categories count."
       />
 
       <Switch

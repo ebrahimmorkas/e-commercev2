@@ -202,4 +202,10 @@ const userFreeCashSchema = new mongoose.Schema(
 userFreeCashSchema.index({ vendorId: 1, userId: 1, isCashExpired: 1, isRevoked: 1 });
 userFreeCashSchema.index({ vendorId: 1, freeCashId: 1 });
 
+// One grant per customer per campaign, ever - a used-up, expired or revoked
+// grant still counts. This is what makes the lazy cart-time issue (and the
+// same email twice in an excel) unable to hand out the same Free Cash twice.
+// Run scripts/migrateUserFreeCashUniqueIndex.js once on an existing database.
+userFreeCashSchema.index({ vendorId: 1, freeCashId: 1, userId: 1 }, { unique: true });
+
 module.exports = mongoose.model("UserFreeCash", userFreeCashSchema);

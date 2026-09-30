@@ -38,8 +38,9 @@ export const useFreeCashLookups = () => {
     fetchAll();
   }, [fetchAll]);
 
+  // isActive: only active groups can be picked (see TargetingStep).
   const userGroupOptions = useMemo(
-    () => userGroups.map((g) => ({ value: String(g._id), label: g.groupName })),
+    () => userGroups.map((g) => ({ value: String(g._id), label: g.groupName, isActive: (g.status ?? 'A') === 'A' })),
     [userGroups]
   );
 
