@@ -289,6 +289,19 @@ const companySettingsSchema = new mongoose.Schema({
   },
   // End of Customer Signup
 
+  // Start of Location
+  // Vendor's own choice ("Make City Optional", Company Settings > General).
+  // false (default) = a city is required wherever a location is entered:
+  // customer signup, the admin's Add User / Edit Customer, a delivery agent's
+  // location and a customer's delivery address. true = the city may be left
+  // empty in all of those (country and state stay required). Enforced in
+  // userLocationService / addressService, not at the schema level.
+  isCityOptional: {
+    type: Boolean,
+    default: false
+  },
+  // End of Location
+
   // Start of Invoice (PDF tax invoice issued when an order is placed - see invoiceService.js)
   // The seller's own Tax Registration Number, printed in the invoice header. A vendor
   // without one gets a plain "INVOICE" instead of a "TAX INVOICE".

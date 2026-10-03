@@ -3,6 +3,7 @@ import InputField from '../../../../components/common/InputField';
 import Dropdown from '../../../../components/common/DropDown';
 import Button from '../../../../components/common/Buttons';
 import theme from '../theme/theme';
+import { useIsCityOptional } from '../../companySettings/hooks/useIsCityOptional';
 
 // Mirrors backend/middlewares/validations/userValidations.js's
 // USERNAME_PATTERN/PHONE_PATTERN/PASSWORD_PATTERN so the form rejects the
@@ -12,7 +13,8 @@ const PHONE_PATTERN = /^\+?[0-9]{10,14}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_PATTERN = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/;
 
-const validationSchema = {
+// cityOptional: the vendor's "Make City Optional" choice in Company Settings.
+const buildValidationSchema = (cityOptional) => ({
   name: {
     required: true,
     validations: [
@@ -52,8 +54,8 @@ const validationSchema = {
   // User.country/state/city (same as self-registration's dropdowns).
   country: { required: true },
   state: { required: true },
-  city: { required: true },
-};
+  city: { required: !cityOptional },
+});
 
 const EMPTY_VALUES = {
   name: '',
@@ -79,6 +81,8 @@ const EMPTY_VALUES = {
  */
 const AddUserForm = ({ lookups, onSubmit, onCancel, submitting = false }) => {
   const { countryOptions, getStateOptions, getCityOptions } = lookups;
+  const cityOptional = useIsCityOptional();
+  const validationSchema = buildValidationSchema(cityOptional);
 
   const handleFormSubmit = async (values) => {
     const payload = {
@@ -243,7 +247,8 @@ const AddUserForm = ({ lookups, onSubmit, onCancel, submitting = false }) => {
                 value={values.city}
                 onChange={(value) => setFieldValue('city', value)}
                 disabled={!values.state}
-                required
+                required={!cityOptional}
+                clearable={cityOptional}
                 searchable
                 error={showError('city') ? errors.city : ''}
               />

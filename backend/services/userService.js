@@ -32,7 +32,7 @@ const fetchAllUsersAdmin = async (vendorId, role = 'user') => {
 // registerUser). Gated by the two-layer WebsiteMaster/CompanyMaster
 // isAdminAddingUserFeatureAllowed switch, same checkFeatureOnOrOff convention
 // as cloneProduct/bulkCloneProducts in productService.js.
-const createUserByAdmin = async (vendorId, adminUserId, userData, websiteMasterData, companyMasterData) => {
+const createUserByAdmin = async (vendorId, adminUserId, userData, websiteMasterData, companyMasterData, companySettingsData) => {
     try {
         const featureCheck = await common.checkFeatureOnOrOff(
             vendorId, websiteMasterData, companyMasterData, 'isAdminAddingUserFeatureAllowed', 'isAdminAddingUserFeatureAllowed'
@@ -43,7 +43,12 @@ const createUserByAdmin = async (vendorId, adminUserId, userData, websiteMasterD
 
         const { name, username, email, phone_no, whatsapp_no, password, country, state, city } = userData;
 
-        const locationResult = await userLocationService.validateUserLocation({ countryId: country, stateId: state, cityId: city }, companyMasterData);
+        // city may be empty when the vendor has "Make City Optional" on.
+        const locationResult = await userLocationService.validateUserLocation(
+            { countryId: country, stateId: state, cityId: city },
+            companyMasterData,
+            userLocationService.isCityOptionalForVendor(companySettingsData)
+        );
         if (!locationResult.isSuccess) {
             return locationResult;
         }
@@ -73,7 +78,7 @@ const createUserByAdmin = async (vendorId, adminUserId, userData, websiteMasterD
             authProvider: 'local',
             country,
             state,
-            city,
+            city: city || undefined,
             createdBy: adminUserId
         });
 
@@ -104,7 +109,7 @@ const fetchUserByIdAdmin = async (vendorId, userId) => {
 // authProvider/googleId are intentionally out of scope here: status has its
 // own bulk-status endpoint above, and password/role changes need their own
 // deliberate flows rather than sliding in through a generic profile update.
-const updateUserByAdmin = async (vendorId, adminUserId, targetUserId, updateData, companyMasterData) => {
+const updateUserByAdmin = async (vendorId, adminUserId, targetUserId, updateData, companyMasterData, companySettingsData) => {
     try {
         const user = await User.findOne({ _id: targetUserId, vendorId, role: 'user', status: { $ne: 'D' } });
         if (!user) {
@@ -113,15 +118,21 @@ const updateUserByAdmin = async (vendorId, adminUserId, targetUserId, updateData
 
         // Changing any part of the location re-checks the whole resulting
         // country -> state -> city chain (a new country invalidates the old state).
+        // An empty city ('' / null) clears it - allowed only while the vendor
+        // has "Make City Optional" on.
         const locationTouched = ['country', 'state', 'city'].some((field) => updateData[field] !== undefined);
         if (locationTouched) {
             const locationResult = await userLocationService.validateUserLocation({
                 countryId: updateData.country !== undefined ? updateData.country : user.country,
                 stateId: updateData.state !== undefined ? updateData.state : user.state,
                 cityId: updateData.city !== undefined ? updateData.city : user.city
-            }, companyMasterData);
+            }, companyMasterData, userLocationService.isCityOptionalForVendor(companySettingsData));
             if (!locationResult.isSuccess) {
                 return locationResult;
+            }
+            // undefined removes the field from the document instead of storing ''.
+            if (updateData.city === '' || updateData.city === null) {
+                updateData = { ...updateData, city: undefined };
             }
         }
 

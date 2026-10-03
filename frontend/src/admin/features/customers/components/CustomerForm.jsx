@@ -4,6 +4,7 @@ import InputField from '../../../../components/common/InputField';
 import Dropdown from '../../../../components/common/DropDown';
 import Button from '../../../../components/common/Buttons';
 import theme from '../theme/theme';
+import { useIsCityOptional } from '../../companySettings/hooks/useIsCityOptional';
 
 // Mirrors backend/middlewares/validations/userValidations.js's
 // USERNAME_PATTERN/PHONE_PATTERN so the form rejects the same input the API
@@ -12,7 +13,7 @@ const USERNAME_PATTERN = /^[a-z0-9._]+$/;
 const PHONE_PATTERN = /^\+?[0-9]{10,14}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const buildValidationSchema = () => ({
+const buildValidationSchema = (cityOptional) => ({
   name: {
     required: true,
     validations: [
@@ -44,7 +45,8 @@ const buildValidationSchema = () => ({
   // User.country/state/city (same as self-registration's dropdowns).
   country: { required: true },
   state: { required: true },
-  city: { required: true },
+  // Not required while the vendor has "Make City Optional" on (Company Settings).
+  city: { required: !cityOptional },
 });
 
 const findOptionByLabel = (options, label) =>
@@ -72,7 +74,8 @@ const findOption = (options, saved) => options.find((o) => o.value === saved) ||
  * @param {boolean} props.submitting
  */
 const CustomerForm = ({ initialValues = {}, lookups, onSubmit, onCancel, submitting = false }) => {
-  const validationSchema = buildValidationSchema();
+  const cityOptional = useIsCityOptional();
+  const validationSchema = buildValidationSchema(cityOptional);
   const { countryOptions, getStateOptions, getCityOptions } = lookups;
 
   const resolved = useMemo(() => {
@@ -250,7 +253,8 @@ const CustomerForm = ({ initialValues = {}, lookups, onSubmit, onCancel, submitt
                 value={values.city}
                 onChange={(value) => setFieldValue('city', value)}
                 disabled={!values.state}
-                required
+                required={!cityOptional}
+                clearable={cityOptional}
                 searchable
                 error={showError('city') ? errors.city : ''}
                 helperText={

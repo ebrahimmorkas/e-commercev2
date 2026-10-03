@@ -44,7 +44,9 @@ const updateUserAdminSchema = Joi.object({
         .messages({ 'string.pattern.base': PHONE_PATTERN_MESSAGE }),
     country: Joi.string().trim().label('Country'),
     state: Joi.string().trim().label('State'),
-    city: Joi.string().trim().label('City')
+    // '' / null clears the city - userService allows that only while the
+    // vendor's CompanySettings.isCityOptional is on.
+    city: Joi.string().trim().max(200).allow('', null).label('City')
 }).min(1).messages({ 'object.min': 'At least one field must be provided to update.' });
 
 // Admin creating a customer account directly - same required fields as
@@ -76,7 +78,10 @@ const createUserAdminSchema = Joi.object({
         .messages({ 'string.pattern.base': PASSWORD_PATTERN_MESSAGE }),
     country: Joi.string().trim().required().label('Country'),
     state: Joi.string().trim().required().label('State'),
-    city: Joi.string().trim().required().label('City')
+    // Whether city is required depends on the vendor's
+    // CompanySettings.isCityOptional, which a static schema can't see - so it
+    // is optional here and enforced in userService (userLocationService).
+    city: Joi.string().trim().max(200).allow('', null).label('City')
 });
 
 // Admin-driven password reset - deliberately stricter than a bare

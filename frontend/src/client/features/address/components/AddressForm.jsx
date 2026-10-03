@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import Modal from '../../../../components/common/Modal/Modal';
 import { useLocations } from '../hooks/useLocations';
 import { getStatesForCountry, getCitiesForState } from '../utils/shapeLocations';
+import { useStorefrontCompanySettings } from '../../companySettings/hooks/useStorefrontCompanySettings';
 
 const inputClass =
   'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500';
@@ -53,6 +54,10 @@ const toFormValues = (address) => {
 const AddressForm = ({ isOpen, onClose, onSubmit, editingAddress = null, saving = false, error = '' }) => {
   const { countries, stateGroups, cityGroups, loading: locationsLoading, error: locationsError } = useLocations();
   const [form, setForm] = useState(() => toFormValues(editingAddress));
+  // The vendor's "Make City Optional" choice (Company Settings). Required until the
+  // settings say otherwise - the server enforces it anyway.
+  const { companySettings } = useStorefrontCompanySettings();
+  const cityOptional = companySettings?.isCityOptional === true;
 
   useEffect(() => {
     if (isOpen) setForm(toFormValues(editingAddress));
@@ -162,10 +167,10 @@ const AddressForm = ({ isOpen, onClose, onSubmit, editingAddress = null, saving 
             value={form.city_id}
             onChange={(e) => setForm((f) => ({ ...f, city_id: e.target.value }))}
             className={inputClass}
-            required
+            required={!cityOptional}
             disabled={saving || locationsLoading || !form.state_id}
           >
-            <option value="">City</option>
+            <option value="">{cityOptional ? 'City (optional)' : 'City'}</option>
             {availableCities.map((city) => (
               <option key={city._id} value={city._id}>
                 {city.city_name}

@@ -103,6 +103,8 @@ const PUBLIC_COMPANY_SETTINGS_FIELDS = [
     'privacyPolicy', 'cancelPolicy', 'termsAndConditions', 'returnRefundPolicy', 'aboutUs', 'policyDisplayMode',
     'showAnnouncements', 'isAnnouncementRotationOn', 'showBanners', 'isBannerRotationOn',
     'showReviewsToCustomers',
+    // The storefront address form needs it to know whether City is mandatory.
+    'isCityOptional',
 ];
 
 const formatPublicCompanySettings = (doc) => {

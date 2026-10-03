@@ -63,13 +63,26 @@ const isTaxRegistrationEnabled = async (req) => {
     return masterCheck.isSuccess && req.companySettingsData?.isTaxRegistrationOnSignupEnabled === true;
 };
 
+// The vendor's own "Make City Optional" choice (Company Settings > General).
+// A vendor with no settings document yet keeps city required.
+const isCityOptional = (req) => {
+    try {
+        return req.companySettingsData?.isCityOptional === true;
+    } catch (err) {
+        // Never fails the request it's part of - city just stays required.
+        logWarning('authController: isCityOptional - Exception while reading the city setting', err);
+        return false;
+    }
+};
+
 // Public - the storefront register form asks this to decide whether to show the
-// "I am tax registered" checkbox. Only the one boolean is exposed, never the
-// rest of the vendor's settings.
+// "I am tax registered" checkbox and whether City is mandatory. Only these
+// booleans are exposed, never the rest of the vendor's settings.
 const getRegistrationConfig = async (req, res) => {
     try {
         return sendSuccess(res, 200, 'Registration config fetched successfully', {
-            taxRegistrationEnabled: await isTaxRegistrationEnabled(req)
+            taxRegistrationEnabled: await isTaxRegistrationEnabled(req),
+            cityOptional: isCityOptional(req)
         });
     } catch (err) {
         logException('Error while fetching registration config', err);
@@ -84,9 +97,13 @@ const register = async (req, res) => {
         }
         const { name, username, email, phone_no, whatsapp_no, password, country, state, city, isTaxRegistered, businessFullName, trn } = req.body;
 
-        if (!name || !username || !email || !phone_no || !password || !country || !state || !city) {
+        const cityOptional = isCityOptional(req);
+        if (!name || !username || !email || !phone_no || !password || !country || !state || (!city && !cityOptional)) {
             logInfo(0, 1, 'Register failed - missing required fields', { username, email });
-            return sendError(res, 400, 'name, username, email, phone_no, password, country, state and city are required');
+            return sendError(res, 400, `name, username, email, phone_no, password, country${cityOptional ? ' and state' : ', state and city'} are required`);
+        }
+        if (city !== undefined && city !== null && typeof city !== 'string') {
+            return sendError(res, 400, 'Please select a valid city.');
         }
 
         // Tax registration details: only honoured when the vendor has the feature on
@@ -131,9 +148,11 @@ const register = async (req, res) => {
             password,
             country: tryDecodeId(country),
             state: tryDecodeId(state),
-            city: tryDecodeId(city),
+            // A city that fails to decode stays a (rejected) value rather than
+            // quietly becoming "no city" when the city is optional.
+            city: city ? (tryDecodeId(city) || city) : undefined,
             ...taxDetails
-        }, companyMasterData);
+        }, companyMasterData, cityOptional);
 
         if(!newUser.isSuccess) {
             logInfo(0, 1, newUser.message);

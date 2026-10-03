@@ -11,24 +11,31 @@ const isAllowedCountry = (countryId, allowedCountries = []) => {
 /**
  * Confirms country/state/city all exist and are active, AND that the state actually
  * belongs to the given country, and the city actually belongs to the given state.
+ * isCityOptional is the vendor's CompanySettings.isCityOptional ("Make City
+ * Optional"): when true the city may be left empty; a city that IS given is
+ * still checked against the state.
  */
-const validateLocationHierarchy = async ({ country_id, state_id, city_id }) => {
+const validateLocationHierarchy = async ({ country_id, state_id, city_id }, isCityOptional = false) => {
   try {
+    if (!city_id && !isCityOptional) {
+      return common.returnResult(false, 400, `City is required`);
+    }
+
     const [country, state, city] = await Promise.all([
       CountryMaster.findOne({ _id: country_id, status: "A" }),
       StateMaster.findOne({ _id: state_id, status: "A" }),
-      CityMaster.findOne({ _id: city_id, status: "A" }),
+      city_id ? CityMaster.findOne({ _id: city_id, status: "A" }) : null,
     ]);
 
     if (!country) return common.returnResult(false, 400, `Invalid or inactive country`);
     if (!state) return common.returnResult(false, 400, `Invalid or inactive state`);
-    if (!city) return common.returnResult(false, 400, `Invalid or inactive city`);
+    if (city_id && !city) return common.returnResult(false, 400, `Invalid or inactive city`);
 
     if (state.country_id.toString() !== country_id.toString()) {
       return common.returnResult(false, 400, `Selected state does not belong to the selected country`);
     }
 
-    if (city.state_id.toString() !== state_id.toString()) {
+    if (city && city.state_id.toString() !== state_id.toString()) {
       return common.returnResult(false, 400, `Selected city does not belong to the selected state`);
     }
 
@@ -70,14 +77,14 @@ const getDefaultAddress = async ({ userId, vendorId }) => {
  */
 const createAddress = async (payload, context) => {
   try {
-    const { userId, vendorId, allowedCountries } = context;
+    const { userId, vendorId, allowedCountries, isCityOptional } = context;
     const { country_id, state_id, city_id } = payload;
 
     if (!isAllowedCountry(country_id, allowedCountries)) {
       return common.returnResult(false, 400, `Selected country is not serviceable for this store`);
     }
 
-    const hierarchyError = await validateLocationHierarchy({ country_id, state_id, city_id });
+    const hierarchyError = await validateLocationHierarchy({ country_id, state_id, city_id }, isCityOptional);
     if (!hierarchyError.isSuccess) return hierarchyError;
 
     // A user's first address is always their default; after that it's only
@@ -153,7 +160,7 @@ const getAddressById = async (addressId, { userId, vendorId }) => {
  */
 const updateAddress = async (addressId, payload, context) => {
   try {
-    const { userId, vendorId, allowedCountries } = context;
+    const { userId, vendorId, allowedCountries, isCityOptional } = context;
 
     const address = await Address.findOne({
       _id: addressId,
@@ -166,18 +173,19 @@ const updateAddress = async (addressId, payload, context) => {
       return common.returnResult(false, 404, "Address not found");
     }
 
-    const isChangingLocation = payload.country_id || payload.state_id || payload.city_id;
+    // city_id === null means the city is being cleared (see addressController).
+    const isChangingLocation = payload.country_id || payload.state_id || payload.city_id !== undefined;
 
     if (isChangingLocation) {
       const country_id = payload.country_id || address.country_id;
       const state_id = payload.state_id || address.state_id;
-      const city_id = payload.city_id || address.city_id;
+      const city_id = payload.city_id !== undefined ? payload.city_id : address.city_id;
 
       if (payload.country_id && !isAllowedCountry(payload.country_id, allowedCountries)) {
         return common.returnResult(false, 400, "Selected country is not serviceable for this store");
       }
 
-      const hierarchyError = await validateLocationHierarchy({ country_id, state_id, city_id });
+      const hierarchyError = await validateLocationHierarchy({ country_id, state_id, city_id }, isCityOptional);
       if (!hierarchyError.isSuccess) return hierarchyError;
     }
 

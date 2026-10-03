@@ -19,10 +19,11 @@ const getUserCount = async (vendorId) => {
     }
 };
 
-const registerUser = async ({ vendorId, name, username, email, phone_no, whatsapp_no, password, country, state, city, isTaxRegistered, businessFullName, trn }, companyMasterData) => {
+const registerUser = async ({ vendorId, name, username, email, phone_no, whatsapp_no, password, country, state, city, isTaxRegistered, businessFullName, trn }, companyMasterData, isCityOptional = false) => {
     try {
         // country/state/city are ids picked from the vendor's allowed countries.
-        const locationResult = await userLocationService.validateUserLocation({ countryId: country, stateId: state, cityId: city }, companyMasterData);
+        // city may be empty when the vendor has "Make City Optional" on.
+        const locationResult = await userLocationService.validateUserLocation({ countryId: country, stateId: state, cityId: city }, companyMasterData, isCityOptional);
         if (!locationResult.isSuccess) {
             return locationResult;
         }
@@ -49,7 +50,7 @@ const registerUser = async ({ vendorId, name, username, email, phone_no, whatsap
             authProvider: 'local',
             country,
             state,
-            city,
+            city: city || undefined,
             isTaxRegistered: isTaxRegistered === true,
             // Only present for a tax-registered signup; undefined keeps them off the document.
             businessFullName: isTaxRegistered === true ? businessFullName : undefined,

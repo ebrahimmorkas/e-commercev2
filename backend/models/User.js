@@ -72,9 +72,11 @@ const userSchema = mongoose.Schema({
         type: String,
         required: function () { return this.role !== 'deliveryAgent'; },
     },
+    // Not required at the schema level: whether it may be empty is the
+    // vendor's CompanySettings.isCityOptional choice, enforced in
+    // services/userLocationService.js.
     city: {
         type: String,
-        required: function () { return this.role !== 'deliveryAgent'; },
     },  
     state: {
         type: String,

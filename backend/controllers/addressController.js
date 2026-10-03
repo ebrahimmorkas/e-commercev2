@@ -42,6 +42,9 @@ const decodeLocationFields = (payload) => {
   if (decoded.country_id) decoded.country_id = decodeId(decoded.country_id);
   if (decoded.state_id) decoded.state_id = decodeId(decoded.state_id);
   if (decoded.city_id) decoded.city_id = decodeId(decoded.city_id);
+  // An empty city means "no city" (allowed only while the vendor has
+  // "Make City Optional" on - addressService checks that).
+  else if (decoded.city_id !== undefined) decoded.city_id = null;
   return decoded;
 };
 
@@ -52,7 +55,8 @@ const createAddress = async (req, res) => {
     const allowedCountries = req.companyMasterData?.allowedCountries || [];
 
     const payload = decodeLocationFields(req.body);
-    const result = await addressService.createAddress(payload, { userId, vendorId, allowedCountries });
+    const isCityOptional = req.companySettingsData?.isCityOptional === true;
+    const result = await addressService.createAddress(payload, { userId, vendorId, allowedCountries, isCityOptional });
 
     if (!result.isSuccess) {
       logInfo(0, 1, "Create address failed", { userId, reason: result.message });
@@ -115,7 +119,8 @@ const updateAddress = async (req, res) => {
     id = decodeId(req.params.id);
     const payload = decodeLocationFields(req.body);
 
-    const result = await addressService.updateAddress(id, payload, { userId, vendorId, allowedCountries });
+    const isCityOptional = req.companySettingsData?.isCityOptional === true;
+    const result = await addressService.updateAddress(id, payload, { userId, vendorId, allowedCountries, isCityOptional });
 
     if (!result.isSuccess) {
       logInfo(0, 1, "Update address failed", { userId, addressId: id, reason: result.message });

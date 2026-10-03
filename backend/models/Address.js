@@ -58,10 +58,12 @@ const addressSchema = new mongoose.Schema(
       required: true,
     },
 
+    // Not required at the schema level: whether it may be empty is the
+    // vendor's CompanySettings.isCityOptional choice, enforced in addressService.
     city_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "CityMaster",
-      required: true,
+      default: null,
     },
 
     pincode: {

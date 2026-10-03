@@ -179,7 +179,8 @@ const orderAddressSnapshotSchema = new mongoose.Schema(
         floor: { type: String, trim: true, default: null },
         countryName: { type: String, trim: true, required: true },
         stateName: { type: String, trim: true, required: true },
-        cityName: { type: String, trim: true, required: true },
+        // null when the address has no city (CompanySettings.isCityOptional).
+        cityName: { type: String, trim: true, default: null },
         pincode: { type: String, trim: true, required: true }
     },
     { _id: false }

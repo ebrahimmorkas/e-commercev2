@@ -74,7 +74,9 @@ const buildAddressSnapshot = async (addressDoc) => {
             cityId: addressDoc.city_id
         });
 
-        if (!locationNames.countryName || !locationNames.stateName || !locationNames.cityName) {
+        // An address saved without a city (CompanySettings.isCityOptional) has
+        // no city to resolve - only a city that WAS chosen must still exist.
+        if (!locationNames.countryName || !locationNames.stateName || (addressDoc.city_id && !locationNames.cityName)) {
             return { error: 'Your address references a country/state/city that no longer exists. Please update your address.' };
         }
 
@@ -87,7 +89,7 @@ const buildAddressSnapshot = async (addressDoc) => {
                 floor: addressDoc.floor || null,
                 countryName: locationNames.countryName,
                 stateName: locationNames.stateName,
-                cityName: locationNames.cityName,
+                cityName: locationNames.cityName || null,
                 pincode: addressDoc.pincode
             }
         };

@@ -2,6 +2,7 @@ import InputField from '../../../../components/common/InputField';
 import Dropdown from '../../../../components/common/DropDown';
 import FileUpload from '../../../../components/common/FileUpload';
 import Avatar from '../../../../components/common/Avatar';
+import Switch from '../../../../components/common/Switch';
 import theme from '../theme/theme';
 import { useStoreLocationOptions } from '../hooks/useStoreLocationOptions';
 
@@ -74,6 +75,19 @@ const GeneralInfoSection = ({ draft, onChange, errors = {} }) => {
             disabled={!draft.storeStateId}
             clearable
             searchable
+          />
+        </div>
+      </div>
+
+      <div className="pt-4 border-t border-gray-100">
+        <h3 className={`text-sm font-semibold ${theme.text.heading}`}>Customer Location</h3>
+        <div className="border border-gray-200 rounded-lg p-3 mt-3">
+          <Switch
+            label="Make City Optional"
+            description="When on, a city is no longer mandatory: customers can register and save a delivery address without choosing one, and you can add or edit customers and delivery agents without it. Country and state stay required. When off, a city is required everywhere."
+            checked={draft.isCityOptional}
+            onChange={(e) => set({ isCityOptional: e.target.checked })}
+            color={theme.switch.color}
           />
         </div>
       </div>

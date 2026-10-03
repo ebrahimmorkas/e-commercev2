@@ -72,6 +72,7 @@ const companySettingsFieldsSchema = {
     showBanners: Joi.boolean().label('Show banners'),
     isBannerRotationOn: Joi.boolean().label('Banner rotation'),
     isTaxRegistrationOnSignupEnabled: Joi.boolean().label('Ask for tax registration at signup'),
+    isCityOptional: Joi.boolean().label('Make city optional'),
     // Seller-side invoice details (see invoiceService.js). All optional; blank clears them.
     taxRegistrationNumber: Joi.string().trim().pattern(/^\d{15}$/).allow('', null)
         .messages({ 'string.pattern.base': '{{#label}} must be exactly 15 digits.' })

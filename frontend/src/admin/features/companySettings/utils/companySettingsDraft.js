@@ -37,6 +37,7 @@ export const emptyDraft = () => ({
   showBanners: false,
   isBannerRotationOn: false,
   isTaxRegistrationOnSignupEnabled: false,
+  isCityOptional: false,
   showReviewsToCustomers: true,
 
   taxRegistrationNumber: '',
@@ -141,6 +142,7 @@ export const mapApiSettingsToDraft = (doc) => ({
   showBanners: !!doc.showBanners,
   isBannerRotationOn: !!doc.isBannerRotationOn,
   isTaxRegistrationOnSignupEnabled: !!doc.isTaxRegistrationOnSignupEnabled,
+  isCityOptional: !!doc.isCityOptional,
   showReviewsToCustomers: !!doc.showReviewsToCustomers,
 
   taxRegistrationNumber: doc.taxRegistrationNumber || '',

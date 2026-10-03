@@ -12,7 +12,9 @@ const encodeLocationValue = (value) => (value && mongoose.Types.ObjectId.isValid
 const decodeLocationFields = (body) => {
     const decoded = { ...body };
     ['country', 'state', 'city'].forEach((field) => {
-        if (decoded[field]) decoded[field] = common.tryDecodeId(decoded[field]);
+        // A value that fails to decode is kept (and then rejected by
+        // userLocationService) rather than quietly becoming "no city".
+        if (decoded[field]) decoded[field] = common.tryDecodeId(decoded[field]) || decoded[field];
     });
     return decoded;
 };
@@ -77,7 +79,7 @@ const getDeliveryAgentById = async (req, res) => {
 const createDeliveryAgent = async (req, res) => {
     const vendorId = req.vendorId;
     try {
-        const result = await deliveryAgentService.createDeliveryAgent(vendorId, req.user._id, decodeLocationFields(req.body), req.websiteMasterData, req.companyMasterData);
+        const result = await deliveryAgentService.createDeliveryAgent(vendorId, req.user._id, decodeLocationFields(req.body), req.websiteMasterData, req.companyMasterData, req.companySettingsData);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
@@ -92,7 +94,7 @@ const updateDeliveryAgent = async (req, res) => {
     let id;
     try {
         id = common.decodeId(req.params.id);
-        const result = await deliveryAgentService.updateDeliveryAgent(vendorId, req.user._id, id, decodeLocationFields(req.body), req.websiteMasterData, req.companyMasterData);
+        const result = await deliveryAgentService.updateDeliveryAgent(vendorId, req.user._id, id, decodeLocationFields(req.body), req.websiteMasterData, req.companyMasterData, req.companySettingsData);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }

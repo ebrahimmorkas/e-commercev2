@@ -89,13 +89,17 @@ const emptyToUndefined = (value) => {
 
 // Location is optional for an agent, but when given it must be a full, valid
 // country -> state -> city chain the store serves (same check as customers).
-const validateOptionalLocation = async ({ country, state, city }, companyMasterData) => {
+// While the vendor has "Make City Optional" on, country + state alone is enough.
+const validateOptionalLocation = async ({ country, state, city }, companyMasterData, companySettingsData) => {
     try {
+        const isCityOptional = userLocationService.isCityOptionalForVendor(companySettingsData);
         if (!country && !state && !city) return null;
-        if (!country || !state || !city) {
-            return common.returnResult(false, 400, 'Choose a country, state and city together, or leave all three empty.');
+        if (!country || !state || (!city && !isCityOptional)) {
+            return common.returnResult(false, 400, isCityOptional
+                ? 'Choose a country and state together (city is optional), or leave them all empty.'
+                : 'Choose a country, state and city together, or leave all three empty.');
         }
-        const result = await userLocationService.validateUserLocation({ countryId: country, stateId: state, cityId: city }, companyMasterData);
+        const result = await userLocationService.validateUserLocation({ countryId: country, stateId: state, cityId: city }, companyMasterData, isCityOptional);
         return result.isSuccess ? null : result;
     } catch (err) {
         throw err;
@@ -196,7 +200,7 @@ const fetchDeliveryAgentById = async (vendorId, agentId, websiteMasterData, comp
     }
 };
 
-const createDeliveryAgent = async (vendorId, adminUserId, data, websiteMasterData, companyMasterData) => {
+const createDeliveryAgent = async (vendorId, adminUserId, data, websiteMasterData, companyMasterData, companySettingsData) => {
     try {
         const featureCheck = await checkFeature(vendorId, websiteMasterData, companyMasterData);
         if (!featureCheck.isSuccess) {
@@ -222,7 +226,7 @@ const createDeliveryAgent = async (vendorId, adminUserId, data, websiteMasterDat
             city: emptyToUndefined(data.city)
         };
 
-        const locationFailure = await validateOptionalLocation(fields, companyMasterData);
+        const locationFailure = await validateOptionalLocation(fields, companyMasterData, companySettingsData);
         if (locationFailure) {
             return locationFailure;
         }
@@ -249,7 +253,7 @@ const createDeliveryAgent = async (vendorId, adminUserId, data, websiteMasterDat
     }
 };
 
-const updateDeliveryAgent = async (vendorId, adminUserId, agentId, data, websiteMasterData, companyMasterData) => {
+const updateDeliveryAgent = async (vendorId, adminUserId, agentId, data, websiteMasterData, companyMasterData, companySettingsData) => {
     try {
         const featureCheck = await checkFeature(vendorId, websiteMasterData, companyMasterData);
         if (!featureCheck.isSuccess) {
@@ -269,9 +273,15 @@ const updateDeliveryAgent = async (vendorId, adminUserId, agentId, data, website
             if (data[field] !== undefined) agent[field] = emptyToUndefined(data[field]);
         }
 
-        const locationFailure = await validateOptionalLocation({ country: agent.country, state: agent.state, city: agent.city }, companyMasterData);
-        if (locationFailure) {
-            return locationFailure;
+        // Only when the location itself is being changed - an agent saved
+        // without a city (while "Make City Optional" was on) must stay
+        // editable (name, phone...) after the vendor turns it off again.
+        const locationTouched = ['country', 'state', 'city'].some((field) => data[field] !== undefined);
+        if (locationTouched) {
+            const locationFailure = await validateOptionalLocation({ country: agent.country, state: agent.state, city: agent.city }, companyMasterData, companySettingsData);
+            if (locationFailure) {
+                return locationFailure;
+            }
         }
 
         if (await findDuplicateUser(vendorId, { username: agent.username, email: agent.email, phone_no: agent.phone_no, whatsapp_no: agent.whatsapp_no }, agent._id)) {

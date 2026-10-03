@@ -4,6 +4,7 @@ import InputField from '../../../../components/common/InputField';
 import Dropdown from '../../../../components/common/DropDown';
 import Button from '../../../../components/common/Buttons';
 import theme from '../../customers/theme/theme';
+import { useIsCityOptional } from '../../companySettings/hooks/useIsCityOptional';
 
 // Mirrors backend/middlewares/validations/deliveryAgentValidations.js so the
 // form rejects the same input the API would.
@@ -70,6 +71,8 @@ const DeliveryAgentForm = ({ mode, initialValues = {}, lookups, onSubmit, onCanc
   const validationSchema = buildValidationSchema(isCreate);
   const { countryOptions, getStateOptions, getCityOptions } = lookups;
   const [locationError, setLocationError] = useState('');
+  // The vendor's "Make City Optional" choice (Company Settings): country + state alone is then enough.
+  const cityOptional = useIsCityOptional();
 
   const formInitialValues = {
     name: initialValues.name || '',
@@ -85,8 +88,11 @@ const DeliveryAgentForm = ({ mode, initialValues = {}, lookups, onSubmit, onCanc
 
   const handleFormSubmit = async (values) => {
     const picked = [values.country, values.state, values.city].filter(Boolean).length;
-    if (picked !== 0 && picked !== 3) {
-      setLocationError('Choose a country, state and city together, or leave all three empty.');
+    const complete = picked === 3 || (cityOptional && values.country && values.state);
+    if (picked !== 0 && !complete) {
+      setLocationError(cityOptional
+        ? 'Choose a country and state together (city is optional), or leave them all empty.'
+        : 'Choose a country, state and city together, or leave all three empty.');
       return;
     }
     setLocationError('');

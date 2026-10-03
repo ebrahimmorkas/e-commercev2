@@ -18,7 +18,7 @@ export const register = (data) => apiRequest('/auth/register', { method: 'POST',
 /**
  * Public - tells the register form whether to offer the "I am tax registered"
  * checkbox (a vendor's own Company Settings choice).
- * @returns {Promise<{ taxRegistrationEnabled: boolean }>}
+ * @returns {Promise<{ taxRegistrationEnabled: boolean, cityOptional: boolean }>}
  */
 export const getRegistrationConfig = () => apiRequest('/auth/registration-config', { auth: false });
 

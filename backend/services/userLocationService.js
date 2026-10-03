@@ -13,11 +13,22 @@ const isObjectId = (value) => !!value && mongoose.Types.ObjectId.isValid(value);
 | ids. It drives the Country/State/City cookies (currency, tax, shipping,
 | location exclusions), so it must be a consistent, active chain the vendor
 | serves.
+|
+| isCityOptional is the vendor's CompanySettings.isCityOptional: when true the
+| city may be left empty (country and state are still required); a city that
+| IS given must still belong to the selected state.
 */
-const validateUserLocation = async ({ countryId, stateId, cityId }, companyMasterData) => {
+const validateUserLocation = async ({ countryId, stateId, cityId }, companyMasterData, isCityOptional = false) => {
     try {
-        if (!isObjectId(countryId) || !isObjectId(stateId) || !isObjectId(cityId)) {
+        const isCityGiven = cityId !== undefined && cityId !== null && cityId !== '';
+        if (!isObjectId(countryId) || !isObjectId(stateId)) {
+            return common.returnResult(false, 400, isCityOptional ? 'Please select a valid country and state.' : 'Please select a valid country, state and city.');
+        }
+        if (!isCityGiven && !isCityOptional) {
             return common.returnResult(false, 400, 'Please select a valid country, state and city.');
+        }
+        if (isCityGiven && !isObjectId(cityId)) {
+            return common.returnResult(false, 400, 'Please select a valid city.');
         }
 
         const allowedCountryIds = (companyMasterData?.allowedCountries || []).map((id) => id.toString());
@@ -33,9 +44,11 @@ const validateUserLocation = async ({ countryId, stateId, cityId }, companyMaste
         if (!state) {
             return common.returnResult(false, 400, 'The selected state does not belong to the selected country.');
         }
-        const city = await CityMaster.findOne({ _id: cityId, state_id: stateId, status: 'A' }).select('_id').lean();
-        if (!city) {
-            return common.returnResult(false, 400, 'The selected city does not belong to the selected state.');
+        if (isCityGiven) {
+            const city = await CityMaster.findOne({ _id: cityId, state_id: stateId, status: 'A' }).select('_id').lean();
+            if (!city) {
+                return common.returnResult(false, 400, 'The selected city does not belong to the selected state.');
+            }
         }
 
         return common.returnResult(true, 200, 'All Good');
@@ -58,7 +71,18 @@ const extractUserLocation = (user) => {
     }
 };
 
+// The vendor's own "Make City Optional" choice (Company Settings > General).
+// A vendor with no settings document yet keeps city required.
+const isCityOptionalForVendor = (companySettingsData) => {
+    try {
+        return companySettingsData?.isCityOptional === true;
+    } catch (err) {
+        throw err;
+    }
+};
+
 module.exports = {
+    isCityOptionalForVendor,
     validateUserLocation,
     extractUserLocation
 };

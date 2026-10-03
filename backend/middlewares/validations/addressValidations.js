@@ -14,7 +14,10 @@ const createAddressSchema = Joi.object({
   floor: Joi.string().trim().max(20).allow("", null),
   country_id: objectId.required(),
   state_id: objectId.required(),
-  city_id: objectId.required(),
+  // Whether city is required depends on the vendor's
+  // CompanySettings.isCityOptional, which a static schema can't see - so it
+  // is optional here and enforced in addressService.
+  city_id: objectId.allow("", null),
   pincode: Joi.string().trim().pattern(/^[0-9A-Za-z\- ]{3,10}$/).required().messages({
     "string.pattern.base": "pincode must be 3-10 characters (letters, numbers, spaces, or hyphens)",
   }),
@@ -30,7 +33,9 @@ const updateAddressSchema = Joi.object({
   floor: Joi.string().trim().max(20).allow("", null),
   country_id: objectId,
   state_id: objectId,
-  city_id: objectId,
+  // "" / null clears the city - addressService allows that only while the
+  // vendor's CompanySettings.isCityOptional is on.
+  city_id: objectId.allow("", null),
   pincode: Joi.string().trim().pattern(/^[0-9A-Za-z\- ]{3,10}$/).messages({
     "string.pattern.base": "pincode must be 3-10 characters (letters, numbers, spaces, or hyphens)",
   }),

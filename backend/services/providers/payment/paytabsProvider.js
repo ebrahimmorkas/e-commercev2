@@ -34,7 +34,9 @@ const createSession = async ({ order, transaction, returnUrl, callbackUrl, crede
                 name: order.shippingAddressSnapshot?.addressName || 'Customer',
                 email: undefined,
                 street1: order.shippingAddressSnapshot?.building,
-                city: order.shippingAddressSnapshot?.cityName,
+                // An address may have no city (CompanySettings.isCityOptional);
+                // the state stands in so the customer details stay complete.
+                city: order.shippingAddressSnapshot?.cityName || order.shippingAddressSnapshot?.stateName,
                 state: order.shippingAddressSnapshot?.stateName,
                 country: order.shippingAddressSnapshot?.countryName,
                 zip: order.shippingAddressSnapshot?.pincode

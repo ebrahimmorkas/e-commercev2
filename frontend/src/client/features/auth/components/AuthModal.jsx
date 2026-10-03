@@ -100,6 +100,9 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
   // Settings choice). Off until the API says otherwise, and stays off if the call fails,
   // so a config hiccup can never block signup.
   const [taxRegistrationEnabled, setTaxRegistrationEnabled] = useState(false);
+  // Whether this vendor lets customers sign up without a city ("Make City Optional" in
+  // Company Settings). Required until the API says otherwise - the server enforces it anyway.
+  const [cityOptional, setCityOptional] = useState(false);
   const locations = useSignupLocations(isOpen && mode === 'register', registerForm.country, registerForm.state);
   // Whether this store offers "Forgot password?". Null until the API says it does, and
   // stays null if the call fails, so the link is simply not shown.
@@ -135,10 +138,14 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
     let cancelled = false;
     getRegistrationConfig()
       .then((config) => {
-        if (!cancelled) setTaxRegistrationEnabled(config?.taxRegistrationEnabled === true);
+        if (cancelled) return;
+        setTaxRegistrationEnabled(config?.taxRegistrationEnabled === true);
+        setCityOptional(config?.cityOptional === true);
       })
       .catch(() => {
-        if (!cancelled) setTaxRegistrationEnabled(false);
+        if (cancelled) return;
+        setTaxRegistrationEnabled(false);
+        setCityOptional(false);
       });
     return () => {
       cancelled = true;
@@ -255,6 +262,10 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
     const registerPayload = { ...registerForm };
     if (!registerPayload.whatsapp_no.trim()) {
       delete registerPayload.whatsapp_no;
+    }
+    // City left empty (only possible when the vendor made it optional) is omitted too.
+    if (!registerPayload.city) {
+      delete registerPayload.city;
     }
     // Tax details only travel with a ticked box on a vendor that offers it; otherwise
     // the three keys are dropped so the payload is identical to a plain signup.
@@ -542,10 +553,10 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
               value={registerForm.city}
               onChange={(e) => setRegisterForm((f) => ({ ...f, city: e.target.value }))}
               className={`${inputClass} bg-white`}
-              required
+              required={!cityOptional}
               disabled={loading || !registerForm.state}
             >
-              <option value="">City</option>
+              <option value="">{cityOptional ? 'City (optional)' : 'City'}</option>
               {locations.cityOptions.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
