@@ -124,3 +124,41 @@ test('discount sample file: only the sheets the option reads, and it round-trips
     assert.equal(parsed.ok, true);
     assert.equal(parsed.rows.length, 0);
 });
+
+test('product bulk sample: both modes build a workbook the uploads accept as "no rows"', async () => {
+    const SHEETS = ['Products', 'Variants', 'Sizes', 'MeasurementValues', 'Descriptions', 'BulkPricing', 'Instructions'];
+    const load = async (buffer) => {
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.load(buffer);
+        return wb;
+    };
+    const headings = (wb, sheetName) => wb.getWorksheet(sheetName).getRow(1).values.filter(Boolean);
+
+    const upload = await productService.buildBulkProductSampleFile('upload');
+    assert.equal(upload.isSuccess, true);
+    assert.equal(upload.meta.fileName, 'product-bulk-upload-sample.xlsx');
+    const uploadWb = await load(upload.meta.buffer);
+    assert.deepEqual(uploadWb.worksheets.map((ws) => ws.name), SHEETS);
+    // The image-removal columns only mean something to an update.
+    assert.equal(headings(uploadWb, 'Sizes').includes('RemoveMainImage'), false);
+
+    const update = await productService.buildBulkProductSampleFile('update');
+    assert.equal(update.meta.fileName, 'product-bulk-update-sample.xlsx');
+    const updateWb = await load(update.meta.buffer);
+    assert.equal(headings(updateWb, 'Sizes').includes('RemoveMainImage'), true);
+    assert.equal(headings(updateWb, 'Sizes').includes('RemoveAdditionalImages'), true);
+
+    // Every column of every sheet is explained, and the six data sheets hold headings only.
+    const explained = uploadWb.getWorksheet('Instructions').getColumn(2).values.filter(Boolean);
+    for (const sheetName of SHEETS.slice(0, 6)) {
+        assert.equal(uploadWb.getWorksheet(sheetName).actualRowCount, 1, sheetName);
+        for (const heading of headings(uploadWb, sheetName)) assert.ok(explained.includes(heading), `${sheetName}.${heading}`);
+    }
+
+    // Untouched, each sample gets past the sheet/column checks and stops at "no rows" (before any DB access).
+    for (const [run, sample] of [[productService.bulkUploadProducts, upload], [productService.bulkUpdateProducts, update]]) {
+        const result = await run(VENDOR, USER, sample.meta.buffer, null, null, {}, {}, {});
+        assert.equal(result.statusCode, 400);
+        assert.equal(result.message, 'Products sheet contains no data rows');
+    }
+});

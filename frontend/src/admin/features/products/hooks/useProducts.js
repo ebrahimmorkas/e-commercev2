@@ -227,6 +227,22 @@ export const useProducts = () => {
     }
   };
 
+  // Excel bulk upload. Resolves to { success, result } - result is the per-row
+  // outcome (totalRows/successCount/failedCount/failedRecords) for the caller to render.
+  const runBulkUpload = async (excelFile, mainImagesZip, additionalImagesZip) => {
+    setMutating(true);
+    try {
+      const data = await productApi.bulkUploadProducts(excelFile, mainImagesZip, additionalImagesZip);
+      if (data?.successCount > 0) fetchProducts();
+      return { success: true, result: data };
+    } catch (err) {
+      toast.error(describeError(err));
+      return { success: false, error: err };
+    } finally {
+      setMutating(false);
+    }
+  };
+
   return {
     products: result.products,
     pagination: result.pagination,
@@ -249,6 +265,7 @@ export const useProducts = () => {
     bulkToggleStatus,
     bulkRemoveProducts,
     bulkCloneProducts: bulkCloneProductsAction,
+    runBulkUpload,
   };
 };
 

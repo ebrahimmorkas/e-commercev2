@@ -1,4 +1,4 @@
-import { apiRequest } from '../../../../utils/apiClient';
+import { apiRequest, apiDownload } from '../../../../utils/apiClient';
 
 const BASE = '/products';
 
@@ -87,6 +87,30 @@ export const bulkDeleteProducts = (productIds) =>
 export const bulkCloneProducts = (productIds) =>
   apiRequest(`${BASE}/bulk-clone-products`, { method: 'POST', body: { productIds } });
 
+// --- Bulk upload (excel) -----------------------------------------------------
+/**
+ * Adds products from an Excel workbook. Resolves to the per-row outcome
+ * { totalRows, successCount, failedCount, failedRecords }.
+ *
+ * @param {File} excelFile - .xlsx with Products/Variants/Sizes/MeasurementValues/Descriptions/BulkPricing sheets
+ * @param {File} [mainImagesZip] - zip of size main images referenced by MainImageFileName
+ * @param {File} [additionalImagesZip] - zip of size additional images referenced by AdditionalImageFileNames
+ */
+export const bulkUploadProducts = (excelFile, mainImagesZip, additionalImagesZip) => {
+  const formData = new FormData();
+  formData.append('excelFile', excelFile);
+  if (mainImagesZip) formData.append('mainImagesZip', mainImagesZip);
+  if (additionalImagesZip) formData.append('additionalImagesZip', additionalImagesZip);
+
+  return apiRequest(`${BASE}/bulk-upload-products`, { method: 'POST', body: formData });
+};
+
+/**
+ * The sample .xlsx for a bulk upload: the six sheets with their headings plus an Instructions sheet.
+ * @returns {Promise<{ blob: Blob, filename: string|null }>}
+ */
+export const downloadBulkUploadSampleFile = () => apiDownload(`${BASE}/bulk-upload-products/sample-file`);
+
 export default {
   getProductsAdmin,
   getProductOptionsAdmin,
@@ -99,4 +123,6 @@ export default {
   bulkSetProductStatus,
   bulkDeleteProducts,
   bulkCloneProducts,
+  bulkUploadProducts,
+  downloadBulkUploadSampleFile,
 };

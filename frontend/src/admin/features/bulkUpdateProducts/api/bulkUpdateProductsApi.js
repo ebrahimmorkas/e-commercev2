@@ -1,4 +1,4 @@
-import { apiRequest } from '../../../../utils/apiClient';
+import { apiRequest, apiDownload } from '../../../../utils/apiClient';
 
 const BASE = '/products';
 
@@ -16,6 +16,13 @@ export const bulkUpdateProducts = (excelFile, mainImagesZip, additionalImagesZip
   return apiRequest(`${BASE}/bulk-update-products`, { method: 'POST', body: formData });
 };
 
+/**
+ * The sample .xlsx for a bulk update: the six sheets with their headings plus an Instructions sheet.
+ * @returns {Promise<{ blob: Blob, filename: string|null }>}
+ */
+export const downloadBulkUpdateSampleFile = () => apiDownload(`${BASE}/bulk-update-products/sample-file`);
+
 export default {
   bulkUpdateProducts,
+  downloadBulkUpdateSampleFile,
 };

@@ -13,6 +13,7 @@ import Pagination from '../../../../components/common/Pagination';
 import { useProducts, ADMIN_PRODUCTS_PAGE_SIZE } from '../hooks/useProducts';
 import { useProductLookups } from '../hooks/useProductLookups';
 import ProductForm from '../components/ProductForm';
+import BulkUploadProductsModal from '../components/BulkUploadProductsModal';
 import { mapApiProductToDraft } from '../utils/productDraft';
 import theme from '../theme/theme';
 import { useStoreCurrency } from '../../../currency/useStoreCurrency';
@@ -20,6 +21,11 @@ import { useStoreCurrency } from '../../../currency/useStoreCurrency';
 const PlusIcon = () => (
   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+  </svg>
+);
+const UploadIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
   </svg>
 );
 const PencilIcon = () => (
@@ -83,7 +89,7 @@ const ProductsPage = () => {
   const {
     products, pagination, catalogTotal, page, setPage, searchText, setSearchText, loading, initialLoading,
     error, mutating, createProduct, editProduct, removeProduct, toggleStatus, cloneProduct, fetchProductById,
-    bulkToggleStatus, bulkRemoveProducts, bulkCloneProducts,
+    bulkToggleStatus, bulkRemoveProducts, bulkCloneProducts, runBulkUpload,
   } = useProducts();
   const lookups = useProductLookups();
 
@@ -95,6 +101,7 @@ const ProductsPage = () => {
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const [bulkCloneConfirmOpen, setBulkCloneConfirmOpen] = useState(false);
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   // Whether the open add/edit form has anything typed into it, and whether the "discard?" prompt is showing.
   const [formDirty, setFormDirty] = useState(false);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
@@ -394,9 +401,14 @@ const ProductsPage = () => {
         title={<span className="font-bold">Products</span>}
         subtitle="Manage your storefront's products, variants and sizes"
         headerActions={
-          <Button variant={theme.button.primary} leftIcon={<PlusIcon />} onClick={openAdd}>
-            Add Product
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button variant={theme.button.secondary} leftIcon={<UploadIcon />} onClick={() => setBulkUploadOpen(true)}>
+              Bulk Upload
+            </Button>
+            <Button variant={theme.button.primary} leftIcon={<PlusIcon />} onClick={openAdd}>
+              Add Product
+            </Button>
+          </div>
         }
       >
         {error && (
@@ -597,6 +609,19 @@ const ProductsPage = () => {
         <p className={`text-sm ${theme.text.body}`}>
           Clone <span className={`font-medium ${theme.text.heading}`}>{selectedIds.length}</span> selected product{selectedIds.length === 1 ? '' : 's'}? Each will be created as a new, independent product.
         </p>
+      </Modal>
+
+      <Modal
+        isOpen={bulkUploadOpen}
+        onClose={() => setBulkUploadOpen(false)}
+        title="Bulk Upload Products"
+        size="lg"
+      >
+        <BulkUploadProductsModal
+          onSubmit={runBulkUpload}
+          onClose={() => setBulkUploadOpen(false)}
+          submitting={mutating}
+        />
       </Modal>
     </div>
   );

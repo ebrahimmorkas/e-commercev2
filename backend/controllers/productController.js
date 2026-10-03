@@ -456,6 +456,49 @@ const bulkUpdateProducts = async (req, res) => {
     }
 };
 
+// The sample .xlsx for a bulk upload ('upload') or bulk update ('update') -
+// the six sheets with their heading rows plus an Instructions sheet. Gated by
+// the same feature switch as the upload it is the sample for.
+const sendBulkProductSampleFile = async (req, res, mode) => {
+    const vendorId = req.vendorId;
+    try {
+        const featureField = mode === 'update' ? 'isBulkUpdatingProductsAllowed' : 'isBulkUploadForProductsFeatureOn';
+        const bulkFeatureCheck = await common.checkFeatureOnOrOff(vendorId, req.websiteMasterData, req.companyMasterData, featureField, featureField);
+        if (!bulkFeatureCheck.isSuccess) {
+            return common.sendError(res, bulkFeatureCheck.statusCode, mode === 'update' ? 'Bulk update is not enabled for your plan.' : 'Bulk upload is not enabled for your plan.');
+        }
+
+        const result = await productService.buildBulkProductSampleFile(mode);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+
+        const { buffer, fileName } = result.meta;
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.setHeader('Content-Length', buffer.length);
+        return res.status(200).end(buffer);
+    } catch (error) {
+        logger.logException('productController: sendBulkProductSampleFile - Exception while building sample file', { vendorId, mode, error });
+    }
+};
+
+const downloadBulkUploadSampleFile = async (req, res) => {
+    try {
+        return await sendBulkProductSampleFile(req, res, 'upload');
+    } catch (error) {
+        logger.logException('productController: downloadBulkUploadSampleFile - Exception while sending sample file', { vendorId: req.vendorId, error });
+    }
+};
+
+const downloadBulkUpdateSampleFile = async (req, res) => {
+    try {
+        return await sendBulkProductSampleFile(req, res, 'update');
+    } catch (error) {
+        logger.logException('productController: downloadBulkUpdateSampleFile - Exception while sending sample file', { vendorId: req.vendorId, error });
+    }
+};
+
 const updateProduct = async (req, res) => {
     const vendorId = req.vendorId;
     try {
@@ -627,5 +670,7 @@ module.exports = {
     getProductsByCategory,
     getProductsByCategoryAdmin,
     bulkUploadProducts,
-    bulkUpdateProducts
+    bulkUpdateProducts,
+    downloadBulkUploadSampleFile,
+    downloadBulkUpdateSampleFile
 };

@@ -52,6 +52,11 @@ router.get( '/get-products-by-category/:categoryId', vendorDetection, ensureVend
 
 router.get( '/get-products-by-category-admin/:categoryId', ...adminAccess, checkModuleAssigned('PRODUCTS'), validate(categoryIdParamSchema, 'params'), productController.getProductsByCategoryAdmin );
 
+// Sample workbooks for the two excel uploads below (no input, so nothing to validate).
+router.get( '/bulk-upload-products/sample-file', ...adminAccess, checkModuleAssigned('PRODUCTS'), productController.downloadBulkUploadSampleFile );
+
+router.get( '/bulk-update-products/sample-file', ...adminAccess, checkModuleAssigned('BULK_UPDATE_PRODUCTS'), productController.downloadBulkUpdateSampleFile );
+
 router.post( '/bulk-upload-products', ...adminAccess, checkModuleAssigned('PRODUCTS'), productBulkUpload, productController.bulkUploadProducts );
 
 router.post( '/bulk-update-products', ...adminAccess, checkModuleAssigned('BULK_UPDATE_PRODUCTS'), productBulkUpload, productController.bulkUpdateProducts );

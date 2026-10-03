@@ -7,14 +7,15 @@ const ExcelJS = require('exceljs');
 | Builds the downloadable sample (.xlsx) for an upload: only the sheet(s) the
 | upload reads, each holding just its heading row - so the file uploads
 | cleanly once rows are added, and an untouched sample is reported as
-| "no rows" instead of matching made-up data.
+| "no rows" instead of matching made-up data. A sheet the upload never reads
+| (e.g. an Instructions sheet) may also carry `rows` of its own.
 */
 
 const HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDE68A' } };
 
 /**
  * @param {Object} template
- * @param {Array<{ name: String, columns: Array<{ header: String, width?: Number }> }>} template.sheets
+ * @param {Array<{ name: String, columns: Array<{ header: String, width?: Number }>, rows?: Array<Array> }>} template.sheets
  * @returns {Promise<Buffer>}
  */
 const buildExcelTemplate = async ({ sheets }) => {
@@ -28,6 +29,7 @@ const buildExcelTemplate = async ({ sheets }) => {
             const headerRow = worksheet.getRow(1);
             headerRow.font = { bold: true };
             headerRow.eachCell((cell) => { cell.fill = HEADER_FILL; });
+            (sheet.rows || []).forEach((row) => worksheet.addRow(row));
             worksheet.views = [{ state: 'frozen', ySplit: 1 }];
         }
 
