@@ -45,4 +45,35 @@ export const refreshToken = () => apiRequest('/auth/refresh-token', { method: 'P
 
 export const logout = () => apiRequest('/auth/logout', { method: 'POST', auth: false });
 
-export default { register, getRegistrationConfig, getSignupLocations, login, refreshToken, logout };
+/**
+ * Public - whether this store offers "Forgot password?" (isForgotPasswordFunctionalityOn
+ * plus a working email account), and the code's length/expiry/resend wait.
+ * @returns {Promise<{ forgotPasswordEnabled: boolean, otpLength: number, otpExpiryMinutes: number, resendCooldownSeconds: number }>}
+ */
+export const getForgotPasswordConfig = () => apiRequest('/auth/forgot-password/config', { auth: false });
+
+/**
+ * Emails a reset code. Succeeds the same way whether or not the email has an account.
+ * @param {string} email
+ * @returns {Promise<{ otpExpiryMinutes: number, resendCooldownSeconds: number }>}
+ */
+export const requestPasswordResetOtp = (email) =>
+  apiRequest('/auth/forgot-password/request-otp', { method: 'POST', body: { email }, auth: false });
+
+/**
+ * @param {Object} data - { email, otp, newPassword, confirmPassword }
+ */
+export const resetPassword = (data) =>
+  apiRequest('/auth/forgot-password/reset', { method: 'POST', body: data, auth: false });
+
+export default {
+  register,
+  getRegistrationConfig,
+  getSignupLocations,
+  login,
+  refreshToken,
+  logout,
+  getForgotPasswordConfig,
+  requestPasswordResetOtp,
+  resetPassword,
+};

@@ -52,6 +52,7 @@ const COMPANY_MASTER = {
     isAdminAddingUserFeatureAllowed: false,
     isAdminPlacingOrderOnBehalfOfUserIsOn: false,
     isTaxRegistrationFeatureOn: true,
+    isForgotPasswordFunctionalityOn: true,
 
     // Email - Free Tier Node Mailer, 1,100 in total, 100 per month
     isSendingEmailFeatureOn: true,

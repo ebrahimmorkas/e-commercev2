@@ -29,6 +29,11 @@ const theme = {
       border: 'border-red-200',
       text: 'text-red-600',
     },
+    success: {
+      background: 'bg-green-50',
+      border: 'border-green-200',
+      text: 'text-green-700',
+    },
   },
   link: {
     default: 'text-blue-600 hover:text-blue-700',

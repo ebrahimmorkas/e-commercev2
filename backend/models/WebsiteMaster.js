@@ -522,6 +522,14 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: true
     },
+    // Global switch, on by default - CompanyMaster.isForgotPasswordFunctionalityOn
+    // (off by default, per-vendor entitlement) is the actual gate for whether a
+    // vendor's customers/admins can reset a forgotten password with an emailed
+    // code. See forgotPasswordService.js.
+    isForgotPasswordFunctionalityOn: {
+        type: Boolean,
+        default: true
+    },
     // End of Customer Management
 
 }, {

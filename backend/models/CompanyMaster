@@ -889,6 +889,16 @@ const companyMasterSchema = mongoose.Schema({
     isTaxRegistrationFeatureOn: {
         type: Boolean,
         default: false
+    },
+    // Vendor entitlement: whether this vendor's customers and admins may reset a
+    // forgotten password with a code emailed to them. Off by default - same
+    // opt-in convention as isAdminAddingUserFeatureAllowed. Paired with
+    // WebsiteMaster.isForgotPasswordFunctionalityOn via checkFeatureOnOrOff; it
+    // also needs the vendor's email to be working (isSendingEmailFeatureOn + the
+    // Company Settings email account). See forgotPasswordService.js.
+    isForgotPasswordFunctionalityOn: {
+        type: Boolean,
+        default: false
     }
     // End of Customer Management
 }, {

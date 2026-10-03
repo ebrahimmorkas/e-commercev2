@@ -126,7 +126,8 @@ const WEBSITE_MASTER = {
     isPasswordChangeFeatureByAdminAllowed: true,
     isAdminAddingUserFeatureAllowed: true,
     isAdminPlacingOrderOnBehalfOfUserIsOn: true,
-    isTaxRegistrationFeatureOn: true
+    isTaxRegistrationFeatureOn: true,
+    isForgotPasswordFunctionalityOn: true
 };
 
 async function seedWebsiteMaster() {

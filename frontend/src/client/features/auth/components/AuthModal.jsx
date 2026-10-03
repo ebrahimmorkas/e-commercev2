@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import Modal from '../../../../components/common/Modal/Modal';
 import { useAuth } from '../hooks/useAuth';
-import { getRegistrationConfig } from '../api/authApi';
+import { getRegistrationConfig, getForgotPasswordConfig, requestPasswordResetOtp, resetPassword } from '../api/authApi';
 import { useSignupLocations } from '../hooks/useSignupLocations';
 import { useToast } from '../../../../components/common/Toast';
 import { useStorefrontCompanySettings } from '../../companySettings/hooks/useStorefrontCompanySettings';
@@ -58,6 +58,19 @@ const EMPTY_REGISTER_FORM = {
   trn: '',
 };
 
+const EMPTY_RESET_FORM = { email: '', otp: '', newPassword: '', confirmPassword: '' };
+
+// Same rule the backend enforces (forgotPasswordValidations.js).
+const PASSWORD_RULE = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,128}$/;
+const PASSWORD_RULE_MESSAGE = 'Password must be at least 8 characters with an uppercase letter, a lowercase letter and a number.';
+
+const MODE_TITLES = {
+  login: 'Sign in',
+  register: 'Create your account',
+  forgot: 'Forgot password',
+  reset: 'Reset password',
+};
+
 /**
  * Login / Register modal for the storefront. Register calls POST
  * /api/auth/register then immediately logs in with the same credentials,
@@ -67,6 +80,10 @@ const EMPTY_REGISTER_FORM = {
  * account stores their ids, and login turns them into the Country/State/City
  * cookies that decide the shopper's currency, tax and shipping (backend
  * services/userLocationService.js + authController.setLocationCookies).
+ *
+ * Forgot password (only offered when the store has it on): the 'forgot' mode
+ * asks for the account email and sends a code to it, the 'reset' mode takes
+ * that code plus the new password, then returns to sign in.
  */
 const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
   const { login, register } = useAuth();
@@ -84,6 +101,34 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
   // so a config hiccup can never block signup.
   const [taxRegistrationEnabled, setTaxRegistrationEnabled] = useState(false);
   const locations = useSignupLocations(isOpen && mode === 'register', registerForm.country, registerForm.state);
+  // Whether this store offers "Forgot password?". Null until the API says it does, and
+  // stays null if the call fails, so the link is simply not shown.
+  const [forgotPasswordConfig, setForgotPasswordConfig] = useState(null);
+  const [resetForm, setResetForm] = useState(EMPTY_RESET_FORM);
+  const [notice, setNotice] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const otpLength = forgotPasswordConfig?.otpLength ?? 6;
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    let cancelled = false;
+    getForgotPasswordConfig()
+      .then((config) => {
+        if (!cancelled) setForgotPasswordConfig(config?.forgotPasswordEnabled === true ? config : null);
+      })
+      .catch(() => {
+        if (!cancelled) setForgotPasswordConfig(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return undefined;
+    const timer = setTimeout(() => setResendCooldown((seconds) => seconds - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
 
   useEffect(() => {
     if (!isOpen || mode !== 'register') return undefined;
@@ -102,16 +147,74 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
 
   const resetAndClose = () => {
     setError('');
+    setNotice('');
     setLoading(false);
     setLoginForm({ identifier: '', password: '' });
     setRegisterForm(EMPTY_REGISTER_FORM);
+    setResetForm(EMPTY_RESET_FORM);
     setMode(initialMode);
     onClose?.();
   };
 
   const switchMode = (nextMode) => {
     setError('');
+    setNotice('');
     setMode(nextMode);
+  };
+
+  const openForgotPassword = () => {
+    // Carries over what was typed in the sign-in box when it is an email.
+    const typed = loginForm.identifier.trim();
+    setResetForm({ ...EMPTY_RESET_FORM, email: typed.includes('@') ? typed : '' });
+    switchMode('forgot');
+  };
+
+  const sendResetCode = async () => {
+    const email = resetForm.email.trim();
+    setError('');
+    setNotice('');
+    setLoading(true);
+    try {
+      const result = await requestPasswordResetOtp(email);
+      setResendCooldown(result?.resendCooldownSeconds ?? forgotPasswordConfig?.resendCooldownSeconds ?? 60);
+      setMode('reset');
+      setNotice(`If an account exists for ${email}, a ${otpLength}-digit code has been sent to it.`);
+    } catch (err) {
+      setError(err.errors?.[0]?.message || err.message || 'Could not send the code. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotSubmit = (e) => {
+    e.preventDefault();
+    sendResetCode();
+  };
+
+  const handleResetSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setNotice('');
+    if (!PASSWORD_RULE.test(resetForm.newPassword)) {
+      setError(PASSWORD_RULE_MESSAGE);
+      return;
+    }
+    if (resetForm.newPassword !== resetForm.confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await resetPassword({ ...resetForm, email: resetForm.email.trim() });
+      toast.success('Password reset - please sign in with your new password.');
+      setLoginForm({ identifier: resetForm.email.trim(), password: '' });
+      setResetForm(EMPTY_RESET_FORM);
+      setMode('login');
+    } catch (err) {
+      setError(err.errors?.[0]?.message || err.message || 'Could not reset the password. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleLoginSubmit = async (e) => {
@@ -188,7 +291,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
       title={
         <span className="flex items-center gap-2.5">
           <img src={logoSrc} alt={logoAlt} className="h-8 w-auto object-contain" />
-          {mode === 'login' ? 'Sign in' : 'Create your account'}
+          {MODE_TITLES[mode]}
         </span>
       }
       size="sm"
@@ -199,7 +302,112 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
         </div>
       )}
 
-      {mode === 'login' ? (
+      {notice && !error && (
+        <div className="mb-4 px-3 py-2 rounded-lg text-sm bg-emerald-50 border border-emerald-200 text-emerald-700" role="status">
+          {notice}
+        </div>
+      )}
+
+      {mode === 'forgot' ? (
+        <form onSubmit={handleForgotSubmit} className="space-y-3">
+          <p className="text-sm text-slate-500">Enter your account email and we will send you a code to reset your password.</p>
+          <input
+            type="email"
+            name="email"
+            placeholder="Email"
+            value={resetForm.email}
+            onChange={(e) => setResetForm((f) => ({ ...f, email: e.target.value }))}
+            className={inputClass}
+            required
+            maxLength={254}
+            disabled={loading}
+          />
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-2.5 rounded-lg text-sm font-semibold cursor-pointer bg-slate-900 hover:bg-amber-600 text-white transition-colors duration-150 disabled:opacity-60"
+          >
+            {loading ? 'Sending code...' : 'Send code'}
+          </button>
+          <p className="text-center text-sm text-slate-500">
+            <button
+              type="button"
+              onClick={() => switchMode('login')}
+              className="font-semibold text-amber-600 hover:text-amber-700 cursor-pointer"
+              disabled={loading}
+            >
+              Back to sign in
+            </button>
+          </p>
+        </form>
+      ) : mode === 'reset' ? (
+        <form onSubmit={handleResetSubmit} className="space-y-3">
+          <input
+            type="text"
+            name="otp"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            placeholder={`${otpLength}-digit code`}
+            value={resetForm.otp}
+            onChange={(e) => setResetForm((f) => ({ ...f, otp: e.target.value.replace(/\D/g, '').slice(0, otpLength) }))}
+            className={inputClass}
+            required
+            minLength={otpLength}
+            maxLength={otpLength}
+            pattern={`\\d{${otpLength}}`}
+            title={`Enter the ${otpLength}-digit code from your email`}
+            disabled={loading}
+          />
+          <PasswordInput
+            name="newPassword"
+            autoComplete="new-password"
+            placeholder="New password"
+            value={resetForm.newPassword}
+            onChange={(e) => setResetForm((f) => ({ ...f, newPassword: e.target.value }))}
+            className={inputClass}
+            required
+            minLength={8}
+            maxLength={128}
+            disabled={loading}
+          />
+          <PasswordInput
+            name="confirmPassword"
+            autoComplete="new-password"
+            placeholder="Confirm new password"
+            value={resetForm.confirmPassword}
+            onChange={(e) => setResetForm((f) => ({ ...f, confirmPassword: e.target.value }))}
+            className={inputClass}
+            required
+            maxLength={128}
+            disabled={loading}
+          />
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-2.5 rounded-lg text-sm font-semibold cursor-pointer bg-slate-900 hover:bg-amber-600 text-white transition-colors duration-150 disabled:opacity-60"
+          >
+            {loading ? 'Resetting...' : 'Reset password'}
+          </button>
+          <div className="flex items-center justify-between text-sm">
+            <button
+              type="button"
+              onClick={() => switchMode('login')}
+              className="font-semibold text-amber-600 hover:text-amber-700 cursor-pointer"
+              disabled={loading}
+            >
+              Back to sign in
+            </button>
+            <button
+              type="button"
+              onClick={sendResetCode}
+              className="font-semibold text-amber-600 hover:text-amber-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={loading || resendCooldown > 0}
+            >
+              {resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : 'Resend code'}
+            </button>
+          </div>
+        </form>
+      ) : mode === 'login' ? (
         <form onSubmit={handleLoginSubmit} className="space-y-3">
           <input
             type="text"
@@ -220,6 +428,18 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
             required
             disabled={loading}
           />
+          {forgotPasswordConfig && (
+            <div className="text-right">
+              <button
+                type="button"
+                onClick={openForgotPassword}
+                className="text-sm font-semibold text-amber-600 hover:text-amber-700 cursor-pointer"
+                disabled={loading}
+              >
+                Forgot password?
+              </button>
+            </div>
+          )}
           <button
             type="submit"
             disabled={loading}

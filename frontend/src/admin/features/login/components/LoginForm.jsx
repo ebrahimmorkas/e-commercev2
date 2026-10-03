@@ -109,7 +109,7 @@ const LoginForm = ({
             />
           </div>
 
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-end mb-6">
             {/* <label className={`flex items-center text-sm ${theme.text.body} cursor-pointer select-none`}>
               <input
                 type="checkbox"

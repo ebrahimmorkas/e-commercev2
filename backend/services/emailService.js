@@ -431,6 +431,7 @@ const retryFailedEmails = async ({ maxAgeMinutes = 60, limit = 50 } = {}) => {
 };
 
 module.exports = {
+    MAX_RETRY_ATTEMPTS,
     resolveEmailProvider,
     checkEmailQuota,
     validateContentRules,
