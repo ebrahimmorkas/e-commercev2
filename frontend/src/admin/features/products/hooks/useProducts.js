@@ -1,44 +1,81 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as productApi from '../api/productApi';
 import { useToast } from '../../../../components/common/Toast';
+
+export const ADMIN_PRODUCTS_PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 350;
+
+const describeError = (err) => {
+  if (err.errors && err.errors.length > 0) {
+    return err.errors.map((e) => e.message).join(' ');
+  }
+  return err.message || 'Something went wrong';
+};
 
 /**
  * Owns the admin product list state and its mutations, mirroring
  * admin/masters/category/hooks/useCategories.js: every mutation surfaces
  * errors via toast (including any Joi field errors from the backend) and
  * refetches the list afterwards rather than trying to patch it locally.
+ *
+ * The list is paginated and searched on the server (GET
+ * /products/get-products-admin?page&limit&q), so only one page of products
+ * is ever in memory - the page stays fast however big the catalogue is.
+ * While another page or search loads, the previous rows stay on screen
+ * (`loading` is true) instead of the table blanking out.
  */
 export const useProducts = () => {
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  // What the admin typed (instant) vs. what the server is asked for (debounced).
+  const [searchText, setSearchTextState] = useState('');
+  const [params, setParams] = useState({ page: 1, q: '' });
+  const [reloadToken, setReloadToken] = useState(0);
+  const requestKey = `${params.page}|${params.q}|${reloadToken}`;
+  const [result, setResult] = useState({ key: null, products: [], pagination: null, error: '' });
+  // Size of the whole catalogue (last unsearched total), for "12 of 10,014 products".
+  const [catalogTotal, setCatalogTotal] = useState(0);
   const [mutating, setMutating] = useState(false);
+  const searchTimerRef = useRef(null);
   const toast = useToast();
 
-  const describeError = (err) => {
-    if (err.errors && err.errors.length > 0) {
-      return err.errors.map((e) => e.message).join(' ');
-    }
-    return err.message || 'Something went wrong';
-  };
+  useEffect(() => {
+    let cancelled = false;
+    productApi
+      .getProductsAdmin({ page: params.page, limit: ADMIN_PRODUCTS_PAGE_SIZE, q: params.q })
+      .then((data) => {
+        if (cancelled) return;
+        const pagination = data?.pagination || null;
+        setResult({ key: requestKey, products: Array.isArray(data?.products) ? data.products : [], pagination, error: '' });
+        if (!params.q && pagination) setCatalogTotal(pagination.total);
+      })
+      .catch((err) => {
+        if (!cancelled) setResult({ key: requestKey, products: [], pagination: null, error: describeError(err) });
+      });
+    return () => {
+      cancelled = true;
+    };
+    // requestKey covers params and reloadToken.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestKey]);
 
-  const fetchProducts = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const data = await productApi.getProductsAdmin();
-      setProducts(Array.isArray(data?.products) ? data.products : []);
-    } catch (err) {
-      setError(describeError(err));
-      setProducts([]);
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => () => clearTimeout(searchTimerRef.current), []);
+
+  const loading = result.key !== requestKey;
+
+  const setSearchText = useCallback((text) => {
+    setSearchTextState(text);
+    clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => setParams({ page: 1, q: text.trim() }), text ? SEARCH_DEBOUNCE_MS : 0);
   }, []);
 
-  useEffect(() => {
-    fetchProducts();
-  }, [fetchProducts]);
+  const setPage = useCallback((page) => setParams((prev) => ({ ...prev, page })), []);
+
+  // Reloads the current page. A page emptied by a delete steps back one page.
+  const fetchProducts = useCallback(() => setReloadToken((token) => token + 1), []);
+  const refetchAfterRemoving = (removedCount) => {
+    const remaining = result.products.length - removedCount;
+    if (remaining <= 0 && params.page > 1) setPage(params.page - 1);
+    else fetchProducts();
+  };
 
   const fetchProductById = async (id) => {
     try {
@@ -55,7 +92,7 @@ export const useProducts = () => {
     try {
       await productApi.createProduct(payload, mainImages, additionalImageUploads);
       toast.success('Product created successfully');
-      await fetchProducts();
+      fetchProducts();
       return true;
     } catch (err) {
       toast.error(describeError(err));
@@ -70,7 +107,7 @@ export const useProducts = () => {
     try {
       await productApi.updateProduct(payload, mainImages, additionalImageUploads);
       toast.success('Product updated successfully');
-      await fetchProducts();
+      fetchProducts();
       return true;
     } catch (err) {
       toast.error(describeError(err));
@@ -85,7 +122,7 @@ export const useProducts = () => {
     try {
       await productApi.deleteProduct(productId);
       toast.success('Product deleted successfully');
-      await fetchProducts();
+      refetchAfterRemoving(1);
       return true;
     } catch (err) {
       toast.error(describeError(err));
@@ -101,7 +138,7 @@ export const useProducts = () => {
     try {
       await productApi.toggleProductStatus(product._id, nextStatus);
       toast.success(`Product marked ${nextStatus === 'A' ? 'active' : 'inactive'}`);
-      await fetchProducts();
+      fetchProducts();
       return true;
     } catch (err) {
       toast.error(describeError(err));
@@ -116,7 +153,7 @@ export const useProducts = () => {
     try {
       await productApi.cloneProduct(productId);
       toast.success('Product cloned successfully');
-      await fetchProducts();
+      fetchProducts();
       return true;
     } catch (err) {
       toast.error(describeError(err));
@@ -148,7 +185,7 @@ export const useProducts = () => {
     try {
       const data = await productApi.bulkSetProductStatus(productIds, status);
       describeBulkOutcome(data, status === 'A' ? 'activated' : 'deactivated');
-      await fetchProducts();
+      fetchProducts();
       return data;
     } catch (err) {
       toast.error(describeError(err));
@@ -164,7 +201,7 @@ export const useProducts = () => {
     try {
       const data = await productApi.bulkDeleteProducts(productIds);
       describeBulkOutcome(data, 'deleted');
-      await fetchProducts();
+      refetchAfterRemoving(data?.successCount ?? 0);
       return data;
     } catch (err) {
       toast.error(describeError(err));
@@ -180,7 +217,7 @@ export const useProducts = () => {
     try {
       const data = await productApi.bulkCloneProducts(productIds);
       describeBulkOutcome(data, 'cloned');
-      await fetchProducts();
+      fetchProducts();
       return data;
     } catch (err) {
       toast.error(describeError(err));
@@ -191,9 +228,16 @@ export const useProducts = () => {
   };
 
   return {
-    products,
+    products: result.products,
+    pagination: result.pagination,
+    catalogTotal,
+    page: params.page,
+    setPage,
+    searchText,
+    setSearchText,
     loading,
-    error,
+    initialLoading: loading && result.key === null,
+    error: result.error,
     mutating,
     refetch: fetchProducts,
     fetchProductById,

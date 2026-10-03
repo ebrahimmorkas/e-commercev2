@@ -285,6 +285,17 @@ const idParamSchema = Joi.object({
     id: objectId().required().label('Product ID')
 });
 
+// Query string of the paginated product lists (storefront + admin). `ids` is a
+// comma-separated list of encoded product ids (recommended products lookup).
+const productListQuerySchema = Joi.object({
+    page: Joi.number().integer().min(1).max(100000).label('Page'),
+    limit: Joi.number().integer().min(1).max(100).label('Limit'),
+    sort: Joi.string().valid('featured', 'newest', 'price_asc', 'price_desc', 'name_asc').label('Sort'),
+    q: Joi.string().trim().allow('').max(100).label('Search'),
+    status: Joi.string().valid('A', 'I').label('Status'),
+    ids: Joi.string().trim().allow('').max(5000).label('Product IDs')
+});
+
 const brandIdParamSchema = Joi.object({
     brandId: objectId().required().label('Brand ID')
 });
@@ -374,6 +385,7 @@ module.exports = {
     bulkProductStatusSchema,
     bulkDeleteProductSchema,
     idParamSchema,
+    productListQuerySchema,
     brandIdParamSchema,
     categoryIdParamSchema
 };

@@ -4,14 +4,43 @@ import InputField from '../../../../components/common/InputField';
 import Badge from '../../../../components/common/Badge';
 import Button from '../../../../components/common/Buttons';
 import CategoryMembersPicker from './CategoryMembersPicker';
+import { useProductOptionsSearch } from '../../../features/products/hooks/useProductOptionsSearch';
 import theme from '../theme/theme';
 
 const HEX24 = /^[a-f0-9]{24}$/i;
 
+// Only active records can be picked; an existing member that has since been
+// made inactive stays listed (marked) so it isn't silently dropped on save.
+const toPickableOptions = (options, value) =>
+  options
+    .filter((option) => option.isActive !== false || value.includes(option.value))
+    .map((option) => (option.isActive === false ? { ...option, label: `${option.label} (Inactive)` } : option));
+
+// PRODUCT members are searched on the server as the admin types - a
+// catalogue can run to tens of thousands of products, far too many to load
+// into one dropdown.
+const ProductMembersPicker = ({ value, onChange, error }) => {
+  const { options, onSearchChange } = useProductOptionsSearch({ selectedIds: value });
+  return (
+    <Dropdown
+      label="Members"
+      options={toPickableOptions(options, value)}
+      value={value}
+      onChange={(ids) => onChange(ids)}
+      onSearchChange={onSearchChange}
+      multiple
+      searchable
+      required
+      placeholder="Search products by name or code"
+      error={error}
+    />
+  );
+};
+
 /**
  * Members field for the group form. PRODUCT/BRAND/ORDER/USER groups pick
  * from a searchable multi-select of the real collection (options come from
- * useGroupFormLookups); CATEGORY groups use CategoryMembersPicker's
+ * useGroupFormLookups - PRODUCT searches the server instead); CATEGORY groups use CategoryMembersPicker's
  * drill-down path picker instead, since categories nest; CUSTOM groups have
  * no backing collection, so members are hand-typed Mongo ObjectIds added one
  * at a time as chips.
@@ -48,6 +77,10 @@ const MembersPicker = ({
         error={error}
       />
     );
+  }
+
+  if (groupType === 'PRODUCT') {
+    return <ProductMembersPicker value={value} onChange={onChange} error={error} />;
   }
 
   if (groupType === 'CUSTOM') {
@@ -114,11 +147,7 @@ const MembersPicker = ({
     );
   }
 
-  // Only active records can be picked; an existing member that has since been
-  // made inactive stays listed (marked) so it isn't silently dropped on save.
-  const pickableOptions = options
-    .filter((option) => option.isActive !== false || value.includes(option.value))
-    .map((option) => (option.isActive === false ? { ...option, label: `${option.label} (Inactive)` } : option));
+  const pickableOptions = toPickableOptions(options, value);
 
   return (
     <Dropdown

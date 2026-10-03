@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'react';
-import { getStorefrontProducts, getStorefrontCategories } from '../api/productApi';
+import { getStorefrontProductsByIds } from '../api/productApi';
 import { shapeProductForCard } from '../utils/shapeProduct';
+import { loadCategoryNameMap } from '../utils/categoryNames';
 
 /**
  * Resolves a product's `recommendedProducts` (an array of Mongo ids) into
- * shaped cards. There's no "get products by ids" endpoint, so this reuses
- * the same GET /products/get-products list the homepage grid already fetches
- * and filters it down client-side - recommendedProducts lists are small and
- * this is a low-traffic page, so one extra list fetch is cheap compared to
- * adding a new backend route.
+ * shaped cards, fetching just those products by id (GET
+ * /products/get-products?ids=...) - inactive ones simply don't come back.
  *
  * Silently resolves to an empty list on failure or when there's nothing to
  * recommend - recommendations are decorative, not core content (same
@@ -33,15 +31,10 @@ export const useRecommendedProducts = (recommendedIds) => {
     if (ids.length === 0) return undefined;
     let cancelled = false;
 
-    Promise.all([getStorefrontProducts(), getStorefrontCategories().catch(() => [])])
-      .then(([productsResult, categories]) => {
+    Promise.all([getStorefrontProductsByIds(ids), loadCategoryNameMap()])
+      .then(([productsResult, categoryNameById]) => {
         if (cancelled) return;
-        const categoryNameById = new Map((categories || []).map((c) => [String(c._id), c.categoryName]));
-        const idSet = new Set(ids.map(String));
-        const matched = (productsResult?.products || [])
-          .filter((p) => idSet.has(String(p._id)))
-          .map((p) => shapeProductForCard(p, categoryNameById));
-        setProducts(matched);
+        setProducts((productsResult?.products || []).map((p) => shapeProductForCard(p, categoryNameById)));
       })
       .catch(() => {
         if (!cancelled) setProducts([]);

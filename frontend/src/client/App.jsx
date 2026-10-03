@@ -6,6 +6,7 @@ import Footer from './components/ui/footer';
 import HomePage from './features/Home/Pages/HomePage';
 import ProductDetailPage from './features/products/pages/ProductDetailPage';
 import CategoryProductsPage from './features/products/pages/CategoryProductsPage';
+import BrandProductsPage from './features/products/pages/BrandProductsPage';
 import CartPage from './features/cart/pages/CartPage';
 import { useCart } from './features/cart/hooks/useCart';
 import { useAuth } from './features/auth/hooks/useAuth';
@@ -20,6 +21,18 @@ import NotFoundPage from './components/errors/NotFoundPage';
 import PolicyPage from './features/companySettings/pages/PolicyPage';
 import { getPolicyLinkByPath } from './features/companySettings/constants';
 import theme from './features/Home/theme/theme';
+import AllProductsPage from './features/products/pages/AllProductsPage';
+import { DEFAULT_SORT as DEFAULT_PRODUCTS_SORT, isValidSort } from './features/products/constants/sortOptions';
+
+
+// /products, /products?q=crystal&sort=price_asc - the default sort is left out of the URL.
+const productsPath = (q = '', sort = DEFAULT_PRODUCTS_SORT) => {
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  if (sort && sort !== DEFAULT_PRODUCTS_SORT) params.set('sort', sort);
+  const query = params.toString();
+  return query ? `/products?${query}` : '/products';
+};
 
 // No routing library yet - path match against `/product/:id` (id = Mongo
 // ObjectId), `/category/:id`, `/cart`, `/checkout`, `/orders`, `/orders/:id`, `/addresses`,
@@ -38,6 +51,8 @@ const PRODUCT_PATH_RE = /^\/product\/([A-Za-z0-9_-]{43})$/;
 // url-safe base64 characters, never raw hex. See categoryController.js's
 // formatCategoryForResponse.
 const CATEGORY_PATH_RE = /^\/category\/([A-Za-z0-9_-]{43})$/;
+// Brand ids are encoded the same way (brandMasterController formatBrandForResponse).
+const BRAND_PATH_RE = /^\/brand\/([A-Za-z0-9_-]{43})$/;
 // Order ids are also common.encodeId-encoded now (see orderController.js's
 // formatOrderForResponse) - same 43-char url-safe base64 shape as
 // CATEGORY_PATH_RE above, never raw hex.
@@ -45,6 +60,11 @@ const ORDER_DETAIL_PATH_RE = /^\/orders\/([A-Za-z0-9_-]{43})$/;
 const parseRoute = () => {
   const path = window.location.pathname;
   if (path === '/' || path === '') return { type: 'home' };
+  if (path === '/products') {
+    const params = new URLSearchParams(window.location.search);
+    const sort = params.get('sort');
+    return { type: 'products', q: (params.get('q') || '').trim(), sort: isValidSort(sort) ? sort : DEFAULT_PRODUCTS_SORT };
+  }
   if (path === '/cart') return { type: 'cart' };
   if (path === '/checkout') return { type: 'checkout' };
   if (path === '/orders') return { type: 'orders' };
@@ -55,6 +75,8 @@ const parseRoute = () => {
   if (productId) return { type: 'product', id: productId };
   const categoryId = path.match(CATEGORY_PATH_RE)?.[1];
   if (categoryId) return { type: 'category', id: categoryId };
+  const brandId = path.match(BRAND_PATH_RE)?.[1];
+  if (brandId) return { type: 'brand', id: brandId };
   const policyLink = getPolicyLinkByPath(path);
   if (policyLink) return { type: 'policy', link: policyLink };
   return { type: 'not-found' };
@@ -147,6 +169,7 @@ const ClientApp = () => {
   const openOrderDetail = (id) => navigate(`/orders/${id}`, { type: 'order-detail', id });
   const openPolicyPage = (link) => navigate(link.path, { type: 'policy', link });
   const goHome = () => navigate('/', { type: 'home' });
+  const openAllProducts = (q = '', sort = DEFAULT_PRODUCTS_SORT) => navigate(productsPath(q, sort), { type: 'products', q, sort });
 
   const handleLoginClick = () => setAuthModalOpen(true);
 
@@ -250,25 +273,27 @@ const ClientApp = () => {
     addItemToCart({ productId: product.id, variantId: variant.id, sizeId: size.id });
   const handleProductClick = (product) => openProduct(product.id);
 
-  const handleSearch = (query) => {
-    if (query) toast.info(`Searching for "${query}"...`);
-  };
+  // Header search -> /products?q=...; an empty search shows every product.
+  const handleSearch = (query) => openAllProducts((query || '').trim(), route.type === 'products' ? route.sort : DEFAULT_PRODUCTS_SORT);
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Header
-        isAuthenticated={isAuthenticated}
-        authLoading={authLoading}
-        user={user}
-        cartCount={cartCount}
-        onLoginClick={handleLoginClick}
-        onLogout={handleLogout}
-        onOrdersClick={handleOrdersClick}
-        onAddressesClick={handleAddressesClick}
-        onSearch={handleSearch}
-        onCartClick={openCart}
-      />
-      <Navbar />
+      {/* One sticky unit: header and nav bar stay pinned together while scrolling. */}
+      <div className="sticky top-0 z-40">
+        <Header
+          isAuthenticated={isAuthenticated}
+          authLoading={authLoading}
+          user={user}
+          cartCount={cartCount}
+          onLoginClick={handleLoginClick}
+          onLogout={handleLogout}
+          onOrdersClick={handleOrdersClick}
+          onAddressesClick={handleAddressesClick}
+          onSearch={handleSearch}
+          onCartClick={openCart}
+        />
+        <Navbar />
+      </div>
       <AnnouncementBar />
       <main className="flex-1">
         {route.type === 'product' && (
@@ -287,6 +312,18 @@ const ClientApp = () => {
         {route.type === 'category' && (
           <CategoryProductsPage
             categoryId={route.id}
+            cartItems={cartItems}
+            onAddToCart={handleAddToCart}
+            onProductClick={handleProductClick}
+            onIncrementItem={handleIncrementItem}
+            onDecrementItem={handleDecrementItem}
+            onSetItemQuantity={handleSetItemQuantity}
+            onGoHome={goHome}
+          />
+        )}
+        {route.type === 'brand' && (
+          <BrandProductsPage
+            brandId={route.id}
             cartItems={cartItems}
             onAddToCart={handleAddToCart}
             onProductClick={handleProductClick}
@@ -344,6 +381,24 @@ const ClientApp = () => {
         {route.type === 'addresses' && isAuthenticated && <AddressesPage onBack={goHome} />}
         {route.type === 'order-detail' && isAuthenticated && (
           <OrderDetailPage orderId={route.id} onBack={openOrders} onGoHome={goHome} />
+        )}
+        {route.type === 'products' && (
+          <AllProductsPage
+            query={route.q}
+            sort={route.sort}
+            onSortChange={(sort) => {
+              // Same page, new sort - replace instead of stacking a history entry per sort change.
+              window.history.replaceState({}, '', productsPath(route.q, sort));
+              setRoute({ ...route, sort });
+            }}
+            onClearSearch={() => openAllProducts('', route.sort)}
+            cartItems={cartItems}
+            onAddToCart={handleAddToCart}
+            onProductClick={handleProductClick}
+            onIncrementItem={handleIncrementItem}
+            onDecrementItem={handleDecrementItem}
+            onSetItemQuantity={handleSetItemQuantity}
+          />
         )}
         {route.type === 'home' && (
           <HomePage

@@ -1,9 +1,13 @@
 import theme from '../theme/theme';
 import { GemIcon } from '../icons';
-import { useStorefrontProducts } from '../../products/hooks/useStorefrontProducts';
+import { useCallback, useState } from 'react';
+import { getStorefrontProducts } from '../../products/api/productApi';
+import { usePagedProducts } from '../../products/hooks/usePagedProducts';
+import { DEFAULT_SORT } from '../../products/constants/sortOptions';
+import SortSelect from '../../products/components/SortSelect';
+import InfiniteProductGrid from '../../products/components/InfiniteProductGrid';
 import { useStorefrontBanner } from '../../banners/hooks/useStorefrontBanner';
-import ProductCard from '../../products/components/ProductCard';
-import Spinner from '../../../../components/common/Spinner/Spinner';
+import { ProductGridSkeleton } from '../../products/components/ProductSkeletons';
 import EmptyState from '../../../../components/common/EmptyState/EmptyState';
 
 const PartnerBadge = () => (
@@ -28,7 +32,7 @@ const FloatingGems = () => (
 );
 
 /**
- * Client-facing storefront landing page: hero banner + featured products grid.
+ * Client-facing storefront landing page: hero banner + every product in one infinite-scroll grid.
  *
  * @param {Object} props
  * @param {Function} [props.onAddToCart] - Called with the selected product when "Add to Cart" is clicked.
@@ -37,9 +41,17 @@ const FloatingGems = () => (
  * @param {Function} [props.onIncrementItem] - Called with a cart-item id to increase its quantity.
  * @param {Function} [props.onDecrementItem] - Called with a cart-item id to decrease (or remove) its quantity.
  * @param {Function} [props.onSetItemQuantity] - Called with a cart-item id and a typed quantity.
- */
+ *  */
 const HomePage = ({ onAddToCart, onProductClick, cartItems = {}, onIncrementItem, onDecrementItem, onSetItemQuantity }) => {
-  const { products, loading, error, reload } = useStorefrontProducts();
+  const [sort, setSort] = useState(DEFAULT_SORT);
+  const fetchPage = useCallback((page) => getStorefrontProducts({ page, sort }), [sort]);
+  // One page at a time as the user scrolls (see InfiniteProductGrid) - never the whole catalogue at once.
+  const { products, total, hasMore, loading, loadingMore, error, loadMoreError, loadMore, reload } = usePagedProducts({
+    fetchPage,
+    resetKey: `home|${sort}`,
+  });
+
+  const scrollToProducts = () => document.getElementById('all-products')?.scrollIntoView({ behavior: 'smooth' });
   const { banner, loading: bannerLoading } = useStorefrontBanner();
 
   return (
@@ -87,7 +99,7 @@ const HomePage = ({ onAddToCart, onProductClick, cartItems = {}, onIncrementItem
               Genuine Preciosa crystals, rhinestones, buttons, pearls and pressed glass beads —
               sourced with care, delivered with pride.
             </p>
-            <button type="button" className={`${theme.hero.ctaLayout} ${theme.hero.cta}`}>
+            <button type="button" onClick={scrollToProducts} className={`${theme.hero.ctaLayout} ${theme.hero.cta}`}>
               <span className={theme.hero.ctaShine} />
               <span className={theme.hero.ctaLabel}>Shop Now</span>
             </button>
@@ -98,18 +110,19 @@ const HomePage = ({ onAddToCart, onProductClick, cartItems = {}, onIncrementItem
         </section>
       )}
 
-      <section className={theme.section.wrapper}>
-        <div className={theme.section.headerWrapper}>
-          <h2 className={`${theme.section.headingLayout} ${theme.section.heading}`}>Featured Products</h2>
-          <p className={`${theme.section.subheadingLayout} ${theme.section.subheading}`}>
-            A few of our customer favorites
-          </p>
-        </div>
-        {loading && (
-          <div className={theme.section.loadingWrapper}>
-            <Spinner size="lg" label="Loading products" />
+      <section id="all-products" className={`${theme.section.wrapper} scroll-mt-20`}>
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className={`${theme.section.headingLayout} ${theme.section.heading}`}>All Products</h2>
+            {!loading && !error && total > 0 && (
+              <p className={`${theme.section.subheadingLayout} ${theme.section.subheading}`}>
+                {total.toLocaleString('en-IN')} product{total === 1 ? '' : 's'}
+              </p>
+            )}
           </div>
-        )}
+          <SortSelect value={sort} onChange={setSort} disabled={loading} />
+        </div>
+        {loading && <ProductGridSkeleton count={9} />}
 
         {!loading && error && (
           <EmptyState
@@ -132,23 +145,20 @@ const HomePage = ({ onAddToCart, onProductClick, cartItems = {}, onIncrementItem
         )}
 
         {!loading && !error && products.length > 0 && (
-          <div className={theme.section.grid}>
-            {products.map((product) => {
-              const itemId = product.sizeId || product.id;
-              return (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  quantity={cartItems[itemId] || 0}
-                  onAddToCart={onAddToCart}
-                  onOpen={onProductClick}
-                  onIncrement={() => onIncrementItem?.(itemId)}
-                  onDecrement={() => onDecrementItem?.(itemId)}
-                  onSetQuantity={(quantity) => onSetItemQuantity?.(itemId, quantity)}
-                />
-              );
-            })}
-          </div>
+          <InfiniteProductGrid
+            products={products}
+            total={total}
+            hasMore={hasMore}
+            loadingMore={loadingMore}
+            loadMoreError={loadMoreError}
+            loadMore={loadMore}
+            cartItems={cartItems}
+            onAddToCart={onAddToCart}
+            onProductClick={onProductClick}
+            onIncrementItem={onIncrementItem}
+            onDecrementItem={onDecrementItem}
+            onSetItemQuantity={onSetItemQuantity}
+          />
         )}
       </section>
     </div>

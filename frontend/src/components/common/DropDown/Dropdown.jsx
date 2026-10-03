@@ -29,6 +29,8 @@ import { createPortal } from 'react-dom';
  * @param {number} props.maxHeight - Maximum height of dropdown menu
  * @param {boolean} props.multiple - Enable multiple selection
  * @param {Function} props.renderOption - Custom option render function
+ * @param {Function} props.onSearchChange - (text) => void on every search-text change, for server-side
+ *   search: the caller swaps in matching `options` (local filtering still applies on top).
  */
 const Dropdown = ({
   options = [],
@@ -54,12 +56,24 @@ const Dropdown = ({
   maxHeight = 300,
   multiple = false,
   renderOption = null,
+  onSearchChange = null,
   ...restProps
 }) => {
   // State management
   const [isOpen, setIsOpen] = useState(false);
   const [internalValue, setInternalValue] = useState(multiple ? [] : defaultValue);
   const [searchTerm, setSearchTerm] = useState('');
+  // Every search-text change (typing, and the reset on close/select) also
+  // reaches onSearchChange, so a caller can search server-side and keep the
+  // options in step with what's typed.
+  const onSearchChangeRef = useRef(onSearchChange);
+  useEffect(() => {
+    onSearchChangeRef.current = onSearchChange;
+  }, [onSearchChange]);
+  const updateSearchTerm = useCallback((nextTerm) => {
+    setSearchTerm(nextTerm);
+    onSearchChangeRef.current?.(nextTerm);
+  }, []);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   // Menu is rendered via a portal (see note above the menu JSX below) so it
   // always escapes any ancestor's `overflow: hidden` - e.g. the Accordion
@@ -103,13 +117,13 @@ const Dropdown = ({
       const clickedMenu = menuRef.current && menuRef.current.contains(event.target);
       if (!clickedTrigger && !clickedMenu) {
         setIsOpen(false);
-        setSearchTerm('');
+        updateSearchTerm('');
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [updateSearchTerm]);
 
   // Measure the trigger and place the portaled menu against it. Re-runs on
   // open, and while open on scroll/resize so the menu tracks the trigger
@@ -188,7 +202,7 @@ const Dropdown = ({
           break;
         case 'Escape':
           setIsOpen(false);
-          setSearchTerm('');
+          updateSearchTerm('');
           break;
         default:
           break;
@@ -228,7 +242,7 @@ const Dropdown = ({
       onChange(newValue, option);
     }
 
-    setSearchTerm('');
+    updateSearchTerm('');
     setHighlightedIndex(-1);
   };
 
@@ -255,7 +269,7 @@ const Dropdown = ({
     if (!disabled) {
       setIsOpen(!isOpen);
       if (isOpen) {
-        setSearchTerm('');
+        updateSearchTerm('');
       }
     }
   };
@@ -355,7 +369,7 @@ const Dropdown = ({
               ref={searchInputRef}
               type="text"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => updateSearchTerm(e.target.value)}
               placeholder="Search..."
               className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               onClick={(e) => e.stopPropagation()}

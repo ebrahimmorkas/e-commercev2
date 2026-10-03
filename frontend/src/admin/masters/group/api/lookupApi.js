@@ -3,8 +3,6 @@ import { getCompanyMasterData } from '../../../../utils/companyMasterApi';
 
 export { getCompanyMasterData };
 
-export const getAdminProducts = () => apiRequest('/products/get-products-admin');
-
 export const getAdminCategories = () => apiRequest('/category/get-admin-categories');
 
 export const getAdminBrands = () => apiRequest('/brands/get-all-brands-admin');
@@ -15,7 +13,6 @@ export const getAdminUsers = () => apiRequest('/users/get-all-users-admin');
 
 export default {
   getCompanyMasterData,
-  getAdminProducts,
   getAdminCategories,
   getAdminBrands,
   getAdminOrders,

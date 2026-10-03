@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const productController = require('../controllers/productController');
 const validate = require('../middlewares/validate');
-const { createProductSchema, updateProductSchema, toggleProductStatusSchema, deleteProductSchema, cloneProductSchema, bulkCloneProductSchema, bulkProductStatusSchema, bulkDeleteProductSchema, idParamSchema, brandIdParamSchema, categoryIdParamSchema } = require('../middlewares/validations/productValidations');
+const { createProductSchema, updateProductSchema, toggleProductStatusSchema, deleteProductSchema, cloneProductSchema, bulkCloneProductSchema, bulkProductStatusSchema, bulkDeleteProductSchema, idParamSchema, productListQuerySchema, brandIdParamSchema, categoryIdParamSchema } = require('../middlewares/validations/productValidations');
 const authenticate = require('../middlewares/authenticate');
 const authorize = require('../middlewares/authorize');
 const vendorDetection = require('../middlewares/vendorDetection');
@@ -35,17 +35,20 @@ const parseProductData = (req, res, next) => {
 
 router.post( '/add-product', ...adminAccess, checkModuleAssigned('PRODUCTS'), imageUpload.any(), parseProductData, validate(createProductSchema, 'body'), productController.createProduct );
 
-router.get( '/get-products-admin', ...adminAccess, checkModuleAssigned('PRODUCTS'), productController.getAllProductsAdmin );
+router.get( '/get-products-admin', ...adminAccess, checkModuleAssigned('PRODUCTS'), validate(productListQuerySchema, 'query'), productController.getAllProductsAdmin );
+
+// Lightweight, server-searched { _id, name, productCode, status } rows for admin product pickers.
+router.get( '/get-product-options-admin', ...adminAccess, checkModuleAssigned('PRODUCTS'), validate(productListQuerySchema, 'query'), productController.getProductOptionsAdmin );
 
 router.get( '/get-product-admin/:id', ...adminAccess, checkModuleAssigned('PRODUCTS'), validate(idParamSchema, 'params'), productController.getProductByIdAdmin );
 
-router.get( '/get-products', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), productController.getAllProductsClient );
+router.get( '/get-products', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(productListQuerySchema, 'query'), productController.getAllProductsClient );
 
 router.get( '/get-product/:id', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(idParamSchema, 'params'), productController.getProductByIdClient );
 
-router.get( '/get-products-by-brand/:brandId', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(brandIdParamSchema, 'params'), productController.getProductsByBrand );
+router.get( '/get-products-by-brand/:brandId', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(brandIdParamSchema, 'params'), validate(productListQuerySchema, 'query'), productController.getProductsByBrand );
 
-router.get( '/get-products-by-category/:categoryId', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(categoryIdParamSchema, 'params'), productController.getProductsByCategory );
+router.get( '/get-products-by-category/:categoryId', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(categoryIdParamSchema, 'params'), validate(productListQuerySchema, 'query'), productController.getProductsByCategory );
 
 router.get( '/get-products-by-category-admin/:categoryId', ...adminAccess, checkModuleAssigned('PRODUCTS'), validate(categoryIdParamSchema, 'params'), productController.getProductsByCategoryAdmin );
 

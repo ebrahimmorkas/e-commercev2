@@ -69,7 +69,7 @@ const theme = {
     body: 'p-4',
 
     imageWrapperLayout: 'relative aspect-square flex items-center justify-center overflow-hidden shine-sweep',
-    imageBackground: 'bg-gradient-to-br from-amber-100 to-amber-200',
+    imageBackground: 'bg-white',
     imageLayout: 'w-full h-full object-contain transition-transform duration-300 ease-out group-hover:scale-110',
     imageTextLayout: 'text-xs font-bold tracking-widest uppercase',
     imageText: 'text-amber-700/40',

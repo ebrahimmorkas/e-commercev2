@@ -9,11 +9,11 @@ import BulkActionBar from '../../../../components/common/BulkActionBar';
 import EmptyState from '../../../../components/common/EmptyState';
 import SearchInput from '../../../../components/common/SearchInput';
 import Spinner from '../../../../components/common/Spinner';
-import { useProducts } from '../hooks/useProducts';
+import Pagination from '../../../../components/common/Pagination';
+import { useProducts, ADMIN_PRODUCTS_PAGE_SIZE } from '../hooks/useProducts';
 import { useProductLookups } from '../hooks/useProductLookups';
 import ProductForm from '../components/ProductForm';
 import { mapApiProductToDraft } from '../utils/productDraft';
-import { filterBySearch } from '../../../../utils/searchFilter';
 import theme from '../theme/theme';
 import { useStoreCurrency } from '../../../currency/useStoreCurrency';
 
@@ -48,26 +48,6 @@ const ImagePlaceholderIcon = () => (
   </svg>
 );
 
-// Mirrors generateNextCloneName in backend/services/productService.js so the
-// confirmation dialog can show the exact name the clone will get, instead of
-// hedging with "something like". Computed off the already-loaded product
-// list (same data source the admin list itself renders from) - the source
-// name is used literally, with no "- Copy N" stripping, so cloning an
-// already-cloned product keeps stacking its own independent counter, same
-// as the backend.
-const nextCloneNameOf = (products, sourceName) => {
-  const pattern = new RegExp(`^${sourceName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} - Copy (\\d+)$`);
-  let maxCopyNumber = 0;
-  for (const product of products) {
-    const match = product.name?.match(pattern);
-    if (match) {
-      const number = parseInt(match[1], 10);
-      if (number > maxCopyNumber) maxCopyNumber = number;
-    }
-  }
-  return `${sourceName} - Copy ${maxCopyNumber + 1}`;
-};
-
 const allSizes = (product) => (product.variants || []).flatMap((v) => v.sizes || []);
 
 const thumbnailOf = (product) => {
@@ -86,22 +66,6 @@ const priceRangeOf = (product, formatMoney) => {
 
 const stockOf = (product) => allSizes(product).reduce((sum, s) => sum + (s.stock || 0), 0);
 
-// Client-side search over the list the admin endpoint already returns in full (it has no
-// pagination), so no backend query is needed (matching rules: utils/searchFilter.js).
-// Covers what the admin can see or type in the form: name, code, category, keywords,
-// variant name/code and each size's SKU / barcode / size code.
-const productSearchFields = (product, categoryName) => {
-  const fields = [product.name, product.productCode, categoryName, ...(product.searchKeywords || [])];
-  (product.variants || []).forEach((variant) => {
-    fields.push(variant.displayName, variant.variantCode);
-    (variant.sizes || []).forEach((size) => fields.push(size.sku, size.barcode, size.sizeCode));
-  });
-  return fields;
-};
-
-const filterProducts = (products, term, categoryNameById) =>
-  filterBySearch(products, term, (product) => productSearchFields(product, categoryNameById.get(String(product.mainCategory))));
-
 const Thumbnail = ({ product, size = 'w-10 h-10' }) => {
   const url = thumbnailOf(product);
   return url ? (
@@ -117,7 +81,8 @@ const ProductsPage = () => {
   // Prices are in the store currency (Company Settings).
   const { formatMoney } = useStoreCurrency();
   const {
-    products, loading, error, mutating, createProduct, editProduct, removeProduct, toggleStatus, cloneProduct, fetchProductById,
+    products, pagination, catalogTotal, page, setPage, searchText, setSearchText, loading, initialLoading,
+    error, mutating, createProduct, editProduct, removeProduct, toggleStatus, cloneProduct, fetchProductById,
     bulkToggleStatus, bulkRemoveProducts, bulkCloneProducts,
   } = useProducts();
   const lookups = useProductLookups();
@@ -140,25 +105,23 @@ const ProductsPage = () => {
     return map;
   }, [lookups.categories]);
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const filteredProducts = useMemo(
-    () => filterProducts(products, searchTerm, categoryNameById),
-    [products, searchTerm, categoryNameById]
-  );
-
-  // A bulk action must never reach rows the admin can no longer see, so narrowing the
-  // search drops any selected product that just got filtered out.
+  // Search and paging run on the server, and a bulk action must never reach
+  // rows the admin can no longer see - so both clear the selection.
   const handleSearchChange = (value) => {
-    setSearchTerm(value);
-    const stillVisible = new Set(filterProducts(products, value, categoryNameById).map((p) => p._id));
-    setSelectedIds((prev) => prev.filter((id) => stillVisible.has(id)));
+    setSearchText(value);
+    setSelectedIds([]);
+  };
+
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage);
+    setSelectedIds([]);
   };
 
   const openAdd = () => {
     setEditingDraft(null);
     setSelectedIds([]);
     // A leftover search would hide the product the admin is about to add.
-    setSearchTerm('');
+    setSearchText('');
     setView('add');
   };
 
@@ -205,8 +168,6 @@ const ProductsPage = () => {
     const success = await cloneProduct(cloneTarget._id);
     if (success) setCloneTarget(null);
   };
-
-  const cloneTargetNewName = cloneTarget ? nextCloneNameOf(products, cloneTarget.name) : '';
 
   // --- Bulk multi-select actions (checkbox column) --------------------------
   // Admin list endpoints never return status 'D' rows in the first place, so
@@ -356,7 +317,7 @@ const ProductsPage = () => {
     <EmptyState
       size="sm"
       title="No matching products"
-      description={`Nothing matches "${searchTerm.trim()}". Try a different name, code or SKU.`}
+      description={`Nothing matches "${searchText.trim()}". Try a different name, code, SKU, brand or category.`}
       action={
         <Button variant={theme.button.secondary} onClick={() => handleSearchChange('')}>
           Clear search
@@ -397,7 +358,6 @@ const ProductsPage = () => {
           mode={view}
           initialDraft={editingDraft}
           lookups={lookups}
-          products={products}
           onSubmit={handleSubmit}
           onCancel={requestCloseForm}
           onDirtyChange={setFormDirty}
@@ -443,11 +403,11 @@ const ProductsPage = () => {
           <p className={`mb-4 text-sm ${theme.alert.error.text} ${theme.alert.error.background} border ${theme.alert.error.border} rounded-lg px-4 py-2`}>{error}</p>
         )}
 
-        {loading ? (
+        {initialLoading ? (
           <div className="flex justify-center py-16">
             <Spinner size="lg" />
           </div>
-        ) : products.length === 0 ? (
+        ) : catalogTotal === 0 && !searchText && products.length === 0 ? (
           <EmptyState
             title="No products yet"
             description="Create your first product to start selling."
@@ -460,36 +420,36 @@ const ProductsPage = () => {
         ) : (
           <>
             <SearchInput
-              value={searchTerm}
+              value={searchText}
               onChange={handleSearchChange}
-              placeholder="Search name, code, SKU, category…"
+              placeholder="Search name, code, SKU, barcode, brand, category…"
               ariaLabel="Search products"
-              matchCount={filteredProducts.length}
-              totalCount={products.length}
+              matchCount={pagination?.total ?? 0}
+              totalCount={catalogTotal}
               itemLabel="products"
             />
 
             {/* Desktop / tablet: full data table */}
             <div className="hidden md:block">
               <BulkActionBar selectedCount={selectedIds.length} onClear={() => setSelectedIds([])} actions={bulkActions} />
-              <Table
-                columns={columns}
-                data={filteredProducts}
-                emptyComponent={noMatchesState}
-                keyField="_id"
-                actions={selectedIds.length > 0 ? [] : actions}
-                selectable
-                selectedKeys={selectedIds}
-                onSelectionChange={setSelectedIds}
-                pageSize={20}
-                resetPageOn={searchTerm}
-              />
+              <div className={`transition-opacity ${loading ? 'opacity-50 pointer-events-none' : ''}`} aria-busy={loading}>
+                <Table
+                  columns={columns}
+                  data={products}
+                  emptyComponent={loading ? null : noMatchesState}
+                  keyField="_id"
+                  actions={selectedIds.length > 0 ? [] : actions}
+                  selectable
+                  selectedKeys={selectedIds}
+                  onSelectionChange={setSelectedIds}
+                />
+              </div>
             </div>
 
             {/* Mobile: card list - a 6-column table never reads well this narrow */}
-            <div className="md:hidden space-y-3">
-              {filteredProducts.length === 0 && noMatchesState}
-              {filteredProducts.map((product) => (
+            <div className={`md:hidden space-y-3 transition-opacity ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
+              {!loading && products.length === 0 && noMatchesState}
+              {products.map((product) => (
                 <div key={product._id} className="rounded-xl border border-gray-200 p-3">
                   <div className="flex items-start gap-3">
                     <Thumbnail product={product} size="w-12 h-12" />
@@ -535,6 +495,22 @@ const ProductsPage = () => {
                 </div>
               ))}
             </div>
+
+            {pagination && pagination.totalPages > 1 && (
+              <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <p className={`text-sm ${theme.text.muted}`}>
+                  {((page - 1) * ADMIN_PRODUCTS_PAGE_SIZE + 1).toLocaleString('en-IN')}–
+                  {Math.min(page * ADMIN_PRODUCTS_PAGE_SIZE, pagination.total).toLocaleString('en-IN')} of {pagination.total.toLocaleString('en-IN')} products
+                </p>
+                <Pagination
+                  currentPage={page}
+                  totalPages={pagination.totalPages}
+                  onPageChange={handlePageChange}
+                  disabled={loading}
+                  size="sm"
+                />
+              </div>
+            )}
           </>
         )}
       </Card>
@@ -577,7 +553,7 @@ const ProductsPage = () => {
         }
       >
         <p className={`text-sm ${theme.text.body}`}>
-          Clone <span className={`font-medium ${theme.text.heading}`}>{cloneTarget?.name}</span>? This will create a new product named <span className={`font-medium ${theme.text.heading}`}>"{cloneTargetNewName}"</span>.
+          Clone <span className={`font-medium ${theme.text.heading}`}>{cloneTarget?.name}</span>? This will create a new product named <span className={`font-medium ${theme.text.heading}`}>"{cloneTarget?.name} - Copy N"</span>, numbered after any existing copies.
         </p>
       </Modal>
 

@@ -130,12 +130,15 @@ const BrandsPanel = ({ brands = [], loading }) => {
   return (
     <div className="flex flex-wrap justify-center gap-4">
       {brands.map((brand) => (
-        <div
+        <a
           key={brand._id}
-          className={`w-[calc(50%-0.5rem)] sm:w-44 rounded-lg border px-4 py-4 text-center ${theme.brandCard.background} ${theme.brandCard.border}`}
+          href={`/brand/${brand._id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`w-[calc(50%-0.5rem)] sm:w-44 rounded-lg border px-4 py-4 text-center transition-shadow hover:shadow-md ${theme.brandCard.background} ${theme.brandCard.border}`}
         >
           <p className={`text-sm font-bold ${theme.brandCard.name}`}>{brand.brandName}</p>
-        </div>
+        </a>
       ))}
     </div>
   );

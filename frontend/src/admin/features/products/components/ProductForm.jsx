@@ -8,6 +8,7 @@ import VariantsStep from './VariantsStep';
 import ReviewStep from './ReviewStep';
 import { emptyProduct, buildSubmitPayload } from '../utils/productDraft';
 import theme from '../theme/theme';
+import { useProductOptionsSearch } from '../hooks/useProductOptionsSearch';
 
 const STEPS = [
   { key: 'basics', label: 'Basic Details' },
@@ -77,7 +78,7 @@ const draftSnapshot = (draft) => JSON.stringify(draft, (key, value) => (value in
  * client-side sanity checks above (final authority is still the backend's
  * Joi schema + business rules).
  */
-const ProductForm = ({ mode = 'add', initialDraft, lookups, products = [], onSubmit, onCancel, onDirtyChange, submitting = false }) => {
+const ProductForm = ({ mode = 'add', initialDraft, lookups, onSubmit, onCancel, onDirtyChange, submitting = false }) => {
   const [draft, setDraft] = useState(initialDraft || emptyProduct());
   const [initialSnapshot] = useState(() => draftSnapshot(initialDraft || emptyProduct()));
 
@@ -139,14 +140,14 @@ const ProductForm = ({ mode = 'add', initialDraft, lookups, products = [], onSub
 
   const colorOptions = useMemo(() => draft.colors.map((c) => ({ value: c, label: c })), [draft.colors]);
 
-  const recommendedProductOptions = useMemo(
-    () =>
-      products
-        // Only active products can be recommended - the backend rejects I/D ones.
-        .filter((p) => p._id !== draft._id && p.status === 'A')
-        .map((p) => ({ value: String(p._id), label: `${p.name}${p.productCode ? ` (${p.productCode})` : ''}` })),
-    [products, draft._id]
-  );
+  // Searched on the server as the admin types (the catalogue can be far too
+  // big for one dropdown). Only active products can be recommended - the
+  // backend rejects I/D ones - and a product can't recommend itself.
+  const { options: recommendedProductOptions, onSearchChange: onRecommendedSearchChange } = useProductOptionsSearch({
+    selectedIds: draft.recommendedProducts,
+    status: 'A',
+    excludeId: draft._id,
+  });
 
   const goNext = () => {
     const error = step === 0 ? validateBasics(draft) : step === 1 ? validateVariants(draft) : null;
@@ -190,6 +191,7 @@ const ProductForm = ({ mode = 'add', initialDraft, lookups, products = [], onSub
           categories={lookups.categories}
           taxOptions={lookups.taxOptions}
           recommendedProductOptions={recommendedProductOptions}
+          onRecommendedSearchChange={onRecommendedSearchChange}
           isCategoryFeatureOn={isCategoryFeatureOn}
           isCategoryNestingAllowed={isCategoryNestingAllowed}
           isBulkPricingFeatureOn={isBulkPricingFeatureOn}

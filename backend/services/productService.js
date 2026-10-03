@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Product = require('../models/Product');
 const ImageAsset = require('../models/ImageAsset');
 const Category = require('../models/Category');
@@ -1423,11 +1424,241 @@ const shapeProductForResponse = (product, isAdmin, locationContext, shouldHide, 
 // Exported GET functions
 // ---------------------------------------------------------------------------
 
-const fetchAllProductsForAdmin = async (vendorId) => {
+// ---------------------------------------------------------------------------
+// Paginated product lists
+// ---------------------------------------------------------------------------
+// The storefront and admin lists used to load and return EVERY product in one
+// response, which stops working once a vendor has thousands of products (tens
+// of MB per request, and the page renders thousands of cards). Every list now
+// returns one page plus a `pagination` block. A page is resolved in two steps
+// - first the ordered _ids of just that page, then those documents - so a
+// computed sort (lowest price, precedence with blanks last) never has to sort
+// whole product documents in memory.
+
+const PRODUCT_LIST_LIMITS = {
+    client: { defaultLimit: 24, maxLimit: 100, defaultSort: 'featured' },
+    admin: { defaultLimit: 20, maxLimit: 100, defaultSort: 'newest' }
+};
+const PRODUCT_LIST_SORTS = ['featured', 'newest', 'price_asc', 'price_desc', 'name_asc'];
+// Recommended-product lookups by id are small by nature; this caps a hand-crafted request.
+const MAX_PRODUCT_IDS_PER_LOOKUP = 50;
+const MAX_PRODUCT_OPTIONS = 50;
+
+// Aggregation $match does no schema casting, so every id in a filter has to be a real ObjectId.
+const toObjectId = (id) => (id instanceof mongoose.Types.ObjectId ? id : new mongoose.Types.ObjectId(String(id)));
+
+const normalizeListQuery = (query = {}, audience) => {
+    const { defaultLimit, maxLimit, defaultSort } = PRODUCT_LIST_LIMITS[audience];
+    const page = Math.max(1, parseInt(query.page, 10) || 1);
+    const limit = Math.min(maxLimit, Math.max(1, parseInt(query.limit, 10) || defaultLimit));
+    const sort = PRODUCT_LIST_SORTS.includes(query.sort) ? query.sort : defaultSort;
+    const q = typeof query.q === 'string' ? query.q.trim().slice(0, 100) : '';
+    return { page, limit, sort, q };
+};
+
+// Case-insensitive "contains" match. A customer searches what they can see
+// (name, keywords, product code); the admin can also hit variant/size codes,
+// SKUs and barcodes - the same fields the old client-side admin search covered.
+// The admin can also find a product by a variant/size code, SKU or barcode.
+// Those live in nested arrays, where a regex inside the main $or made every
+// search scan every size of every product (over a second at 10k products).
+// Instead they're matched as a case-sensitive PREFIX (as typed and
+// upper-cased) in a separate, index-backed lookup, and the matching product
+// ids join the $or.
+const CODE_SEARCH_FIELDS = ['variants.variantCode', 'variants.sizes.sku', 'variants.sizes.barcode', 'variants.sizes.sizeCode'];
+const MAX_CODE_SEARCH_MATCHES = 500;
+
+const findProductIdsByCode = async (vendorId, status, q) => {
+    const prefixes = [...new Set([q, q.toUpperCase()])].map((value) => new RegExp(`^${escapeRegex(value)}`));
+    const matches = await Promise.all(CODE_SEARCH_FIELDS.map((field) =>
+        Product.find({ vendorId, status, [field]: { $in: prefixes } }, { _id: 1 }).limit(MAX_CODE_SEARCH_MATCHES).lean()
+    ));
+    return [...new Map(matches.flat().map((doc) => [doc._id.toString(), doc._id])).values()];
+};
+
+const buildProductSearchFilter = async (q, audience, vendorId, status) => {
+    if (!q) return null;
+    const pattern = new RegExp(escapeRegex(q), 'i');
+    const clauses = ['name', 'searchKeywords', 'productCode'].map((field) => ({ [field]: pattern }));
+
+    // A shopper also types a brand ("Preciosa") or a category ("sequins"),
+    // which products only reference by id - resolve the matching ids first.
+    const [brands, categories] = await Promise.all([
+        BrandMaster.find({ vendorId, status: 'A', $or: [{ brandName: pattern }, { brandShortName: pattern }] }, { _id: 1 }).lean(),
+        Category.find({ vendorId, status: 'A', categoryName: pattern }, { _id: 1 }).lean()
+    ]);
+    if (brands.length > 0) clauses.push({ 'variants.sizes.brandId': { $in: brands.map((b) => b._id) } });
+    if (categories.length > 0) {
+        const categoryIds = categories.map((c) => c._id);
+        clauses.push({ mainCategory: { $in: categoryIds } }, { subCategory: { $in: categoryIds } });
+    }
+
+    if (audience === 'admin') {
+        const codeMatchIds = await findProductIdsByCode(vendorId, status, q);
+        if (codeMatchIds.length > 0) clauses.push({ _id: { $in: codeMatchIds } });
+    }
+    return { $or: clauses };
+};
+
+// Sort keys computed per product (lowest / highest size price), for the
+// sorts no plain index can serve.
+const COMPUTED_SORT_KEYS = {
+    price_asc: { $min: { $map: { input: '$variants', as: 'v', in: { $min: '$$v.sizes.price' } } } },
+    price_desc: { $max: { $map: { input: '$variants', as: 'v', in: { $max: '$$v.sizes.price' } } } }
+};
+
+// "featured" = admin-set precedence first (1, 2, 3...), then products with
+// no precedence, newest first. Two index-backed range reads (see the
+// { vendorId, status, precedence, _id } index) rather than computing a sort
+// key over every product, so the storefront's default sort - the landing
+// page - costs the same at 10 or 50,000 products.
+const findFeaturedPageIds = async (filter, skip, limit) => {
+    const withPrecedence = { $and: [filter, { precedence: { $ne: null } }] };
+    const withoutPrecedence = { $and: [filter, { precedence: null }] };
+    const rankedCount = await Product.countDocuments(withPrecedence);
+
+    const ids = [];
+    if (skip < rankedCount) {
+        const docs = await Product.find(withPrecedence, { _id: 1 }).sort({ precedence: 1, _id: -1 }).skip(skip).limit(limit).lean();
+        ids.push(...docs.map((doc) => doc._id));
+    }
+    if (ids.length < limit) {
+        const docs = await Product.find(withoutPrecedence, { _id: 1 })
+            .sort({ _id: -1 })
+            .skip(Math.max(0, skip - rankedCount))
+            .limit(limit - ids.length)
+            .lean();
+        ids.push(...docs.map((doc) => doc._id));
+    }
+    return ids;
+};
+
+const findProductPageIds = async (filter, sort, skip, limit) => {
+    if (sort === 'featured') {
+        return findFeaturedPageIds(filter, skip, limit);
+    }
+    if (sort === 'newest') {
+        const docs = await Product.find(filter, { _id: 1 }).sort({ _id: -1 }).skip(skip).limit(limit).lean();
+        return docs.map((doc) => doc._id);
+    }
+    if (sort === 'name_asc') {
+        const docs = await Product.find(filter, { _id: 1 })
+            .collation({ locale: 'en', strength: 2 })
+            .sort({ name: 1, _id: 1 })
+            .skip(skip)
+            .limit(limit)
+            .lean();
+        return docs.map((doc) => doc._id);
+    }
+    const rows = await Product.aggregate([
+        { $match: filter },
+        { $project: { sortKey: COMPUTED_SORT_KEYS[sort] } },
+        { $sort: { sortKey: sort === 'price_desc' ? -1 : 1, _id: -1 } },
+        { $skip: skip },
+        { $limit: limit }
+    ]);
+    return rows.map((row) => row._id);
+};
+
+// Loads full documents for `ids` and returns them as plain objects in the same order.
+const loadProductsInOrder = async (ids, extraFilter = {}) => {
+    if (ids.length === 0) return [];
+    const docs = await Product.find({ _id: { $in: ids }, ...extraFilter });
+    const byId = new Map(docs.map((doc) => [doc._id.toString(), doc.toObject()]));
+    return ids.map((id) => byId.get(id.toString())).filter(Boolean);
+};
+
+const shapeProductsForClient = async (rawProducts, companySettingsData, locationCookies) => {
+    const shouldHide = companySettingsData?.shouldProductsBeHiddenWhenLocationsAreExcluded;
+    const locationContext = await buildLocationContext(locationCookies);
+    const brandMap = await buildBrandMapForProducts(rawProducts);
+    const useShortNameForBrand = !!companySettingsData?.useShortNameForBrand;
+    return rawProducts
+        .map((p) => shapeProductForResponse(p, false, locationContext, shouldHide, brandMap, useShortNameForBrand))
+        .filter(Boolean);
+};
+
+// One page of products. `extraFilter` narrows the list (a category, a brand).
+// A storefront page can come back with fewer than `limit` products when the
+// shopper's location excludes some of them - `total` counts before that
+// per-location hiding, which only applies to products with exclusions set.
+const fetchProductPage = async ({ vendorId, audience, query, extraFilter = null, companySettingsData = null, locationCookies = {} }) => {
+    const { page, limit, sort, q } = normalizeListQuery(query, audience);
+
+    let status = 'A';
+    if (audience === 'admin') {
+        status = ['A', 'I'].includes(query.status) ? query.status : { $in: ['A', 'I'] };
+    }
+
+    const clauses = [{ vendorId: toObjectId(vendorId), status }];
+    if (extraFilter) clauses.push(extraFilter);
+    const searchFilter = await buildProductSearchFilter(q, audience, toObjectId(vendorId), status);
+    if (searchFilter) clauses.push(searchFilter);
+    const filter = clauses.length === 1 ? clauses[0] : { $and: clauses };
+
+    const [total, ids] = await Promise.all([
+        Product.countDocuments(filter),
+        findProductPageIds(filter, sort, (page - 1) * limit, limit)
+    ]);
+    const rawProducts = await loadProductsInOrder(ids);
+
+    const products = audience === 'admin'
+        ? rawProducts.map((p) => shapeProductForResponse(p, true, null, false))
+        : await shapeProductsForClient(rawProducts, companySettingsData, locationCookies);
+
+    return {
+        products,
+        pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.max(1, Math.ceil(total / limit)),
+            hasMore: page * limit < total
+        },
+        sort,
+        q
+    };
+};
+
+// query: { page, limit, sort, q, status ('A' | 'I' | omitted = both) }
+const fetchAllProductsForAdmin = async (vendorId, query = {}) => {
     try {
-        const products = await common.getAll(Product, { status: { $in: ['I', 'A'] } }, vendorId);
-        const shaped = products.map(p => shapeProductForResponse(p.toObject(), true, null, false));
-        return common.returnResult(true, 200, 'Products fetched successfully', { products: shaped });
+        const result = await fetchProductPage({ vendorId, audience: 'admin', query });
+        return common.returnResult(true, 200, 'Products fetched successfully', result);
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Lightweight { _id, name, productCode, status } rows for admin pickers
+// (recommended products, product groups) - searched server-side instead of
+// shipping the whole catalogue to a dropdown. `ids` resolves the labels of
+// already-selected products that a search wouldn't return.
+// query: { q, ids: [ObjectId], status ('A' | 'I' | omitted = both), limit }
+const fetchProductOptionsForAdmin = async (vendorId, query = {}) => {
+    try {
+        const status = ['A', 'I'].includes(query.status) ? query.status : { $in: ['A', 'I'] };
+        const projection = { name: 1, productCode: 1, status: 1 };
+        const ids = Array.isArray(query.ids) ? query.ids.slice(0, MAX_PRODUCT_IDS_PER_LOOKUP) : [];
+
+        if (ids.length > 0) {
+            const docs = await Product.find({ _id: { $in: ids }, vendorId, status: { $in: ['A', 'I'] } }, projection).lean();
+            return common.returnResult(true, 200, 'Product options fetched successfully', { products: docs });
+        }
+
+        const limit = Math.min(MAX_PRODUCT_OPTIONS, Math.max(1, parseInt(query.limit, 10) || 20));
+        const q = typeof query.q === 'string' ? query.q.trim().slice(0, 100) : '';
+        const filter = { vendorId, status };
+        if (q) {
+            const pattern = new RegExp(escapeRegex(q), 'i');
+            filter.$or = [{ name: pattern }, { productCode: pattern }];
+        }
+        const docs = await Product.find(filter, projection)
+            .collation({ locale: 'en', strength: 2 })
+            .sort({ name: 1 })
+            .limit(limit)
+            .lean();
+        return common.returnResult(true, 200, 'Product options fetched successfully', { products: docs });
     } catch (err) {
         throw err;
     }
@@ -1452,21 +1683,19 @@ const buildBrandMapForProducts = async (products) => {
     return new Map(brandDocs.map(doc => [doc._id.toString(), doc]));
 };
 
-const fetchAllProductsForClient = async (vendorId, companySettingsData, locationCookies) => {
+// query: { page, limit, sort, q } - or { ids } to resolve specific products
+// (a product's recommendations), returned in the order given, unpaginated.
+const fetchAllProductsForClient = async (vendorId, companySettingsData, locationCookies, query = {}) => {
     try {
-        const shouldHide = companySettingsData?.shouldProductsBeHiddenWhenLocationsAreExcluded;
-        const locationContext = await buildLocationContext(locationCookies);
+        if (Array.isArray(query.ids) && query.ids.length > 0) {
+            const ids = query.ids.slice(0, MAX_PRODUCT_IDS_PER_LOOKUP);
+            const rawProducts = await loadProductsInOrder(ids, { vendorId, status: 'A' });
+            const products = await shapeProductsForClient(rawProducts, companySettingsData, locationCookies);
+            return common.returnResult(true, 200, 'Products fetched successfully', { products });
+        }
 
-        const products = await common.getAll(Product, { status: 'A' }, vendorId);
-        const rawProducts = products.map(p => p.toObject());
-        const brandMap = await buildBrandMapForProducts(rawProducts);
-        const useShortNameForBrand = !!companySettingsData.useShortNameForBrand;
-
-        const shaped = rawProducts
-            .map(p => shapeProductForResponse(p, false, locationContext, shouldHide, brandMap, useShortNameForBrand))
-            .filter(Boolean);
-
-        return common.returnResult(true, 200, 'Products fetched successfully', { products: shaped });
+        const result = await fetchProductPage({ vendorId, audience: 'client', query, companySettingsData, locationCookies });
+        return common.returnResult(true, 200, 'Products fetched successfully', result);
     } catch (err) {
         throw err;
     }
@@ -1476,26 +1705,22 @@ const fetchAllProductsForClient = async (vendorId, companySettingsData, location
 // with the given brand. Matched products are returned in full (every
 // variant/size, not just the ones carrying that brand) - same "whole
 // product" behavior as browsing by category.
-const fetchProductsByBrandForClient = async (vendorId, brandId, companySettingsData, locationCookies) => {
+const fetchProductsByBrandForClient = async (vendorId, brandId, companySettingsData, locationCookies, query = {}) => {
     try {
         const brandDoc = await BrandMaster.findOne({ _id: brandId, vendorId, status: 'A' });
         if (!brandDoc) {
             return common.returnResult(false, 404, 'Brand not found.');
         }
 
-        const shouldHide = companySettingsData?.shouldProductsBeHiddenWhenLocationsAreExcluded;
-        const locationContext = await buildLocationContext(locationCookies);
-
-        const products = await common.getAll(Product, { status: 'A', 'variants.sizes.brandId': brandId }, vendorId);
-        const rawProducts = products.map(p => p.toObject());
-        const brandMap = await buildBrandMapForProducts(rawProducts);
-        const useShortNameForBrand = !!companySettingsData.useShortNameForBrand;
-
-        const shaped = rawProducts
-            .map(p => shapeProductForResponse(p, false, locationContext, shouldHide, brandMap, useShortNameForBrand))
-            .filter(Boolean);
-
-        return common.returnResult(true, 200, 'Products fetched successfully', { products: shaped });
+        const result = await fetchProductPage({
+            vendorId,
+            audience: 'client',
+            query,
+            extraFilter: { 'variants.sizes.brandId': brandDoc._id },
+            companySettingsData,
+            locationCookies
+        });
+        return common.returnResult(true, 200, 'Products fetched successfully', { ...result, brandName: brandDoc.brandName });
     } catch (err) {
         throw err;
     }
@@ -1508,7 +1733,7 @@ const fetchProductsByBrandForClient = async (vendorId, brandId, companySettingsD
 // depth under that root, so matching on EITHER field against [category, ...descendants]
 // correctly covers both root-level categories (caught via mainCategory) and nested
 // subcategories (caught via subCategory) without needing to special-case either.
-const fetchProductsByCategoryForClient = async (vendorId, categoryId, companySettingsData, locationCookies) => {
+const fetchProductsByCategoryForClient = async (vendorId, categoryId, companySettingsData, locationCookies, query = {}) => {
     try {
         const categoryDoc = await Category.findOne({ _id: categoryId, vendorId, status: 'A' });
         if (!categoryDoc) {
@@ -1516,28 +1741,22 @@ const fetchProductsByCategoryForClient = async (vendorId, categoryId, companySet
         }
 
         const descendantIds = await categoryService.getActiveDescendantIds(vendorId, categoryDoc._id);
-        const categoryIds = [categoryDoc._id, ...descendantIds];
+        const categoryIds = [categoryDoc._id, ...descendantIds].map(toObjectId);
 
-        const shouldHide = companySettingsData?.shouldProductsBeHiddenWhenLocationsAreExcluded;
-        const locationContext = await buildLocationContext(locationCookies);
-
-        const products = await common.getAll(Product, {
-            status: 'A',
-            $or: [
-                { mainCategory: { $in: categoryIds } },
-                { subCategory: { $in: categoryIds } }
-            ]
-        }, vendorId);
-
-        const rawProducts = products.map(p => p.toObject());
-        const brandMap = await buildBrandMapForProducts(rawProducts);
-        const useShortNameForBrand = !!companySettingsData.useShortNameForBrand;
-
-        const shaped = rawProducts
-            .map(p => shapeProductForResponse(p, false, locationContext, shouldHide, brandMap, useShortNameForBrand))
-            .filter(Boolean);
-
-        return common.returnResult(true, 200, 'Products fetched successfully', { products: shaped });
+        const result = await fetchProductPage({
+            vendorId,
+            audience: 'client',
+            query,
+            extraFilter: {
+                $or: [
+                    { mainCategory: { $in: categoryIds } },
+                    { subCategory: { $in: categoryIds } }
+                ]
+            },
+            companySettingsData,
+            locationCookies
+        });
+        return common.returnResult(true, 200, 'Products fetched successfully', { ...result, categoryName: categoryDoc.categoryName });
     } catch (err) {
         throw err;
     }
@@ -3375,6 +3594,7 @@ module.exports = {
     cloneProduct,
     bulkCloneProducts,
     fetchAllProductsForAdmin,
+    fetchProductOptionsForAdmin,
     fetchAllProductsForClient,
     fetchProductByIdForAdmin,
     fetchProductByIdForClient,

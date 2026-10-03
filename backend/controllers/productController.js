@@ -192,10 +192,36 @@ const createProduct = async (req, res) => {
     }
 };
 
+// ?ids=<encoded>,<encoded> -> decoded ids; anything undecodable is dropped
+// rather than failing the whole lookup.
+const parseIdListQuery = (value) => {
+    if (typeof value !== 'string' || !value.trim()) return [];
+    return value.split(',').map((id) => id.trim()).filter(Boolean)
+        .map((id) => {
+            try {
+                return common.decodeId(id);
+            } catch {
+                return null;
+            }
+        })
+        .filter((id) => typeof id === 'string' && /^[a-f0-9]{24}$/i.test(id));
+};
+
+// The list query (page/limit/sort/q/status) with ids decoded.
+const readListQuery = (req) => ({ ...req.query, ids: parseIdListQuery(req.query.ids) });
+// Storefront lists: the vendor's CompanyMaster.productsPerPage decides the page
+// size, whatever `limit` the browser sent (an unset value falls back to the service default).
+const readClientListQuery = (req) => {
+    const query = readListQuery(req);
+    const perPage = req.companyMasterData?.productsPerPage;
+    if (perPage) query.limit = perPage;
+    return query;
+};
+
 const getAllProductsAdmin = async (req, res) => {
     const vendorId = req.vendorId;
     try {
-        const result = await productService.fetchAllProductsForAdmin(vendorId);
+        const result = await productService.fetchAllProductsForAdmin(vendorId, readListQuery(req));
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
@@ -203,6 +229,20 @@ const getAllProductsAdmin = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, meta);
     } catch (error) {
         return handleError(res, 'Error fetching products for admin', error, { vendorId });
+    }
+};
+
+const getProductOptionsAdmin = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        const result = await productService.fetchProductOptionsForAdmin(vendorId, readListQuery(req));
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        const products = result.meta.products.map((p) => ({ ...p, _id: encodeIdOrNull(p._id) }));
+        return common.sendSuccess(res, result.statusCode, result.message, { products });
+    } catch (error) {
+        return handleError(res, 'Error fetching product options for admin', error, { vendorId });
     }
 };
 
@@ -236,7 +276,7 @@ const getAllProductsClient = async (req, res) => {
     const vendorId = req.vendorId;
     try {
         const locationCookies = readLocationCookies(req);
-        const result = await productService.fetchAllProductsForClient(vendorId, req.companySettingsData, locationCookies);
+        const result = await productService.fetchAllProductsForClient(vendorId, req.companySettingsData, locationCookies, readClientListQuery(req));
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
@@ -270,7 +310,7 @@ const getProductsByBrand = async (req, res) => {
     try {
         brandId = decodeIdOrNull(req.params.brandId);
         const locationCookies = readLocationCookies(req);
-        const result = await productService.fetchProductsByBrandForClient(vendorId, brandId, req.companySettingsData, locationCookies);
+        const result = await productService.fetchProductsByBrandForClient(vendorId, brandId, req.companySettingsData, locationCookies, readClientListQuery(req));
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
@@ -287,7 +327,7 @@ const getProductsByCategory = async (req, res) => {
     try {
         categoryId = decodeIdOrNull(req.params.categoryId);
         const locationCookies = readLocationCookies(req);
-        const result = await productService.fetchProductsByCategoryForClient(vendorId, categoryId, req.companySettingsData, locationCookies);
+        const result = await productService.fetchProductsByCategoryForClient(vendorId, categoryId, req.companySettingsData, locationCookies, readClientListQuery(req));
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
@@ -580,6 +620,7 @@ module.exports = {
     bulkCloneProducts,
     getAllProductsAdmin,
     getProductByIdAdmin,
+    getProductOptionsAdmin,
     getAllProductsClient,
     getProductByIdClient,
     getProductsByBrand,

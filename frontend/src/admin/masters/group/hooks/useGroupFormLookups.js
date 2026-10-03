@@ -11,12 +11,10 @@ const isActiveRecord = (record) => (record?.status ?? 'A') === 'A';
 // CUSTOM has no backing collection - members are hand-typed ids - so it
 // resolves to an empty, non-fetching option list. CATEGORY is handled
 // separately below (it needs the raw category docs, not flattened options,
-// for CategoryPathPicker's tree drill-down).
+// for CategoryPathPicker's tree drill-down). PRODUCT isn't listed either:
+// a catalogue can run to tens of thousands of products, so GroupForm
+// searches them on the server as the admin types (useProductOptionsSearch).
 const MEMBER_FETCHERS = {
-  PRODUCT: async () => {
-    const data = await lookupApi.getAdminProducts();
-    return (data?.products || []).map((p) => ({ value: p._id, label: p.name, isActive: isActiveRecord(p) }));
-  },
   BRAND: async () => {
     const data = await lookupApi.getAdminBrands();
     const brands = Array.isArray(data) ? data : [];

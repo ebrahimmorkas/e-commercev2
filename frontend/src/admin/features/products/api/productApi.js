@@ -25,7 +25,32 @@ const buildProductFormData = (payload, mainImages = [], additionalImageUploads =
   return formData;
 };
 
-export const getProductsAdmin = () => apiRequest(`${BASE}/get-products-admin`);
+// { page: 2, q: 'abc' } -> "?page=2&q=abc" (empty values left out).
+const toQueryString = (params = {}) => {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
+  });
+  const query = search.toString();
+  return query ? `?${query}` : '';
+};
+
+/**
+ * One page of the admin product list - the backend paginates and searches
+ * (name, code, keywords, brand, category, variant/size code, SKU, barcode).
+ * Resolves to { products, pagination: { page, limit, total, totalPages, hasMore } }.
+ *
+ * @param {{ page?: number, limit?: number, q?: string, status?: 'A'|'I', sort?: string }} [params]
+ */
+export const getProductsAdmin = (params) => apiRequest(`${BASE}/get-products-admin${toQueryString(params)}`);
+
+/**
+ * Lightweight { _id, name, productCode, status } rows for product pickers,
+ * searched server-side: { q, status, limit } - or { ids } to resolve the
+ * labels of already-selected products.
+ */
+export const getProductOptionsAdmin = ({ q, status, limit, ids } = {}) =>
+  apiRequest(`${BASE}/get-product-options-admin${toQueryString({ q, status, limit, ids: ids?.length ? ids.join(',') : '' })}`);
 
 export const getProductByIdAdmin = (id) => apiRequest(`${BASE}/get-product-admin/${id}`);
 
@@ -64,6 +89,7 @@ export const bulkCloneProducts = (productIds) =>
 
 export default {
   getProductsAdmin,
+  getProductOptionsAdmin,
   getProductByIdAdmin,
   createProduct,
   updateProduct,

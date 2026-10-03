@@ -493,6 +493,14 @@ productSchema.index({
     status: 1
 });
 
+// Paginated lists (productService.fetchProductPage): newest-first paging,
+// and the category / brand narrowing the storefront filters on.
+productSchema.index({ vendorId: 1, status: 1, _id: -1 });
+productSchema.index({ vendorId: 1, status: 1, precedence: 1, _id: -1 });
+productSchema.index({ vendorId: 1, status: 1, mainCategory: 1 });
+productSchema.index({ vendorId: 1, status: 1, subCategory: 1 });
+productSchema.index({ vendorId: 1, status: 1, "variants.sizes.brandId": 1 });
+
 // Reference lookup for the image-safety guard (deleteProduct /
 // toggleProductStatus cascade, and updateProduct's size/variant-removal
 // cleanup) - cloning is the only way one ImageAsset can now be referenced

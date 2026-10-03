@@ -98,6 +98,7 @@ const COMPANY_MASTER = {
     numberOfProductsAllowed: 5000,
     numberOfProductsVaiantsAllowed: 50,
     numberOfAdditionalImagesAllowedInVariant: 3,
+    productsPerPage: 24,
     allowedProductImageMB: 3,
     allowedProductImagesFormat: IMAGE_FORMATS,
     isCategoryNestingAllowed: true,

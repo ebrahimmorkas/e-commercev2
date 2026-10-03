@@ -19,6 +19,7 @@ const ProductBasicsStep = ({
   categories,
   taxOptions,
   recommendedProductOptions,
+  onRecommendedSearchChange,
   isCategoryFeatureOn,
   isCategoryNestingAllowed,
   isBulkPricingFeatureOn,
@@ -80,6 +81,7 @@ const ProductBasicsStep = ({
           label="Recommended Products"
           placeholder="Optional"
           options={recommendedProductOptions}
+          onSearchChange={onRecommendedSearchChange}
           value={draft.recommendedProducts}
           onChange={(v) => patch({ recommendedProducts: v })}
           multiple

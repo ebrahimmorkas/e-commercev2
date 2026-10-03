@@ -387,6 +387,15 @@ const companyMasterSchema = mongoose.Schema({
     numberOfAdditionalImagesAllowedInVariant: {
         type: Number
     },
+    // Storefront product lists (landing, /products, brand, category) load this
+    // many products per page / scroll step. Overrides any `limit` the browser
+    // sends; capped at the storefront maximum in productService.
+    productsPerPage: {
+        type: Number,
+        default: 24,
+        min: 1,
+        max: 100
+    },
     allowedSizes: {
         type: [mongoose.Schema.Types.ObjectId],
         ref: "SizeMaster",
