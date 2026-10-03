@@ -21,8 +21,8 @@ const toQueryString = (params = {}) => {
 };
 
 /** @param {{ page?: number, limit?: number, sort?: string, q?: string }} [params] */
-export const getStorefrontProducts = (params) =>
-  apiRequest(`/products/get-products${toQueryString(params)}`, { auth: false });
+export const getStorefrontProducts = (params, { signal } = {}) =>
+  apiRequest(`/products/get-products${toQueryString(params)}`, { auth: false, signal });
 
 // Specific products, in the order given (a product's recommendations).
 export const getStorefrontProductsByIds = (ids) =>

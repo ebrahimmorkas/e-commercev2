@@ -171,7 +171,7 @@ const CLOSE_DELAY_MS = 150;
  * Mobile: a hamburger trigger opens an off-canvas drawer with the same
  * items as a tap-to-expand accordion.
  */
-const Navbar = () => {
+const Navbar = ({ suspended = false }) => {
   const { categoryTree, loading: categoriesLoading } = useStorefrontCategories();
   const categoryPanelProps = { categoryTree, loading: categoriesLoading };
 
@@ -202,8 +202,13 @@ const Navbar = () => {
 
   const openNow = (key) => {
     cancelClose();
+    if (suspended) return;
     setOpenKey(key);
   };
+
+  // The header's search suggestions are open: shut any mega-menu (openNow
+  // keeps them shut). Adjusting state during render, not in an effect.
+  if (suspended && openKey) setOpenKey(null);
 
   useEffect(() => () => cancelClose(), []);
 

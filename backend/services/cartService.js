@@ -537,16 +537,18 @@ const mergeGuestCartIntoUserCart = async (vendorId, userId, guestCartId, locatio
             userCart = new Cart({ vendorId, userId, products: [] });
         }
 
-        // Guest line items win over a pre-existing identical line item in
-        // the user's cart (confirmed: "keep the one from guest cart").
-        // Anything only in the guest cart is appended as a new line.
+        // A line item in BOTH carts (same product/variant/size) has its
+        // quantities added together (2 saved + 2 as guest = 4); the guest's
+        // snapshot fields are kept and revalidateCartItems below re-prices
+        // from the live product for the new total. Anything only in the
+        // guest cart is appended as a new line.
         for (const gProduct of guestCart.products) {
             for (const gVariant of gProduct.variants) {
                 for (const gSize of gVariant.sizes) {
                     const { productEntry, variantEntry, sizeEntry } = locateCartLineItem(userCart, gProduct.productId, gVariant.variantId, gSize.sizeId);
 
                     if (sizeEntry) {
-                        sizeEntry.quantity = gSize.quantity;
+                        sizeEntry.quantity += gSize.quantity;
                         sizeEntry.unitPrice = gSize.unitPrice;
                         sizeEntry.originalUnitPrice = gSize.originalUnitPrice;
                         sizeEntry.isBulkPriceApplied = gSize.isBulkPriceApplied;

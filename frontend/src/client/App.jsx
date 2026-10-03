@@ -148,6 +148,7 @@ const ClientApp = () => {
   const [route, setRoute] = useState(parseRoute);
   // Delivery address picked on the cart page; carried into checkout so the shopper doesn't re-pick it.
   const [deliveryAddressId, setDeliveryAddressId] = useState(null);
+  const [searchPanelOpen, setSearchPanelOpen] = useState(false);
 
   useEffect(() => {
     const handlePopState = () => setRoute(parseRoute());
@@ -290,9 +291,11 @@ const ClientApp = () => {
           onOrdersClick={handleOrdersClick}
           onAddressesClick={handleAddressesClick}
           onSearch={handleSearch}
+          onProductSelect={openProduct}
+          onSearchPanelChange={setSearchPanelOpen}
           onCartClick={openCart}
         />
-        <Navbar />
+        <Navbar suspended={searchPanelOpen} />
       </div>
       <AnnouncementBar />
       <main className="flex-1">

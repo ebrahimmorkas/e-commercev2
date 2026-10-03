@@ -136,7 +136,7 @@ export const renewAccessToken = async () => {
  * @param {boolean} options.auth - Attach the Authorization: Bearer header (default true)
  * @param {Object} options.headers - Additional headers
  */
-export const apiRequest = async (path, { method = 'GET', body, auth = true, headers = {}, _isRetry = false } = {}) => {
+export const apiRequest = async (path, { method = 'GET', body, auth = true, headers = {}, signal, _isRetry = false } = {}) => {
   // FormData (file uploads) must NOT get a JSON Content-Type or be stringified -
   // the browser needs to set its own multipart/form-data boundary.
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
@@ -154,8 +154,11 @@ export const apiRequest = async (path, { method = 'GET', body, auth = true, head
       headers: requestHeaders,
       credentials: 'include',
       body: body !== undefined ? (isFormData ? body : JSON.stringify(body)) : undefined,
+      signal,
     });
-  } catch {
+  } catch (err) {
+    // A caller-initiated abort (e.g. a newer search keystroke) is not a network failure.
+    if (err?.name === 'AbortError') throw err;
     throw new ApiError('Unable to reach the server. Please check your connection.', 0);
   }
 
@@ -172,7 +175,7 @@ export const apiRequest = async (path, { method = 'GET', body, auth = true, head
     const newToken = await performRefresh();
     if (newToken) {
       setAccessToken(newToken);
-      return apiRequest(path, { method, body, auth, headers, _isRetry: true });
+      return apiRequest(path, { method, body, auth, headers, signal, _isRetry: true });
     }
     clearAccessToken();
     sessionExpiredHandler?.();

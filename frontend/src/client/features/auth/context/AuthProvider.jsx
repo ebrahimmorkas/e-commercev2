@@ -111,6 +111,10 @@ const AuthProvider = ({ children }) => {
       }
       setAccessToken(data.accessToken);
       setUser(data.user);
+      // Reload so every page-level state (cart, prices, addresses, lists) is
+      // rebuilt for the signed-in user. The reload re-mints the access token
+      // from the refresh-token cookie, same as any returning visit.
+      window.location.reload();
       return { success: true };
     } catch (err) {
       return { success: false, message: err.message || 'Login failed' };
@@ -133,8 +137,10 @@ const AuthProvider = ({ children }) => {
       // Best-effort - clear the local session regardless of whether the server call succeeded
     }
     clearSession();
-    toast.info('You have been logged out.');
-  }, [clearSession, toast]);
+    // Reload so nothing from the signed-in session (cart, orders, addresses)
+    // stays in memory. No toast - it would vanish with the reload.
+    window.location.reload();
+  }, [clearSession]);
 
   const value = useMemo(
     () => ({ user, isAuthenticated: !!user, isLoading, login, register, logout }),
