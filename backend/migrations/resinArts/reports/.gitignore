@@ -1,0 +1,3 @@
+# Run reports list customer names and emails - never commit them.
+*
+!.gitignore
