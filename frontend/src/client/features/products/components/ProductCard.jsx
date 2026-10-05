@@ -3,6 +3,7 @@ import theme from '../../Home/theme/theme';
 import { useTilt3D } from '../../../components/hooks/useTilt3D';
 import QuantityStepper from './QuantityStepper';
 import { useCurrency } from '../../../currency/useCurrency';
+import { resolveBulkPrice } from '../utils/bulkTier';
 
 // Prices arrive in the store currency; formatMoney converts to the shopper's.
 const formatPrice = (product, formatMoney) => {
@@ -44,7 +45,7 @@ const ProductImage = ({ src, alt }) => {
   );
 };
 
-const BulkPricing = ({ bulkPricing }) => {
+const BulkPricing = ({ bulkPricing, isApplied }) => {
   const { formatMoney } = useCurrency();
   if (!bulkPricing?.length) return null;
   const deal = bestBulkTier(bulkPricing);
@@ -52,7 +53,9 @@ const BulkPricing = ({ bulkPricing }) => {
 
   return (
     <div className={`${theme.card.bulkWrapperLayout} ${theme.card.bulkBackground}`}>
-      <p className={`${theme.card.bulkLabelLayout} ${theme.card.bulkLabel}`}>Bulk Pricing</p>
+      <p className={`${theme.card.bulkLabelLayout} ${theme.card.bulkLabel}`}>
+        Bulk Pricing{isApplied && <span className="text-emerald-600"> · applied</span>}
+      </p>
       <p className={`${theme.card.bulkTextLayout} ${theme.card.bulkText}`}>
         Buy {deal.minimumQuantity}+ at {formatMoney(deal.price)}/unit
         {moreTiers > 0 && ` · ${moreTiers} more tier${moreTiers > 1 ? 's' : ''}`}
@@ -74,6 +77,9 @@ const BulkPricing = ({ bulkPricing }) => {
 const ProductCard = ({ product, quantity = 0, onAddToCart, onIncrement, onDecrement, onSetQuantity, onOpen }) => {
   const { ref, onMouseMove, onMouseLeave } = useTilt3D({ max: 6, scale: 1.02 });
   const { formatMoney } = useCurrency();
+  // The stepper's quantity is of the default size, whose price is product.price -
+  // so the tier it has reached prices that size live, same as the cart will.
+  const bulk = resolveBulkPrice(product.bulkPricing, quantity, product.price);
 
   return (
     <div
@@ -93,10 +99,11 @@ const ProductCard = ({ product, quantity = 0, onAddToCart, onIncrement, onDecrem
         <p className={`${theme.card.categoryLayout} ${theme.card.category}`}>{product.category}</p>
         <h3 className={`${theme.card.nameLayout} ${theme.card.name}`}>{product.name}</h3>
         <p className={`${theme.card.priceLayout} ${theme.card.price}`}>
-          {formatPrice(product, formatMoney)}
+          {bulk.isApplied ? formatMoney(bulk.unitPrice) : formatPrice(product, formatMoney)}
           {product.unit && <span className={theme.card.unit}> / {product.unit}</span>}
+          {bulk.isApplied && <span className="ml-1.5 text-sm font-normal text-slate-400 line-through">{formatMoney(product.price)}</span>}
         </p>
-        <BulkPricing bulkPricing={product.bulkPricing} />
+        <BulkPricing bulkPricing={product.bulkPricing} isApplied={bulk.isApplied} />
         <div className={theme.card.actionsWrapper}>
           <QuantityStepper
             quantity={quantity}

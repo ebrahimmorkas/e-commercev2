@@ -7,6 +7,7 @@ import ProductCard from '../components/ProductCard';
 import Spinner from '../../../../components/common/Spinner/Spinner';
 import StatusErrorPage from '../../../components/errors/StatusErrorPage';
 import { useCurrency } from '../../../currency/useCurrency';
+import { resolveBulkPrice } from '../utils/bulkTier';
 
 const pickDefaultVariant = (variants) => variants.find((v) => v.isDefaultVariant) || variants[0] || null;
 const pickDefaultSize = (variant) =>
@@ -20,7 +21,7 @@ const formatPolicy = (label, policy) => {
   return duration ? `${label} (${duration})` : label;
 };
 
-const BulkPricingTable = ({ bulkPricing }) => {
+const BulkPricingTable = ({ bulkPricing, activeTier }) => {
   const { formatMoney } = useCurrency();
   if (!bulkPricing?.length) return null;
   return (
@@ -37,9 +38,10 @@ const BulkPricingTable = ({ bulkPricing }) => {
         </thead>
         <tbody>
           {bulkPricing.map((tier, i) => (
-            <tr key={i} className="border-t border-amber-200/60">
+            <tr key={i} className={`border-t border-amber-200/60 ${tier === activeTier ? 'bg-amber-100' : ''}`}>
               <td className={`px-4 py-2 ${theme.card.bulkText}`}>
                 {tier.minimumQuantity} - {tier.maximumQuantity}
+                {tier === activeTier && <span className="ml-2 text-xs font-semibold text-emerald-600">Applied</span>}
               </td>
               <td className={`px-4 py-2 font-semibold ${theme.card.price}`}>{formatMoney(tier.price)}</td>
             </tr>
@@ -139,6 +141,11 @@ const ProductDetailPage = ({
   }
 
   if (!product) return null;
+
+  // Price at the quantity already in the cart, so it updates live as the
+  // shopper steps the quantity - same tier rule the cart charges.
+  const quantityInCart = selectedSize ? cartItems[selectedSize.id] || 0 : 0;
+  const bulk = resolveBulkPrice(selectedSize?.bulkPricing, quantityInCart, selectedSize?.price);
 
   const discountPct =
     selectedSize?.cancelledPrice && selectedSize.cancelledPrice > selectedSize.price
@@ -255,8 +262,14 @@ const ProductDetailPage = ({
           )}
 
           <div className="mt-6 flex items-baseline gap-2">
-            <span className={`text-2xl font-bold ${theme.card.price}`}>{typeof selectedSize?.price === 'number' ? formatMoney(selectedSize.price) : '—'}</span>
-            {discountPct && (
+            <span className={`text-2xl font-bold ${theme.card.price}`}>{typeof bulk.unitPrice === 'number' ? formatMoney(bulk.unitPrice) : '—'}</span>
+            {bulk.isApplied && (
+              <>
+                <span className="text-base text-slate-400 line-through">{formatMoney(selectedSize.price)}</span>
+                <span className="text-sm font-semibold text-emerald-600">Bulk price</span>
+              </>
+            )}
+            {!bulk.isApplied && discountPct && (
               <>
                 <span className="text-base text-slate-400 line-through">{formatMoney(selectedSize.cancelledPrice)}</span>
                 <span className="text-sm font-semibold text-green-600">{discountPct}% off</span>
@@ -287,7 +300,7 @@ const ProductDetailPage = ({
             />
           </div>
 
-          <BulkPricingTable bulkPricing={selectedSize?.bulkPricing} />
+          <BulkPricingTable bulkPricing={selectedSize?.bulkPricing} activeTier={bulk.tier} />
 
           {policies.length > 0 && (
             <ul className="mt-6 flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-slate-500">
