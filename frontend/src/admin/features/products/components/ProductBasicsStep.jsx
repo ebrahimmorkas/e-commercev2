@@ -30,6 +30,24 @@ const ProductBasicsStep = ({
   const isExisting = !!draft._id;
   const errorFor = (field) => (fieldError?.field === field ? fieldError.message : '');
 
+  // Taxes from the same country (or the same country + state) don't stack:
+  // each applies as a separate % of the line, so two GST rates would both be
+  // charged. Picking a second one from a place replaces the first.
+  const onTaxChange = (next) => {
+    const previous = draft.taxIds || [];
+    const groupOf = new Map(taxOptions.map((option) => [option.value, option.taxGroup]));
+    const added = (next || []).filter((id) => !previous.includes(id));
+    const dropped = new Set();
+    added.forEach((addedId) => {
+      const group = groupOf.get(addedId);
+      if (!group) return;
+      (next || []).forEach((id) => {
+        if (id !== addedId && groupOf.get(id) === group) dropped.add(id);
+      });
+    });
+    patch({ taxIds: (next || []).filter((id) => !dropped.has(id)) });
+  };
+
   return (
     <div className="space-y-4">
       <SectionCard icon={<TagIcon />} title="Product Details" description="The name and identity customers will see.">
@@ -72,7 +90,8 @@ const ProductBasicsStep = ({
           placeholder="Select applicable taxes"
           options={taxOptions}
           value={draft.taxIds}
-          onChange={(v) => patch({ taxIds: v })}
+          onChange={onTaxChange}
+          helperText="One tax per country (or per state) - picking another from the same place replaces it."
           multiple
           searchable
           clearable

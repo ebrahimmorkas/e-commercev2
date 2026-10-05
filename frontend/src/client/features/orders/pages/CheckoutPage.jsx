@@ -4,6 +4,11 @@ import Spinner from '../../../../components/common/Spinner/Spinner';
 import EmptyState from '../../../../components/common/EmptyState/EmptyState';
 import AddressPicker from '../../address/components/AddressPicker';
 import { placeOrder } from '../api/ordersApi';
+import { selectCashOnDelivery, selectManualTransfer } from '../api/paymentApi';
+import { usePaymentOptions } from '../hooks/usePaymentOptions';
+import PaymentMethodModal, { PAYMENT_METHOD_CHOICES } from '../components/PaymentMethodModal';
+import BankTransferModal from '../components/BankTransferModal';
+import { useAuth } from '../../auth/hooks/useAuth';
 import { useShippingEstimate } from '../../cart/hooks/useShippingEstimate';
 import { formatShippingEstimate, shippingAmountForTotal } from '../../cart/utils/formatShipping';
 import { useTaxEstimate, taxAmountForTotal } from '../../cart/hooks/useTaxEstimate';
@@ -35,6 +40,13 @@ const CheckoutPage = ({ lineItems = [], subtotal = 0, totalFreeCashAmount = 0, t
   const [selectedAddressId, setSelectedAddressId] = useState(initialAddressId);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState('');
+  const { user } = useAuth();
+  // What the store offers (COD / pay by QR or bank transfer), from Company Settings.
+  const { options: paymentOptions, loading: paymentOptionsLoading } = usePaymentOptions();
+  const [methodModalOpen, setMethodModalOpen] = useState(false);
+  const [methodError, setMethodError] = useState('');
+  // Set once an order placed with "Pay online" is waiting on the QR / bank details modal.
+  const [transferOrder, setTransferOrder] = useState(null);
   // Re-priced whenever the shopper picks a different saved address (location-based
   // methods depend on it). The final amount is still recomputed server-side at placement.
   const { estimate: shippingEstimate } = useShippingEstimate({
@@ -53,22 +65,60 @@ const CheckoutPage = ({ lineItems = [], subtotal = 0, totalFreeCashAmount = 0, t
   const discountDeduction = Math.min(totalDiscountAmount, subtotal);
   const freeCashDeduction = Math.min(totalFreeCashAmount, subtotal - discountDeduction);
 
+  // Creates the order. Returns the order, or null after showing why it failed.
+  const submitOrder = async (setFailure) => {
+    setPlacing(true);
+    try {
+      const result = await placeOrder({ shippingAddressId: selectedAddressId });
+      return result.order;
+    } catch (err) {
+      setFailure(err.message || 'Could not place order');
+      onOrderFailed?.();
+      return null;
+    } finally {
+      setPlacing(false);
+    }
+  };
+
+  const offersCod = paymentOptions?.cod === true;
+  const offersOnline = !!paymentOptions?.online;
+
   const handlePlaceOrder = async () => {
     if (!selectedAddressId) {
       setError('Please select a shipping address.');
       return;
     }
     setError('');
-    setPlacing(true);
-    try {
-      const result = await placeOrder({ shippingAddressId: selectedAddressId });
-      onPlaced(result.order._id);
-    } catch (err) {
-      setError(err.message || 'Could not place order');
-      onOrderFailed?.();
-    } finally {
-      setPlacing(false);
+
+    // The store offers a choice: ask how they want to pay before confirming.
+    if (offersCod || offersOnline) {
+      setMethodError('');
+      setMethodModalOpen(true);
+      return;
     }
+
+    // Nothing to choose (or the options could not be loaded): place it as before.
+    const order = await submitOrder(setError);
+    if (order) onPlaced(order._id);
+  };
+
+  const handleConfirmMethod = async (method) => {
+    setMethodError('');
+    const order = await submitOrder(setMethodError);
+    if (!order) return;
+
+    // The order exists now; recording the choice is best effort so a hiccup
+    // here never strands a placed order.
+    if (method === PAYMENT_METHOD_CHOICES.COD) {
+      await selectCashOnDelivery(order._id).catch(() => {});
+      setMethodModalOpen(false);
+      onPlaced(order._id);
+      return;
+    }
+
+    await selectManualTransfer(order._id).catch(() => {});
+    setMethodModalOpen(false);
+    setTransferOrder(order);
   };
 
   if (cartLoading) {
@@ -159,13 +209,31 @@ const CheckoutPage = ({ lineItems = [], subtotal = 0, totalFreeCashAmount = 0, t
           <button
             type="button"
             onClick={handlePlaceOrder}
-            disabled={placing}
+            disabled={placing || paymentOptionsLoading}
             className={`mt-5 w-full py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition-colors duration-150 disabled:opacity-60 ${theme.card.button}`}
           >
             {placing ? 'Placing order...' : 'Place Order'}
           </button>
         </div>
       </div>
+
+      <PaymentMethodModal
+        isOpen={methodModalOpen}
+        codEnabled={offersCod}
+        onlineEnabled={offersOnline}
+        placing={placing}
+        error={methodError}
+        onClose={() => setMethodModalOpen(false)}
+        onConfirm={handleConfirmMethod}
+      />
+
+      <BankTransferModal
+        isOpen={!!transferOrder}
+        online={paymentOptions?.online}
+        order={transferOrder}
+        customerName={user?.name}
+        onDone={() => onPlaced(transferOrder._id)}
+      />
     </div>
   );
 };

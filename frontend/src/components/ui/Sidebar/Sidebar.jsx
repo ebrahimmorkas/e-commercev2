@@ -13,12 +13,13 @@ const getInitials = (label) => {
 const capitalize = (value) => (value ? value.charAt(0).toUpperCase() + value.slice(1) : '');
 
 const BrandMark = ({ brand, subtitle }) => (
-  <div className="h-16 flex items-center gap-2.5 px-4 shrink-0">
+  <div className="min-h-16 py-2 flex items-center gap-2.5 px-4 shrink-0">
     <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-base shrink-0 ${theme.brand.mark}`}>
       {brand?.[0]?.toUpperCase() || 'A'}
     </div>
     <div className="min-w-0">
-      <p className={`text-base font-bold leading-tight truncate ${theme.brand.text}`}>{brand}</p>
+      {/* A long company name wraps to two lines before it is cut off; the full name is in the tooltip. */}
+      <p title={brand} className={`text-base font-bold leading-tight line-clamp-2 break-words ${theme.brand.text}`}>{brand}</p>
       {subtitle && <p className={`text-xs leading-tight truncate ${theme.brand.subtitle}`}>{subtitle}</p>}
     </div>
   </div>
@@ -145,11 +146,11 @@ const Sidebar = ({
       <div
         className={`md:hidden flex items-center justify-between px-4 h-14 ${theme.sidebar.background} border-b ${theme.sidebar.border}`}
       >
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 min-w-0">
           <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm shrink-0 ${theme.brand.mark}`}>
             {brand?.[0]?.toUpperCase() || 'A'}
           </div>
-          <span className={`text-base font-bold ${theme.brand.text}`}>{brand}</span>
+          <span title={brand} className={`text-base font-bold leading-tight line-clamp-2 break-words ${theme.brand.text}`}>{brand}</span>
         </div>
         <button
           type="button"

@@ -42,7 +42,12 @@ function App() {
   const isDeliveryAgent = user?.role === 'deliveryAgent';
   const { assignedCodes } = useAssignedModules(isAuthenticated && !isDeliveryAgent);
   const { companySettings } = useStorefrontCompanySettings();
-  const sidebarSubtitle = companySettings?.companyName;
+  // The company name is the sidebar title, with "Admin Panel" demoted to the
+  // subtitle. Until the settings load (or if no name is set) the sidebar's own
+  // default "Admin Panel" title shows, with no subtitle.
+  const companyName = companySettings?.companyName?.trim();
+  const sidebarBrand = companyName || undefined;
+  const sidebarSubtitle = companyName ? 'Admin Panel' : undefined;
   const featureAccess = useFeatureAccess(isAuthenticated && !isDeliveryAgent);
   const navItems = filterNavItemsByFeatureAccess(filterNavItemsByAssignedModules(DEFAULT_NAV_ITEMS, assignedCodes), featureAccess);
   const [activePage, setActivePage] = useSessionStorageState('ecom.admin.activePage', 'announcements');
@@ -86,7 +91,7 @@ function App() {
   if (isDeliveryAgent) {
     return (
       <div className="App md:flex min-h-screen bg-gray-50">
-        <Sidebar items={AGENT_NAV_ITEMS} activeKey="myDeliveries" onNavigate={() => {}} user={user} onLogout={logout} subtitle={sidebarSubtitle} />
+        <Sidebar items={AGENT_NAV_ITEMS} activeKey="myDeliveries" onNavigate={() => {}} user={user} onLogout={logout} brand={sidebarBrand} subtitle={sidebarSubtitle} />
         <div className="flex-1 min-w-0">
           <MyDeliveriesPage />
         </div>
@@ -96,7 +101,7 @@ function App() {
 
   return (
     <div className="App md:flex min-h-screen bg-gray-50">
-      <Sidebar items={navItems} activeKey={effectiveActivePage} onNavigate={navigate} user={user} onLogout={logout} subtitle={sidebarSubtitle} />
+      <Sidebar items={navItems} activeKey={effectiveActivePage} onNavigate={navigate} user={user} onLogout={logout} brand={sidebarBrand} subtitle={sidebarSubtitle} />
 
       <div className="flex-1 min-w-0">
         {effectiveActivePage === 'announcements' ? (

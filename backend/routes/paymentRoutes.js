@@ -28,6 +28,17 @@ router.post(
     paymentController.selectCashOnDelivery
 );
 
+// What checkout can offer (COD, QR / bank details, admin WhatsApp) - customers only.
+router.get('/options', ...vendorContext, authorize('user'), paymentController.getCheckoutPaymentOptions);
+
+router.post(
+    '/:orderId/manual-transfer',
+    ...vendorContext,
+    authorize('user'),
+    validate(orderIdParamSchema, 'params'),
+    paymentController.selectManualTransfer
+);
+
 router.get(
     '/:orderId/status',
     ...vendorContext,

@@ -120,6 +120,39 @@ const selectCashOnDelivery = async (req, res) => {
     }
 };
 
+const getCheckoutPaymentOptions = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        const result = await paymentService.getCheckoutPaymentOptions(
+            vendorId, req.websiteMasterData, req.companyMasterData, req.companySettingsData
+        );
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('paymentController: getCheckoutPaymentOptions - Exception while fetching payment options', { vendorId, error });
+        return common.sendError(res, 500, 'Could not load payment options.');
+    }
+};
+
+const selectManualTransfer = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        const result = await paymentService.selectManualTransfer(
+            vendorId, req.user._id, common.decodeId(req.params.orderId),
+            req.websiteMasterData, req.companyMasterData, req.companySettingsData
+        );
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, { order: formatOrderForPaymentResponse(result.meta.order) });
+    } catch (error) {
+        logger.logException('paymentController: selectManualTransfer - Exception while selecting QR / bank transfer', { vendorId, error });
+        return common.sendError(res, 500, 'Could not save your payment choice.');
+    }
+};
+
 const getPaymentStatus = async (req, res) => {
     const vendorId = req.vendorId;
     try {
@@ -158,6 +191,8 @@ const handleGatewayCallback = async (req, res) => {
 module.exports = {
     initiateOnlinePayment,
     selectCashOnDelivery,
+    getCheckoutPaymentOptions,
+    selectManualTransfer,
     getPaymentStatus,
     handleGatewayCallback
 };

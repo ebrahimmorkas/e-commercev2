@@ -6,6 +6,7 @@ import QuantityStepper from '../../products/components/QuantityStepper';
 import Spinner from '../../../../components/common/Spinner/Spinner';
 import EmptyState from '../../../../components/common/EmptyState/EmptyState';
 import { useShippingEstimate } from '../hooks/useShippingEstimate';
+import { useCartItemImages } from '../hooks/useCartItemImages';
 import { formatShippingEstimate, shippingAmountForTotal } from '../utils/formatShipping';
 import { useTaxEstimate, taxAmountForTotal } from '../hooks/useTaxEstimate';
 import TaxEstimateRows from '../components/TaxEstimateRows';
@@ -24,11 +25,15 @@ const formatSize = (item) => (item.labelValue ? `${item.sizeName}: ${item.labelV
 // Stacks (name+details, then controls) on narrow screens where a single
 // row can't fit product info + stepper + total + remove without wrapping
 // text mid-word; reverts to one row from `sm` up.
-const CartLineItem = ({ item, onIncrement, onDecrement, onSetQuantity, onRemove }) => {
+const CartLineItem = ({ item, image, onIncrement, onDecrement, onSetQuantity, onRemove }) => {
   // unitPrice/originalUnitPrice are in the store currency.
   const { formatMoney } = useCurrency();
   return (
   <div className={`flex flex-col sm:flex-row sm:items-center gap-3 py-4 border-b last:border-b-0 ${theme.card.border}`}>
+    {/* Fit, not crop (same as the product cards); an empty box holds the place until the picture arrives. */}
+    <div className="h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+      {image && <img src={image} alt={item.productName} loading="lazy" className="h-full w-full object-contain" />}
+    </div>
     <div className="min-w-0 flex-1">
       <h3 className={`text-sm font-semibold truncate ${theme.card.name}`}>{item.productName}</h3>
       <p className="mt-0.5 text-xs text-slate-500 truncate">
@@ -131,7 +136,8 @@ const CartPage = ({
 }) => {
   const { formatMoney } = useCurrency();
   const [addressModalOpen, setAddressModalOpen] = useState(false);
-  const itemCount = lineItems.reduce((sum, item) => sum + item.quantity, 0);
+  const itemImages = useCartItemImages(lineItems);
+  const itemCount =lineItems.reduce((sum, item) => sum + item.quantity, 0);
   const { estimate: shippingEstimate } = useShippingEstimate({
     addressId,
     refreshKey: `${itemCount}:${subtotal}`,
@@ -246,6 +252,7 @@ const CartPage = ({
               <CartLineItem
                 key={item.sizeId}
                 item={item}
+                image={itemImages[item.sizeId]}
                 onIncrement={onIncrementItem}
                 onDecrement={onDecrementItem}
                 onSetQuantity={onSetItemQuantity}

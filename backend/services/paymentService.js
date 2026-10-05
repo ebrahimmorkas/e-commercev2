@@ -143,6 +143,81 @@ const selectCashOnDelivery = async (vendorId, userId, orderId) => {
     }
 };
 
+// What the checkout can offer: Cash on Delivery (the two-level isCODFeatureOn
+// gate) and "pay online" by QR / bank transfer, with the details the vendor
+// filled in Company Settings (gated by the same two-level flag that gates
+// editing them). Customer-only - the bank details are never in the public
+// storefront settings.
+const getCheckoutPaymentOptions = async (vendorId, websiteMasterData, companyMasterData, companySettingsData) => {
+    try {
+        const codCheck = await common.checkFeatureOnOrOff(vendorId, websiteMasterData, companyMasterData, 'isCODFeatureOn', 'isCODFeatureOn');
+        const detailsCheck = await common.checkFeatureOnOrOff(
+            vendorId, websiteMasterData, companyMasterData,
+            'isShowingPaymentQRCodeAndBankDetailsFeatureOn', 'showPaymentQRCodeAndBankDetails'
+        );
+
+        const settings = companySettingsData || {};
+        const scannerUrl = settings.paymentScanner?.url || null;
+        const bank = {
+            accountHolderName: settings.bankAccountHolderName || null,
+            bankName: settings.bankName || null,
+            accountNumber: settings.bankAccountNumber || null,
+            ifscCode: settings.ifscCode || null,
+            branchName: settings.branchName || null,
+            swiftCode: settings.swiftCode || null,
+            accountType: settings.bankAccountType || null
+        };
+        const hasBankDetails = !!(bank.accountNumber || bank.ifscCode);
+        const onlineEnabled = detailsCheck.isSuccess && (!!scannerUrl || hasBankDetails);
+
+        return common.returnResult(true, 200, 'Payment options fetched successfully', {
+            cod: codCheck.isSuccess,
+            online: onlineEnabled
+                ? {
+                    scannerUrl,
+                    bank: hasBankDetails ? bank : null,
+                    whatsappNumber: settings.adminWhatsappNumber || null,
+                    companyName: settings.companyName || null
+                }
+                : null
+        });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// The customer chose to pay by QR / bank transfer: records ONLINE with no
+// gateway on the order (nothing is charged here - the admin confirms the money
+// arrived and marks it paid). Re-checks that the vendor really offers it.
+const selectManualTransfer = async (vendorId, userId, orderId, websiteMasterData, companyMasterData, companySettingsData) => {
+    try {
+        const options = await getCheckoutPaymentOptions(vendorId, websiteMasterData, companyMasterData, companySettingsData);
+        if (!options.meta.online) {
+            return common.returnResult(false, 403, 'Paying by QR / bank transfer is not available for this store.');
+        }
+
+        const order = await Order.findOne({ _id: orderId, vendorId, userId, status: { $ne: 'D' } });
+        if (!order) {
+            return common.returnResult(false, 404, 'Order not found.');
+        }
+
+        if (order.payment.status === 'PAID') {
+            return common.returnResult(false, 409, 'This order has already been paid.');
+        }
+
+        order.payment.method = PAYMENT_METHODS.ONLINE;
+        order.payment.gateway = null;
+        order.updatedBy = userId;
+        await order.save();
+        notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.PAYMENT_UPDATED);
+
+        logger.logInfo(1, 0, 'QR / bank transfer selected for order', { vendorId, orderId });
+        return common.returnResult(true, 200, 'Pay by QR / bank transfer selected for this order.', { order });
+    } catch (err) {
+        throw err;
+    }
+};
+
 // Processes a gateway callback (IPN). Deliberately never trusts the posted
 // payload's own status fields - re-queries the gateway server-to-server via
 // verifyTransaction before marking anything paid. Idempotent: a transaction
@@ -252,6 +327,8 @@ const getPaymentStatus = async (vendorId, userId, orderId) => {
 module.exports = {
     initiateOnlinePayment,
     selectCashOnDelivery,
+    getCheckoutPaymentOptions,
+    selectManualTransfer,
     handleGatewayCallback,
     getPaymentStatus
 };

@@ -97,11 +97,15 @@ export const useProductLookups = () => {
     const options = [];
     (taxBundle.taxes || []).forEach((countryGroup) => {
       (countryGroup.taxes || []).forEach((tax) => {
-        options.push({ value: String(tax._id), label: `${tax.name} — ${countryGroup.country_name}` });
+        options.push({ value: String(tax._id), label: `${tax.name} — ${countryGroup.country_name}`, taxGroup: String(countryGroup.countryId) });
       });
       (countryGroup.states || []).forEach((stateGroup) => {
         (stateGroup.taxes || []).forEach((tax) => {
-          options.push({ value: String(tax._id), label: `${tax.name} — ${countryGroup.country_name} / ${stateGroup.state_name}` });
+          options.push({
+            value: String(tax._id),
+            label: `${tax.name} — ${countryGroup.country_name} / ${stateGroup.state_name}`,
+            taxGroup: `${countryGroup.countryId}_${stateGroup.stateId}`,
+          });
         });
       });
     });
