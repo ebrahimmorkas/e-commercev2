@@ -62,6 +62,23 @@ const redisService = require('./services/redisService');
 const app = express();
 const httpServer = http.createServer(app);
 
+// The live backend sits behind the frontend host's /api rewrite and the
+// hosting platform's own proxy, so the Host header is the backend's own
+// address. Trusting the proxy makes req.hostname read X-Forwarded-Host (the
+// storefront domain the customer actually typed) - vendorDetection needs that.
+app.set('trust proxy', true);
+
+// Used by the hosting platform to check the process is up. Must stay above
+// vendorDetection - the platform calls it on the backend's own address, which
+// is no vendor's domain.
+app.get('/healthz', (req, res) => {
+    try {
+        res.status(200).json({ success: true, message: 'OK' });
+    } catch (error) {
+        logger.logException('Exception in health check', error);
+    }
+});
+
 // Must be the first middleware mounted - every downstream middleware,
 // controller, and service needs to run inside its AsyncLocalStorage context
 // so utils/logger.js's logException() can reach req.vendorId/req.user for

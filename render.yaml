@@ -1,0 +1,27 @@
+# Render Blueprint - the backend API (Express + socket.io).
+# The frontend is deployed separately on Vercel (see vercel.json), which
+# forwards /api and /socket.io to this service.
+#
+# Secrets (MONGODB_URI, JWT secrets, Cloudinary, SMTP, encryption keys) are NOT
+# listed here - they are entered in the Render dashboard under Environment.
+services:
+  - type: web
+    name: e-commercev2-api
+    runtime: node
+    plan: free
+    region: singapore
+    branch: stage-ebrahim-lokhand
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NODE_ENV
+        value: production
+      - key: IS_REDIS_SERVER_ON
+        value: "0"
+      - key: STORAGE_PROVIDER
+        value: cloudinary
