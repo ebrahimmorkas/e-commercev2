@@ -17,6 +17,7 @@ const realtimeService = require('./services/realtimeService');
 const abandonedCartService = require('./services/abandonedCartService');
 const expiryReminderService = require('./services/expiryReminderService');
 const sentEmailCleanupService = require('./services/sentEmailCleanupService');
+const keepAliveService = require('./services/keepAliveService');
 // Middlewares
 const { requestContext } = require('./middlewares/requestContext');
 const vendorDetection = require('./middlewares/vendorDetection');
@@ -174,6 +175,8 @@ abandonedCartService.startAbandonedCartScanner();
 expiryReminderService.startExpiryReminderScanner();
 // Deletes files uploaded for one Send Email email after the retention period.
 sentEmailCleanupService.startSendEmailCleanup();
+// Stops Render's free plan from putting the server to sleep (no-op elsewhere).
+keepAliveService.startKeepAlive();
 
 const PORT = process.env.PORT || 5000;
 httpServer.listen(PORT, () => {
