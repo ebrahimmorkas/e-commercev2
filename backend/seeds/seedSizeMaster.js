@@ -16,7 +16,7 @@ const SIZES = [
     {
         name: "Size",
         type: "LABEL",
-        values: ["Small", "Medium", "Large"]
+        values: ["Pack of 6", "Pack of 12", "Pack of 18", "Pack of 24"]
     }
 ];
 
