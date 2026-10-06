@@ -29,6 +29,9 @@ const OrderStepMaster = require('../models/OrderStepMaster');
 //   SEED_ADMIN_PHONE       admin phone number (default below)
 //   SEED_COUNTRY           ISO alpha-2 country the store sells in (default AE)
 //   SEED_ADMIN_STATE       admin's state, by name (default Dubai)
+//   SEED_ADMIN_CITY        admin's city, by name (default: same as the state)
+//   SEED_SIZE_NAMES        SizeMaster names the store may use (default Size)
+//   SEED_FEATURES_OFF      feature flags to keep off; "none" = everything on
 //
 // Safe to re-run: the vendor is matched by its email, so re-running with a new
 // SEED_VENDOR_DOMAIN only moves the store to that domain (its _id, which every
@@ -43,15 +46,25 @@ const ADMIN_PHONE = (process.env.SEED_ADMIN_PHONE || '0500000000').trim();
 const COUNTRY_SHORT_NAME = (process.env.SEED_COUNTRY || 'AE').trim().toUpperCase();
 const ADMIN_STATE_NAME = (process.env.SEED_ADMIN_STATE || 'Dubai').trim();
 
-// Not built yet (they are off in WebsiteMaster too), so they stay off here.
-// The payment gateway is off as well: no gateway is set up for this store.
-const FEATURES_KEPT_OFF = [
+const ADMIN_CITY_NAME = (process.env.SEED_ADMIN_CITY || ADMIN_STATE_NAME).trim();
+
+// SizeMaster names this store may use on product variants.
+const ALLOWED_SIZE_NAMES = (process.env.SEED_SIZE_NAMES || 'Size').split(',').map((name) => name.trim()).filter(Boolean);
+
+// Default: the features not built yet (off in WebsiteMaster too) stay off, and
+// so does the payment gateway, as no gateway is set up for the store.
+// SEED_FEATURES_OFF replaces this list (comma separated flag names);
+// SEED_FEATURES_OFF=none switches every feature on.
+const DEFAULT_FEATURES_KEPT_OFF = [
     'isEmailVerificationFeatureOn',
     'isSendingSMSFeatureOn',
     'isMobileVerificationFeatureOn',
     'isWebsiteBuilderFeatureOn',
     'isPaymentGatewayFeatureOn'
 ];
+const FEATURES_KEPT_OFF = process.env.SEED_FEATURES_OFF
+    ? process.env.SEED_FEATURES_OFF.split(',').map((flag) => flag.trim()).filter((flag) => flag && flag.toLowerCase() !== 'none')
+    : DEFAULT_FEATURES_KEPT_OFF;
 
 const IMAGE_FORMATS = ['jpg', 'png', 'jpeg'];
 
@@ -196,8 +209,10 @@ const seedCompanyMaster = async (vendor, country) => {
         const weights = await WeightMaster.find({ status: 'A' }).select('_id');
         if (weights.length === 0) throw new Error('No active weight units found. Please run seedWeightMaster first.');
 
-        const sizes = await SizeMaster.find({ status: 'A' }).select('_id');
-        if (sizes.length === 0) throw new Error('No active sizes found. Please run seedSizeMaster first.');
+        const sizes = await SizeMaster.find({ name: { $in: ALLOWED_SIZE_NAMES }, status: 'A' }).select('_id');
+        if (sizes.length !== ALLOWED_SIZE_NAMES.length) {
+            throw new Error(`Sizes ${ALLOWED_SIZE_NAMES.join(', ')} not found. Please run seedSizeMaster first.`);
+        }
 
         const modules = await ModuleMaster.find({ status: 'A' });
         if (modules.length === 0) throw new Error('No active modules found. Please run seedModuleMaster first.');
@@ -212,14 +227,14 @@ const seedCompanyMaster = async (vendor, country) => {
                     ...buildFeatureFlags(),
                     ...COMPANY_MASTER_VALUES,
                     vendorId: vendor._id,
-                    allowedCountries: [country._id]
+                    allowedCountries: [country._id],
+                    allowedSizes: sizes.map((size) => size._id)
                 },
                 // An order workflow already given to this vendor is never swapped
                 // by a re-run - its orders keep following the one they were placed on.
                 $setOnInsert: { orderSteps: orderSteps._id },
                 $addToSet: {
-                    allowedWeights: { $each: weights.map((weight) => weight._id) },
-                    allowedSizes: { $each: sizes.map((size) => size._id) }
+                    allowedWeights: { $each: weights.map((weight) => weight._id) }
                 }
             },
             { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true, runValidators: true }
@@ -243,7 +258,8 @@ const seedCompanyMaster = async (vendor, country) => {
 
         const flags = buildFeatureFlags();
         const onCount = Object.values(flags).filter(Boolean).length;
-        console.log(`✅ CompanyMaster: ${onCount} feature(s) on, kept off: ${FEATURES_KEPT_OFF.join(', ')}.`);
+        console.log(`✅ CompanyMaster: ${onCount} feature(s) on, kept off: ${FEATURES_KEPT_OFF.join(', ') || 'none'}.`);
+        console.log(`✅ Country: ${country.country_name}. Sizes: ${ALLOWED_SIZE_NAMES.join(', ')}.`);
         console.log(`✅ Modules: ${company.assignedModules.length} of ${modules.length} assigned (${changed} added/re-activated).`);
         return company;
     } catch (error) {
@@ -255,8 +271,22 @@ const seedAdmin = async (vendor, country) => {
     try {
         const existing = await User.findOne({ vendorId: vendor._id, email: ADMIN_EMAIL });
 
+        // User.country/state/city hold CountryMaster/StateMaster/CityMaster ids
+        // (see services/userLocationService.js).
+        const state = await StateMaster.findOne({ country_id: country._id, state_name: ADMIN_STATE_NAME });
+        if (!state) throw new Error(`State ${ADMIN_STATE_NAME} not found in ${country.country_name}. Please run seedStateMaster first.`);
+        const city = await CityMaster.findOne({ state_id: state._id, city_name: ADMIN_CITY_NAME });
+        const location = {
+            country: country._id.toString(),
+            state: state._id.toString(),
+            ...(city ? { city: city._id.toString() } : {})
+        };
+
         if (existing && process.env.SEED_ADMIN_RESET_PASSWORD != 1) {
-            console.log(`⚠️ Admin ${ADMIN_EMAIL} already exists - left alone (SEED_ADMIN_RESET_PASSWORD=1 resets its password).`);
+            // Its location follows the store's country; its password is left alone.
+            existing.set(location);
+            await existing.save();
+            console.log(`⚠️ Admin ${ADMIN_EMAIL} already exists - password left alone (SEED_ADMIN_RESET_PASSWORD=1 resets it).`);
             return existing;
         }
 
@@ -267,16 +297,11 @@ const seedAdmin = async (vendor, country) => {
             existing.password = hashedPassword;
             existing.role = 'admin';
             existing.status = 'A';
+            existing.set(location);
             await existing.save();
             console.log(`✅ Admin ${ADMIN_EMAIL}: password reset.`);
             return existing;
         }
-
-        // User.country/state/city hold CountryMaster/StateMaster/CityMaster ids
-        // (see services/userLocationService.js).
-        const state = await StateMaster.findOne({ country_id: country._id, state_name: ADMIN_STATE_NAME });
-        if (!state) throw new Error(`State ${ADMIN_STATE_NAME} not found in ${country.country_name}. Please run seedStateMaster first.`);
-        const city = await CityMaster.findOne({ state_id: state._id, city_name: ADMIN_STATE_NAME });
 
         const admin = await User.create({
             vendorId: vendor._id,
@@ -286,9 +311,7 @@ const seedAdmin = async (vendor, country) => {
             authProvider: 'local',
             phone_no: ADMIN_PHONE,
             email: ADMIN_EMAIL,
-            country: country._id.toString(),
-            state: state._id.toString(),
-            ...(city ? { city: city._id.toString() } : {}),
+            ...location,
             role: 'admin',
             status: 'A'
         });

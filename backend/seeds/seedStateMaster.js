@@ -4,7 +4,7 @@ const mongoose = require("mongoose");
 
 const CountryMaster = require("../models/CountryMaster");
 const StateMaster = require("../models/StateMaster");
-const { isCountrySeeded } = require("./seedCountryFilter");
+const { isCountrySeeded, isStateSeeded } = require("./seedCountryFilter");
 
 // Run after seedCountryMaster.
 //
@@ -85,7 +85,8 @@ async function seedStateMaster() {
             let created = 0;
             let updated = 0;
 
-            for (const state of states) {
+            // SEED_STATES limits which states are seeded - see seedCountryFilter.js.
+            for (const state of states.filter((item) => isStateSeeded(item.short_state_name))) {
                 const result = await StateMaster.updateOne(
                     { country_id: country._id, short_state_name: state.short_state_name },
                     {

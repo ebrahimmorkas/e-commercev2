@@ -17,6 +17,11 @@ const SIZES = [
         name: "Size",
         type: "LABEL",
         values: ["Pack of 6", "Pack of 12", "Pack of 18", "Pack of 24"]
+    },
+    {
+        name: "S-M-L Size",
+        type: "LABEL",
+        values: ["S", "M", "L"]
     }
 ];
 
