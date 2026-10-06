@@ -5,6 +5,7 @@ const mongoose = require("mongoose");
 const CountryMaster = require("../models/CountryMaster");
 const StateMaster = require("../models/StateMaster");
 const CityMaster = require("../models/CityMaster");
+const { isCountrySeeded } = require("./seedCountryFilter");
 
 // Run after seedStateMaster.
 //
@@ -23,7 +24,8 @@ async function seedCityMaster() {
         await mongoose.connect(process.env.MONGODB_URI);
         console.log("✅ MongoDB Connected");
 
-        for (const countryShortName of COUNTRY_KEYS) {
+        // SEED_COUNTRIES limits which countries are seeded - see seedCountryFilter.js.
+        for (const countryShortName of COUNTRY_KEYS.filter((code) => isCountrySeeded(code))) {
             const country = await CountryMaster.findOne({ short_country_name: countryShortName });
 
             if (!country) {

@@ -3,6 +3,7 @@ require("dotenv").config({ quiet: true });
 const mongoose = require("mongoose");
 
 const CountryMaster = require("../models/CountryMaster");
+const { isCountrySeeded } = require("./seedCountryFilter");
 
 // Run order: seedCountryMaster -> seedStateMaster -> seedCityMaster -> seedTaxMaster
 // (then seedCurrencyMaster, which links each currency to its country).
@@ -31,7 +32,8 @@ async function seedCountryMaster() {
         await mongoose.connect(process.env.MONGODB_URI);
         console.log("✅ MongoDB Connected");
 
-        for (const country of COUNTRIES) {
+        // SEED_COUNTRIES limits which countries are seeded - see seedCountryFilter.js.
+        for (const country of COUNTRIES.filter((item) => isCountrySeeded(item.short_country_name))) {
             const result = await CountryMaster.updateOne(
                 { short_country_name: country.short_country_name },
                 {

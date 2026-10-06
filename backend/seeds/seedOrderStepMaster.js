@@ -6,7 +6,7 @@ const { RESERVED_STEP_CODES } = require('../constants/orderStepConstants');
 
 async function seedOrderStepMaster() {
     try {
-        await mongoose.connect(`mongodb://127.0.0.1:27017/ecommerce-v2`);
+        await mongoose.connect(process.env.MONGODB_URI);
 
         // No automatic-trigger logic exists yet (deferred to a future
         // version) - every step transition in v1 is a manual admin/
@@ -31,7 +31,7 @@ async function seedOrderStepMaster() {
             },
             {
                 upsert: true,
-                new: true,
+                returnDocument: 'after',
                 setDefaultsOnInsert: true,
                 runValidators: true
             }

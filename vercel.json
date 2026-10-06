@@ -7,11 +7,11 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://e-commercev2-api.onrender.com/api/$1"
+      "destination": "https://e-commercev2-api-v98p.onrender.com/api/$1"
     },
     {
       "source": "/socket.io/(.*)",
-      "destination": "https://e-commercev2-api.onrender.com/socket.io/$1"
+      "destination": "https://e-commercev2-api-v98p.onrender.com/socket.io/$1"
     },
     {
       "source": "/(.*)",

@@ -57,7 +57,6 @@ const paymentRoutes = require('./routes/paymentRoutes.js');
 const freeCashRoutes = require('./routes/freeCashRoutes.js');
 const abandonedCartRoutes = require('./routes/abandonedCartRoutes.js');
 const userRoutes = require('./routes/userRoutes.js');
-const redisService = require('./services/redisService');
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -85,11 +84,17 @@ app.get('/healthz', (req, res) => {
 // the ErrorLog it writes, without changing any existing logException() call site.
 app.use(requestContext);
 
-// TEMPORARY - verification pass for the ID-encoding rollout, remove after.
-app.use(require('./middlewares/_rawIdScanner'));
+// The frontend reaches this API on its own origin (Vite proxy in development,
+// the frontend host's /api rewrite when live), so no other origin needs
+// access. To let one in, list it in CORS_ALLOWED_ORIGINS (comma separated,
+// e.g. https://shop.example.com).
+const corsAllowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 app.use(cors({
-  origin: 'true',
+  origin: corsAllowedOrigins.length > 0 ? corsAllowedOrigins : false,
   credentials: true,
 }));
 
@@ -157,12 +162,6 @@ app.get("/", (req, res) => {
     res.send("Hello");
 });
 
-app.get('/flush-redis', async (req, res) => {
-    await redisService.del('website-master');
-    await redisService.del('company-master-configuration:6a63443e263b29b8e59374eb')
-    await redisService.del('company-settings:6a63443e263b29b8e59374eb')
-    res.send('Flushed');
-});
 // End of dummy to be removed
 
 // Must stay after every route: turns anything thrown outside a controller's
