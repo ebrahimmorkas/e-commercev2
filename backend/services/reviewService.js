@@ -124,7 +124,7 @@ const createReview = async (
 
 const getReviewsByProductId = async (vendorId, productId, companySettingsData, page = 1, limit = 10) => {
   try {
-    if (!companySettingsData.showReviewsToCustomers) {
+    if (!companySettingsData?.showReviewsToCustomers) {
       return common.returnResult(false, 403, 'Reviews are not enabled for this store');
     }
 
