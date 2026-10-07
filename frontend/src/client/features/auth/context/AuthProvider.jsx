@@ -126,7 +126,9 @@ const AuthProvider = ({ children }) => {
       await authApi.register(payload);
       return { success: true };
     } catch (err) {
-      return { success: false, message: err.message || 'Registration failed' };
+      // A validation failure carries the readable reason per field in
+      // err.errors; err.message is then only the generic "Validation failed".
+      return { success: false, message: err.errors?.[0]?.message || err.message || 'Registration failed' };
     }
   }, []);
 

@@ -4,9 +4,10 @@ const authController = require('../controllers/authController');
 const forgotPasswordController = require('../controllers/forgotPasswordController');
 const validate = require('../middlewares/validate');
 const { requestPasswordResetOtpSchema, resetPasswordSchema } = require('../middlewares/validations/forgotPasswordValidations');
+const { registerSchema } = require('../middlewares/validations/authValidations');
 
 router.get('/registration-config', authController.getRegistrationConfig);
-router.post('/register', authController.register);
+router.post('/register', validate(registerSchema, 'body'), authController.register);
 router.post('/login', authController.login);
 router.post('/refresh-token', authController.refreshToken);
 router.post('/logout', authController.logout);
