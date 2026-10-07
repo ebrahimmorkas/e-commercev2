@@ -508,6 +508,10 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
             onChange={(e) => setRegisterForm((f) => ({ ...f, phone_no: e.target.value }))}
             className={inputClass}
             required
+            minLength={10}
+            maxLength={14}
+            pattern="\+?[0-9]{10,14}"
+            title="10 to 14 digits, with an optional leading +"
             disabled={loading}
           />
           <input
