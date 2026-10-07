@@ -1840,7 +1840,7 @@ const fetchProductByIdForClient = async (vendorId, productId, companySettingsDat
 
         const rawProduct = product.toObject();
         const brandMap = await buildBrandMapForProducts([rawProduct]);
-        const useShortNameForBrand = !!companySettingsData.useShortNameForBrand;
+        const useShortNameForBrand = !!companySettingsData?.useShortNameForBrand;
 
         const shaped = shapeProductForResponse(rawProduct, false, locationContext, shouldHide, brandMap, useShortNameForBrand);
         if (!shaped) {

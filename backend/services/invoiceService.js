@@ -304,7 +304,7 @@ const emailInvoiceToCustomer = async (order, invoice, { companySettingsData, com
             return null;
         }
 
-        const buffer = await invoicePdfService.renderInvoicePdf(invoice, { copies: companySettingsData.invoicePrintDuplicateCopy === true ? 2 : 1 });
+        const buffer = await invoicePdfService.renderInvoicePdf(invoice, { copies: companySettingsData?.invoicePrintDuplicateCopy === true ? 2 : 1 });
         const decimals = invoice.currencyDecimalPlaces ?? 2;
         const amount = `${invoice.currencyCode} ${invoice.totals.grandTotal.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
         const sellerName = invoice.seller.name || 'our store';
