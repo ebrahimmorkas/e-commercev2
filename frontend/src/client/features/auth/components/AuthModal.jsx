@@ -548,19 +548,22 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
-            <select
-              aria-label="City"
-              value={registerForm.city}
-              onChange={(e) => setRegisterForm((f) => ({ ...f, city: e.target.value }))}
-              className={`${inputClass} bg-white`}
-              required={!cityOptional}
-              disabled={loading || !registerForm.state}
-            >
-              <option value="">{cityOptional ? 'City (optional)' : 'City'}</option>
-              {locations.cityOptions.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
+            {/* Hidden when the vendor made the city optional (Company Settings). */}
+            {!cityOptional && (
+              <select
+                aria-label="City"
+                value={registerForm.city}
+                onChange={(e) => setRegisterForm((f) => ({ ...f, city: e.target.value }))}
+                className={`${inputClass} bg-white`}
+                required
+                disabled={loading || !registerForm.state}
+              >
+                <option value="">City</option>
+                {locations.cityOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            )}
           </div>
           {taxRegistrationEnabled && (
             <div className="space-y-3">

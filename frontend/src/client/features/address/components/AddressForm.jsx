@@ -163,20 +163,23 @@ const AddressForm = ({ isOpen, onClose, onSubmit, editingAddress = null, saving 
               </option>
             ))}
           </select>
-          <select
-            value={form.city_id}
-            onChange={(e) => setForm((f) => ({ ...f, city_id: e.target.value }))}
-            className={inputClass}
-            required={!cityOptional}
-            disabled={saving || locationsLoading || !form.state_id}
-          >
-            <option value="">{cityOptional ? 'City (optional)' : 'City'}</option>
-            {availableCities.map((city) => (
-              <option key={city._id} value={city._id}>
-                {city.city_name}
-              </option>
-            ))}
-          </select>
+          {/* Hidden when the vendor made the city optional (Company Settings). */}
+          {!cityOptional && (
+            <select
+              value={form.city_id}
+              onChange={(e) => setForm((f) => ({ ...f, city_id: e.target.value }))}
+              className={inputClass}
+              required
+              disabled={saving || locationsLoading || !form.state_id}
+            >
+              <option value="">City</option>
+              {availableCities.map((city) => (
+                <option key={city._id} value={city._id}>
+                  {city.city_name}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         <input

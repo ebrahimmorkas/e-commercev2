@@ -91,7 +91,7 @@ const DeliveryAgentForm = ({ mode, initialValues = {}, lookups, onSubmit, onCanc
     const complete = picked === 3 || (cityOptional && values.country && values.state);
     if (picked !== 0 && !complete) {
       setLocationError(cityOptional
-        ? 'Choose a country and state together (city is optional), or leave them all empty.'
+        ? 'Choose a country and state together, or leave both empty.'
         : 'Choose a country, state and city together, or leave all three empty.');
       return;
     }
@@ -188,17 +188,20 @@ const DeliveryAgentForm = ({ mode, initialValues = {}, lookups, onSubmit, onCanc
                   searchable
                   clearable
                 />
-                <Dropdown
-                  label="City"
-                  name="city"
-                  placeholder={values.state ? 'Select a city' : 'Select a state first'}
-                  options={getCityOptions(values.country, values.state)}
-                  value={values.city}
-                  onChange={(value) => setFieldValue('city', value || '')}
-                  disabled={!values.state}
-                  searchable
-                  clearable
-                />
+                {/* Hidden when the vendor made the city optional (Company Settings). */}
+                {!cityOptional && (
+                  <Dropdown
+                    label="City"
+                    name="city"
+                    placeholder={values.state ? 'Select a city' : 'Select a state first'}
+                    options={getCityOptions(values.country, values.state)}
+                    value={values.city}
+                    onChange={(value) => setFieldValue('city', value || '')}
+                    disabled={!values.state}
+                    searchable
+                    clearable
+                  />
+                )}
               </div>
               {locationError && <p className={`mt-1 text-sm ${theme.text.error}`} role="alert">{locationError}</p>}
             </div>
