@@ -239,19 +239,21 @@ const AddUserForm = ({ lookups, onSubmit, onCancel, submitting = false }) => {
                 searchable
                 error={showError('state') ? errors.state : ''}
               />
-              <Dropdown
-                label="City"
-                name="city"
-                placeholder={values.state ? 'Select a city' : 'Select a state first'}
-                options={cityOptions}
-                value={values.city}
-                onChange={(value) => setFieldValue('city', value)}
-                disabled={!values.state}
-                required={!cityOptional}
-                clearable={cityOptional}
-                searchable
-                error={showError('city') ? errors.city : ''}
-              />
+              {/* Hidden when the vendor made the city optional (Company Settings). */}
+              {!cityOptional && (
+                <Dropdown
+                  label="City"
+                  name="city"
+                  placeholder={values.state ? 'Select a city' : 'Select a state first'}
+                  options={cityOptions}
+                  value={values.city}
+                  onChange={(value) => setFieldValue('city', value)}
+                  disabled={!values.state}
+                  required
+                  searchable
+                  error={showError('city') ? errors.city : ''}
+                />
+              )}
             </div>
 
             <div className="flex justify-end gap-3 pt-2">

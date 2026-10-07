@@ -245,25 +245,27 @@ const CustomerForm = ({ initialValues = {}, lookups, onSubmit, onCancel, submitt
                     : ''
                 }
               />
-              <Dropdown
-                label="City"
-                name="city"
-                placeholder={values.state ? 'Select a city' : 'Select a state first'}
-                options={cityOptions}
-                value={values.city}
-                onChange={(value) => setFieldValue('city', value)}
-                disabled={!values.state}
-                required={!cityOptional}
-                clearable={cityOptional}
-                searchable
-                error={showError('city') ? errors.city : ''}
-                helperText={
-                  !values.city && !showError('city') && initialValues.city
-                    && values.country === resolved.countryId && values.state === resolved.stateId
-                    ? `Currently saved as "${initialValues.city}" - reselect to keep it.`
-                    : ''
-                }
-              />
+              {/* Hidden when the vendor made the city optional (Company Settings). */}
+              {!cityOptional && (
+                <Dropdown
+                  label="City"
+                  name="city"
+                  placeholder={values.state ? 'Select a city' : 'Select a state first'}
+                  options={cityOptions}
+                  value={values.city}
+                  onChange={(value) => setFieldValue('city', value)}
+                  disabled={!values.state}
+                  required
+                  searchable
+                  error={showError('city') ? errors.city : ''}
+                  helperText={
+                    !values.city && !showError('city') && initialValues.city
+                      && values.country === resolved.countryId && values.state === resolved.stateId
+                      ? `Currently saved as "${initialValues.city}" - reselect to keep it.`
+                      : ''
+                  }
+                />
+              )}
             </div>
 
             <div className="flex justify-end gap-3 pt-2">
