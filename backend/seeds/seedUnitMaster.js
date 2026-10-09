@@ -6,7 +6,6 @@ const UnitMaster = require("../models/UnitMaster");
 async function seedUnits() {
     try {
         await mongoose.connect(process.env.MONGODB_URI);
-        console.log("✅ MongoDB Connected");
 
         const units = [
             {
@@ -54,23 +53,19 @@ async function seedUnits() {
             });
 
             if (existingUnit) {
-                console.log(`⚠️ ${unit.name} already exists.`);
                 continue;
             }
 
             await UnitMaster.create(unit);
 
-            console.log(`✅ ${unit.name} inserted.`);
         }
 
-        console.log("\n🎉 UnitMaster seed completed successfully.");
 
         await mongoose.connection.close();
         process.exit(0);
 
     } catch (error) {
 
-        console.error("❌ Error:", error);
 
         await mongoose.connection.close();
         process.exit(1);

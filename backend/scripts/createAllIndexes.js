@@ -17,7 +17,6 @@ const MODELS_DIR = path.join(__dirname, '../models');
 async function createAllIndexes() {
     try {
         await mongoose.connect(process.env.MONGODB_URI, { autoIndex: false });
-        console.log('✅ MongoDB Connected');
 
         const modelFiles = fs.readdirSync(MODELS_DIR).filter((file) => file.endsWith('.js'));
         for (const file of modelFiles) {
@@ -28,18 +27,14 @@ async function createAllIndexes() {
         for (const name of mongoose.modelNames().sort()) {
             try {
                 await mongoose.model(name).createIndexes();
-                console.log(`✅ ${name}`);
             } catch (error) {
                 failed += 1;
-                console.error(`❌ ${name}: ${error.message}`);
             }
         }
 
-        console.log(`\nDone: ${mongoose.modelNames().length - failed} model(s) indexed, ${failed} failed.`);
         await mongoose.disconnect();
         process.exit(failed ? 1 : 0);
     } catch (error) {
-        console.error('❌ Error creating indexes:', error);
         process.exit(1);
     }
 }

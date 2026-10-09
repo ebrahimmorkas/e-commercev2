@@ -30,7 +30,6 @@ const COUNTRIES = [
 async function seedCountryMaster() {
     try {
         await mongoose.connect(process.env.MONGODB_URI);
-        console.log("✅ MongoDB Connected");
 
         // SEED_COUNTRIES limits which countries are seeded - see seedCountryFilter.js.
         for (const country of COUNTRIES.filter((item) => isCountrySeeded(item.short_country_name))) {
@@ -43,19 +42,12 @@ async function seedCountryMaster() {
                 { upsert: true }
             );
 
-            console.log(
-                result.upsertedCount
-                    ? `✅ Country created: ${country.country_name}`
-                    : `🔄 Country updated: ${country.country_name}`
-            );
         }
 
-        console.log("\n🎉 CountryMaster seed completed successfully.");
 
         await mongoose.connection.close();
         process.exit(0);
     } catch (error) {
-        console.error("❌ Error:", error);
 
         await mongoose.connection.close();
         process.exit(1);

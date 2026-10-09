@@ -43,14 +43,11 @@ async function seedModuleMaster() {
                     setDefaultsOnInsert: true
                 }
             );
-            console.log(`Seeded module: ${module.code}`);
         }
 
-        console.log("ModuleMaster seeded successfully.");
 
         process.exit(0);
     } catch (error) {
-        console.error(error);
         process.exit(1);
     }
 }

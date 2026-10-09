@@ -11,7 +11,6 @@ async function seedUser() {
     try {
         // Connect to MongoDB
         await mongoose.connect(process.env.MONGODB_URI);
-        console.log("✅ MongoDB Connected");
 
         const vendorId = new mongoose.Types.ObjectId(
             "6a660d580c332ce960286ce0"
@@ -26,7 +25,6 @@ async function seedUser() {
         });
 
         if (existingUser) {
-            console.log("⚠️ User already exists.");
             process.exit(0);
         }
 
@@ -51,10 +49,8 @@ async function seedUser() {
             status: "A",
         });
 
-        console.log("✅ User seeded successfully.");
         process.exit(0);
     } catch (error) {
-        console.error("❌ Error seeding user:", error);
         process.exit(1);
     }
 }

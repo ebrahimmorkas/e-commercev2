@@ -6,7 +6,6 @@ const WeightMaster = require("../models/WeightMaster");
 async function seedWeights() {
     try {
         await mongoose.connect(process.env.MONGODB_URI);
-        console.log("✅ MongoDB Connected");
 
         // Base unit per type (conversionFactor: 1): Gram for MASS, Milliliter
         // for VOLUME. Every other entry's conversionFactor is "how many of
@@ -61,23 +60,19 @@ async function seedWeights() {
             });
 
             if (existingWeight) {
-                console.log(`⚠️ ${weight.weightName} already exists.`);
                 continue;
             }
 
             await WeightMaster.create(weight);
 
-            console.log(`✅ ${weight.weightName} inserted.`);
         }
 
-        console.log("\n🎉 WeightMaster seed completed successfully.");
 
         await mongoose.connection.close();
         process.exit(0);
 
     } catch (error) {
 
-        console.error("❌ Error:", error);
 
         await mongoose.connection.close();
         process.exit(1);

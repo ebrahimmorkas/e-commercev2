@@ -162,7 +162,6 @@ const buildImagePool = async ({ vendorId, userId, companyMasterData, websiteMast
             try {
                 urls.push(...await searchCommonsImages(query, 15));
             } catch (err) {
-                console.warn(`  image search "${query}" failed: ${err.message}`);
             }
         }
 
@@ -183,14 +182,11 @@ const buildImagePool = async ({ vendorId, userId, companyMasterData, websiteMast
                     websiteMasterData
                 });
                 if (!result.isSuccess) {
-                    console.warn(`  upload skipped (${result.message})`);
                     continue;
                 }
                 (pool[group] ||= []).push({ url: result.meta.image.url, imageAssetId: result.meta.image._id });
                 index += 1;
-                console.log(`  uploaded ${originalname}`);
             } catch (err) {
-                console.warn(`  image download/upload failed: ${err.message}`);
             }
         }
     }
@@ -282,10 +278,7 @@ const seedBulkProducts = async () => {
     const gram = await WeightMaster.findOne({ symbol: 'g', status: 'A' }).lean() || await WeightMaster.findOne({ status: 'A' }).lean();
     const tax = await TaxMaster.findOne({ code: 'IN_GST_18' }).lean() || await TaxMaster.findOne({ isDefault: true }).lean();
 
-    console.log(`Vendor ${vendor.domain} (${vendorId}) - seeding ${COUNT} products`);
-    console.log('Preparing the image pool...');
     const imagePool = await buildImagePool({ vendorId, userId: admin._id, companyMasterData, websiteMasterData });
-    console.log(`Image pool ready: ${Object.values(imagePool).flat().filter((v, i, a) => a.indexOf(v) === i).length} images`);
 
     // Existing names (case-insensitive, live products only) so re-runs skip them.
     const existingNames = new Set(
@@ -304,7 +297,6 @@ const seedBulkProducts = async () => {
         const name = `${finish} ${color} ${type.name}${series > 1 ? ` - Series ${series}` : ''}`;
         if (!existingNames.has(name.toLowerCase())) names.push({ name, type, color, finish });
     }
-    if (names.length < COUNT) console.warn(`Only ${names.length} new unique names available.`);
 
     // Code ranges: one size code per size, one variant code per variant.
     const plans = names.map((entry) => {
@@ -441,17 +433,13 @@ const seedBulkProducts = async () => {
         } catch (err) {
             inserted += err.insertedDocs?.length || 0;
             const firstError = err.writeErrors?.[0]?.errmsg || err.message;
-            console.warn(`  batch at ${start}: ${err.writeErrors?.length || 'some'} rejected - ${firstError}`);
         }
-        console.log(`  ${inserted}/${plans.length} inserted`);
     }
 
-    console.log(`Done: ${inserted} products in ${Math.round((Date.now() - startedAt) / 1000)}s.`);
 };
 
 seedBulkProducts()
     .catch((err) => {
-        console.error('Bulk product seed failed:', err.message);
         process.exitCode = 1;
     })
     .finally(() => mongoose.disconnect());

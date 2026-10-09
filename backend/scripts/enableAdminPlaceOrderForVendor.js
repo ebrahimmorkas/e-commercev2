@@ -44,14 +44,11 @@ async function enableAdminPlaceOrderForVendor() {
         }
         company[FLAG] = true;
         await company.save();
-        console.log(`CompanyMaster ${company._id}: module assigned, ${FLAG}=true`);
 
         const websiteResult = await WebsiteMaster.updateMany({}, { $set: { [FLAG]: true } });
-        console.log(`WebsiteMaster: ${FLAG}=true on ${websiteResult.matchedCount} document(s)`);
 
         process.exit(0);
     } catch (error) {
-        console.error(error.message || error);
         process.exit(1);
     }
 }

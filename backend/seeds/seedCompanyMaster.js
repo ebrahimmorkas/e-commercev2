@@ -200,7 +200,6 @@ const COMPANY_MASTER = {
 async function seedCompanyMaster() {
     try {
         await mongoose.connect(process.env.MONGODB_URI);
-        console.log('✅ MongoDB Connected');
 
         const vendor = await Vendor.findOne({ domain: VENDOR_DOMAIN });
         if (!vendor) {
@@ -269,12 +268,10 @@ async function seedCompanyMaster() {
 
         if (added > 0) await company.save();
 
-        console.log(`✅ CompanyMaster seeded for ${VENDOR_DOMAIN} (${added} module(s) assigned).`);
 
         await mongoose.connection.close();
         process.exit(0);
     } catch (error) {
-        console.error('❌ Error:', error);
 
         await mongoose.connection.close();
         process.exit(1);

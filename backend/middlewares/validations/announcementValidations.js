@@ -112,7 +112,6 @@ const validateAddAnnouncement = async (req, res, next) => {
 
 const validateDeleteAnnouncement = (req, res, next) => {
     try {
-        console.log(req.body);
     const { announcement_id } = req.body;
     if (!announcement_id) {
         logger.logInfo(0,1,`announcementValidation: validateDeleteAnnouncement - announcement ID not provided`);

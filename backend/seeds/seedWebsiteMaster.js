@@ -133,7 +133,6 @@ const WEBSITE_MASTER = {
 async function seedWebsiteMaster() {
     try {
         await mongoose.connect(process.env.MONGODB_URI);
-        console.log('✅ MongoDB Connected');
 
         const website = await WebsiteMaster.findOneAndUpdate(
             {},
@@ -146,12 +145,10 @@ async function seedWebsiteMaster() {
             }
         );
 
-        console.log(`✅ WebsiteMaster seeded successfully (${website._id}).`);
 
         await mongoose.connection.close();
         process.exit(0);
     } catch (error) {
-        console.error('❌ Error:', error);
 
         await mongoose.connection.close();
         process.exit(1);

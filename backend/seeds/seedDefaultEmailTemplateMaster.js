@@ -118,12 +118,9 @@ async function seedDefaultEmailTemplateMaster() {
             );
         }
 
-        console.log('DefaultEmailTemplateMaster seeded successfully.');
-        console.log(`Seeded ${defaults.length} default templates: ${defaults.map((t) => t.module).join(', ')}`);
 
         process.exit(0);
     } catch (error) {
-        console.error(error);
         process.exit(1);
     }
 }

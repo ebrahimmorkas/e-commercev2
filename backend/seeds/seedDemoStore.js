@@ -197,7 +197,6 @@ const seedVendor = async () => {
             },
             { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true, runValidators: true }
         );
-        console.log(`✅ Vendor ${vendor.domain} created/updated (${vendor._id}).`);
         return vendor;
     } catch (error) {
         throw error;
@@ -258,9 +257,6 @@ const seedCompanyMaster = async (vendor, country) => {
 
         const flags = buildFeatureFlags();
         const onCount = Object.values(flags).filter(Boolean).length;
-        console.log(`✅ CompanyMaster: ${onCount} feature(s) on, kept off: ${FEATURES_KEPT_OFF.join(', ') || 'none'}.`);
-        console.log(`✅ Country: ${country.country_name}. Sizes: ${ALLOWED_SIZE_NAMES.join(', ')}.`);
-        console.log(`✅ Modules: ${company.assignedModules.length} of ${modules.length} assigned (${changed} added/re-activated).`);
         return company;
     } catch (error) {
         throw error;
@@ -286,7 +282,6 @@ const seedAdmin = async (vendor, country) => {
             // Its location follows the store's country; its password is left alone.
             existing.set(location);
             await existing.save();
-            console.log(`⚠️ Admin ${ADMIN_EMAIL} already exists - password left alone (SEED_ADMIN_RESET_PASSWORD=1 resets it).`);
             return existing;
         }
 
@@ -299,7 +294,6 @@ const seedAdmin = async (vendor, country) => {
             existing.status = 'A';
             existing.set(location);
             await existing.save();
-            console.log(`✅ Admin ${ADMIN_EMAIL}: password reset.`);
             return existing;
         }
 
@@ -315,7 +309,6 @@ const seedAdmin = async (vendor, country) => {
             role: 'admin',
             status: 'A'
         });
-        console.log(`✅ Admin ${ADMIN_EMAIL} created (${admin._id}).`);
         return admin;
     } catch (error) {
         throw error;
@@ -325,12 +318,10 @@ const seedAdmin = async (vendor, country) => {
 async function seedDemoStore() {
     try {
         if (!VENDOR_DOMAIN || !VENDOR_EMAIL) {
-            console.log('Set SEED_VENDOR_DOMAIN and SEED_VENDOR_EMAIL first.');
             process.exit(1);
         }
 
         await mongoose.connect(process.env.MONGODB_URI);
-        console.log('✅ MongoDB Connected');
 
         const country = await CountryMaster.findOne({ short_country_name: COUNTRY_SHORT_NAME, status: 'A' });
         if (!country) throw new Error(`Country ${COUNTRY_SHORT_NAME} not found. Please run seedCountryMaster first.`);
@@ -339,12 +330,10 @@ async function seedDemoStore() {
         await seedCompanyMaster(vendor, country);
         await seedAdmin(vendor, country);
 
-        console.log(`\n🎉 Demo store ready on ${VENDOR_DOMAIN}.`);
 
         await mongoose.connection.close();
         process.exit(0);
     } catch (error) {
-        console.error('❌ Error:', error);
 
         await mongoose.connection.close();
         process.exit(1);

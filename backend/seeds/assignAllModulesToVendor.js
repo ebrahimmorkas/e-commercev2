@@ -15,7 +15,6 @@ const CompanyMaster = require('../models/CompanyMaster');
 async function assignAllModulesToVendor() {
     try {
         if (!process.env.SEED_VENDOR_ID) {
-            console.log('Set SEED_VENDOR_ID to the vendor _id first.');
             process.exit(1);
         }
 
@@ -24,7 +23,6 @@ async function assignAllModulesToVendor() {
         const vendorId = new mongoose.Types.ObjectId(process.env.SEED_VENDOR_ID);
         const company = await CompanyMaster.findOne({ vendorId });
         if (!company) {
-            console.log('No CompanyMaster found for that vendor - run seedCompanyMaster.js first.');
             process.exit(1);
         }
 
@@ -55,10 +53,8 @@ async function assignAllModulesToVendor() {
 
         if (changed) await company.save();
 
-        console.log(`Done. ${changed} module(s) assigned or re-activated, ${modules.length} active modules in total.`);
         process.exit(0);
     } catch (error) {
-        console.error(error);
         process.exit(1);
     }
 }
