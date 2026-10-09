@@ -13,14 +13,17 @@ const CountryMaster = require('../models/CountryMaster');
 const StateMaster = require('../models/StateMaster');
 const CityMaster = require('../models/CityMaster');
 const CurrencyMaster = require('../models/CurrencyMaster');
+const currencyService = require('./currencyService');
 const orderStepService = require('./orderStepService');
 const FileAsset = require('../models/FileAsset');
 const { readStoredAsset } = require('./storedFileReader');
 
 // The store currency (every price is entered in it - see currencyService.js)
-// must be an active currency, and can be changed but never cleared: orders
-// can't be placed without one.
-const validateStoreCurrency = async (data, existingSettings = null) => {
+// must be an active currency of a country the vendor serves
+// (CompanyMaster.allowedCountries), and can be changed but never cleared:
+// orders can't be placed without one. A currency saved before this rule that
+// is resubmitted unchanged is left alone, so the rest of the page still saves.
+const validateStoreCurrency = async (data, companyMasterData, existingSettings = null) => {
     try {
         if (data.currencyId === undefined) return null;
         if (!data.currencyId) {
@@ -31,6 +34,10 @@ const validateStoreCurrency = async (data, existingSettings = null) => {
         const currency = await CurrencyMaster.findOne({ _id: data.currencyId, status: 'A' }).select('_id').lean();
         if (!currency) {
             return common.returnResult(false, 400, 'The selected store currency is not available.');
+        }
+        const isUnchanged = existingSettings?.currencyId?.toString() === data.currencyId.toString();
+        if (!isUnchanged && !(await currencyService.isCurrencyAllowedForCountries(data.currencyId, companyMasterData?.allowedCountries))) {
+            return common.returnResult(false, 400, 'The selected store currency does not belong to any of the countries your store serves.');
         }
         return null;
     } catch (err) {
@@ -300,7 +307,7 @@ const createCompanySettings = async (vendorId, userId, data, files, companyMaste
             return storeLocationFailure;
         }
 
-        const storeCurrencyFailure = await validateStoreCurrency(data);
+        const storeCurrencyFailure = await validateStoreCurrency(data, companyMasterData);
         if (storeCurrencyFailure) {
             return storeCurrencyFailure;
         }
@@ -385,7 +392,7 @@ const updateCompanySettings = async (vendorId, userId, data, files, companyMaste
             return storeLocationFailure;
         }
 
-        const storeCurrencyFailure = await validateStoreCurrency(data, settings);
+        const storeCurrencyFailure = await validateStoreCurrency(data, companyMasterData, settings);
         if (storeCurrencyFailure) {
             return storeCurrencyFailure;
         }
