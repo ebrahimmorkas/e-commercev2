@@ -111,7 +111,6 @@ const clearCompanyMasterCache = async (vendorId) => {
         if (process.env.IS_REDIS_SERVER_ON !== '1') return;
         await connectRedis();
         await redisService.del(redisKeys.companyMaster(vendorId));
-        console.log('Cleared the vendor\'s cached CompanyMaster.');
     } catch (err) {
         throw err;
     }
@@ -125,11 +124,9 @@ const assignTemplateToVendor = async (template, vendorId) => {
             { new: true }
         );
         if (!updated) {
-            console.log('No CompanyMaster found for that vendor - template NOT assigned.');
             return false;
         }
         await clearCompanyMasterCache(vendorId);
-        console.log(`Assigned "${template.name}" (${template._id}) to vendor ${vendorId}. New orders use it; existing orders keep the workflow they were placed on.`);
 
         // Order step settings saved against the old workflow that don't exist in this one are ignored from now on.
         const settings = await CompanySettings.findOne({ vendorId }).lean();
@@ -137,9 +134,6 @@ const assignTemplateToVendor = async (template, vendorId) => {
         const stale = ['orderCancellationNotAllowedAfterStep', 'markPaymentCompletedAtStep', 'deliveryAgentFromStep', 'deliveryAgentToStep']
             .filter((field) => settings?.[field] && !codes.includes(settings[field]))
             .map((field) => `${field}=${settings[field]}`);
-        if (stale.length > 0) {
-            console.log(`Note: these Company Settings refer to steps that are not in this template and will be ignored until the vendor re-picks them: ${stale.join(', ')}`);
-        }
         return true;
     } catch (err) {
         throw err;
@@ -153,9 +147,7 @@ const listTemplates = async () => {
         for (const template of templates) {
             const vendors = assignments.filter((row) => row.orderSteps?.toString() === template._id.toString()).map((row) => row.vendorId.toString());
             const flow = [...template.steps].sort((a, b) => a.sequence - b.sequence).map((step) => `${step.code} (${step.name})`).join(' -> ');
-            console.log(`${template._id}  [${template.status}]  ${template.name}\n    ${flow}\n    assigned to: ${vendors.length ? vendors.join(', ') : 'nobody'}`);
         }
-        if (templates.length === 0) console.log('No templates yet.');
     } catch (err) {
         throw err;
     }
@@ -166,7 +158,6 @@ async function run() {
         const args = parseArgs(process.argv.slice(2));
         const [command, templateIdArg] = args._;
         if (!['list', 'create', 'assign'].includes(command)) {
-            console.log('Usage: node scripts/manageOrderStepTemplate.js <list|create|assign> [...] - see the top of this file.');
             process.exit(1);
         }
 
@@ -180,16 +171,13 @@ async function run() {
         if (command === 'create') {
             const name = typeof args.name === 'string' ? args.name.trim() : '';
             if (!name || name.length > 150) {
-                console.log('Pass a template name (1-150 characters) as --name="..."');
                 process.exit(1);
             }
             if (await OrderStepMaster.exists({ name, status: { $ne: 'D' } })) {
-                console.log(`A template called "${name}" already exists - templates are never edited, so pick a new name.`);
                 process.exit(1);
             }
             const parsed = parseSteps(args.steps);
             if (parsed.error) {
-                console.log(parsed.error);
                 process.exit(1);
             }
 
@@ -197,13 +185,11 @@ async function run() {
             if (args.domain || args.vendorId) {
                 vendorId = await resolveVendorId(args);
                 if (!vendorId) {
-                    console.log('Vendor not found - nothing was created.');
                     process.exit(1);
                 }
             }
 
             const template = await OrderStepMaster.create({ name, steps: parsed.steps, status: 'A' });
-            console.log(`Created template "${template.name}" (${template._id}).`);
 
             if (vendorId) {
                 const assigned = await assignTemplateToVendor(template, vendorId);
@@ -214,23 +200,19 @@ async function run() {
 
         // assign
         if (!templateIdArg || !mongoose.Types.ObjectId.isValid(templateIdArg)) {
-            console.log('Pass the template id: node scripts/manageOrderStepTemplate.js assign <templateId> --domain=<vendor domain>');
             process.exit(1);
         }
         const template = await OrderStepMaster.findOne({ _id: templateIdArg, status: 'A' });
         if (!template) {
-            console.log('Active template not found.');
             process.exit(1);
         }
         const vendorId = await resolveVendorId(args);
         if (!vendorId) {
-            console.log('Vendor not found - pass --domain=<vendor domain> or --vendorId=<id>.');
             process.exit(1);
         }
         const assigned = await assignTemplateToVendor(template, vendorId);
         process.exit(assigned ? 0 : 1);
     } catch (error) {
-        console.error(error);
         process.exit(1);
     }
 }

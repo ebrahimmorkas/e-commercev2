@@ -32,7 +32,6 @@ const VENDOR_ID = '6a63443e263b29b8e59374eb';
         city: 'TestCity',
         status: 'A'
     });
-    console.log('Created test admin:', admin._id.toString());
 
     // Two shopper users to own the two abandoned carts
     await User.deleteMany({ username: { $in: ['uishopper1', 'uishopper2'] } });
@@ -82,6 +81,5 @@ const VENDOR_ID = '6a63443e263b29b8e59374eb';
         status: 'A'
     });
 
-    console.log('Created 2 abandoned cart fixtures (LOGGED_IN + GUEST_KNOWN).');
     await mongoose.disconnect();
-})().catch((err) => { console.error('SETUP FAILED', err); process.exit(1); });
+})().catch(() => { process.exit(1); });

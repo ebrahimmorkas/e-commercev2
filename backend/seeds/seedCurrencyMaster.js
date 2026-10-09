@@ -20,7 +20,6 @@ const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 async function seedCurrencyMaster() {
     try {
         await mongoose.connect(process.env.MONGODB_URI);
-        console.log("✅ MongoDB Connected");
 
         for (const { countryName, ...fields } of CURRENCIES) {
             const country = await CountryMaster.findOne({ country_name: { $regex: `^${escapeRegex(countryName)}$`, $options: "i" } });
@@ -33,18 +32,13 @@ async function seedCurrencyMaster() {
 
             if (country) {
                 await CountryMaster.updateOne({ _id: country._id }, { $set: { currency_id: currency._id } });
-                console.log(`✅ ${fields.short_name} linked to ${country.country_name}`);
-            } else {
-                console.log(`⚠️  ${fields.short_name} saved, but no country named "${countryName}" was found to link it to`);
             }
         }
 
-        console.log("\n🎉 Currency seed completed successfully.");
 
         await mongoose.connection.close();
         process.exit(0);
     } catch (error) {
-        console.error("❌ Error:", error);
 
         await mongoose.connection.close();
         process.exit(1);

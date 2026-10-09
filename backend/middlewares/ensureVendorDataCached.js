@@ -10,7 +10,6 @@ const common = require('../utils/common');
 const ensureVendorDataCached = async (req, res, next) => {
     try {
         const vendorId = req.vendorId;
-        console.log(`Vendor ID ${vendorId}`);
         if (!vendorId) {
             logger.logInfo(0,1,`Vendor ID not found`);
             return common.sendError(res, 400, `Vendor identification failed`);
@@ -28,15 +27,11 @@ const ensureVendorDataCached = async (req, res, next) => {
             3600
         );
 
-        console.log(`ensureVendorDataCached - End of fetching data either from DB or Redis ${websiteMasterData}`);
-
         const companyMasterData = await redisService.getOrSet(
             redisKeys.companyMaster(vendorId),
             async () => await companyMasterService.fetchCompanyMasterByVendorId(vendorId),
             3600
         );
-
-        // console.log(`ensureVendorDataCached middleware ${companyMasterData}`);
 
         if (!companyMasterData) {
             return common.sendError(res, 500, `Failed to load vendor configuration`);

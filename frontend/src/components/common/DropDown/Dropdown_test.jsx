@@ -74,7 +74,7 @@ const DropdownTest = () => {
               <Dropdown
                 options={countries}
                 placeholder="Select a country"
-                onChange={(value, option) => console.log('Selected:', value, option)}
+                onChange={() => {}}
               />
             </div>
 
@@ -84,7 +84,7 @@ const DropdownTest = () => {
                 label="Country"
                 options={countries}
                 placeholder="Select a country"
-                onChange={(value) => console.log('Selected:', value)}
+                onChange={() => {}}
               />
             </div>
 
@@ -277,7 +277,6 @@ const DropdownTest = () => {
                 value={selectedFruits}
                 onChange={(value) => {
                   setSelectedFruits(value);
-                  console.log('Selected fruits:', value);
                 }}
               />
               <p className="mt-2 text-sm text-gray-600">

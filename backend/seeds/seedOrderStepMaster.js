@@ -37,12 +37,9 @@ async function seedOrderStepMaster() {
             }
         );
 
-        console.log('OrderStepMaster seeded successfully.');
-        console.log(template);
 
         process.exit(0);
     } catch (error) {
-        console.error(error);
         process.exit(1);
     }
 }

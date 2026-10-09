@@ -29,7 +29,6 @@ const COUNTRIES = [
 async function seedCountryMaster() {
     try {
         await mongoose.connect(process.env.MONGODB_URI);
-        console.log("✅ MongoDB Connected");
 
         for (const country of COUNTRIES) {
             const result = await CountryMaster.updateOne(
@@ -41,19 +40,12 @@ async function seedCountryMaster() {
                 { upsert: true }
             );
 
-            console.log(
-                result.upsertedCount
-                    ? `✅ Country created: ${country.country_name}`
-                    : `🔄 Country updated: ${country.country_name}`
-            );
         }
 
-        console.log("\n🎉 CountryMaster seed completed successfully.");
 
         await mongoose.connection.close();
         process.exit(0);
     } catch (error) {
-        console.error("❌ Error:", error);
 
         await mongoose.connection.close();
         process.exit(1);

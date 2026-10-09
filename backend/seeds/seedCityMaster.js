@@ -21,7 +21,6 @@ const COUNTRY_KEYS = ["IN", "AE"];
 async function seedCityMaster() {
     try {
         await mongoose.connect(process.env.MONGODB_URI);
-        console.log("✅ MongoDB Connected");
 
         for (const countryShortName of COUNTRY_KEYS) {
             const country = await CountryMaster.findOne({ short_country_name: countryShortName });
@@ -59,18 +58,14 @@ async function seedCityMaster() {
                 created += result.upsertedCount;
                 updated += result.matchedCount;
 
-                console.log(`   ✅ ${state.state_name}: ${cities.length} cities`);
             }
 
-            console.log(`✅ ${country.country_name}: ${created} cities created, ${updated} updated\n`);
         }
 
-        console.log("🎉 CityMaster seed completed successfully.");
 
         await mongoose.connection.close();
         process.exit(0);
     } catch (error) {
-        console.error("❌ Error:", error);
 
         await mongoose.connection.close();
         process.exit(1);

@@ -37,9 +37,6 @@ async function run() {
         const [command] = args._;
 
         if (!command) {
-            console.log('Usage:');
-            console.log('  node scripts/manageCommissionLedger.js list <vendorId> [status]');
-            console.log('  node scripts/manageCommissionLedger.js collect <entryId> <vendorId> [--notes="..."] [--adminUserId=...]');
             process.exit(1);
         }
 
@@ -48,36 +45,26 @@ async function run() {
         if (command === 'list') {
             const [, vendorId, ledgerStatus] = args._;
             if (!vendorId) {
-                console.log('vendorId is required.');
                 process.exit(1);
             }
             if (ledgerStatus && !VALID_COMMISSION_LEDGER_STATUSES.includes(ledgerStatus)) {
-                console.log(`status must be one of: ${VALID_COMMISSION_LEDGER_STATUSES.join(', ')}`);
                 process.exit(1);
             }
             const entries = await commissionService.listByVendor(vendorId, ledgerStatus);
-            console.log(`${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}:`);
-            for (const entry of entries) {
-                console.log(`  ${entry._id}  order ${entry.orderNumber}  ${entry.commissionAmount} ${entry.currencyCode}  ${entry.ledgerStatus}`);
-            }
             process.exit(0);
         }
 
         if (command === 'collect') {
             const [, entryId, vendorId] = args._;
             if (!entryId || !vendorId) {
-                console.log('entryId and vendorId are required.');
                 process.exit(1);
             }
             const result = await commissionService.markCollected(vendorId, args.adminUserId || null, entryId, args.notes);
-            console.log(result.message);
             process.exit(result.isSuccess === false ? 1 : 0);
         }
 
-        console.log(`Unknown command: ${command}`);
         process.exit(1);
     } catch (error) {
-        console.error(error);
         process.exit(1);
     }
 }

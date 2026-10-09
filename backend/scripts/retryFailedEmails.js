@@ -12,12 +12,9 @@ async function run() {
 
         const result = await emailService.retryFailedEmails({});
 
-        console.log(result.message);
-        console.log(result.meta.results);
 
         process.exit(0);
     } catch (error) {
-        console.error(error);
         process.exit(1);
     }
 }

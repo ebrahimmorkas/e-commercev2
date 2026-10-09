@@ -53,7 +53,6 @@ async function run() {
         const gateway = gatewayArg || PAYMENT_GATEWAYS.PAYTABS;
 
         if (!command || !vendorId) {
-            console.log('Usage: node scripts/manageVendorPaymentGatewayCredentials.js <set|activate|deactivate|view> <vendorId> [gateway] [--flags]');
             process.exit(1);
         }
 
@@ -76,18 +75,11 @@ async function run() {
             const summary = await vendorPaymentGatewayCredentialsService.fetchCredentialsSummary(vendorId, gateway);
             result = { isSuccess: !!summary, message: summary ? 'Found.' : 'No credentials saved for this vendor yet.', meta: { credentials: summary } };
         } else {
-            console.log(`Unknown command: ${command}`);
             process.exit(1);
-        }
-
-        console.log(result.message);
-        if (result.meta?.credentials) {
-            console.log(JSON.stringify(result.meta.credentials, null, 2));
         }
 
         process.exit(result.isSuccess === false ? 1 : 0);
     } catch (error) {
-        console.error(error);
         process.exit(1);
     }
 }

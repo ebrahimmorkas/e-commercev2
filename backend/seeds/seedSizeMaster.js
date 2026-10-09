@@ -23,7 +23,6 @@ const SIZES = [
 async function seedSizes() {
     try {
         await mongoose.connect(process.env.MONGODB_URI);
-        console.log("✅ MongoDB Connected");
 
         for (const size of SIZES) {
             const result = await SizeMaster.updateOne(
@@ -35,19 +34,12 @@ async function seedSizes() {
                 { upsert: true, runValidators: true }
             );
 
-            console.log(
-                result.upsertedCount
-                    ? `✅ ${size.name} inserted.`
-                    : `🔄 ${size.name} updated.`
-            );
         }
 
-        console.log("\n🎉 SizeMaster seed completed successfully.");
 
         await mongoose.connection.close();
         process.exit(0);
     } catch (error) {
-        console.error("❌ Error:", error);
 
         await mongoose.connection.close();
         process.exit(1);

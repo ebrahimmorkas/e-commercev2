@@ -17,7 +17,6 @@ const VENDOR = {
 async function seedVendor() {
   try {
     await mongoose.connect(process.env.MONGODB_URI);
-    console.log('✅ MongoDB Connected');
 
     const vendor = await Vendor.findOneAndUpdate(
       { domain: VENDOR.domain },
@@ -32,12 +31,10 @@ async function seedVendor() {
       }
     );
 
-    console.log(`✅ Vendor ${vendor.domain} created/updated (${vendor._id}).`);
 
     await mongoose.connection.close();
     process.exit(0);
   } catch (error) {
-    console.error('❌ Error seeding vendor:', error);
 
     await mongoose.connection.close();
     process.exit(1);

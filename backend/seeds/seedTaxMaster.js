@@ -88,7 +88,6 @@ const TAXES_BY_COUNTRY = {
 async function seedTaxMaster() {
     try {
         await mongoose.connect(process.env.MONGODB_URI);
-        console.log("✅ MongoDB Connected");
 
         for (const [countryShortName, taxes] of Object.entries(TAXES_BY_COUNTRY)) {
             const country = await CountryMaster.findOne({ short_country_name: countryShortName });
@@ -101,7 +100,6 @@ async function seedTaxMaster() {
                 const existingTax = await TaxMaster.findOne({ code: tax.code });
 
                 if (existingTax) {
-                    console.log(`⚠️ ${tax.code} already exists - skipped.`);
                     continue;
                 }
 
@@ -116,16 +114,13 @@ async function seedTaxMaster() {
                     applicableTo: null
                 });
 
-                console.log(`✅ ${country.country_name}: ${tax.name} inserted.`);
             }
         }
 
-        console.log("\n🎉 TaxMaster seed completed successfully.");
 
         await mongoose.connection.close();
         process.exit(0);
     } catch (error) {
-        console.error("❌ Error:", error);
 
         await mongoose.connection.close();
         process.exit(1);

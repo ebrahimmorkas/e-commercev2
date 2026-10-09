@@ -19,7 +19,6 @@ async function backfillAssignedModules() {
 
         const modules = await ModuleMaster.find({ status: 'A' });
         if (modules.length === 0) {
-            console.log('No active modules found - run seedModuleMaster.js first.');
             process.exit(0);
         }
 
@@ -54,15 +53,12 @@ async function backfillAssignedModules() {
 
             if (changed) {
                 await company.save();
-                console.log(`Backfilled assignedModules for vendor ${company.vendorId}`);
             }
         }
 
-        console.log("backfillAssignedModules completed successfully.");
 
         process.exit(0);
     } catch (error) {
-        console.error(error);
         process.exit(1);
     }
 }
