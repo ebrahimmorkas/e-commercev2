@@ -90,6 +90,10 @@ export const getEditCategories = () => apiRequest(`${BASE}/admin/edit/categories
 export const getEditProducts = (categoryId) =>
   apiRequest(`${BASE}/admin/edit/products${categoryId ? `?categoryId=${encodeURIComponent(categoryId)}` : ''}`);
 
+/** Active products matching the text (name, code, variant, size, SKU, barcode) - for the product search box. */
+export const searchEditProducts = (search) =>
+  apiRequest(`${BASE}/admin/edit/products?search=${encodeURIComponent(search)}`);
+
 /** { product, allowOutOfStockProductsAdding, variants: [{ variantId, variantName, sizes: [...] }] } */
 export const getEditProductOptions = (productId) => apiRequest(`${BASE}/admin/edit/products/${productId}/options`);
 
@@ -161,4 +165,4 @@ export const downloadInvoiceAdmin = (id) => apiDownload(`${BASE}/admin/${id}/inv
  */
 export const downloadCreditNoteAdmin = (id) => apiDownload(`${BASE}/admin/${id}/invoice?type=credit-note`);
 
-export default { getAllOrdersAdmin, getOrderByIdAdmin, getOrderStatusOptions, getOrderStepOptions, advanceOrderStep, getAssignableDeliveryAgents, unassignDeliveryAgent, changeDeliveryDate, setOrderCourier, setOrderShippingPrice, updateOrderShippingPrice, getOrderUserAddresses, updateOrderShippingAddress, getEditCategories, getEditProducts, getEditProductOptions, addProductsToOrder, previewAddProductsTax, assignDeliveryAgent, downloadInvoiceAdmin, downloadCreditNoteAdmin };
+export default { getAllOrdersAdmin, getOrderByIdAdmin, getOrderStatusOptions, getOrderStepOptions, advanceOrderStep, getAssignableDeliveryAgents, unassignDeliveryAgent, changeDeliveryDate, setOrderCourier, setOrderShippingPrice, updateOrderShippingPrice, getOrderUserAddresses, updateOrderShippingAddress, getEditCategories, getEditProducts, searchEditProducts, getEditProductOptions, addProductsToOrder, previewAddProductsTax, assignDeliveryAgent, downloadInvoiceAdmin, downloadCreditNoteAdmin };

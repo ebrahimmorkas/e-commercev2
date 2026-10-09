@@ -15,6 +15,7 @@ import * as api from '../api/adminPlaceOrderApi';
 import { bulkUnitPrice } from '../../../../utils/bulkPricing';
 import { useTaxPreview } from '../hooks/useTaxPreview';
 import TaxPreviewRow from '../components/TaxPreviewRow';
+import ProductSearchBox from '../components/ProductSearchBox';
 import { useOrderCurrency } from '../hooks/useOrderCurrency';
 
 // Mirror backend/middlewares/validations/adminPlaceOrderValidations.js so the
@@ -268,13 +269,19 @@ const AdminPlaceOrderPage = () => {
     }
   };
 
-  const loadProducts = async (categoryId) => {
+  // mustInclude: a product picked from the search box - kept in the list even
+  // when the category's (capped) product list doesn't contain it, so the
+  // Product dropdown can show it as selected.
+  const loadProducts = async (categoryId, mustInclude = null) => {
+    let list;
     try {
-      const list = await api.getProducts(categoryId);
-      setProducts(Array.isArray(list) ? list : []);
+      const data = await api.getProducts(categoryId);
+      list = Array.isArray(data) ? data : [];
     } catch {
-      setProducts([]);
+      list = [];
     }
+    if (mustInclude && !list.some((product) => product._id === mustInclude._id)) list = [mustInclude, ...list];
+    setProducts(list);
   };
 
   const loadProductOptions = async (productId) => {
@@ -543,6 +550,21 @@ const AdminPlaceOrderPage = () => {
               loadProductOptions(value);
             };
 
+            // A product picked from the search box: its main / sub category and the
+            // Product dropdown are filled in; variant and size are picked next.
+            const handleProductSearchPick = async (product) => {
+              const mainCategory = product.mainCategory || '';
+              const subCategory = product.subCategory || '';
+              setFieldValue('mainCategory', mainCategory);
+              setFieldValue('subCategory', subCategory);
+              setFieldValue('productId', product._id);
+              setFieldValue('variantId', '');
+              setFieldValue('sizeId', '');
+              setLineError('');
+              loadProductOptions(product._id);
+              await loadProducts(subCategory || mainCategory || undefined, product);
+            };
+
             const userOptions = users.map((user) => ({
               value: user.userId,
               label: user.name && values.searchField !== 'name' ? `${user.value} (${user.name})` : user.value,
@@ -674,6 +696,13 @@ const AdminPlaceOrderPage = () => {
                   <>
                     <Card title={<span className="font-bold">2. Products</span>} subtitle="Pick a product, variant and size, then add it to the order">
                       <div className="space-y-5">
+                        <div>
+                          <ProductSearchBox searchProducts={api.searchProducts} onSelect={handleProductSearchPick} />
+                          <p className="mt-1 text-xs text-gray-500">
+                            Search by product name, code, variant, size, SKU or barcode and pick the product from the list - its category and product are filled in below. Or browse by category.
+                          </p>
+                        </div>
+
                         <CategoryPathPicker
                           categories={categories}
                           mainCategoryId={values.mainCategory}

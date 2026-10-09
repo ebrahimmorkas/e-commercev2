@@ -32,6 +32,7 @@ const orderSearchFields = (order) => [
   order.payment?.status,
   order.payment?.method,
   order.payment?.transactionId,
+  order.customerName,
   order.walkInCustomer?.name,
   order.walkInCustomer?.phone,
   order.walkInCustomer?.whatsapp,
@@ -107,6 +108,12 @@ const OrdersPage = () => {
         label: 'Order #',
         sortable: true,
         render: (row) => <span className={`font-medium ${theme.text.heading}`}>{row.orderNumber}</span>,
+      },
+      {
+        key: 'customerName',
+        label: 'Customer',
+        sortable: true,
+        render: (row) => row.customerName || '—',
       },
       {
         key: 'source',

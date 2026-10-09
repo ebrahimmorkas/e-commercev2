@@ -163,7 +163,10 @@ const fetchCategories = async (vendorId, websiteMasterData, companyMasterData) =
 };
 
 // Active products only. With categoryId (the deepest category the admin has
-// picked so far) it matches that category and everything beneath it.
+// picked so far) it matches that category and everything beneath it. With
+// search (the product search box) it matches the same fields the Inventory
+// search does: product name / code, or any of its variants' name / color or
+// sizes' name / SKU / barcode. The result is still one row per product.
 const loadActiveProducts = async (vendorId, query) => {
     try {
         const { categoryId, search } = query;
@@ -176,13 +179,26 @@ const loadActiveProducts = async (vendorId, query) => {
             }
             const descendantIds = await categoryService.getActiveDescendantIds(vendorId, category._id);
             const categoryIds = [category._id, ...descendantIds];
-            filter.$or = [
-                { mainCategory: { $in: categoryIds } },
-                { subCategory: { $in: categoryIds } }
-            ];
+            filter.$and = [{
+                $or: [
+                    { mainCategory: { $in: categoryIds } },
+                    { subCategory: { $in: categoryIds } }
+                ]
+            }];
         }
         if (search) {
-            filter.name = { $regex: escapeRegex(search), $options: 'i' };
+            const pattern = new RegExp(escapeRegex(search), 'i');
+            filter.$and = [...(filter.$and || []), {
+                $or: [
+                    { name: pattern },
+                    { productCode: pattern },
+                    { 'variants.displayName': pattern },
+                    { 'variants.color': pattern },
+                    { 'variants.sizes.sizeName': pattern },
+                    { 'variants.sizes.sku': pattern },
+                    { 'variants.sizes.barcode': pattern }
+                ]
+            }];
         }
 
         const products = await Product.find(filter)

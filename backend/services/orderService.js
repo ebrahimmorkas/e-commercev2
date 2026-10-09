@@ -1746,11 +1746,28 @@ const fetchOrderById = async (vendorId, orderId, userId, isAdmin, companySetting
     }
 };
 
+// Each order also carries customerName (the Orders page's Customer column):
+// the walk-in customer's name for a cash counter sale, otherwise the name on
+// the customer's account - looked up for every order in one query.
 const fetchAllOrdersAdmin = async (vendorId) => {
     try {
-        const orders = await Order.find({ vendorId, status: { $ne: 'D' } })
+        const orderDocs = await Order.find({ vendorId, status: { $ne: 'D' } })
             .select('-items')
             .sort({ orderPlacedAt: -1 });
+
+        const userIds = [...new Set(orderDocs.filter((order) => !order.isWalkInCustomer && order.userId).map((order) => order.userId.toString()))];
+        const users = userIds.length > 0
+            ? await User.find({ _id: { $in: userIds }, vendorId }).select('name').lean()
+            : [];
+        const userNameById = new Map(users.map((user) => [user._id.toString(), user.name]));
+
+        const orders = orderDocs.map((orderDoc) => {
+            const order = orderDoc.toObject();
+            const customerName = order.isWalkInCustomer
+                ? order.walkInCustomer?.name
+                : (order.userId ? userNameById.get(order.userId.toString()) : null);
+            return { ...order, customerName: customerName || null };
+        });
         return common.returnResult(true, 200, 'Orders fetched successfully', { orders });
     } catch (err) {
         throw err;

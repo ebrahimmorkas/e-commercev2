@@ -19,13 +19,19 @@ export const useEditOrderProducts = () => {
   const [loading, setLoading] = useState(true);
   const toast = useToast();
 
-  const loadProducts = useCallback(async (categoryId) => {
+  // mustInclude: a product picked from the search box - kept in the list even
+  // when the category's (capped) product list doesn't contain it, so the
+  // Product dropdown can show it as selected.
+  const loadProducts = useCallback(async (categoryId, mustInclude = null) => {
+    let list;
     try {
-      const list = await getEditProducts(categoryId);
-      setProducts(Array.isArray(list) ? list : []);
+      const data = await getEditProducts(categoryId);
+      list = Array.isArray(data) ? data : [];
     } catch {
-      setProducts([]);
+      list = [];
     }
+    if (mustInclude && !list.some((product) => product._id === mustInclude._id)) list = [mustInclude, ...list];
+    setProducts(list);
   }, []);
 
   useEffect(() => {
