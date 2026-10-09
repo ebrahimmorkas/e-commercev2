@@ -179,10 +179,42 @@ const buildMoneyFormatter = (currencyMeta) => {
     }
 };
 
-// Every active currency, for the Company Settings "Store currency" dropdown.
-const fetchActiveCurrencies = async () => {
+// The active currencies of the countries a vendor serves
+// (CompanyMaster.allowedCountries) - the only ones it may pick as its store
+// currency. Follows both country <-> currency links, like getCountryCurrency.
+const findCurrenciesForCountries = async (allowedCountryIds) => {
     try {
-        const currencies = await CurrencyMaster.find({ status: 'A' }).sort({ short_name: 1 }).lean();
+        const countryIds = (allowedCountryIds || []).filter(isObjectId);
+        if (countryIds.length === 0) return [];
+        const countries = await CountryMaster.find({ _id: { $in: countryIds }, status: 'A' }).select('currency_id').lean();
+        if (countries.length === 0) return [];
+        return await CurrencyMaster.find({
+            status: 'A',
+            $or: [
+                { _id: { $in: countries.map((country) => country.currency_id).filter(Boolean) } },
+                { country_id: { $in: countries.map((country) => country._id) } }
+            ]
+        }).sort({ short_name: 1 }).lean();
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Whether a vendor serving these countries may use this currency as its store currency.
+const isCurrencyAllowedForCountries = async (currencyId, allowedCountryIds) => {
+    try {
+        if (!isObjectId(currencyId)) return false;
+        const currencies = await findCurrenciesForCountries(allowedCountryIds);
+        return currencies.some((currency) => currency._id.toString() === currencyId.toString());
+    } catch (err) {
+        throw err;
+    }
+};
+
+// The currencies of the vendor's assigned countries, for the Company Settings "Store currency" dropdown.
+const fetchCurrenciesForVendor = async (allowedCountryIds) => {
+    try {
+        const currencies = await findCurrenciesForCountries(allowedCountryIds);
         return common.returnResult(true, 200, 'Currencies fetched successfully', {
             currencies: currencies.map((currency) => ({ _id: currency._id, ...shapeCurrency(currency) }))
         });
@@ -220,6 +252,7 @@ module.exports = {
     buildOrderCurrencyFields,
     formatAmount,
     buildMoneyFormatter,
-    fetchActiveCurrencies,
+    isCurrencyAllowedForCountries,
+    fetchCurrenciesForVendor,
     fetchCurrencyContext
 };

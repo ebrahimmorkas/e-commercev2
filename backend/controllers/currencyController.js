@@ -38,11 +38,12 @@ const getStoreCurrency = async (req, res) => {
     }
 };
 
-// Admin: every active currency, for the Company Settings "Store currency" dropdown.
+// Admin: the currencies of the vendor's assigned countries, for the Company Settings "Store currency" dropdown.
 const getCurrencies = async (req, res) => {
     const vendorId = req.vendorId;
     try {
-        const result = await currencyService.fetchActiveCurrencies();
+        const allowedCountryIds = req.companyMasterData?.allowedCountries || [];
+        const result = await currencyService.fetchCurrenciesForVendor(allowedCountryIds);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
