@@ -18,6 +18,7 @@ const { checkDaysAndHoursWindow } = require('../utils/discountSchedule');
 const taxCalculationService = require('./taxCalculationService');
 const currencyService = require('./currencyService');
 const promotionEmailService = require('./promotionEmailService');
+const lowStockAlertService = require('./lowStockAlertService');
 const { EMAIL_MODULES } = require('../constants/emailModuleConstants');
 
 // Formats a store-currency amount for a shopper's message, in the currency
@@ -2090,7 +2091,10 @@ const checkedOutLineItems = (cart) =>
 // findOneAndUpdate against an $elemMatch-guarded filter instead returns null
 // (no document matched at all) when the size doesn't exist or doesn't have
 // enough stock, which is unambiguous regardless of timestamps.
-const adjustSizeStock = async (productId, variantId, sizeId, delta, requireAvailableStock) => {
+//
+// stockChanges (optional array): each deduction is recorded on it for the low
+// stock alert - see trackStockDeduction in lowStockAlertService.js.
+const adjustSizeStock = async (productId, variantId, sizeId, delta, requireAvailableStock, stockChanges = null) => {
     const sizeElemMatch = { _id: sizeId };
     if (requireAvailableStock) {
         sizeElemMatch.stock = { $gte: -delta };
@@ -2103,6 +2107,7 @@ const adjustSizeStock = async (productId, variantId, sizeId, delta, requireAvail
         { $inc: { 'variants.$[v].sizes.$[s].stock': delta } },
         { arrayFilters: [{ 'v._id': variantId }, { 's._id': sizeId }] }
     );
+    lowStockAlertService.trackStockDeduction(stockChanges, updated, variantId, sizeId, delta);
     return updated !== null;
 };
 
@@ -2113,9 +2118,12 @@ const adjustSizeStock = async (productId, variantId, sizeId, delta, requireAvail
 const decrementStockForOrder = async (cart) => {
     const items = checkedOutLineItems(cart);
     const applied = [];
+    // What each deduction did, for the low stock alert the caller sends once
+    // the order has actually been saved.
+    const stockChanges = [];
     try {
         for (const item of items) {
-            const succeeded = await adjustSizeStock(item.productId, item.variantId, item.sizeId, -item.quantity, true);
+            const succeeded = await adjustSizeStock(item.productId, item.variantId, item.sizeId, -item.quantity, true, stockChanges);
             if (!succeeded) {
                 for (const done of applied) {
                     await adjustSizeStock(done.productId, done.variantId, done.sizeId, done.quantity, false);
@@ -2127,7 +2135,7 @@ const decrementStockForOrder = async (cart) => {
             }
             applied.push(item);
         }
-        return common.returnResult(true, 200, 'Stock reserved for order');
+        return common.returnResult(true, 200, 'Stock reserved for order', { stockChanges });
     } catch (err) {
         for (const done of applied) {
             await adjustSizeStock(done.productId, done.variantId, done.sizeId, done.quantity, false);

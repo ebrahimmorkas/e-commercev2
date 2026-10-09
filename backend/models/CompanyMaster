@@ -453,6 +453,15 @@ const companyMasterSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // Vendor entitlement: low stock alert emails to the vendor's own admin
+    // email. Paired with WebsiteMaster.isReceivingLowStockAlertFeatureOn; the
+    // vendor's own on/off choice and threshold underneath are
+    // CompanySettings.receiveLowStockAlert / lowStockAlertThreshold. See
+    // services/lowStockAlertService.js.
+    isReceivingLowStockAlertFeatureOn: {
+        type: Boolean,
+        default: false
+    },
 
     // Brand
     isBrandFeatureOn: {

@@ -175,6 +175,14 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: true
     },
+    // Low stock alert emails to the vendor's own admin email (two-level,
+    // website AND company) - see services/lowStockAlertService.js. Underneath
+    // it the vendor switches it on and sets the threshold in Company
+    // Settings > Product (receiveLowStockAlert / lowStockAlertThreshold).
+    isReceivingLowStockAlertFeatureOn: {
+        type: Boolean,
+        default: false
+    },
     isBrandFeatureOn: {
         type: Boolean,
         default: true

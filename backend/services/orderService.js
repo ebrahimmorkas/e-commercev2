@@ -26,6 +26,7 @@ const { RESERVED_STEP_CODES, CLOSED_STEP_CODES, SIDE_STEP_NAMES } = require('../
 const { EMAIL_MODULES } = require('../constants/emailModuleConstants');
 const { ORDER_NOTIFICATION_TYPES } = require('../constants/orderRealtimeConstants');
 const { notifyOrderChanged } = require('./orderRealtimeService');
+const lowStockAlertService = require('./lowStockAlertService');
 
 /*
 |--------------------------------------------------------------------------
@@ -365,6 +366,11 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
 
         notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.NEW);
 
+        // Emails the vendor about any size this order just made low on stock.
+        lowStockAlertService.sendLowStockAlertInBackground({
+            vendorId, stockChanges: stockResult.meta.stockChanges, websiteMasterData, companyMasterData, companySettingsData, userId
+        });
+
         // Never fails the order: if this can't issue the invoice now, it is issued on first download.
         await invoiceService.tryIssueInvoiceForOrder(order, { companySettingsData, companyMasterData, websiteMasterData });
 
@@ -492,9 +498,10 @@ const reserveStockForRestart = async (order, companySettingsData) => {
         }
 
         const deductions = [];
+        const stockChanges = [];
         let unexpectedError = null;
         for (const line of lines) {
-            const deducted = await adminPlaceOrderService.deductStockForLine(line, line.allowPartial).catch((err) => {
+            const deducted = await adminPlaceOrderService.deductStockForLine(line, line.allowPartial, stockChanges).catch((err) => {
                 unexpectedError = err;
                 return null;
             });
@@ -508,7 +515,7 @@ const reserveStockForRestart = async (order, companySettingsData) => {
                 order.items[line.itemIndex].stockDeductedQuantity = deducted;
             }
         }
-        return common.returnResult(true, 200, 'Stock reserved for restarted order', { deductions });
+        return common.returnResult(true, 200, 'Stock reserved for restarted order', { deductions, stockChanges });
     } catch (err) {
         throw err;
     }
@@ -851,6 +858,11 @@ const restartOrderByAdmin = async (order, firstStep, stepMaster, adminUserId, re
             await adminPlaceOrderService.restoreDeductedStock(stockResult.meta.deductions);
             return common.returnResult(false, 409, STEP_CONFLICT_MESSAGE);
         }
+
+        // Emails the vendor about any size the restarted order just made low on stock.
+        lowStockAlertService.sendLowStockAlertInBackground({
+            vendorId: order.vendorId, stockChanges: stockResult.meta.stockChanges, websiteMasterData, companyMasterData, companySettingsData, userId: adminUserId
+        });
 
         await commissionService.reinstateCommissionForOrder(order, companyMasterData);
         // Never fails the restart: if it can't be issued now, it is issued on first download.

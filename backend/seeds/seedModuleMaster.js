@@ -10,6 +10,7 @@ const modules = [
     { moduleName: "Dashboard", shortModuleName: "Dashboard", code: "DASHBOARD", precedence: 1, isSystemModule: true, description: "Admin dashboard overview." },
     { moduleName: "Products", shortModuleName: "Products", code: "PRODUCTS", precedence: 2, isSystemModule: false, description: "Product catalog management." },
     { moduleName: "Bulk Update Products", shortModuleName: "Bulk Update Products", code: "BULK_UPDATE_PRODUCTS", precedence: 2.1, isSystemModule: false, description: "Bulk-update existing products - and add new variants/sizes to them - via Excel." },
+    { moduleName: "Inventory", shortModuleName: "Inventory", code: "INVENTORY", precedence: 2.2, isSystemModule: false, description: "Stock of every product size - increase or deduct it, one size or many at once, with a history of every change." },
     { moduleName: "Categories", shortModuleName: "Categories", code: "CATEGORIES", precedence: 3, isSystemModule: false, description: "Category management." },
     { moduleName: "Brand Master", shortModuleName: "Brands", code: "BRAND", precedence: 4, isSystemModule: false, description: "Brand management." },
     { moduleName: "Orders", shortModuleName: "Orders", code: "ORDERS", precedence: 5, isSystemModule: true, description: "Order management." },

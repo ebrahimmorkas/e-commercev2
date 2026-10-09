@@ -11,6 +11,7 @@ const { ORDER_NOTIFICATION_TYPES } = require('../constants/orderRealtimeConstant
 const { CLOSED_STEP_CODES } = require('../constants/orderStepConstants');
 const orderStepService = require('./orderStepService');
 const { notifyOrderChanged } = require('./orderRealtimeService');
+const lowStockAlertService = require('./lowStockAlertService');
 
 const round2 = (value) => Math.round(value * 100) / 100;
 
@@ -191,8 +192,9 @@ const addProductsToOrder = async (vendorId, adminUserId, orderId, payload, compa
 
         // Reserve stock line by line; undo everything if any line loses a race.
         const deductions = [];
+        const stockChanges = [];
         for (const line of lines) {
-            const deducted = await adminPlaceOrderService.deductStockForLine(line, allowOutOfStock);
+            const deducted = await adminPlaceOrderService.deductStockForLine(line, allowOutOfStock, stockChanges);
             if (deducted === null) {
                 await adminPlaceOrderService.restoreDeductedStock(deductions);
                 return common.returnResult(false, 409, `"${line.productName}" - ${line.variantName} - ${line.sizeName} just went out of stock. Please review and try again.`);
@@ -267,6 +269,11 @@ const addProductsToOrder = async (vendorId, adminUserId, orderId, payload, compa
             await adminPlaceOrderService.restoreDeductedStock(deductions);
             return common.returnResult(false, 409, 'This order was changed by someone else or can no longer be edited. Please reopen it and try again.');
         }
+
+        // Emails the vendor about any size the added products just made low on stock.
+        lowStockAlertService.sendLowStockAlertInBackground({
+            vendorId, stockChanges, websiteMasterData, companyMasterData, companySettingsData, userId: adminUserId
+        });
 
         await commissionService.syncCommissionForOrder(updated);
         await invoiceService.tryRefreshInvoiceForOrder(updated, { companySettingsData });

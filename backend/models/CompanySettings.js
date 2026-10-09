@@ -378,6 +378,21 @@ const companySettingsSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  // Low stock alert email to adminEmail. Only takes effect while
+  // isReceivingLowStockAlertFeatureOn is on in WebsiteMaster AND CompanyMaster
+  // - see services/lowStockAlertService.js.
+  receiveLowStockAlert: {
+    type: Boolean,
+    default: false
+  },
+  // One threshold for every product size: the alert goes out when a size's
+  // stock drops to this number or below (5 = emailed when stock becomes 5).
+  // Also the Inventory module's low stock indicator while the alert is on.
+  lowStockAlertThreshold: {
+    type: Number,
+    min: 0,
+    default: null
+  },
   // End of product
 
   // Start of Brand

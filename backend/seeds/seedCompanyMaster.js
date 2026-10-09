@@ -33,6 +33,7 @@ const IMAGE_FORMATS = ['jpg', 'png', 'jpeg'];
 const ASSIGNED_MODULE_CODES = [
     'DASHBOARD',
     'PRODUCTS',
+    'INVENTORY',
     'CATEGORIES',
     'ORDERS',
     'CUSTOMERS',
@@ -107,6 +108,7 @@ const COMPANY_MASTER = {
     isBulkUpdatingProductsAllowed: false,
     isCloningProductAllowed: false,
     isBulkPricingFeatureOn: false,
+    isReceivingLowStockAlertFeatureOn: true,
     isReturnFeatureOn: false,
     isExchangeFeatureOn: false,
 

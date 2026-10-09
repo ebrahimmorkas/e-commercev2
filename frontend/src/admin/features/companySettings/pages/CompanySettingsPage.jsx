@@ -5,7 +5,7 @@ import Tabs from '../../../../components/common/Tabs';
 import Button from '../../../../components/common/Buttons';
 import Spinner from '../../../../components/common/Spinner';
 import { useCompanySettings } from '../hooks/useCompanySettings';
-import { emptyDraft, mapApiSettingsToDraft, buildSavePayload, invalidEmails } from '../utils/companySettingsDraft';
+import { emptyDraft, mapApiSettingsToDraft, buildSavePayload, invalidEmails, isValidLowStockThreshold } from '../utils/companySettingsDraft';
 import { useToast } from '../../../../components/common/Toast';
 import GeneralInfoSection from '../components/GeneralInfoSection';
 import PoliciesSection from '../components/PoliciesSection';
@@ -61,6 +61,9 @@ const CompanySettingsPage = () => {
     if (invalidEmails(draft.ccList).length || invalidEmails(draft.bccList).length) {
       nextErrors.emailLists = 'Fix the invalid CC/BCC email addresses';
     }
+    if (isLowStockAlertOn && draft.receiveLowStockAlert && !isValidLowStockThreshold(draft.lowStockAlertThreshold)) {
+      nextErrors.lowStockAlertThreshold = 'Enter a whole number (0 or more)';
+    }
     setFormErrors(nextErrors);
     return nextErrors;
   };
@@ -73,6 +76,9 @@ const CompanySettingsPage = () => {
       } else if (errors.taxRegistrationNumber) {
         setActiveTab('invoice');
         toast.error('Not saved - please fix the fields marked in red on the Invoice tab.');
+      } else if (errors.lowStockAlertThreshold) {
+        setActiveTab('product');
+        toast.error('Not saved - enter the stock quantity for the low stock alert on the Product tab.');
       } else {
         setActiveTab('email');
         toast.error(`Not saved - ${errors.emailLists}.`);
@@ -90,7 +96,10 @@ const CompanySettingsPage = () => {
       toast.error('Fill in the Admin Name and Admin Email on the General tab to create your settings.');
       return;
     }
-    const { fields, files } = buildSavePayload(draft, { bankTransferEnabled: !!companyMaster?.showPaymentQRCodeAndBankDetails });
+    const { fields, files } = buildSavePayload(draft, {
+      bankTransferEnabled: !!companyMaster?.showPaymentQRCodeAndBankDetails,
+      lowStockAlertEnabled: isLowStockAlertOn,
+    });
     if (!fields.adminName?.trim()) delete fields.adminName;
     if (!fields.adminEmail?.trim()) delete fields.adminEmail;
     await save(fields, files);
@@ -102,6 +111,9 @@ const CompanySettingsPage = () => {
   // back on. Unknown (master data not loaded) shows everything.
   const flagOn = (flag) => companyMaster?.[flag] !== false;
   const isInvoiceTabOn = flagOn('isPDFDownloadableFeatureOn');
+  // Low stock alert: only offered once it is known to be on for the account
+  // (WebsiteMaster AND CompanyMaster) - unlike the tabs above, unknown hides it.
+  const isLowStockAlertOn = companyMaster?.isReceivingLowStockAlertFeatureOn === true;
 
   const sectionProps = { draft, onChange: patchDraft };
   // The master email switch (WebsiteMaster AND CompanyMaster); before the
@@ -114,7 +126,7 @@ const CompanySettingsPage = () => {
     { key: 'general', label: 'General', content: <GeneralInfoSection {...sectionProps} errors={formErrors} /> },
     { key: 'policies', label: 'Policies', content: <PoliciesSection {...sectionProps} /> },
     { key: 'storefront', label: 'Storefront', content: <StorefrontSection {...sectionProps} companyMaster={companyMaster} catalogue={settings?.catalogue || null} settingsExist={exists} /> },
-    { key: 'product', label: 'Product', content: <ProductSection {...sectionProps} /> },
+    { key: 'product', label: 'Product', content: <ProductSection {...sectionProps} errors={formErrors} isLowStockAlertOn={isLowStockAlertOn} /> },
     { key: 'cartOrder', label: 'Cart & Order', content: <CartOrderSection {...sectionProps} orderSteps={orderSteps} companyMaster={companyMaster} /> },
     { key: 'payment', label: 'Payment & Bank', content: <PaymentBankSection {...sectionProps} companyMaster={companyMaster} /> },
     // Email and its Discount/Free Cash email settings only while email is on

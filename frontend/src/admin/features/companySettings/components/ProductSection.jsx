@@ -1,11 +1,15 @@
 import Switch from '../../../../components/common/Switch';
+import InputField from '../../../../components/common/InputField';
 import theme from '../theme/theme';
 
 /**
  * @param {Object} props.draft
  * @param {(patch: Object) => void} props.onChange
+ * @param {Object} props.errors - Field errors from the page's validation
+ * @param {boolean} props.isLowStockAlertOn - Low stock alert is on for the account
+ *   (WebsiteMaster AND CompanyMaster); its settings are hidden otherwise.
  */
-const ProductSection = ({ draft, onChange }) => {
+const ProductSection = ({ draft, onChange, errors = {}, isLowStockAlertOn = false }) => {
   const set = (patch) => onChange(patch);
 
   return (
@@ -42,6 +46,39 @@ const ProductSection = ({ draft, onChange }) => {
         onChange={(e) => set({ useShortNameForBrand: e.target.checked })}
         color={theme.switch.color}
       />
+
+      {isLowStockAlertOn && (
+        <div className="border border-gray-200 rounded-lg p-4 space-y-4">
+          <Switch
+            label="Receive Low Stock Alert"
+            description="Get an email on your admin email when the stock of a product size runs low. These emails count towards your email limit."
+            checked={draft.receiveLowStockAlert}
+            onChange={(e) => set({ receiveLowStockAlert: e.target.checked })}
+            color={theme.switch.color}
+          />
+          {draft.receiveLowStockAlert && (
+            <div className="max-w-sm">
+              <InputField
+                type="number"
+                label="Alert me when stock reaches"
+                name="lowStockAlertThreshold"
+                min={0}
+                step={1}
+                required
+                placeholder="e.g. 5"
+                value={draft.lowStockAlertThreshold}
+                onChange={(e) => set({ lowStockAlertThreshold: e.target.value })}
+                error={errors.lowStockAlertThreshold}
+              />
+              <p className={`mt-1 text-xs ${theme.text.muted}`}>
+                Applies to every product size. With 5, you are emailed as soon as a size&apos;s stock becomes 5 (or
+                less). You are emailed once, and again only after the size was restocked above this number and ran low
+                once more. Items at or below this number are also marked &quot;Low stock&quot; in Inventory.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

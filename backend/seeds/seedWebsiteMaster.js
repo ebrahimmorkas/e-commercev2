@@ -68,6 +68,7 @@ const WEBSITE_MASTER = {
     isCloningProductAllowed: true,
     isBulkUploadForProductsFeatureOn: true,
     isBulkUpdatingProductsAllowed: true,
+    isReceivingLowStockAlertFeatureOn: true,
     isReturnFeatureOn: true,
     isExchangeFeatureOn: true,
 

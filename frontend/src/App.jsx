@@ -18,6 +18,7 @@ import EmailTemplatesPage from './admin/masters/emailTemplate/pages/EmailTemplat
 import CompanySettingsPage from './admin/features/companySettings/pages/CompanySettingsPage';
 import DeliveryAgentsPage from './admin/features/deliveryAgents/pages/DeliveryAgentsPage';
 import CouriersPage from './admin/masters/courier/pages/CouriersPage';
+import InventoryPage from './admin/features/inventory/pages/InventoryPage';
 import SendEmailPage from './admin/features/sendEmail/pages/SendEmailPage';
 import MyDeliveriesPage from './admin/features/myDeliveries/pages/MyDeliveriesPage';
 import { DeliveryAgentIcon } from './components/ui/Sidebar/icons';
@@ -128,6 +129,8 @@ function App() {
           <DeliveryAgentsPage />
         ) : effectiveActivePage === 'couriers' ? (
           <CouriersPage />
+        ) : effectiveActivePage === 'inventory' ? (
+          <InventoryPage />
         ) : effectiveActivePage === 'sendEmail' ? (
           // Keyed so a new hand-off from Customers starts a fresh form.
           <SendEmailPage key={sendEmailPrefill ? sendEmailPrefill.map((c) => c._id).join(',') : 'blank'} prefillCustomers={sendEmailPrefill} />
