@@ -38,7 +38,28 @@ module.exports = {
     // resinArts only ever sold within India and stored no country.
     COUNTRY_SHORT_NAME: 'IN',
 
+    // The new store needs a state on every customer. An old customer who never
+    // filled one in is given this state (a name from lib/indiaLocations.js).
+    DEFAULT_STATE_NAME: 'Maharashtra',
+
     // Stamped on every migrated product / variant / size (the app itself
     // writes MANUAL, CLONED ... here).
-    REMARKS: 'MIGRATED_FROM_RESINARTS'
+    REMARKS: 'MIGRATED_FROM_RESINARTS',
+
+    // 07-companySettings: new policy field <- the old field(s) it is built
+    // from. The old store kept "return" and "refund" as two policies, the new
+    // one has a single "return and refund" policy: they are joined in this
+    // order, and a source with a heading gets that heading above its text
+    // (the old refund policy has no title of its own). The new store's
+    // cancelPolicy has no old counterpart and is left alone.
+    POLICY_FIELDS: {
+        privacyPolicy: [{ field: 'privacyPolicy' }],
+        termsAndConditions: [{ field: 'termsAndConditions' }],
+        aboutUs: [{ field: 'aboutUs' }],
+        shippingPolicy: [{ field: 'shippingPolicy' }],
+        returnRefundPolicy: [
+            { field: 'returnPolicy' },
+            { field: 'refundPolicy', heading: 'Refund Policy' }
+        ]
+    }
 };

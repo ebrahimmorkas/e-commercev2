@@ -175,6 +175,14 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: true
     },
+    // Low stock alert emails to the vendor's own admin email (two-level,
+    // website AND company) - see services/lowStockAlertService.js. Underneath
+    // it the vendor switches it on and sets the threshold in Company
+    // Settings > Product (receiveLowStockAlert / lowStockAlertThreshold).
+    isReceivingLowStockAlertFeatureOn: {
+        type: Boolean,
+        default: false
+    },
     isBrandFeatureOn: {
         type: Boolean,
         default: true
@@ -427,6 +435,13 @@ const websiteMasterSchema = mongoose.Schema({
     // CompanyMaster.showPaymentQRCodeAndBankDetails via checkFeatureOnOrOff,
     // see companySettingsService.js.
     isShowingPaymentQRCodeAndBankDetailsFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    // Site-wide kill switch for CompanySettings.gpayNumber - separate from the
+    // QR / bank group above, paired with CompanyMaster.showGpayNumber via
+    // checkFeatureOnOrOff, see companySettingsService.js.
+    isShowingGpayNumberFeatureOn: {
         type: Boolean,
         default: false
     },

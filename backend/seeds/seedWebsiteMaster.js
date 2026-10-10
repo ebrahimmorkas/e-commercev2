@@ -68,6 +68,7 @@ const WEBSITE_MASTER = {
     isCloningProductAllowed: true,
     isBulkUploadForProductsFeatureOn: true,
     isBulkUpdatingProductsAllowed: true,
+    isReceivingLowStockAlertFeatureOn: true,
     isReturnFeatureOn: true,
     isExchangeFeatureOn: true,
 
@@ -109,6 +110,7 @@ const WEBSITE_MASTER = {
     isCODFeatureOn: true,
     mainPaymentGateway: null,            // null = each vendor uses its own CompanyMaster.paymentGateway
     isShowingPaymentQRCodeAndBankDetailsFeatureOn: true,
+    isShowingGpayNumberFeatureOn: true,
     isShowingPartnerCertificateFeatureOn: true,
 
     // Free Cash

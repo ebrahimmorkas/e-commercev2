@@ -63,6 +63,9 @@ const getSendEmailAccess = (companyMasterData, websiteMasterData) => {
                 && isBothOn('isSendEmailModuleOn', websiteMasterData, companyMasterData),
             canEmailOutOfStore: isBothOn('isSendingEmailToUsersOutOfStoreAllowed', websiteMasterData, companyMasterData),
             isCcAndBccOn: isBothOn('isCcAndBccFeatureOn', websiteMasterData, companyMasterData),
+            // Whether the body may carry links - the same two-level check
+            // emailService.validateContentRules enforces on send.
+            isEmbeddingLinksAllowed: isBothOn('isEmbeddingLinksAllowed', websiteMasterData, companyMasterData),
             attachments: {
                 isOn: isBothOn('isAddingOfAttachmentAllowed', websiteMasterData, companyMasterData),
                 maxCount: companyMasterData?.numberOfAttachmentsAllowedInSendEmail ?? null,

@@ -452,7 +452,10 @@ const getTemplateContentOptions = (companySettingsData, companyMasterData, websi
                 maxCount: companyMasterData?.numberOfImageAllowed ?? null,
                 items: (companySettingsData?.emailImages || []).map((img) => ({ _id: img._id, name: img.name, url: img.url }))
             },
-            isInvoiceOptionOn: isInvoiceOptionOn(websiteMasterData, companyMasterData)
+            isInvoiceOptionOn: isInvoiceOptionOn(websiteMasterData, companyMasterData),
+            // Whether the body may carry links - the same two-level check
+            // emailService.validateContentRules enforces on save.
+            isEmbeddingLinksAllowed: isBothOn('isEmbeddingLinksAllowed', websiteMasterData, companyMasterData)
         };
     } catch (err) {
         throw err;

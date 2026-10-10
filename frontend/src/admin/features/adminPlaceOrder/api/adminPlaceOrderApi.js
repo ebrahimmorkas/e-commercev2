@@ -29,6 +29,9 @@ export const getCategories = () => apiRequest(`${BASE}/categories`);
 /** Active products, narrowed to a category (and everything beneath it). */
 export const getProducts = (categoryId) => apiRequest(`${BASE}/products${toQuery({ categoryId })}`);
 
+/** Active products matching the text (name, code, variant, size, SKU, barcode) - for the product search box. */
+export const searchProducts = (search) => apiRequest(`${BASE}/products${toQuery({ search })}`);
+
 /** { product, allowOutOfStockProductsAdding, variants: [{ variantId, variantName, sizes: [...] }] } */
 export const getProductOptions = (productId) => apiRequest(`${BASE}/products/${productId}/options`);
 
@@ -60,6 +63,7 @@ export default {
   getUserAddresses,
   getCategories,
   getProducts,
+  searchProducts,
   getProductOptions,
   placeOrder,
   previewTax,

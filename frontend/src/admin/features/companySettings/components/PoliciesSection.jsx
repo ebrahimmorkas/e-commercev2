@@ -56,6 +56,13 @@ const PoliciesSection = ({ draft, onChange }) => {
         helperText="Shown to customers alongside your other storefront policies."
       />
       <HtmlEditor
+        label="Shipping Policy"
+        name="shippingPolicy"
+        rows={6}
+        value={draft.shippingPolicy}
+        onChange={(html) => set({ shippingPolicy: html })}
+      />
+      <HtmlEditor
         label="Terms and Conditions"
         name="termsAndConditions"
         rows={6}

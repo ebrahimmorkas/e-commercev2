@@ -152,6 +152,13 @@ const companySettingsSchema = new mongoose.Schema({
     enum: ['SAVINGS', 'CURRENT'],
     default: null
   },
+  // GPay / UPI-style number customers can pay to - gated on its own by
+  // CompanyMaster.showGpayNumber (+ WebsiteMaster.isShowingGpayNumberFeatureOn).
+  gpayNumber: {
+    type: String,
+    trim: true,
+    default: null
+  },
   // End of Bank Transfer
 
   // Gated by CompanyMaster.isShowingPartnerCertificateFeatureOn (+
@@ -210,6 +217,10 @@ const companySettingsSchema = new mongoose.Schema({
     default: ''
   },
   returnRefundPolicy: {
+    type: String,
+    default: ''
+  },
+  shippingPolicy: {
     type: String,
     default: ''
   },
@@ -377,6 +388,21 @@ const companySettingsSchema = new mongoose.Schema({
   isStockCloningAllowed: {
     type: Boolean,
     default: false
+  },
+  // Low stock alert email to adminEmail. Only takes effect while
+  // isReceivingLowStockAlertFeatureOn is on in WebsiteMaster AND CompanyMaster
+  // - see services/lowStockAlertService.js.
+  receiveLowStockAlert: {
+    type: Boolean,
+    default: false
+  },
+  // One threshold for every product size: the alert goes out when a size's
+  // stock drops to this number or below (5 = emailed when stock becomes 5).
+  // Also the Inventory module's low stock indicator while the alert is on.
+  lowStockAlertThreshold: {
+    type: Number,
+    min: 0,
+    default: null
   },
   // End of product
 
@@ -610,6 +636,13 @@ const companySettingsSchema = new mongoose.Schema({
   // showAnnouncements/showBanners/showReviewsToCustomers above - checked in
   // paymentService.initiateOnlinePayment, not at the schema level.
   isPaymentGatewayFeatureOn: {
+    type: Boolean,
+    default: true
+  },
+  // The vendor's own on/off switch for Cash on Delivery - sits BELOW
+  // WebsiteMaster.isCODFeatureOn + CompanyMaster.isCODFeatureOn. COD is offered
+  // at checkout only when all three are on (see paymentService).
+  isCODFeatureOn: {
     type: Boolean,
     default: true
   },

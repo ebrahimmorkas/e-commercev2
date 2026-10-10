@@ -9,9 +9,10 @@ import { useEditOrderProducts } from '../hooks/useEditOrderProducts';
 import { formatOrderMoney } from '../utils/formatOrder';
 import { bulkUnitPrice } from '../../../../utils/bulkPricing';
 import { convertAmount } from '../../../../utils/money';
-import { previewAddProductsTax } from '../api/orderAdminApi';
+import { previewAddProductsTax, searchEditProducts } from '../api/orderAdminApi';
 import { useTaxPreview } from '../../adminPlaceOrder/hooks/useTaxPreview';
 import TaxPreviewRow from '../../adminPlaceOrder/components/TaxPreviewRow';
+import ProductSearchBox from '../../adminPlaceOrder/components/ProductSearchBox';
 import theme from '../theme/theme';
 
 const MAX_QUANTITY = 100000;
@@ -98,6 +99,21 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
     setVariantId('');
     setSizeId('');
     picker.loadProductOptions(value);
+  };
+
+  // A product picked from the search box: its main / sub category and the
+  // Product dropdown are filled in; variant and size are picked next.
+  const handleProductSearchPick = (product) => {
+    const main = product.mainCategory || '';
+    const sub = product.subCategory || '';
+    setMainCategory(main);
+    setSubCategory(sub);
+    setProductId(product._id);
+    setVariantId('');
+    setSizeId('');
+    setLineError('');
+    picker.loadProductOptions(product._id);
+    picker.loadProducts(sub || main || undefined, product);
   };
 
   const addItem = () => {
@@ -207,6 +223,13 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <h4 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Add products to this order</h4>
+
+      <div>
+        <ProductSearchBox searchProducts={searchEditProducts} onSelect={handleProductSearchPick} />
+        <p className="mt-1 text-xs text-gray-500">
+          Search by product name, code, variant, size, SKU or barcode and pick the product from the list - its category and product are filled in below. Or browse by category.
+        </p>
+      </div>
 
       <CategoryPathPicker
         categories={picker.categories}

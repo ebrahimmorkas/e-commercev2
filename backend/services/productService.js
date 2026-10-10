@@ -24,6 +24,7 @@ const crypto = require('crypto');
 const path = require('path');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
+const inventoryService = require('./inventoryService');
 
 // Normalizes a size's `image` for reuse in a freshly-built plain object
 // (e.g. carrying it forward across an update, see updateProduct below).
@@ -1187,6 +1188,12 @@ const createProduct = async (vendorId, userId, companyMasterData, websiteMasterD
             isSaved = true;
 
             logger.logInfo(1, 0, 'Product created successfully', { vendorId, productId: product._id });
+
+            // Inventory history: the stock each size was created with. Covers the
+            // bulk excel upload too (it creates through this function). The product
+            // is already saved, so a failure here is only logged.
+            await inventoryService.recordInitialStock(product, userId)
+                .catch((err) => logger.logWarning('createProduct - initial stock was not recorded in the inventory history', { vendorId, productId: product._id, err }));
 
             return common.returnResult(true, 201, 'Product created successfully', { product });
         } finally {
@@ -3459,6 +3466,11 @@ const cloneOneProduct = async (vendorId, userId, sourceProduct, companySettingsD
         });
 
         await clonedProduct.save();
+
+        // Inventory history: the stock each cloned size starts with (only when
+        // the vendor allows stock to be cloned - otherwise every size starts at 0).
+        await inventoryService.recordInitialStock(clonedProduct, userId)
+            .catch((err) => logger.logWarning('cloneProduct - initial stock was not recorded in the inventory history', { vendorId, productId: clonedProduct._id, err }));
 
         return common.returnResult(true, 201, 'Product cloned successfully', { product: clonedProduct });
     } catch (err) {

@@ -453,6 +453,15 @@ const companyMasterSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // Vendor entitlement: low stock alert emails to the vendor's own admin
+    // email. Paired with WebsiteMaster.isReceivingLowStockAlertFeatureOn; the
+    // vendor's own on/off choice and threshold underneath are
+    // CompanySettings.receiveLowStockAlert / lowStockAlertThreshold. See
+    // services/lowStockAlertService.js.
+    isReceivingLowStockAlertFeatureOn: {
+        type: Boolean,
+        default: false
+    },
 
     // Brand
     isBrandFeatureOn: {
@@ -700,6 +709,13 @@ const companyMasterSchema = mongoose.Schema({
     // Sits below WebsiteMaster.isShowingPaymentQRCodeAndBankDetailsFeatureOn -
     // see companySettingsService.js.
     showPaymentQRCodeAndBankDetails: {
+        type: Boolean,
+        default: false
+    },
+    // Vendor entitlement: whether this vendor may fill CompanySettings.gpayNumber.
+    // Independent of showPaymentQRCodeAndBankDetails; sits below
+    // WebsiteMaster.isShowingGpayNumberFeatureOn - see companySettingsService.js.
+    showGpayNumber: {
         type: Boolean,
         default: false
     },

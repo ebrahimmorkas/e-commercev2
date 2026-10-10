@@ -26,13 +26,14 @@ const BankRow = ({ label, value }) =>
  * @param {Object} props.online - { scannerUrl, bank, whatsappNumber, companyName } from /payments/options.
  * @param {Object} props.order - The placed order ({ orderNumber, grandTotal }).
  * @param {string} [props.customerName]
- * @param {Function} props.onDone - Close and go to the order.
+ * @param {string} [props.doneLabel] - Text of the close button.
+ * @param {Function} props.onDone - Close (checkout goes on to the order).
  */
-const BankTransferModal = ({ isOpen, online, order, customerName = '', onDone }) => {
+const BankTransferModal = ({ isOpen, online, order, customerName = '', doneLabel = 'View my order', onDone }) => {
   const { formatMoney } = useCurrency();
   if (!online || !order) return null;
 
-  const { scannerUrl, bank, whatsappNumber, companyName } = online;
+  const { scannerUrl, bank, gpayNumber, whatsappNumber, companyName } = online;
   const amount = formatMoney(order.grandTotal);
   const digits = whatsappDigits(whatsappNumber);
 
@@ -60,7 +61,7 @@ const BankTransferModal = ({ isOpen, online, order, customerName = '', onDone })
             onClick={onDone}
             className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 cursor-pointer"
           >
-            View my order
+            {doneLabel}
           </button>
           {whatsappHref && (
             <a
@@ -79,11 +80,21 @@ const BankTransferModal = ({ isOpen, online, order, customerName = '', onDone })
         Your order is placed. Pay the amount using the QR code or bank details below, then tell us on WhatsApp so we can confirm it.
       </p>
 
-      <div className={`grid gap-6 ${scannerUrl && bank ? 'sm:grid-cols-2' : 'grid-cols-1'}`}>
-        {scannerUrl && (
+      <div className={`grid gap-6 ${(scannerUrl || gpayNumber) && bank ? 'sm:grid-cols-2' : 'grid-cols-1'}`}>
+        {(scannerUrl || gpayNumber) && (
           <div className="flex flex-col items-center">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Scan to pay</h3>
-            <img src={scannerUrl} alt="Payment QR code" className="w-full max-w-60 rounded-lg border border-slate-200 bg-white object-contain" />
+            {scannerUrl && (
+              <>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Scan to pay</h3>
+                <img src={scannerUrl} alt="Payment QR code" className="w-full max-w-60 rounded-lg border border-slate-200 bg-white object-contain" />
+              </>
+            )}
+            {gpayNumber && (
+              <div className={`text-center ${scannerUrl ? 'mt-4' : ''}`}>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">GPay number</h3>
+                <p className="text-base font-semibold text-slate-900 break-all">{gpayNumber}</p>
+              </div>
+            )}
           </div>
         )}
 

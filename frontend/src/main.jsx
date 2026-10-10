@@ -10,6 +10,7 @@ import RealtimeProvider from './admin/realtime/RealtimeProvider'
 import ClientRealtimeProvider from './client/realtime/ClientRealtimeProvider'
 import CurrencyProvider from './client/currency/CurrencyProvider'
 import ServerErrorScreen from './components/common/ServerErrorScreen'
+import DocumentBranding from './components/common/DocumentBranding/DocumentBranding'
 
 // No router yet - the admin panel lives behind /admin, everything else is
 // the client-facing storefront demo. Each side owns its own AuthProvider
@@ -39,6 +40,7 @@ createRoot(document.getElementById('root')).render(
     <ToastProvider>
       {/* Full-page error for any request that failed on the server (backend logException). */}
       <ServerErrorScreen homePath={isAdminRoute ? '/admin' : '/'}>
+        <DocumentBranding titleSuffix={isAdminRoute ? 'Admin' : ''} />
         <Root />
       </ServerErrorScreen>
     </ToastProvider>

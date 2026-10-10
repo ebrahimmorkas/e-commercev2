@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { VALID_REVOKE_ACTIONS } = require('../constants/freeCashUsageConstants');
 
 const cashUsageHistorySchema = new mongoose.Schema(
     {
@@ -54,6 +55,32 @@ const cashRefundHistorySchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: "OrderReturn",
             required: true
+        }
+    },
+    {
+        _id: true
+    }
+);
+
+// One revoke, or one restore after a revoke (the customer was put back on the
+// campaign's list). isRevoked/revokedBy/revokedDate below only hold the
+// latest state - this keeps every one, for the Free Cash Usage history.
+const revokeHistorySchema = new mongoose.Schema(
+    {
+        action: {
+            type: String,
+            enum: VALID_REVOKE_ACTIONS,
+            required: true
+        },
+
+        date: {
+            type: Date,
+            required: true
+        },
+
+        by: {
+            type: mongoose.Types.ObjectId,
+            default: null
         }
     },
     {
@@ -148,6 +175,11 @@ const userFreeCashSchema = new mongoose.Schema(
 
         cashRefundHistory: {
             type: [cashRefundHistorySchema],
+            default: []
+        },
+
+        revokeHistory: {
+            type: [revokeHistorySchema],
             default: []
         },
 

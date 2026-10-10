@@ -1,5 +1,6 @@
 const { createUserAdminSchema } = require('../../../middlewares/validations/userValidations');
 const { resolveState, resolveCityName } = require('./indiaLocations');
+const config = require('../config');
 
 // The exact rules the new store applies to these fields when an admin adds a
 // customer (userValidations.js) - reused rather than re-typed.
@@ -10,21 +11,32 @@ const FIELD_RULES = {
     whatsapp_no: createUserAdminSchema.extract('whatsapp_no')
 };
 
+// "76663 56667" -> "7666356667": the old store let a number be typed with
+// spaces in it, the new one takes digits only.
+const cleanPhoneNumber = (typedNumber) => {
+    try {
+        return String(typedNumber || '').replace(/\s+/g, '');
+    } catch (err) {
+        throw err;
+    }
+};
+
 // Old customer -> the new store's field names, with the state/city text
-// resolved to proper names.
+// resolved to proper names. A customer with no state gets the default one.
 const mapCustomer = (source) => {
     try {
         const name = [source.first_name, source.middle_name, source.last_name]
             .map(part => String(part || '').trim())
             .filter(Boolean)
             .join(' ');
+        const typedState = String(source.state || '').trim();
 
         return {
             name,
             email: String(source.email || '').trim().toLowerCase(),
-            phone_no: String(source.phone_number || '').trim(),
-            whatsapp_no: String(source.whatsapp_number || '').trim() || undefined,
-            state: resolveState(source.state),
+            phone_no: cleanPhoneNumber(source.phone_number),
+            whatsapp_no: cleanPhoneNumber(source.whatsapp_number) || undefined,
+            state: resolveState(typedState || config.DEFAULT_STATE_NAME),
             cityName: resolveCityName(source.city)
         };
     } catch (err) {
@@ -47,11 +59,11 @@ const findRejectionReason = (source, mapped) => {
             }
         }
 
-        if (!String(source.state || '').trim()) {
-            return 'no state in the old data - the new store requires one';
-        }
         if (!mapped.state) {
-            return `state "${source.state}" is not a recognised Indian state - add it to STATE_ALIASES in lib/indiaLocations.js`;
+            const typedState = String(source.state || '').trim();
+            return typedState
+                ? `state "${typedState}" is not a recognised Indian state - add it to STATE_ALIASES in lib/indiaLocations.js`
+                : `no state in the old data, and DEFAULT_STATE_NAME "${config.DEFAULT_STATE_NAME}" in config.js is not a recognised Indian state`;
         }
 
         return null;

@@ -26,6 +26,7 @@ const PaymentBankSection = ({ draft, onChange, companyMaster }) => {
   const set = (patch) => onChange(patch);
 
   const bankTransferEnabled = !!companyMaster?.showPaymentQRCodeAndBankDetails;
+  const gpayEnabled = !!companyMaster?.showGpayNumber;
   const partnerCertificateEnabled = !!companyMaster?.isShowingPartnerCertificateFeatureOn;
 
   return (
@@ -36,6 +37,16 @@ const PaymentBankSection = ({ draft, onChange, companyMaster }) => {
           description="Turn off to fall back to COD without waiting on the platform admin (e.g. if your gateway subscription lapses)."
           checked={draft.isPaymentGatewayFeatureOn}
           onChange={(e) => set({ isPaymentGatewayFeatureOn: e.target.checked })}
+          color={theme.switch.color}
+        />
+      </div>
+
+      <div>
+        <Switch
+          label="Cash on Delivery"
+          description="Offer Cash on Delivery at checkout. It only appears when the platform has also enabled it for your store."
+          checked={draft.isCODFeatureOn}
+          onChange={(e) => set({ isCODFeatureOn: e.target.checked })}
           color={theme.switch.color}
         />
       </div>
@@ -101,6 +112,23 @@ const PaymentBankSection = ({ draft, onChange, companyMaster }) => {
               value={draft.bankAccountType}
               onChange={(val) => set({ bankAccountType: val })}
               clearable
+            />
+          </div>
+        </div>
+      )}
+
+      {gpayEnabled && (
+        <div className="pt-4 border-t border-gray-100">
+          <h3 className={`text-sm font-semibold ${theme.text.heading}`}>GPay</h3>
+          <p className={`text-xs ${theme.text.muted} mt-0.5 mb-3`}>
+            Shown to customers as a number they can pay to.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <InputField
+              label="GPay Number"
+              placeholder="e.g. +971 50 123 4567"
+              value={draft.gpayNumber}
+              onChange={(e) => set({ gpayNumber: e.target.value })}
             />
           </div>
         </div>

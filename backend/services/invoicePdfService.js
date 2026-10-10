@@ -42,17 +42,21 @@ const logoCache = new Map();
 const LOGO_CACHE_MAX = 20;
 const LOGO_TIMEOUT_MS = 4000;
 
-const toPdfFriendlyLogoUrl = (url) =>
+const toPdfFriendlyLogoUrl = (url, width = 300) =>
     // Cloudinary can convert + shrink on the fly; pdfmake only embeds PNG/JPEG.
-    /res\.cloudinary\.com/.test(url) && url.includes('/upload/') ? url.replace('/upload/', '/upload/f_jpg,w_300/') : url;
+    /res\.cloudinary\.com/.test(url) && url.includes('/upload/') ? url.replace('/upload/', `/upload/f_jpg,w_${width}/`) : url;
 
-const fetchLogoDataUrl = async (logoUrl) => {
+// Product thumbnails use the same download-and-embed path with a smaller Cloudinary width and a bigger cache.
+const PRODUCT_IMAGE_WIDTH = 120;
+const PRODUCT_IMAGE_CACHE_MAX = 200;
+
+const fetchLogoDataUrl = async (logoUrl, { width = 300, cache = logoCache, cacheMax = LOGO_CACHE_MAX } = {}) => {
     if (!logoUrl || !/^https?:\/\//i.test(logoUrl)) return null;
-    if (logoCache.has(logoUrl)) return logoCache.get(logoUrl);
+    if (cache.has(logoUrl)) return cache.get(logoUrl);
 
     let dataUrl = null;
     try {
-        const response = await fetch(toPdfFriendlyLogoUrl(logoUrl), { signal: AbortSignal.timeout(LOGO_TIMEOUT_MS) });
+        const response = await fetch(toPdfFriendlyLogoUrl(logoUrl, width), { signal: AbortSignal.timeout(LOGO_TIMEOUT_MS) });
         const contentType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
         if (response.ok && (contentType === 'image/png' || contentType === 'image/jpeg')) {
             const bytes = Buffer.from(await response.arrayBuffer());
@@ -62,10 +66,14 @@ const fetchLogoDataUrl = async (logoUrl) => {
         logger.logInfo(0, 1, 'Invoice logo could not be fetched - rendering without it', { logoUrl, reason: err.message });
     }
 
-    if (logoCache.size >= LOGO_CACHE_MAX) logoCache.delete(logoCache.keys().next().value);
-    logoCache.set(logoUrl, dataUrl);
+    if (cache.size >= cacheMax) cache.delete(cache.keys().next().value);
+    cache.set(logoUrl, dataUrl);
     return dataUrl;
 };
+
+const productImageCache = new Map();
+const fetchProductImageDataUrl = (url) =>
+    fetchLogoDataUrl(url, { width: PRODUCT_IMAGE_WIDTH, cache: productImageCache, cacheMax: PRODUCT_IMAGE_CACHE_MAX });
 
 // ---- Building blocks --------------------------------------------------------------------
 const boxLayout = {
@@ -147,7 +155,9 @@ const buildInfoBox = (invoice, document = 'invoice') => {
     };
 };
 
-const buildItemsTable = (invoice, money) => {
+// imageKeys[i] is the pdfmake image name for line i (or null) - the column only exists when at least one line has a picture.
+const buildItemsTable = (invoice, money, imageKeys = []) => {
+    const hasImages = imageKeys.some(Boolean);
     const tax = invoice.taxLabel;
     const code = invoice.currencyCode;
     const head = (title, sub, alignment = 'right') => ({
@@ -158,6 +168,7 @@ const buildItemsTable = (invoice, money) => {
 
     const body = [[
         head('#', null, 'center'),
+        ...(hasImages ? [head('Image', null, 'center')] : []),
         head('Description of Goods', null, 'left'),
         head('Qty', null, 'center'),
         head('Rate', `(${code})`),
@@ -170,6 +181,9 @@ const buildItemsTable = (invoice, money) => {
     invoice.lines.forEach((line, index) => {
         body.push([
             { text: String(index + 1), alignment: 'center' },
+            ...(hasImages
+                ? [imageKeys[index] ? { image: imageKeys[index], fit: [30, 30], alignment: 'center' } : { text: '' }]
+                : []),
             {
                 stack: [
                     { text: line.description },
@@ -189,6 +203,7 @@ const buildItemsTable = (invoice, money) => {
     const totalCell = (value, alignment = 'right') => ({ text: value, bold: true, alignment, fillColor: COLORS.totalFill });
     body.push([
         totalCell('', 'center'),
+        ...(hasImages ? [totalCell('', 'center')] : []),
         totalCell('Total', 'left'),
         totalCell(String(invoice.totals.totalQuantity), 'center'),
         totalCell(''),
@@ -199,7 +214,7 @@ const buildItemsTable = (invoice, money) => {
     ]);
 
     return {
-        table: { headerRows: 1, dontBreakRows: true, widths: [16, '*', 30, 50, 58, 32, 48, 62], body },
+        table: { headerRows: 1, dontBreakRows: true, widths: hasImages ? [16, 36, '*', 30, 50, 58, 32, 48, 62] : [16, '*', 30, 50, 58, 32, 48, 62], body },
         layout: boxLayout,
         fontSize: 8
     };
@@ -315,7 +330,7 @@ const buildSignatureBlock = (invoice) => ({
 
 // One full copy of the document (an invoice or a credit note), as pdfmake content. Called once per
 // printed copy so each copy gets its own fresh objects.
-const buildDocumentContent = (invoice, money, hasLogo, { document, copyLabel, isFirstCopy }) => {
+const buildDocumentContent = (invoice, money, hasLogo, { document, copyLabel, isFirstCopy, imageKeys }) => {
     const isCreditNote = document === 'credit-note';
     const title = isCreditNote
         ? (invoice.isTaxInvoice ? 'TAX CREDIT NOTE' : 'CREDIT NOTE')
@@ -342,7 +357,7 @@ const buildDocumentContent = (invoice, money, hasLogo, { document, copyLabel, is
         ...notice,
         buildHeader(invoice, hasLogo),
         buildInfoBox(invoice, document),
-        buildItemsTable(invoice, money),
+        buildItemsTable(invoice, money, imageKeys),
         buildTotalsBox(invoice, money),
         buildWordsBox(invoice, document),
         lower,
@@ -355,9 +370,10 @@ const buildDocumentContent = (invoice, money, hasLogo, { document, copyLabel, is
  * @param {Object} [options]
  * @param {'invoice'|'credit-note'} [options.document] - a credit note needs invoice.creditNote
  * @param {1|2} [options.copies] - 2 prints an "Original" and a "Duplicate" copy in the same file
+ * @param {Array<string|null>} [options.lineImageUrls] - product picture URL per invoice line (see invoiceService.renderPdf)
  * @returns {Promise<Buffer>}
  */
-const renderInvoicePdf = async (invoice, { document = 'invoice', copies = 1 } = {}) => {
+const renderInvoicePdf = async (invoice, { document = 'invoice', copies = 1, lineImageUrls = [] } = {}) => {
     try {
         const decimals = invoice.currencyDecimalPlaces ?? 2;
         const locale = invoice.currencyCode === 'INR' ? 'en-IN' : 'en-US';
@@ -367,9 +383,14 @@ const renderInvoicePdf = async (invoice, { document = 'invoice', copies = 1 } = 
 
         const logoDataUrl = await fetchLogoDataUrl(invoice.seller.logoUrl);
 
+        // Same product on several lines is downloaded once (the cache is by URL).
+        const lineImages = await Promise.all(invoice.lines.map((_, index) => fetchProductImageDataUrl(lineImageUrls[index])));
+        const imageKeys = lineImages.map((dataUrl, index) => (dataUrl ? `line${index}` : null));
+        const lineImageMap = Object.fromEntries(lineImages.map((dataUrl, index) => [`line${index}`, dataUrl]).filter(([, dataUrl]) => dataUrl));
+
         const copyLabels = copies === 2 ? ['(Original)', '(Duplicate)'] : [''];
         const content = copyLabels.flatMap((copyLabel, index) =>
-            buildDocumentContent(invoice, money, !!logoDataUrl, { document, copyLabel, isFirstCopy: index === 0 })
+            buildDocumentContent(invoice, money, !!logoDataUrl, { document, copyLabel, isFirstCopy: index === 0, imageKeys })
         );
 
         const docTitle = isCreditNote
@@ -381,7 +402,7 @@ const renderInvoicePdf = async (invoice, { document = 'invoice', copies = 1 } = 
             pageMargins: [28, 28, 28, 44],
             defaultStyle: { font: 'Roboto', fontSize: 8.5, lineHeight: 1.15 },
             info: { title: docTitle, author: text(invoice.seller.name) },
-            ...(logoDataUrl ? { images: { logo: logoDataUrl } } : {}),
+            images: { ...(logoDataUrl ? { logo: logoDataUrl } : {}), ...lineImageMap },
             // A cancelled invoice is stamped across every page.
             ...(!isCreditNote && invoice.status === 'VOID' ? { watermark: { text: 'CANCELLED', color: '#dc2626', opacity: 0.12, bold: true, fontSize: 90 } } : {}),
             content,

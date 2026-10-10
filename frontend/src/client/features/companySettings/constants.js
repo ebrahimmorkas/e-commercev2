@@ -7,6 +7,7 @@ export const POLICY_LINKS = [
   { key: 'privacyPolicy', label: 'Privacy Policy', path: '/privacy-policy' },
   { key: 'cancelPolicy', label: 'Cancellation Policy', path: '/cancellation-policy' },
   { key: 'returnRefundPolicy', label: 'Return & Refund Policy', path: '/return-refund-policy' },
+  { key: 'shippingPolicy', label: 'Shipping Policy', path: '/shipping-policy' },
   { key: 'termsAndConditions', label: 'Terms & Conditions', path: '/terms-and-conditions' },
 ];
 

@@ -3,6 +3,14 @@ import { useSearchSuggestions } from '../../../features/products/hooks/useSearch
 import theme from './theme/theme';
 import { SearchIcon, CartIcon, UserIcon, LogoutIcon, ChevronDownIcon, OrdersIcon, LocationIcon } from './icons';
 import { useStorefrontCompanySettings } from '../../../features/companySettings/hooks/useStorefrontCompanySettings';
+import { useCurrency } from '../../../currency/useCurrency';
+
+// Suggestion prices arrive in the store currency; formatMoney converts and labels them.
+const formatSuggestionPrice = (product, formatMoney) => {
+  if (product.priceRange) return `${formatMoney(product.priceRange.min)} - ${formatMoney(product.priceRange.max)}`;
+  if (typeof product.price === 'number') return formatMoney(product.price);
+  return null;
+};
 
 const getInitials = (label) => {
   if (!label) return 'U';
@@ -17,6 +25,7 @@ const SearchBar = ({ onSearch, onProductSelect, onPanelOpenChange, className = '
   const [highlight, setHighlight] = useState(-1);
   const wrapperRef = useRef(null);
   const { suggestions, loading, query: trimmed } = useSearchSuggestions(query);
+  const { formatMoney } = useCurrency();
 
   // Close when clicking anywhere outside the search box.
   useEffect(() => {
@@ -123,7 +132,9 @@ const SearchBar = ({ onSearch, onProductSelect, onPanelOpenChange, className = '
                   {product.image && <img src={product.image} alt="" loading="lazy" className="h-full w-full object-contain" />}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-sm text-slate-900">{product.name}</span>
-                {product.price != null && <span className="shrink-0 text-sm text-slate-500">{product.price}</span>}
+                {formatSuggestionPrice(product, formatMoney) && (
+                  <span className="shrink-0 text-sm text-slate-500">{formatSuggestionPrice(product, formatMoney)}</span>
+                )}
               </button>
             ))}
           {!loading && suggestions.length > 0 && (

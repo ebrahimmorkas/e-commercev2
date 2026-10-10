@@ -140,6 +140,7 @@ app.use('/api/banners', bannerRoutes);
 app.use('/api/address', addressRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/inventory', require('./routes/inventoryRoutes'));
 app.use('/api/reviewRoutes', reviewRoutes);
 app.use('/api/discount', discountRoutes);
 app.use('/api/groups', groupRoutes);
@@ -155,6 +156,7 @@ app.use('/api/email-templates', emailTemplateMasterRoutes);
 app.use('/api/favorites', favoriteRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/free-cash', freeCashRoutes);
+app.use('/api/free-cash-usage', require('./routes/freeCashUsageRoutes'));
 app.use('/api/abandoned-cart', abandonedCartRoutes);
 app.use('/api/users', userRoutes);
 

@@ -17,6 +17,7 @@ const userLocationService = require('./userLocationService');
 const { PAYMENT_METHODS } = require('../constants/paymentGatewayConstants');
 const { ORDER_NOTIFICATION_TYPES } = require('../constants/orderRealtimeConstants');
 const { notifyOrderChanged } = require('./orderRealtimeService');
+const lowStockAlertService = require('./lowStockAlertService');
 const {
     USER_SEARCH_FIELDS,
     USER_DROPDOWN_DEFAULT_LIMIT,
@@ -162,7 +163,10 @@ const fetchCategories = async (vendorId, websiteMasterData, companyMasterData) =
 };
 
 // Active products only. With categoryId (the deepest category the admin has
-// picked so far) it matches that category and everything beneath it.
+// picked so far) it matches that category and everything beneath it. With
+// search (the product search box) it matches the same fields the Inventory
+// search does: product name / code, or any of its variants' name / color or
+// sizes' name / SKU / barcode. The result is still one row per product.
 const loadActiveProducts = async (vendorId, query) => {
     try {
         const { categoryId, search } = query;
@@ -175,13 +179,26 @@ const loadActiveProducts = async (vendorId, query) => {
             }
             const descendantIds = await categoryService.getActiveDescendantIds(vendorId, category._id);
             const categoryIds = [category._id, ...descendantIds];
-            filter.$or = [
-                { mainCategory: { $in: categoryIds } },
-                { subCategory: { $in: categoryIds } }
-            ];
+            filter.$and = [{
+                $or: [
+                    { mainCategory: { $in: categoryIds } },
+                    { subCategory: { $in: categoryIds } }
+                ]
+            }];
         }
         if (search) {
-            filter.name = { $regex: escapeRegex(search), $options: 'i' };
+            const pattern = new RegExp(escapeRegex(search), 'i');
+            filter.$and = [...(filter.$and || []), {
+                $or: [
+                    { name: pattern },
+                    { productCode: pattern },
+                    { 'variants.displayName': pattern },
+                    { 'variants.color': pattern },
+                    { 'variants.sizes.sizeName': pattern },
+                    { 'variants.sizes.sku': pattern },
+                    { 'variants.sizes.barcode': pattern }
+                ]
+            }];
         }
 
         const products = await Product.find(filter)
@@ -276,7 +293,7 @@ const fetchProductOptions = async (vendorId, websiteMasterData, companyMasterDat
 | top-level filter). Kept here so admin orders stay independent of the
 | Cart-based stock helpers.
 */
-const adjustSizeStock = async (productId, variantId, sizeId, delta, requireAvailableStock) => {
+const adjustSizeStock = async (productId, variantId, sizeId, delta, requireAvailableStock, stockChanges = null) => {
     try {
         const sizeElemMatch = { _id: sizeId };
         if (requireAvailableStock) {
@@ -290,6 +307,8 @@ const adjustSizeStock = async (productId, variantId, sizeId, delta, requireAvail
             { $inc: { 'variants.$[v].sizes.$[s].stock': delta } },
             { arrayFilters: [{ 'v._id': variantId }, { 's._id': sizeId }] }
         );
+        // For the low stock alert - see trackStockDeduction in lowStockAlertService.js.
+        lowStockAlertService.trackStockDeduction(stockChanges, updated, variantId, sizeId, delta);
         return updated !== null;
     } catch (err) {
         throw err;
@@ -300,8 +319,9 @@ const adjustSizeStock = async (productId, variantId, sizeId, delta, requireAvail
 // when it could not be taken. With allowOutOfStock the amount is clamped at
 // what is left (stock never goes below 0); without it, the full quantity or
 // nothing. Retries on a lost race, since stock can change between the read
-// and the guarded write.
-const deductStockForLine = async (line, allowOutOfStock) => {
+// and the guarded write. stockChanges (optional array) collects what the
+// deduction did, for the low stock alert the caller sends once its order is saved.
+const deductStockForLine = async (line, allowOutOfStock, stockChanges = null) => {
     try {
         for (let attempt = 0; attempt < 3; attempt++) {
             const product = await Product.findOne({ _id: line.productId }).select('variants').lean();
@@ -314,7 +334,7 @@ const deductStockForLine = async (line, allowOutOfStock) => {
                 return allowOutOfStock ? 0 : null;
             }
 
-            const succeeded = await adjustSizeStock(line.productId, line.variantId, line.sizeId, -deduct, true);
+            const succeeded = await adjustSizeStock(line.productId, line.variantId, line.sizeId, -deduct, true, stockChanges);
             if (succeeded) return deduct;
         }
         return null;
@@ -742,8 +762,9 @@ const placeOrderOnBehalfOfUser = async (vendorId, adminUserId, websiteMasterData
 
         // --- Reserve stock line by line; undo everything if any line loses ---
         const deductions = [];
+        const stockChanges = [];
         for (const line of lines) {
-            const deducted = await deductStockForLine(line, allowOutOfStock);
+            const deducted = await deductStockForLine(line, allowOutOfStock, stockChanges);
             if (deducted === null) {
                 await restoreDeductedStock(deductions);
                 return common.returnResult(false, 409, `"${line.productName}" - ${line.variantName} - ${line.sizeName} just went out of stock. Please review and try again.`);
@@ -827,6 +848,11 @@ const placeOrderOnBehalfOfUser = async (vendorId, adminUserId, websiteMasterData
             await restoreDeductedStock(deductions);
             throw err;
         }
+
+        // Emails the vendor about any size this order just made low on stock.
+        lowStockAlertService.sendLowStockAlertInBackground({
+            vendorId, stockChanges, websiteMasterData, companyMasterData, companySettingsData, userId: adminUserId
+        });
 
         // Live-updates the admin Orders list. Walk-in orders have no userId, so no customer push.
         notifyOrderChanged(order, ORDER_NOTIFICATION_TYPES.NEW);

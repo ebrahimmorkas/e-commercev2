@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Header from './components/ui/header';
 import Navbar from './components/ui/navbar';
 import AnnouncementBar from './components/ui/announcementBar';
@@ -57,6 +57,8 @@ const BRAND_PATH_RE = /^\/brand\/([A-Za-z0-9_-]{43})$/;
 // formatOrderForResponse) - same 43-char url-safe base64 shape as
 // CATEGORY_PATH_RE above, never raw hex.
 const ORDER_DETAIL_PATH_RE = /^\/orders\/([A-Za-z0-9_-]{43})$/;
+const LIST_ROUTE_TYPES = ['home', 'products', 'category', 'brand'];
+const currentPath = () => window.location.pathname + window.location.search;
 const parseRoute = () => {
   const path = window.location.pathname;
   if (path === '/' || path === '') return { type: 'home' };
@@ -150,16 +152,52 @@ const ClientApp = () => {
   const [deliveryAddressId, setDeliveryAddressId] = useState(null);
   const [searchPanelOpen, setSearchPanelOpen] = useState(false);
 
+  // The last list page (home/products/category/brand) is kept mounted but hidden
+  // while a product is open, so "Back to shop" returns to the same loaded items
+  // and scroll offset instead of a fresh page at the top.
+  const [listRoute, setListRoute] = useState(() => {
+    const initial = parseRoute();
+    return LIST_ROUTE_TYPES.includes(initial.type) ? { route: initial, path: currentPath() } : null;
+  });
+  const savedScroll = useRef(null);
+  const restoreScroll = useRef(false);
+
+  const applyRoute = (nextRoute) => {
+    setRoute(nextRoute);
+    if (LIST_ROUTE_TYPES.includes(nextRoute.type)) setListRoute({ route: nextRoute, path: currentPath() });
+  };
+
   useEffect(() => {
-    const handlePopState = () => setRoute(parseRoute());
+    const handlePopState = () => {
+      restoreScroll.current = true;
+      applyRoute(parseRoute());
+    };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
+  // Runs after the list page is visible again, so the document is tall enough to scroll.
+  useLayoutEffect(() => {
+    if (!restoreScroll.current || !LIST_ROUTE_TYPES.includes(route.type)) return;
+    restoreScroll.current = false;
+    const saved = savedScroll.current;
+    if (saved && saved.path === currentPath()) window.scrollTo(0, saved.y);
+  }, [route]);
+
   const navigate = (path, nextRoute) => {
+    if (LIST_ROUTE_TYPES.includes(route.type) && nextRoute.type === 'product') {
+      savedScroll.current = { path: currentPath(), y: window.scrollY };
+    }
     window.history.pushState({}, '', path);
-    setRoute(nextRoute);
+    applyRoute(nextRoute);
     window.scrollTo(0, 0);
+  };
+
+  const backToList = () => {
+    if (!listRoute) return goHome();
+    window.history.pushState({}, '', listRoute.path);
+    restoreScroll.current = true;
+    applyRoute(listRoute.route);
   };
 
   const openProduct = (id) => navigate(`/product/${id}`, { type: 'product', id });
@@ -277,6 +315,9 @@ const ClientApp = () => {
   // Header search -> /products?q=...; an empty search shows every product.
   const handleSearch = (query) => openAllProducts((query || '').trim(), route.type === 'products' ? route.sort : DEFAULT_PRODUCTS_SORT);
 
+  // The list page on screen - or, while a product is open, the one kept hidden underneath.
+  const listView = LIST_ROUTE_TYPES.includes(route.type) ? route : route.type === 'product' ? listRoute?.route : null;
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* One sticky unit: header and nav bar stay pinned together while scrolling. */}
@@ -302,7 +343,7 @@ const ClientApp = () => {
         {route.type === 'product' && (
           <ProductDetailPage
             productId={route.id}
-            onBack={goHome}
+            onBack={backToList}
             cartItems={cartItems}
             onAddToCart={handleDetailAddToCart}
             onIncrementItem={handleIncrementItem}
@@ -312,9 +353,10 @@ const ClientApp = () => {
             onRecommendedAddToCart={handleAddToCart}
           />
         )}
-        {route.type === 'category' && (
+        <div hidden={route.type === 'product'}>
+        {listView?.type === 'category' && (
           <CategoryProductsPage
-            categoryId={route.id}
+            categoryId={listView.id}
             cartItems={cartItems}
             onAddToCart={handleAddToCart}
             onProductClick={handleProductClick}
@@ -324,9 +366,9 @@ const ClientApp = () => {
             onGoHome={goHome}
           />
         )}
-        {route.type === 'brand' && (
+        {listView?.type === 'brand' && (
           <BrandProductsPage
-            brandId={route.id}
+            brandId={listView.id}
             cartItems={cartItems}
             onAddToCart={handleAddToCart}
             onProductClick={handleProductClick}
@@ -336,6 +378,7 @@ const ClientApp = () => {
             onGoHome={goHome}
           />
         )}
+        </div>
         {route.type === 'cart' && (
           <CartPage
             lineItems={lineItems}
@@ -385,16 +428,17 @@ const ClientApp = () => {
         {route.type === 'order-detail' && isAuthenticated && (
           <OrderDetailPage orderId={route.id} onBack={openOrders} onGoHome={goHome} />
         )}
-        {route.type === 'products' && (
+        <div hidden={route.type === 'product'}>
+        {listView?.type === 'products' && (
           <AllProductsPage
-            query={route.q}
-            sort={route.sort}
+            query={listView.q}
+            sort={listView.sort}
             onSortChange={(sort) => {
               // Same page, new sort - replace instead of stacking a history entry per sort change.
-              window.history.replaceState({}, '', productsPath(route.q, sort));
-              setRoute({ ...route, sort });
+              window.history.replaceState({}, '', productsPath(listView.q, sort));
+              applyRoute({ ...listView, sort });
             }}
-            onClearSearch={() => openAllProducts('', route.sort)}
+            onClearSearch={() => openAllProducts('', listView.sort)}
             cartItems={cartItems}
             onAddToCart={handleAddToCart}
             onProductClick={handleProductClick}
@@ -403,7 +447,7 @@ const ClientApp = () => {
             onSetItemQuantity={handleSetItemQuantity}
           />
         )}
-        {route.type === 'home' && (
+        {listView?.type === 'home' && (
           <HomePage
             onProductClick={handleProductClick}
             cartItems={cartItems}
@@ -413,6 +457,7 @@ const ClientApp = () => {
             onSetItemQuantity={handleSetItemQuantity}
           />
         )}
+        </div>
         {route.type === 'policy' && <PolicyPage link={route.link} onBack={goHome} />}
         {route.type === 'not-found' && <NotFoundPage onGoHome={goHome} />}
       </main>

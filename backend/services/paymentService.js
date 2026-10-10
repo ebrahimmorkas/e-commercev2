@@ -119,8 +119,12 @@ const initiateOnlinePayment = async (vendorId, userId, orderId, vendorDomain, we
     }
 };
 
-const selectCashOnDelivery = async (vendorId, userId, orderId) => {
+const selectCashOnDelivery = async (vendorId, userId, orderId, companySettingsData = null) => {
     try {
+        if (companySettingsData?.isCODFeatureOn === false) {
+            return common.returnResult(false, 403, 'Cash on Delivery is not available for this store.');
+        }
+
         const order = await Order.findOne({ _id: orderId, vendorId, userId, status: { $ne: 'D' } });
         if (!order) {
             return common.returnResult(false, 404, 'Order not found.');
@@ -156,8 +160,14 @@ const getCheckoutPaymentOptions = async (vendorId, websiteMasterData, companyMas
             'isShowingPaymentQRCodeAndBankDetailsFeatureOn', 'showPaymentQRCodeAndBankDetails'
         );
 
+        const gpayCheck = await common.checkFeatureOnOrOff(
+            vendorId, websiteMasterData, companyMasterData,
+            'isShowingGpayNumberFeatureOn', 'showGpayNumber'
+        );
+
         const settings = companySettingsData || {};
-        const scannerUrl = settings.paymentScanner?.url || null;
+        // QR + bank and GPay are separate entitlements: a missing one hides only its own part.
+        const scannerUrl = detailsCheck.isSuccess ? (settings.paymentScanner?.url || null) : null;
         const bank = {
             accountHolderName: settings.bankAccountHolderName || null,
             bankName: settings.bankName || null,
@@ -167,15 +177,18 @@ const getCheckoutPaymentOptions = async (vendorId, websiteMasterData, companyMas
             swiftCode: settings.swiftCode || null,
             accountType: settings.bankAccountType || null
         };
-        const hasBankDetails = !!(bank.accountNumber || bank.ifscCode);
-        const onlineEnabled = detailsCheck.isSuccess && (!!scannerUrl || hasBankDetails);
+        const hasBankDetails = detailsCheck.isSuccess && !!(bank.accountNumber || bank.ifscCode);
+        const gpayNumber = gpayCheck.isSuccess ? (settings.gpayNumber || null) : null;
+        const onlineEnabled = !!scannerUrl || hasBankDetails || !!gpayNumber;
 
         return common.returnResult(true, 200, 'Payment options fetched successfully', {
-            cod: codCheck.isSuccess,
+            // WebsiteMaster + CompanyMaster entitlement AND the vendor's own CompanySettings switch.
+            cod: codCheck.isSuccess && settings.isCODFeatureOn !== false,
             online: onlineEnabled
                 ? {
                     scannerUrl,
                     bank: hasBankDetails ? bank : null,
+                    gpayNumber,
                     whatsappNumber: settings.adminWhatsappNumber || null,
                     companyName: settings.companyName || null
                 }

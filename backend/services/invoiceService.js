@@ -1,5 +1,6 @@
 const Invoice = require('../models/Invoice');
 const Order = require('../models/Order');
+const Product = require('../models/Product');
 const User = require('../models/User');
 const CompanySettings = require('../models/CompanySettings');
 const CountryMaster = require('../models/CountryMaster');
@@ -293,6 +294,32 @@ const issueInvoiceForOrder = async (order, { companySettingsData, companyMasterD
  * applies (email feature on, attachments allowed for the vendor, "pdf" an allowed extension,
  * size limit); a refusal is only logged. Returns null when nothing was attempted.
  */
+// Invoice lines hold no picture (like Order.items it is cosmetic, never frozen), so each line's
+// current product/size image is looked up here - invoice lines are in the same order as order.items.
+// Nothing found (deleted product, legacy order) just means that line prints without one.
+const resolveLineImageUrls = async (invoice) => {
+    try {
+        const order = await Order.findOne({ _id: invoice.orderId, vendorId: invoice.vendorId }).select('items');
+        if (!order || !order.items || order.items.length === 0) return [];
+
+        const productIds = [...new Set(order.items.map((item) => item.productId.toString()))];
+        const products = await Product.find({ _id: { $in: productIds }, vendorId: invoice.vendorId }).select('variants');
+        const productMap = new Map(products.map((product) => [product._id.toString(), product]));
+
+        return order.items.map((item) => {
+            const variant = productMap.get(item.productId.toString())?.variants.id(item.variantId);
+            return variant?.sizes.id(item.sizeId)?.image?.url || null;
+        });
+    } catch (err) {
+        // Pictures are decoration - never let a lookup problem block the invoice itself.
+        logger.logInfo(0, 1, 'Invoice product images could not be resolved - rendering without them', { invoiceId: invoice._id, reason: err.message });
+        return [];
+    }
+};
+
+const renderPdf = async (invoice, options = {}) =>
+    invoicePdfService.renderInvoicePdf(invoice, { ...options, lineImageUrls: await resolveLineImageUrls(invoice) });
+
 const emailInvoiceToCustomer = async (order, invoice, { companySettingsData, companyMasterData, websiteMasterData }) => {
     try {
         if (companySettingsData?.emailInvoiceOnOrderPlaced !== true) return null;
@@ -304,7 +331,7 @@ const emailInvoiceToCustomer = async (order, invoice, { companySettingsData, com
             return null;
         }
 
-        const buffer = await invoicePdfService.renderInvoicePdf(invoice, { copies: companySettingsData?.invoicePrintDuplicateCopy === true ? 2 : 1 });
+        const buffer = await renderPdf(invoice, { copies: companySettingsData?.invoicePrintDuplicateCopy === true ? 2 : 1 });
         const decimals = invoice.currencyDecimalPlaces ?? 2;
         const amount = `${invoice.currencyCode} ${invoice.totals.grandTotal.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
         const sellerName = invoice.seller.name || 'our store';
@@ -497,7 +524,7 @@ const getInvoicePdfForOrder = async (vendorId, orderId, userId, context, { docum
             if (!invoice) {
                 return common.returnResult(false, 404, 'There is no credit note for this order.');
             }
-            const buffer = await invoicePdfService.renderInvoicePdf(invoice, { document: 'credit-note', copies });
+            const buffer = await renderPdf(invoice, { document: 'credit-note', copies });
             const safeNumber = invoice.creditNote.number.replace(/[^A-Za-z0-9._-]/g, '-');
             return common.returnResult(true, 200, 'Credit note generated', { buffer, filename: `CreditNote-${safeNumber}.pdf` });
         }
@@ -512,7 +539,7 @@ const getInvoicePdfForOrder = async (vendorId, orderId, userId, context, { docum
             if (!issued.isSuccess) return issued;
             invoice = issued.meta.invoice;
         }
-        const buffer = await invoicePdfService.renderInvoicePdf(invoice, { copies });
+        const buffer = await renderPdf(invoice, { copies });
         const safeNumber = invoice.invoiceNumber.replace(/[^A-Za-z0-9._-]/g, '-');
         return common.returnResult(true, 200, 'Invoice generated', { buffer, filename: `Invoice-${safeNumber}.pdf` });
     } catch (err) {
@@ -529,7 +556,7 @@ const buildInvoiceAttachment = async (order, companySettingsData) => {
     try {
         const invoice = await Invoice.findOne({ vendorId: order.vendorId, orderId: order._id, status: 'ISSUED' });
         if (!invoice) return null;
-        const buffer = await invoicePdfService.renderInvoicePdf(invoice, { copies: companySettingsData?.invoicePrintDuplicateCopy === true ? 2 : 1 });
+        const buffer = await renderPdf(invoice, { copies: companySettingsData?.invoicePrintDuplicateCopy === true ? 2 : 1 });
         const safeNumber = invoice.invoiceNumber.replace(/[^A-Za-z0-9._-]/g, '-');
         return { filename: `Invoice-${safeNumber}.pdf`, content: buffer, mimeType: 'application/pdf', size: buffer.length };
     } catch (err) {
@@ -549,5 +576,5 @@ module.exports = {
     getInvoiceSummaryForOrder,
     getInvoicePdfForOrder,
     // Exposed for unit tests only.
-    _internal: { buildLinesAndTotals }
+    _internal: { buildLinesAndTotals, renderPdf }
 };

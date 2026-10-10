@@ -22,6 +22,14 @@ export const ProductsIcon = (props) => (
   </svg>
 );
 
+export const InventoryIcon = (props) => (
+  <svg {...base} {...props}>
+    <path d="M3.75 3.75h16.5v4.5H3.75z" />
+    <path d="M5.25 8.25v10.5a1.5 1.5 0 001.5 1.5h10.5a1.5 1.5 0 001.5-1.5V8.25" />
+    <path d="M9.75 12h4.5" />
+  </svg>
+);
+
 export const CategoriesIcon = (props) => (
   <svg {...base} {...props}>
     <path d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />
@@ -118,6 +126,13 @@ export const FreeCashIcon = (props) => (
     <rect x="2.25" y="6" width="19.5" height="12" rx="2" />
     <circle cx="12" cy="12" r="2.5" />
     <path d="M6 6v-.75A2.25 2.25 0 018.25 3h9a2.25 2.25 0 012.25 2.25V6" />
+  </svg>
+);
+
+export const FreeCashUsageIcon = (props) => (
+  <svg {...base} {...props}>
+    <rect x="2.25" y="6" width="19.5" height="12" rx="2" />
+    <path d="M6 14.25l3-3 2.25 2.25L15 9.75l3 3" />
   </svg>
 );
 
