@@ -8,7 +8,7 @@ import { apiRequest } from '../../../../utils/apiClient';
 /**
  * What this store offers at checkout. Everything comes from Company Settings
  * (and the feature flags above it).
- * @returns {Promise<{ cod: boolean, online: null | { scannerUrl: string|null, bank: Object|null, whatsappNumber: string|null, companyName: string|null } }>}
+ * @returns {Promise<{ cod: boolean, online: null | { scannerUrl: string|null, bank: Object|null, gpayNumber: string|null, whatsappNumber: string|null, companyName: string|null } }>}
  */
 export const getPaymentOptions = () => apiRequest('/payments/options');
 

@@ -438,6 +438,13 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // Site-wide kill switch for CompanySettings.gpayNumber - separate from the
+    // QR / bank group above, paired with CompanyMaster.showGpayNumber via
+    // checkFeatureOnOrOff, see companySettingsService.js.
+    isShowingGpayNumberFeatureOn: {
+        type: Boolean,
+        default: false
+    },
     // Site-wide kill switch for CompanySettings.partnerCertificate - paired
     // with CompanyMaster.isShowingPartnerCertificateFeatureOn via
     // checkFeatureOnOrOff, see companySettingsService.js.

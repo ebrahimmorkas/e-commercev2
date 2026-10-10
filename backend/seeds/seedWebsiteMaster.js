@@ -110,6 +110,7 @@ const WEBSITE_MASTER = {
     isCODFeatureOn: true,
     mainPaymentGateway: null,            // null = each vendor uses its own CompanyMaster.paymentGateway
     isShowingPaymentQRCodeAndBankDetailsFeatureOn: true,
+    isShowingGpayNumberFeatureOn: true,
     isShowingPartnerCertificateFeatureOn: true,
 
     // Free Cash

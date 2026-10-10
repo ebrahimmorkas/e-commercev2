@@ -71,7 +71,7 @@ const SIMPLE_FIELDS = [
     'isStoringRemainingFreeCashAmountAllowed', 'returnFreeCashOnOrderReturn', 'refundWholeFreeCashAmount',
     'amountToRefund', 'timeForAbondonedCartReflection', 'abondonedCartOnlyForLoggedInUsers',
     'bankAccountHolderName', 'bankName', 'bankAccountNumber', 'ifscCode', 'branchName',
-    'swiftCode', 'bankAccountType'
+    'swiftCode', 'bankAccountType', 'gpayNumber', 'isCODFeatureOn'
 ];
 
 // Fields gated together with paymentScanner behind
@@ -114,6 +114,16 @@ const checkPaymentDetailsEntitlements = async (vendorId, data, files, companyMas
             const check = await common.checkFeatureOnOrOff(
                 vendorId, websiteMasterData, companyMasterData,
                 'isShowingPaymentQRCodeAndBankDetailsFeatureOn', 'showPaymentQRCodeAndBankDetails'
+            );
+            if (!check.isSuccess) return check;
+        }
+
+        const gpayTouched = data.gpayNumber !== undefined
+            && normalizeEmpty(data.gpayNumber) !== normalizeEmpty(existingSettings ? existingSettings.gpayNumber : undefined);
+        if (gpayTouched) {
+            const check = await common.checkFeatureOnOrOff(
+                vendorId, websiteMasterData, companyMasterData,
+                'isShowingGpayNumberFeatureOn', 'showGpayNumber'
             );
             if (!check.isSuccess) return check;
         }

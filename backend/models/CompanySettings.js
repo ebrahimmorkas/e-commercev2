@@ -152,6 +152,13 @@ const companySettingsSchema = new mongoose.Schema({
     enum: ['SAVINGS', 'CURRENT'],
     default: null
   },
+  // GPay / UPI-style number customers can pay to - gated on its own by
+  // CompanyMaster.showGpayNumber (+ WebsiteMaster.isShowingGpayNumberFeatureOn).
+  gpayNumber: {
+    type: String,
+    trim: true,
+    default: null
+  },
   // End of Bank Transfer
 
   // Gated by CompanyMaster.isShowingPartnerCertificateFeatureOn (+
@@ -625,6 +632,13 @@ const companySettingsSchema = new mongoose.Schema({
   // showAnnouncements/showBanners/showReviewsToCustomers above - checked in
   // paymentService.initiateOnlinePayment, not at the schema level.
   isPaymentGatewayFeatureOn: {
+    type: Boolean,
+    default: true
+  },
+  // The vendor's own on/off switch for Cash on Delivery - sits BELOW
+  // WebsiteMaster.isCODFeatureOn + CompanyMaster.isCODFeatureOn. COD is offered
+  // at checkout only when all three are on (see paymentService).
+  isCODFeatureOn: {
     type: Boolean,
     default: true
   },

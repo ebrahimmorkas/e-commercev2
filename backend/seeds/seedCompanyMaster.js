@@ -171,6 +171,7 @@ const COMPANY_MASTER = {
     isCODFeatureOn: false,
     paymentGateway: null,
     showPaymentQRCodeAndBankDetails: true,
+    showGpayNumber: true,
     isShowingPartnerCertificateFeatureOn: false,
 
     // Courier

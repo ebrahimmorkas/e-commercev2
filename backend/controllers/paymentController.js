@@ -110,7 +110,7 @@ const selectCashOnDelivery = async (req, res) => {
             return common.sendError(res, validityResult.statusCode, validityResult.message);
         }
 
-        const result = await paymentService.selectCashOnDelivery(vendorId, req.user._id, common.decodeId(req.params.orderId));
+        const result = await paymentService.selectCashOnDelivery(vendorId, req.user._id, common.decodeId(req.params.orderId), req.companySettingsData);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }

@@ -7,6 +7,10 @@ import { useToast } from '../../../../components/common/Toast';
 import { useInvoiceDownload } from '../../../../hooks/useInvoiceDownload';
 import { downloadMyInvoice, downloadMyCreditNote } from '../api/ordersApi';
 import { useOrder } from '../hooks/useOrder';
+import { usePaymentOptions } from '../hooks/usePaymentOptions';
+import { selectManualTransfer } from '../api/paymentApi';
+import BankTransferModal from '../components/BankTransferModal';
+import { useAuth } from '../../auth/hooks/useAuth';
 import OrderStatusTimeline from '../components/OrderStatusTimeline';
 import OrderItems from '../components/OrderItems';
 import { formatOrderMoney, formatOrderShipping, formatOrderDate, isOrderCancellable } from '../utils/formatOrder';
@@ -49,9 +53,22 @@ const OrderDetailPage = ({ orderId, onBack, onGoHome }) => {
   const toast = useToast();
   const { download: downloadInvoice, downloading: downloadingInvoice } = useInvoiceDownload(downloadMyInvoice);
   const { download: downloadCreditNote, downloading: downloadingCreditNote } = useInvoiceDownload(downloadMyCreditNote);
+  const { user } = useAuth();
+  // The payment choices stay on the order until the store marks it paid.
+  const { options: paymentOptions } = usePaymentOptions();
+  const [payOpen, setPayOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [reason, setReason] = useState('');
   const [cancelError, setCancelError] = useState('');
+
+  const handlePayNow = async () => {
+    // Switching an order that was on Cash on Delivery over to QR / bank transfer;
+    // best effort - the details are shown either way.
+    if (order.payment?.method !== 'ONLINE') {
+      await selectManualTransfer(order._id).then(reload).catch(() => {});
+    }
+    setPayOpen(true);
+  };
 
   const handleCancelSubmit = async (e) => {
     e.preventDefault();
@@ -84,6 +101,14 @@ const OrderDetailPage = ({ orderId, onBack, onGoHome }) => {
       />
     );
   }
+
+  // Offered until the store marks the payment complete. Not on a cancelled order,
+  // nor while the shipping charge is still to be added (the total is incomplete).
+  const canPayNow =
+    !!paymentOptions?.online &&
+    order.payment?.status !== 'PAID' &&
+    !order.cancelledAt &&
+    !order.shippingPriceBreakdown?.isShippingPending;
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
@@ -120,6 +145,15 @@ const OrderDetailPage = ({ orderId, onBack, onGoHome }) => {
               className="px-4 py-2 rounded-full text-sm font-semibold cursor-pointer border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {downloadingCreditNote ? 'Preparing credit note...' : 'Download credit note'}
+            </button>
+          )}
+          {canPayNow && (
+            <button
+              type="button"
+              onClick={handlePayNow}
+              className="px-4 py-2 rounded-full text-sm font-semibold cursor-pointer text-white bg-emerald-600 hover:bg-emerald-700 transition-colors duration-150"
+            >
+              {order.payment?.method === 'ONLINE' ? 'Pay now' : 'Pay online instead'}
             </button>
           )}
           {isOrderCancellable(order) && (
@@ -192,6 +226,15 @@ const OrderDetailPage = ({ orderId, onBack, onGoHome }) => {
           </div>
         </div>
       </div>
+
+      <BankTransferModal
+        isOpen={payOpen}
+        online={paymentOptions?.online}
+        order={order}
+        customerName={user?.name}
+        doneLabel="Close"
+        onDone={() => setPayOpen(false)}
+      />
 
       <Modal isOpen={cancelOpen} onClose={() => setCancelOpen(false)} title="Cancel this order?" size="sm">
         {cancelError && (

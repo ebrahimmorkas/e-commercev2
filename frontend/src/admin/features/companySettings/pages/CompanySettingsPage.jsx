@@ -98,6 +98,7 @@ const CompanySettingsPage = () => {
     }
     const { fields, files } = buildSavePayload(draft, {
       bankTransferEnabled: !!companyMaster?.showPaymentQRCodeAndBankDetails,
+      gpayEnabled: !!companyMaster?.showGpayNumber,
       lowStockAlertEnabled: isLowStockAlertOn,
     });
     if (!fields.adminName?.trim()) delete fields.adminName;

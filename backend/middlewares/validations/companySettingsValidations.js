@@ -129,6 +129,10 @@ const companySettingsFieldsSchema = {
     freeCashEmailRecipients: Joi.string().valid('TARGETED', 'ALL').label('Who gets Free Cash emails'),
     freeCashExpiryReminderDays: Joi.number().integer().min(1).max(60).label('Free Cash reminder days before expiry'),
     isPaymentGatewayFeatureOn: Joi.boolean().label('Online payment enabled'),
+    isCODFeatureOn: Joi.boolean().label('Cash on Delivery enabled'),
+    gpayNumber: Joi.string().trim().pattern(/^\+?[0-9 ]{7,15}$/).allow('', null)
+        .messages({ 'string.pattern.base': '{{#label}} must be a valid phone number.' })
+        .label('GPay number'),
     isFreeCashFeatureOn: Joi.boolean().label('Show Free Cash'),
     isFreeCashStackingAllowed: Joi.boolean().label('Allow Free Cash stacking'),
     isMultipleFreeCashUsageAllowed: Joi.boolean().label('Allow multiple Free Cash usage per order'),

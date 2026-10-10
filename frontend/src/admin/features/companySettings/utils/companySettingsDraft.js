@@ -81,6 +81,8 @@ export const emptyDraft = () => ({
   freeCashExpiryReminderDays: 3,
 
   isPaymentGatewayFeatureOn: true,
+  isCODFeatureOn: true,
+  gpayNumber: '',
   bankAccountHolderName: '',
   bankName: '',
   bankAccountNumber: '',
@@ -187,6 +189,8 @@ export const mapApiSettingsToDraft = (doc) => ({
   freeCashExpiryReminderDays: doc.freeCashExpiryReminderDays ?? 3,
 
   isPaymentGatewayFeatureOn: !!doc.isPaymentGatewayFeatureOn,
+  isCODFeatureOn: doc.isCODFeatureOn !== false,
+  gpayNumber: doc.gpayNumber || '',
   bankAccountHolderName: doc.bankAccountHolderName || '',
   bankName: doc.bankName || '',
   bankAccountNumber: doc.bankAccountNumber || '',
@@ -235,6 +239,7 @@ const BANK_TRANSFER_FIELDS = [
  * @param {Object} draft
  * @param {Object} [options]
  * @param {boolean} [options.bankTransferEnabled] - CompanyMaster.showPaymentQRCodeAndBankDetails
+ * @param {boolean} [options.gpayEnabled] - CompanyMaster.showGpayNumber
  */
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -253,7 +258,7 @@ export const invalidEmails = (list) => (list || []).filter((email) => !EMAIL_PAT
 // A whole number, 0 or more - what the low stock alert threshold must be.
 export const isValidLowStockThreshold = (value) => /^\d{1,7}$/.test(String(value ?? '').trim());
 
-export const buildSavePayload = (draft, { bankTransferEnabled = false, lowStockAlertEnabled = false } = {}) => {
+export const buildSavePayload = (draft, { bankTransferEnabled = false, gpayEnabled = false, lowStockAlertEnabled = false } = {}) => {
   const {
     companyLogo, paymentScanner, partnerCertificate,
     ccList, bccList,
@@ -270,7 +275,7 @@ export const buildSavePayload = (draft, { bankTransferEnabled = false, lowStockA
     // eslint-disable-next-line no-unused-vars
     bankAccountHolderName, bankName, bankAccountNumber, ifscCode,
     // eslint-disable-next-line no-unused-vars
-    branchName, swiftCode, bankAccountType,
+    branchName, swiftCode, bankAccountType, gpayNumber,
     ...rest
   } = draft;
 
@@ -299,6 +304,9 @@ export const buildSavePayload = (draft, { bankTransferEnabled = false, lowStockA
       fields[field] = field === 'bankAccountType' ? (draft[field] || null) : draft[field];
     });
   }
+
+  // Own entitlement (CompanyMaster.showGpayNumber), separate from the bank group.
+  if (gpayEnabled) fields.gpayNumber = draft.gpayNumber;
 
   if (amountToRefund !== '') {
     fields.amountToRefund = Number(amountToRefund);
