@@ -5,7 +5,7 @@ const UnitMaster = require("../models/UnitMaster");
 
 async function seedUnits() {
     try {
-        await mongoose.connect("mongodb://127.0.0.1:27017/ecommerce-v2");
+        await mongoose.connect(process.env.MONGODB_URI);
 
         const units = [
             {

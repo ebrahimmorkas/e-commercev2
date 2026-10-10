@@ -8,136 +8,172 @@ const WeightMaster = require('../models/WeightMaster');
 const SizeMaster = require('../models/SizeMaster');
 const ModuleMaster = require('../models/ModuleMaster');
 
-// CompanyMaster for HUTAIB TAILORING MATERIALS TRADING LLC (hutaib.com), per
-// Section 2 "Platform Specifications" of the HTM project document (12 Sep 2026).
-// Features the document doesn't list are out of its scope and switched off.
+// CompanyMaster for mouldmarket.in: every built feature switched on and every
+// count limit set as high as it goes, so this vendor is effectively unlimited.
 //
 // Run after seedVendor, seedCountryMaster, seedWeightMaster, seedSizeMaster
-// and seedModuleMaster.
+// and seedModuleMaster. A feature also needs its switch on in WebsiteMaster
+// (seedWebsiteMaster) - see checkFeatureOnOrOff in utils/common.js.
 //
 // Safe to re-run: the vendor's CompanyMaster is updated in place; sizes,
 // weight units and modules are only ever added (an existing assignedModules
 // entry, including a revoked one, is left alone).
 
-const VENDOR_DOMAIN = 'hutaib.com';
+const VENDOR_DOMAIN = 'mouldmarket.in';
 
-// Only the UAE is assigned to this vendor.
-const ALLOWED_COUNTRY_SHORT_NAMES = ['AE'];
+// Only India is assigned to this vendor.
+const ALLOWED_COUNTRY_SHORT_NAMES = ['IN'];
 
-// SizeMaster names this vendor may use on product variants (Small / Medium / Large).
-const ALLOWED_SIZE_NAMES = ['Size'];
+// "Unlimited" for every count limit (how many products, orders, emails, ...).
+const UNLIMITED = 999999999999;
+
+// File size limits (MB) are NOT set to UNLIMITED: an upload can never be
+// bigger than the app's own hard ceilings, so these are set to those ceilings.
+//   - images: 20 MB (middlewares/imageUpload.js)
+//   - email attachments and videos: 100 MB (middlewares/emailContentUpload.js)
+// The storage provider's own plan limit (Cloudinary) still applies on top.
+const MAX_IMAGE_MB = 20;
+const MAX_FILE_MB = 100;
 
 const IMAGE_FORMATS = ['jpg', 'png', 'jpeg'];
-
-// Modules this vendor gets (ModuleMaster.code). No expiry.
-const ASSIGNED_MODULE_CODES = [
-    'DASHBOARD',
-    'PRODUCTS',
-    'INVENTORY',
-    'CATEGORIES',
-    'ORDERS',
-    'CUSTOMERS',
-    'DISCOUNT',
-    'BANNER',
-    'ANNOUNCEMENT',
-    'COMPANY_SETTINGS',
-    'EMAIL_TEMPLATE'
-];
 
 const COMPANY_MASTER = {
     status: 'A',
 
-    // Customers - Registered User Limit (per Master Policy)
-    numberOfUsersAllowed: 2500,
-    isPasswordChangeFeatureByAdminAllowed: false,
-    isAdminAddingUserFeatureAllowed: false,
-    isAdminPlacingOrderOnBehalfOfUserIsOn: false,
+    // Customers
+    numberOfUsersAllowed: UNLIMITED,
+    isPasswordChangeFeatureByAdminAllowed: true,
+    isAdminAddingUserFeatureAllowed: true,
+    isAdminPlacingOrderOnBehalfOfUserIsOn: true,
     isTaxRegistrationFeatureOn: true,
     isForgotPasswordFunctionalityOn: true,
 
-    // Email - Free Tier Node Mailer, 1,100 in total, 100 per month
+    // Email
     isSendingEmailFeatureOn: true,
     isSendEmailModuleOn: true,
-    isSendingEmailToUsersOutOfStoreAllowed: false,
-    numberOfAttachmentsAllowedInSendEmail: 5,
-    attachmentSizeAllowedInSendEmail: 10,
-    numberOfImagesAllowedInSendEmail: 5,
-    imageSizeAllowedInSendEmail: 2,
-    isEmailVerificationFeatureOn: false,
+    isSendingEmailToUsersOutOfStoreAllowed: true,
+    numberOfAttachmentsAllowedInSendEmail: UNLIMITED,
+    attachmentSizeAllowedInSendEmail: MAX_FILE_MB,
+    numberOfImagesAllowedInSendEmail: UNLIMITED,
+    imageSizeAllowedInSendEmail: MAX_IMAGE_MB,
     emailService: 'nodemailer',
-    numberOfEmailsAllowed: 1100,
-    numberOfEmailsAllowedPerMonth: 100,
+    numberOfEmailsAllowed: UNLIMITED,
+    numberOfEmailsAllowedPerMonth: UNLIMITED,
+
+    // Email Template
     isEmailTemplateFeatureOn: true,
     isDifferentEmailTemplatesForOrderStepsOn: true,
     isInvoiceSendingFeatureInEmailOn: true,
-    fileService: 'local',
+    numberOfTemplatesAllowed: UNLIMITED,
+    numberOfAttachmentsAllowed: UNLIMITED,
+    numberOfImageAllowed: UNLIMITED,
+    attachmentSizeAllowed: MAX_FILE_MB,
+    imageSizeAllowed: MAX_IMAGE_MB,
+    isAddingOfAttachmentAllowed: true,
+    isAddingOfImageAllowed: true,
+    allowedAttachmentExtensions: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'png', 'jpg', 'jpeg'],
+    allowedImageExtensions: ['jpg', 'jpeg', 'png'],
+    isCcAndBccFeatureOn: true,
+    isControlSelectionFeatureOn: true,
+    isEmbeddingLinksAllowed: true,
 
-    // SMS - not implemented
+    // Not built yet - switched off (they are off in WebsiteMaster too).
+    isEmailVerificationFeatureOn: false,
     isSendingSMSFeatureOn: false,
     isMobileVerificationFeatureOn: false,
+    isWebsiteBuilderFeatureOn: false,
 
-    // Announcements - 5 slots
+    // Announcements
     isAnnouncementFeatureOn: true,
-    numberOfAnnouncementsAllowed: 5,
+    numberOfAnnouncementsAllowed: UNLIMITED,
 
-    // Hero banners - 2, images only (PNG, JPG, JPEG)
+    // Banners - image or video
     isBannerFeatureOn: true,
-    numberOfBannersAllowed: 2,
+    numberOfBannersAllowed: UNLIMITED,
+    allowedBannerImagesMB: MAX_IMAGE_MB,
     allowedBannerImagesFormat: IMAGE_FORMATS,
-    mediaUploadAllowedInBanner: 'image',
+    allowedBannerVideoMB: MAX_FILE_MB,
+    mediaUploadAllowedInBanner: 'both',
 
-    // Categories - 50 main, 50 sub-categories per category, image 2 MB
+    // Categories
     isCategoryFeatureOn: true,
-    numberOfMainCategoriesAllowed: 50,
-    numberOfSubcategoriesAllowed: 50,
+    numberOfMainCategoriesAllowed: UNLIMITED,
+    numberOfSubcategoriesAllowed: UNLIMITED,
     isTaggingChildrenCategoryAllowed: true,
-    allowedCategoryImageMB: 2,
+    isCategoryNestingAllowed: true,
+    allowedCategoryImageMB: MAX_IMAGE_MB,
     allowedCategoryImagesFormat: IMAGE_FORMATS,
     isBulkUploadForCategoriesFeatureOn: true,
 
-    // Products - 5,000 products, 50 variants each, 3 additional images per
-    // variant, image 3 MB
-    numberOfProductsAllowed: 5000,
-    numberOfProductsVaiantsAllowed: 50,
-    numberOfAdditionalImagesAllowedInVariant: 3,
+    // Products
+    numberOfProductsAllowed: UNLIMITED,
+    numberOfProductsVaiantsAllowed: UNLIMITED,
+    numberOfAdditionalImagesAllowedInVariant: UNLIMITED,
+    // Not a limit: how many products the storefront loads per page / scroll
+    // step (the model allows 1-100). 24 keeps pages fast.
     productsPerPage: 24,
-    allowedProductImageMB: 3,
+    allowedProductImageMB: MAX_IMAGE_MB,
     allowedProductImagesFormat: IMAGE_FORMATS,
-    isCategoryNestingAllowed: true,
+    isBulkUploadForFeatureOn: true,
     isBulkUploadForProductsFeatureOn: true,
-    isBulkUpdatingProductsAllowed: false,
-    isCloningProductAllowed: false,
-    isBulkPricingFeatureOn: false,
+    isBulkUpdatingProductsAllowed: true,
+    isCloningProductAllowed: true,
+    isBulkPricingFeatureOn: true,
     isReceivingLowStockAlertFeatureOn: true,
-    isReturnFeatureOn: false,
-    isExchangeFeatureOn: false,
+    isReturnFeatureOn: true,
+    isExchangeFeatureOn: true,
+    fileUploadSize: MAX_IMAGE_MB,
+    isPDFDownloadableFeatureOn: true,
+    isCatalogueDownloadFeatureOn: true,
 
-    // Storage - Cloudinary; no video
+    // Storage - Cloudinary for images, files and videos
     imageService: 'cloudinary',
+    fileService: 'cloudinary',
     videoService: 'cloudinary',
-    isVideoUploadingFeatureOn: false,
+    isVideoUploadingFeatureOn: true,
+    maxVideoSize: MAX_FILE_MB,
+    allowedVideoFormat: ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi'],
 
-    // Discounts - 6 per month
+    // Brands
+    isBrandFeatureOn: true,
+    numberOfBrandsAllowed: UNLIMITED,
+
+    // Couriers
+    isCourierFeatureOn: true,
+    numberOfCouriersAllowed: UNLIMITED,
+
+    // Groups - every group type
+    isGroupFeatureOn: true,
+    numberOfGroupsAllowed: UNLIMITED,
+    numberOfMembersPerGroup: UNLIMITED,
+    allowedGroupTypes: ['PRODUCT', 'CATEGORY', 'USER', 'BRAND', 'ORDER', 'CUSTOM'],
+    isExcelUploadAllowedForGroups: true,
+    isNestingCategoryAllowedInGroup: true,
+
+    // Reviews
+    isReviewFeatureOn: true,
+    numberOfReviewsAllowedOnProduct: UNLIMITED,
+
+    // Favorites
+    isFavoritesFeatureOn: true,
+    numberOfItemsAllowedInFavorites: UNLIMITED,
+
+    // Discounts - an empty list means "all of them allowed"
     isDiscountFeatureOn: true,
-    numberOfDiscountsPerMonth: 6,
-    allowedConstantsOfGiveDiscountTo: [
-        'ALL_PRODUCTS_ALL_USERS',
-        'SPECIFIC_PRODUCTS_ALL_USERS',
-        'SPECIFIC_CATEGORIES_ALL_USERS',
-        'ALL_PRODUCTS_SPECIFIC_USERS',
-        'SPECIFIC_PRODUCTS_SPECIFIC_USERS',
-        'SPECIFIC_CATEGORIES_SPECIFIC_USERS'
-    ],
-    allowedDiscountFeatureTypes: ['ONGOING_DISCOUNT', 'COUPON_CODE_DISCOUNT'],
-    allowedDiscountTypes: ['FIXED_PRICE', 'PERCENTAGE'],
+    numberOfDiscountsPerMonth: UNLIMITED,
+    allowedConstantsOfGiveDiscountTo: [],
+    allowedDiscountFeatureTypes: [],
+    allowedDiscountTypes: [],
 
-    // Cart & Orders - no order limits
+    // Cart & Orders
     isCartFeatureOn: true,
-    numberOfOrdersAllowed: null,
-    numberOfOrdersAllowedPerMonth: null,
+    numberOfProductsAllowedInCartAtOnce: UNLIMITED,
+    numberOfOrdersAllowed: UNLIMITED,
+    numberOfOrdersAllowedPerMonth: UNLIMITED,
     isOrderTrakingAllowed: true,
-    isOrderStatusUpdationAllowedByDeliveryAgents: false,
-    numberOfDeliveryAgentsAllowed: 0,
+    isOrderStatusUpdationAllowedByDeliveryAgents: true,
+    numberOfDeliveryAgentsAllowed: UNLIMITED,
+    isAbondonedCartFeatureOn: true,
     isEmailSendingFeatureOnAfterOrderStatusChanges: true,
     isEmailSendingFeatureOnAfterDeliveryAgentAssigned: true,
     isEmailSendingFeatureOnAfterDeliveryAgentChanged: true,
@@ -154,49 +190,44 @@ const COMPANY_MASTER = {
     isEmailSendingFeatureOnAfterFreeCashRevoked: true,
     isEmailSendingFeatureOnAfterFreeCashExpired: true,
     isEmailSendingFeatureOnBeforeFreeCashExpires: true,
-    isPDFDownloadableFeatureOn: false,
-    isCatalogueDownloadFeatureOn: false,
 
-    // Shipping - Free, Fixed, Weight ("Free Above" is ShippingPriceSettings.
-    // freeAboveThreshold, set by the vendor on top of any method)
+    // Shipping - an empty list means every shipping price method is allowed
     isShippingPriceFeatureOn: true,
-    allowedShippingPriceMethods: ['FREE', 'FIXED', 'WEIGHT'],
-    isEditingShippingPriceFeatureOn: false,
-    isEditingShippingAddressAfterOrderIsPlacedFeatureOn: false,
-    isEditingOrderFeatureOn: false,
+    allowedShippingPriceMethods: [],
+    isEditingShippingPriceFeatureOn: true,
+    isEditingShippingAddressAfterOrderIsPlacedFeatureOn: true,
+    isEditingOrderFeatureOn: true,
 
-    // Payment - no gateway, no COD: the customer pays using the bank details /
-    // QR code shown by the store and the admin approves the order
-    isPaymentGatewayFeatureOn: false,
-    isCODFeatureOn: false,
+    // Payment. Online payment is switched on, but it only works once a gateway
+    // is chosen here (paymentGateway: 'paytabs' or 'stripe') AND the vendor's
+    // gateway credentials are entered with
+    // scripts/manageVendorPaymentGatewayCredentials.js. Until then a customer
+    // who picks online payment is told no gateway is configured - the vendor
+    // can hide it with "Online payment" in Company Settings > Payment & Bank.
+    isPaymentGatewayFeatureOn: true,
     paymentGateway: null,
+    isCODFeatureOn: true,
     showPaymentQRCodeAndBankDetails: true,
     showGpayNumber: true,
-    isShowingPartnerCertificateFeatureOn: false,
+    isShowingPartnerCertificateFeatureOn: true,
 
-    // Courier
-    isCourierFeatureOn: true,
-    numberOfCouriersAllowed: 3,
-
-    // Out of scope
-    isWebsiteBuilderFeatureOn: false,
-    isBrandFeatureOn: false,
-    isGroupFeatureOn: false,
-    isExcelUploadAllowedForGroups: false,
-    isReviewFeatureOn: false,
-    isFavoritesFeatureOn: false,
-    isAbondonedCartFeatureOn: false,
+    // Commission is the platform's cut of the vendor's sales, not a vendor
+    // feature - off.
     isCommissionFeatureOn: false,
     commissionPercentage: 0,
-    isFreeCashFeatureOn: false,
-    isFreeCashGivingToSpecificUsersAllowed: false,
-    isFreeCashGivingToGroupsAllowed: false,
-    isFreeCashGivingToSpecificCategoryAllowed: false,
-    isFreeCashGivingToNestedSubCategoryAllowed: false,
-    isRevokingFreeCashFunctionalityAllowed: false,
-    isRevokingAllUsersFreeCashFunctionalityAllowed: false,
-    isFreeCashGivingToAllUsersFunctionalityAllowed: false,
-    isFreeCashRefundFeatureOn: false,
+
+    // Free Cash - an empty options list means every option is allowed
+    isFreeCashFeatureOn: true,
+    numberOfFreeCashToGiveAllowed: UNLIMITED,
+    numberOfFreeCashToGiveAllowedPerMonth: UNLIMITED,
+    isFreeCashGivingToSpecificUsersAllowed: true,
+    isFreeCashGivingToGroupsAllowed: true,
+    isFreeCashGivingToSpecificCategoryAllowed: true,
+    isFreeCashGivingToNestedSubCategoryAllowed: true,
+    isRevokingFreeCashFunctionalityAllowed: true,
+    isRevokingAllUsersFreeCashFunctionalityAllowed: true,
+    isFreeCashGivingToAllUsersFunctionalityAllowed: true,
+    isFreeCashRefundFeatureOn: true,
     freeCashOptions: []
 };
 
@@ -214,21 +245,22 @@ async function seedCompanyMaster() {
             throw new Error(`Countries ${ALLOWED_COUNTRY_SHORT_NAMES.join(', ')} not found. Please run seedCountryMaster first.`);
         }
 
-        // Weight units, for product weights and the WEIGHT shipping method.
+        // Every active weight unit, for product weights and the WEIGHT shipping method.
         const weights = await WeightMaster.find({ status: 'A' }).select('_id');
         if (weights.length === 0) {
             throw new Error('No active weight units found. Please run seedWeightMaster first.');
         }
 
-        const sizes = await SizeMaster.find({ name: { $in: ALLOWED_SIZE_NAMES }, status: 'A' }).select('_id');
-        if (sizes.length !== ALLOWED_SIZE_NAMES.length) {
-            throw new Error(`Sizes ${ALLOWED_SIZE_NAMES.join(', ')} not found. Please run seedSizeMaster first.`);
+        // Every active size.
+        const sizes = await SizeMaster.find({ status: 'A' }).select('_id');
+        if (sizes.length === 0) {
+            throw new Error('No active sizes found. Please run seedSizeMaster first.');
         }
 
-        const modules = await ModuleMaster.find({ code: { $in: ASSIGNED_MODULE_CODES }, status: 'A' });
-        const missingCodes = ASSIGNED_MODULE_CODES.filter((code) => !modules.some((module) => module.code === code));
-        if (missingCodes.length > 0) {
-            throw new Error(`Modules ${missingCodes.join(', ')} not found. Please run seedModuleMaster first.`);
+        // Every active module. No expiry.
+        const modules = await ModuleMaster.find({ status: 'A' });
+        if (modules.length === 0) {
+            throw new Error('No active modules found. Please run seedModuleMaster first.');
         }
 
         const company = await CompanyMaster.findOneAndUpdate(
@@ -271,11 +303,11 @@ async function seedCompanyMaster() {
 
         if (added > 0) await company.save();
 
-
+        process.stdout.write(`CompanyMaster ready for ${VENDOR_DOMAIN}: ${company.assignedModules.length} modules assigned (${added} new).\n`);
         await mongoose.connection.close();
         process.exit(0);
     } catch (error) {
-
+        process.stderr.write(`seedCompanyMaster failed: ${error.message}\n`);
         await mongoose.connection.close();
         process.exit(1);
     }
