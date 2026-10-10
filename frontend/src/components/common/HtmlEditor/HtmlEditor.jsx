@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import TextArea from '../TextArea';
 import Tabs from '../Tabs';
 import Button from '../Buttons';
+import LinkDialog from './LinkDialog';
 
 // Each entry wraps the current selection in `before`/`after` (or drops the
 // placeholder in when nothing is selected).
@@ -14,7 +15,6 @@ const TOOLBAR_ACTIONS = [
   { key: 'p', label: 'P', title: 'Paragraph', before: '<p>', after: '</p>\n', placeholder: 'Paragraph text' },
   { key: 'ul', label: 'List', title: 'Bulleted list', before: '<ul>\n  <li>', after: '</li>\n</ul>\n', placeholder: 'Item' },
   { key: 'br', label: 'BR', title: 'Line break', before: '<br />\n', after: '', placeholder: '' },
-  { key: 'link', label: 'Link', title: 'Link', before: '<a href="https://">', after: '</a>', placeholder: 'link text' },
 ];
 
 const TAB_ITEMS = [
@@ -42,6 +42,7 @@ const TAB_ITEMS = [
  * @param {number} props.rows - Visible rows of the source textarea
  * @param {boolean} props.disabled - Disable editing
  * @param {Array} props.variables - [{ key, description }] merge tokens offered as insertable chips ({{key}})
+ * @param {boolean} props.allowLinks - Offer the "Link" button (off where embedding links isn't allowed)
  * @param {string} props.previewHeight - CSS height of the preview pane
  * @param {string} props.className - Additional CSS classes for the wrapper
  */
@@ -58,10 +59,14 @@ const HtmlEditor = ({
   rows = 12,
   disabled = false,
   variables = [],
+  allowLinks = true,
   previewHeight = '320px',
   className = '',
 }) => {
   const [mode, setMode] = useState('code');
+  // The selection the link will replace, captured when the dialog opens
+  // (the textarea loses focus to the dialog). null = dialog closed.
+  const [linkRange, setLinkRange] = useState(null);
   const wrapperRef = useRef(null);
 
   const getTextarea = () => wrapperRef.current?.querySelector('textarea') || null;
@@ -86,6 +91,29 @@ const HtmlEditor = ({
   };
 
   const insertVariable = (key) => insertAtSelection(`{{${key}}}`);
+
+  const openLinkDialog = () => {
+    const textarea = getTextarea();
+    const start = textarea ? textarea.selectionStart : value.length;
+    const end = textarea ? textarea.selectionEnd : value.length;
+    setLinkRange({ start, end });
+  };
+
+  const insertLink = ({ href, text }) => {
+    const { start, end } = linkRange;
+    const link = `<a href="${href}">${text}</a>`;
+    onChange?.(`${value.slice(0, start)}${link}${value.slice(end)}`);
+    setLinkRange(null);
+
+    // Leave the cursor right after the link once React re-renders.
+    const cursor = start + link.length;
+    requestAnimationFrame(() => {
+      const el = getTextarea();
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(cursor, cursor);
+    });
+  };
 
   return (
     <div className={`w-full ${className}`} ref={wrapperRef}>
@@ -115,6 +143,11 @@ const HtmlEditor = ({
                 {action.label}
               </Button>
             ))}
+            {allowLinks && (
+              <Button variant="secondary" size="xs" disabled={disabled} ariaLabel="Insert link" title="Insert link" onClick={openLinkDialog}>
+                Link
+              </Button>
+            )}
           </div>
 
           {variables.length > 0 && (
@@ -164,6 +197,15 @@ const HtmlEditor = ({
         </p>
       )}
       {!error && helperText && <p className="mt-1 text-xs text-gray-500">{helperText}</p>}
+
+      {linkRange && (
+        <LinkDialog
+          initialText={value.slice(linkRange.start, linkRange.end)}
+          variables={variables}
+          onInsert={insertLink}
+          onClose={() => setLinkRange(null)}
+        />
+      )}
     </div>
   );
 };

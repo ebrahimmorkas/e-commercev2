@@ -108,6 +108,7 @@ const ComposeEmailForm = ({ options, onSend, sending, initialCustomers = null })
           value={compose.htmlBody}
           onChange={(html) => patch({ htmlBody: html })}
           variables={[...(options.variables || []), ...imageVariables]}
+          allowLinks={!!options.access?.isEmbeddingLinksAllowed}
           placeholder="<p>Hello {{customerName}},</p>"
           helperText="Variables are filled in for each recipient ({{customerName}} is blank for addresses that aren't store customers)."
           required

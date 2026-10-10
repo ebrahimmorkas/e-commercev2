@@ -307,6 +307,7 @@ const EmailTemplateForm = ({
                       .map((img) => ({ key: `image:${img.name}`, description: `Shows the image "${img.name}" here` }))
                   : []),
               ]}
+              allowLinks={!!contentOptions?.isEmbeddingLinksAllowed}
               placeholder="<p>Hello {{customerName}},</p>"
               helperText={
                 values.module
