@@ -53,7 +53,7 @@ const validateStoreCurrency = async (data, companyMasterData, existingSettings =
 const SIMPLE_FIELDS = [
     'currencyId', 'storeCountryId', 'storeStateId', 'storeCityId', 'adminName', 'adminWhatsappNumber', 'adminPhoneNumber', 'adminAddress',
     'adminCity', 'adminState', 'adminPincode', 'adminEmail', 'companyName', 'instagramId',
-    'facebookId', 'privacyPolicy', 'cancelPolicy', 'termsAndConditions', 'aboutUs', 'returnRefundPolicy', 'policyDisplayMode',
+    'facebookId', 'privacyPolicy', 'cancelPolicy', 'termsAndConditions', 'aboutUs', 'returnRefundPolicy', 'shippingPolicy', 'policyDisplayMode',
     'contactEmail', 'contactPhoneNumber', 'contactAddress',
     'showAnnouncements', 'isAnnouncementRotationOn', 'showBanners', 'isBannerRotationOn',
     'isTaxRegistrationOnSignupEnabled', 'isCityOptional',

@@ -220,6 +220,10 @@ const companySettingsSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  shippingPolicy: {
+    type: String,
+    default: ''
+  },
   // How the storefront shows a policy's content when a customer clicks it -
   // the vendor's own choice, read by the client Footer (client/features/
   // companySettings). 'PAGE' navigates to a dedicated URL (e.g.

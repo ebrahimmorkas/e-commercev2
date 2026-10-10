@@ -9,7 +9,10 @@
 //   phone_number / whatsapp_number         -> phone_no / whatsapp_no
 //   password                               copied - it is a bcrypt hash the new login accepts,
 //                                          so customers keep their password
-//   state / city (typed text)              -> StateMaster / CityMaster ids; country is always India
+//   state / city (typed text)              -> StateMaster / CityMaster ids; country is always India.
+//                                          No state -> config.DEFAULT_STATE_NAME. A city that is
+//                                          not in the CityMaster is left empty when the vendor has
+//                                          Make City Optional on (and is listed in the report)
 //   favorites                              -> step 6
 //   resetPasswordToken / resetPasswordExpires   dropped
 //
@@ -46,11 +49,12 @@ const { deterministicObjectId, saveDocument, describeValidationError } = require
 
 const USERS = 'Users';
 const ADDRESSES = 'Addresses';
+const CITIES = 'Cities left empty';
 
 // Typed state/city -> master ids, checked with the same service the signup
 // and Add Customer endpoints use (country on the vendor's plan, state inside
 // the country, city inside the state, city optional only if the vendor says so).
-// Returns { countryId, stateId, cityId } or { skipReason }.
+// Returns { countryId, stateId, cityId, droppedCityName } or { skipReason }.
 const resolveLocation = async (mapped, country, ctx, cache) => {
     try {
         const cacheKey = `${mapped.state.name}|${mapped.cityName || ''}`;
@@ -69,13 +73,22 @@ const resolveLocation = async (mapped, country, ctx, cache) => {
                 ? await CityMaster.findOne({ state_id: state._id, city_name: exactNameQuery(mapped.cityName), status: 'A' }).select('_id').lean()
                 : null;
 
-            if (mapped.cityName && !city) {
+            if (mapped.cityName && !city && !isCityOptional) {
                 resolved = { skipReason: `city "${mapped.cityName}" is not in the CityMaster - run 04-locationMasters.js with the same options first` };
             } else if (!city && !isCityOptional) {
                 resolved = { skipReason: 'no city in the old data, and this vendor requires a city (Company Settings > Make City Optional is off)' };
             } else {
-                const location = { countryId: country._id, stateId: state._id, cityId: city ? city._id : null };
-                const check = await userLocationService.validateUserLocation(location, ctx.companyMasterData, isCityOptional);
+                const location = {
+                    countryId: country._id,
+                    stateId: state._id,
+                    cityId: city ? city._id : null,
+                    droppedCityName: mapped.cityName && !city ? mapped.cityName : null
+                };
+                const check = await userLocationService.validateUserLocation(
+                    { countryId: location.countryId, stateId: location.stateId, cityId: location.cityId },
+                    ctx.companyMasterData,
+                    isCityOptional
+                );
                 resolved = check.isSuccess ? location : { skipReason: check.message };
             }
         }
@@ -218,6 +231,9 @@ const main = async () => {
                 report.add(USERS, userResult.outcome, label, userResult.reason);
                 if (userResult.outcome === 'duplicate' || userResult.outcome === 'conflict') {
                     continue;
+                }
+                if (location.droppedCityName) {
+                    report.add(CITIES, 'skipped', label, `customer migrated WITHOUT a city: "${location.droppedCityName}" is not in the CityMaster`);
                 }
 
                 const builtAddress = buildAddress(source, location, ctx);

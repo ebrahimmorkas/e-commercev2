@@ -25,6 +25,7 @@ export const emptyDraft = () => ({
   cancelPolicy: '',
   termsAndConditions: '',
   returnRefundPolicy: '',
+  shippingPolicy: '',
   aboutUs: '',
   policyDisplayMode: 'PAGE',
 
@@ -135,6 +136,7 @@ export const mapApiSettingsToDraft = (doc) => ({
   cancelPolicy: doc.cancelPolicy || '',
   termsAndConditions: doc.termsAndConditions || '',
   returnRefundPolicy: doc.returnRefundPolicy || '',
+  shippingPolicy: doc.shippingPolicy || '',
   aboutUs: doc.aboutUs || '',
   policyDisplayMode: doc.policyDisplayMode === 'MODAL' ? 'MODAL' : 'PAGE',
 

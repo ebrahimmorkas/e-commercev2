@@ -100,7 +100,7 @@ const decodeCompanySettingsRefFields = (payload) => {
 const PUBLIC_COMPANY_SETTINGS_FIELDS = [
     'companyName', 'companyLogo', 'instagramId', 'facebookId',
     'contactEmail', 'contactPhoneNumber', 'contactAddress',
-    'privacyPolicy', 'cancelPolicy', 'termsAndConditions', 'returnRefundPolicy', 'aboutUs', 'policyDisplayMode',
+    'privacyPolicy', 'cancelPolicy', 'termsAndConditions', 'returnRefundPolicy', 'shippingPolicy', 'aboutUs', 'policyDisplayMode',
     'showAnnouncements', 'isAnnouncementRotationOn', 'showBanners', 'isBannerRotationOn',
     'showReviewsToCustomers',
     // The storefront address form needs it to know whether City is mandatory.
