@@ -12,6 +12,7 @@ const { buildExcelTemplate } = require('../utils/excelTemplateBuilder');
 const { processExcelRows } = require('../utils/excelRowProcessor');
 const { bulkUserEmailRowSchema } = require('../middlewares/validations/freeCashValidations');
 const { GIVE_FREE_CASH_TO_CONFIG, USERS_EXCEL_COLUMNS } = require('../constants/freeCashConstants');
+const { REVOKE_ACTIONS } = require('../constants/freeCashUsageConstants');
 const {
   DEFAULT_DISCOUNT_TIMEZONE,
   normalizeDateKey,
@@ -22,6 +23,20 @@ const {
 
 // The options whose customers are known up front (grants issued eagerly).
 const USER_TARGETED_OPTIONS = ['SPECIFIC_USERS', 'GROUPS'];
+
+// The update that revokes a grant - used by every revoke path so each one
+// also lands in revokeHistory (the Free Cash Usage module's history).
+const buildRevokeUpdate = (adminUserId) => {
+  try {
+    const now = new Date();
+    return {
+      $set: { isRevoked: true, revokedBy: adminUserId, revokedDate: now },
+      $push: { revokeHistory: { action: REVOKE_ACTIONS.REVOKED, date: now, by: adminUserId } }
+    };
+  } catch (err) {
+    throw err;
+  }
+};
 
 const escapeRegex = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -517,7 +532,10 @@ const syncTargetedGrants = async (vendorId, freeCashDoc, previousUserIds, nextUs
     if (added.length > 0) {
       const restored = await UserFreeCash.updateMany(
         { vendorId, freeCashId: freeCashDoc._id, userId: { $in: added }, isRevoked: true, isCashUsed: false, status: { $ne: 'D' } },
-        { $set: { isRevoked: false, revokedBy: null, revokedDate: null, updatedBy: adminUserId } }
+        {
+          $set: { isRevoked: false, revokedBy: null, revokedDate: null, updatedBy: adminUserId },
+          $push: { revokeHistory: { action: REVOKE_ACTIONS.RESTORED, date: new Date(), by: adminUserId } }
+        }
       );
       restoredCount = restored.modifiedCount || 0;
     }
@@ -531,7 +549,7 @@ const syncTargetedGrants = async (vendorId, freeCashDoc, previousUserIds, nextUs
     const revokedGrants = await UserFreeCash.find(revokeFilter).lean();
     let revokedCount = 0;
     if (revokedGrants.length > 0) {
-      const revoked = await UserFreeCash.updateMany(revokeFilter, { $set: { isRevoked: true, revokedBy: adminUserId, revokedDate: new Date() } });
+      const revoked = await UserFreeCash.updateMany(revokeFilter, buildRevokeUpdate(adminUserId));
       revokedCount = revoked.modifiedCount || 0;
       promotionEmailService.notifyFreeCashRevoked({ vendorId, grants: revokedGrants, ...emailContext, companySettingsData, userId: adminUserId });
     }
@@ -951,7 +969,7 @@ const revokeFreeCashForUser = async (vendorId, customerEmail, freeCashId, adminU
 
     const result = await UserFreeCash.updateMany(
       revokeFilter,
-      { $set: { isRevoked: true, revokedBy: adminUserId, revokedDate: new Date() } }
+      buildRevokeUpdate(adminUserId)
     );
     promotionEmailService.notifyFreeCashRevoked({ vendorId, grants: revokedGrants, ...emailContext, userId: adminUserId });
 
@@ -979,7 +997,7 @@ const revokeFreeCashForAllUsers = async (vendorId, freeCashId, adminUserId, emai
     const revokedGrants = await UserFreeCash.find(revokeFilter).lean();
     const result = await UserFreeCash.updateMany(
       revokeFilter,
-      { $set: { isRevoked: true, revokedBy: adminUserId, revokedDate: new Date() } }
+      buildRevokeUpdate(adminUserId)
     );
     promotionEmailService.notifyFreeCashRevoked({ vendorId, grants: revokedGrants, ...emailContext, userId: adminUserId });
 

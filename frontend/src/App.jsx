@@ -19,6 +19,7 @@ import CompanySettingsPage from './admin/features/companySettings/pages/CompanyS
 import DeliveryAgentsPage from './admin/features/deliveryAgents/pages/DeliveryAgentsPage';
 import CouriersPage from './admin/masters/courier/pages/CouriersPage';
 import InventoryPage from './admin/features/inventory/pages/InventoryPage';
+import FreeCashUsagePage from './admin/features/freeCashUsage/pages/FreeCashUsagePage';
 import SendEmailPage from './admin/features/sendEmail/pages/SendEmailPage';
 import MyDeliveriesPage from './admin/features/myDeliveries/pages/MyDeliveriesPage';
 import { DeliveryAgentIcon } from './components/ui/Sidebar/icons';
@@ -131,6 +132,8 @@ function App() {
           <CouriersPage />
         ) : effectiveActivePage === 'inventory' ? (
           <InventoryPage />
+        ) : effectiveActivePage === 'freeCashUsage' ? (
+          <FreeCashUsagePage />
         ) : effectiveActivePage === 'sendEmail' ? (
           // Keyed so a new hand-off from Customers starts a fresh form.
           <SendEmailPage key={sendEmailPrefill ? sendEmailPrefill.map((c) => c._id).join(',') : 'blank'} prefillCustomers={sendEmailPrefill} />

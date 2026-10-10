@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import theme from './theme/theme';
 import { ChevronDownIcon, MenuIcon, CloseIcon } from './icons';
-import { SUPPORT_LINKS } from './data';
 import { useStorefrontCategories } from '../../../features/categories/hooks/useStorefrontCategories';
 import { useStorefrontBrands } from '../../../features/brands/hooks/useStorefrontBrands';
 import { useStorefrontCompanySettings } from '../../../features/companySettings/hooks/useStorefrontCompanySettings';
@@ -11,7 +10,6 @@ const NAV_ITEMS = [
   { key: 'home', label: 'Home' },
   { key: 'category', label: 'Shop' },
   { key: 'brands', label: 'Brands' },
-  { key: 'support', label: 'Support' },
 ];
 
 // One category row. If it has its own children, it gets a single toggle
@@ -144,22 +142,9 @@ const BrandsPanel = ({ brands = [], loading }) => {
   );
 };
 
-const SupportPanel = () => (
-  <ul className="grid grid-cols-2 sm:grid-cols-3 gap-x-8 gap-y-3">
-    {SUPPORT_LINKS.map((link) => (
-      <li key={link}>
-        <a href="#" className={`text-sm transition-colors duration-150 ${theme.panel.item}`}>
-          {link}
-        </a>
-      </li>
-    ))}
-  </ul>
-);
-
 const PANELS = {
   category: CategoryPanel,
   brands: BrandsPanel,
-  support: SupportPanel,
 };
 
 const CLOSE_DELAY_MS = 150;

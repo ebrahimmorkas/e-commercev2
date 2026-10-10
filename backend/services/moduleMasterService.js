@@ -78,6 +78,7 @@ const MODULE_FEATURE_FLAG = {
     ANNOUNCEMENT: 'isAnnouncementFeatureOn',
     ABANDONED_CART: 'isAbondonedCartFeatureOn',
     FREE_CASH: 'isFreeCashFeatureOn',
+    FREE_CASH_USAGE: 'isFreeCashFeatureOn',
     GROUP: 'isGroupFeatureOn',
     // Email modules also need the master email switch.
     EMAIL_TEMPLATE: ['isEmailTemplateFeatureOn', 'isSendingEmailFeatureOn'],

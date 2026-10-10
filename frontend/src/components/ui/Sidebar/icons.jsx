@@ -129,6 +129,13 @@ export const FreeCashIcon = (props) => (
   </svg>
 );
 
+export const FreeCashUsageIcon = (props) => (
+  <svg {...base} {...props}>
+    <rect x="2.25" y="6" width="19.5" height="12" rx="2" />
+    <path d="M6 14.25l3-3 2.25 2.25L15 9.75l3 3" />
+  </svg>
+);
+
 export const BrandIcon = (props) => (
   <svg {...base} {...props}>
     <path d="M20.25 7.5V6a2.25 2.25 0 00-2.25-2.25H6A2.25 2.25 0 003.75 6v1.5m16.5 0v10.5A2.25 2.25 0 0118 20.25H6a2.25 2.25 0 01-2.25-2.25V7.5m16.5 0H3.75" />

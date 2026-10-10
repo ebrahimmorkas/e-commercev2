@@ -66,7 +66,7 @@ const CatalogueCard = ({ catalogue: initial, settingsExist }) => {
       <div>
         <p className={`text-sm font-medium ${theme.text.heading}`}>Catalogue (PDF)</p>
         <p className={`text-xs ${theme.text.subheading}`}>
-          Customers see a download icon in the storefront menu, after Support. Uploading a new file replaces the current one.
+          Customers see a download icon in the storefront menu, after Brands. Uploading a new file replaces the current one.
         </p>
       </div>
 

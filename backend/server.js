@@ -133,6 +133,7 @@ app.use('/api/email-templates', emailTemplateMasterRoutes);
 app.use('/api/favorites', favoriteRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/free-cash', freeCashRoutes);
+app.use('/api/free-cash-usage', require('./routes/freeCashUsageRoutes'));
 app.use('/api/abandoned-cart', abandonedCartRoutes);
 app.use('/api/users', userRoutes);
 
