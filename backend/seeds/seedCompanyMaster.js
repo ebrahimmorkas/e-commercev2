@@ -228,7 +228,11 @@ const COMPANY_MASTER = {
     isRevokingAllUsersFreeCashFunctionalityAllowed: true,
     isFreeCashGivingToAllUsersFunctionalityAllowed: true,
     isFreeCashRefundFeatureOn: true,
-    freeCashOptions: []
+    freeCashOptions: [],
+
+    // Store Availability - on here shows the page to this vendor only.
+    showMaintenancePage: false,
+    showPlanExpirePage: false
 };
 
 async function seedCompanyMaster() {

@@ -81,6 +81,22 @@ const reportServerError = (status, payload) => {
   return reference;
 };
 
+// Notified when the backend refuses a request because the store is closed -
+// under maintenance or its plan has expired (backend
+// middlewares/checkStoreAvailability.js marks those with a `storeStatus` entry
+// in `errors`). StoreStatusGate subscribes to this to swap in the full page.
+let storeUnavailableHandler = null;
+export const onStoreUnavailable = (handler) => {
+  storeUnavailableHandler = handler;
+};
+
+const reportStoreUnavailable = (payload) => {
+  const status = Array.isArray(payload?.errors)
+    ? payload.errors.find((entry) => entry?.field === 'storeStatus')?.message
+    : null;
+  if (status) storeUnavailableHandler?.(status);
+};
+
 // Endpoints that must never trigger a refresh-and-retry: refreshing on a failed
 // login/register makes no sense (there's no session yet), and retrying the
 // refresh call itself on its own 401 would loop forever.
@@ -183,6 +199,7 @@ export const apiRequest = async (path, { method = 'GET', body, auth = true, head
 
   if (!response.ok || !payload?.success) {
     const message = payload?.message || `Request failed with status ${response.status}`;
+    reportStoreUnavailable(payload);
     const reference = reportServerError(response.status, payload);
     throw new ApiError(message, response.status, payload?.errors || null, reference);
   }
@@ -231,6 +248,7 @@ export const apiDownload = async (path, { auth = true, _isRetry = false } = {}) 
     } catch {
       // Non-JSON error body; fall back to the status text below
     }
+    reportStoreUnavailable(payload);
     const reference = reportServerError(response.status, payload);
     throw new ApiError(payload?.message || `Request failed with status ${response.status}`, response.status, payload?.errors || null, reference);
   }

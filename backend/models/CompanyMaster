@@ -915,8 +915,24 @@ const companyMasterSchema = mongoose.Schema({
     isForgotPasswordFunctionalityOn: {
         type: Boolean,
         default: false
-    }
+    },
     // End of Customer Management
+
+    // Store Availability
+    // On = only THIS vendor's storefront and admin panel show the page and
+    // their APIs are refused. WebsiteMaster's flags of the same names do it
+    // for every vendor; either one being on is enough (not two-level). See
+    // middlewares/checkStoreAvailability.js.
+    showMaintenancePage: {
+        type: Boolean,
+        default: false
+    },
+    // The vendor's subscription is over.
+    showPlanExpirePage: {
+        type: Boolean,
+        default: false
+    }
+    // End of Store Availability
 }, {
   timestamps: true
 });
