@@ -129,7 +129,11 @@ const WEBSITE_MASTER = {
     isAdminAddingUserFeatureAllowed: true,
     isAdminPlacingOrderOnBehalfOfUserIsOn: true,
     isTaxRegistrationFeatureOn: true,
-    isForgotPasswordFunctionalityOn: true
+    isForgotPasswordFunctionalityOn: true,
+
+    // Store Availability - on here shows the page to EVERY vendor.
+    showMaintenancePage: false,
+    showPlanExpirePage: false
 };
 
 async function seedWebsiteMaster() {

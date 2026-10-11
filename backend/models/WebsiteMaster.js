@@ -547,6 +547,22 @@ const websiteMasterSchema = mongoose.Schema({
     },
     // End of Customer Management
 
+    // Store Availability
+    // Unlike the feature flags above these are NOT two-level (website AND
+    // company): either model switching one on is enough. On here = EVERY
+    // vendor's storefront and admin panel show the page and their APIs are
+    // refused; CompanyMaster's flags of the same names do it for one vendor.
+    // See middlewares/checkStoreAvailability.js.
+    showMaintenancePage: {
+        type: Boolean,
+        default: false
+    },
+    showPlanExpirePage: {
+        type: Boolean,
+        default: false
+    },
+    // End of Store Availability
+
 }, {
   timestamps: true
 });

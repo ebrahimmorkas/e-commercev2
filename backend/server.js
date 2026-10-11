@@ -22,7 +22,9 @@ const keepAliveService = require('./services/keepAliveService');
 const { requestContext } = require('./middlewares/requestContext');
 const vendorDetection = require('./middlewares/vendorDetection');
 const ensureVendorDataCached = require('./middlewares/ensureVendorDataCached');
+const checkStoreAvailability = require('./middlewares/checkStoreAvailability');
 // Routes
+const storeAvailabilityRoutes = require('./routes/storeAvailabilityRoutes');
 const companySettingsRoutes = require('./routes/companySettingsRoutes');
 const companyMasterRoutes = require('./routes/companyMasterRoutes');
 const moduleMasterRoutes = require('./routes/moduleMasterRoutes');
@@ -116,8 +118,13 @@ if (process.env.IS_REDIS_SERVER_ON == 1) {
 
 app.use(ensureVendorDataCached);
 
+// Maintenance / plan expired: refuses every API call below except the few
+// exempt ones. Must stay after ensureVendorDataCached and before the routers.
+app.use(checkStoreAvailability);
+
 // Routes
 // Public Routes
+app.use('/api/store-status', storeAvailabilityRoutes);
 app.use('/api/company-master', companyMasterRoutes);
 app.use('/api/modules', moduleMasterRoutes);
 app.use('/api/company-settings', companySettingsRoutes);
