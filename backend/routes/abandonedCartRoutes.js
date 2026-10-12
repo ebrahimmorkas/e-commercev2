@@ -8,7 +8,7 @@ const vendorDetection = require('../middlewares/vendorDetection');
 const ensureVendorDataCached = require('../middlewares/ensureVendorDataCached');
 const checkModuleAssigned = require('../middlewares/checkModuleAssigned');
 const validate = require('../middlewares/validate');
-const { abandonedCartIdParamSchema } = require('../middlewares/validations/abandonedCartValidations');
+const { abandonedCartIdParamSchema, placeOrderFromAbandonedCartSchema } = require('../middlewares/validations/abandonedCartValidations');
 
 // Admin-only - vendor-scoped, gated by websiteMaster/companyMaster.isAbondonedCartFeatureOn
 // (checked in the controller) and by the ABANDONED_CART module assignment.
@@ -35,6 +35,7 @@ router.post(
   checkModuleAssigned('ABANDONED_CART'),
   checkModuleAssigned('ADMIN_PLACE_ORDER'),
   validate(abandonedCartIdParamSchema, 'params'),
+  validate(placeOrderFromAbandonedCartSchema, 'body'),
   abandonedCartController.placeOrderFromAbandonedCart
 );
 

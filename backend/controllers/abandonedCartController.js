@@ -80,8 +80,12 @@ const placeOrderFromAbandonedCart = async (req, res) => {
     }
 
     id = common.decodeId(req.params.id);
+    // Exactly one of the two is sent (see placeOrderFromAbandonedCartSchema).
+    const address = req.body.addressId
+      ? { addressId: common.decodeId(req.body.addressId) }
+      : { addressText: req.body.addressText };
     const result = await abandonedCartService.placeOrderFromAbandonedCart(
-      vendorId, req.user._id, id, req.websiteMasterData, req.companyMasterData, req.companySettingsData
+      vendorId, req.user._id, id, req.websiteMasterData, req.companyMasterData, req.companySettingsData, address
     );
 
     if (!result.isSuccess) {

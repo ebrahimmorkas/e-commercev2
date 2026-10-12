@@ -17,6 +17,7 @@ const {
     ABANDONED_CART_SCAN_INTERVAL_MS,
     DEFAULT_ABANDONED_CART_MINUTES
 } = require('../constants/abandonedCartConstants');
+const { REALTIME_USER_NOTIFICATION_EVENT, REALTIME_MODULE_CART, CART_NOTIFICATION_TYPES } = require('../constants/realtimeConstants');
 
 const countCartItems = (cart) => (cart.products || []).reduce(
     (sum, p) => sum + p.variants.reduce((vSum, v) => vSum + v.sizes.length, 0),
@@ -484,6 +485,16 @@ const emptyCartsAfterAdminOrder = async (vendorId, userId, cartIds, adminUserId)
             await redisService.del(redisKeys.cartTotal(vendorId, ownerKey));
             notifyCartRecovered(vendorId, cart);
         }
+
+        // The customer's own open storefront (every tab / device they are
+        // logged in on) re-reads the cart, so it empties without a reload.
+        if (carts.length > 0) {
+            realtimeService.emitToUser(vendorId, userId, REALTIME_USER_NOTIFICATION_EVENT, {
+                module: REALTIME_MODULE_CART,
+                type: CART_NOTIFICATION_TYPES.EMPTIED,
+                data: null
+            });
+        }
     } catch (err) {
         logger.logWarning('Exception in abandonedCartService.emptyCartsAfterAdminOrder', { vendorId, userId, error: err });
     }
@@ -492,12 +503,26 @@ const emptyCartsAfterAdminOrder = async (vendorId, userId, cartIds, adminUserId)
 // One click from the Abandoned Carts list: orders everything in this
 // customer's abandoned cart(s) for them, at today's prices (their bulk
 // pricing tier price where the store has bulk pricing on, as in their cart),
-// with no shipping price, discount or address - those can be set on the
-// order afterwards. cartId is the row's primary cart.
-const placeOrderFromAbandonedCart = async (vendorId, adminUserId, cartId, websiteMasterData, companyMasterData, companySettingsData) => {
+// with no shipping price or discount - those can be set on the order
+// afterwards. cartId is the row's primary cart.
+//
+// The delivery address is required and is exactly one of: one of the
+// customer's saved addresses (address.addressId - the order is then taxed
+// there), or one typed by the admin (address.addressText - kept on the order
+// only, never added to the customer's address book).
+const placeOrderFromAbandonedCart = async (vendorId, adminUserId, cartId, websiteMasterData, companyMasterData, companySettingsData, address = {}) => {
     try {
         // Required here, not at the top: adminPlaceOrderService itself requires this file.
         const adminPlaceOrderService = require('./adminPlaceOrderService');
+
+        const addressId = address?.addressId || null;
+        const addressText = typeof address?.addressText === 'string' ? address.addressText.trim() : '';
+        if (!addressId && !addressText) {
+            return common.returnResult(false, 400, 'Choose a saved address or enter the delivery address.');
+        }
+        if (addressId && addressText) {
+            return common.returnResult(false, 400, 'Provide either a saved address or a typed address, not both.');
+        }
 
         const primary = await Cart.findOne(abandonedCartsFilter(vendorId, companySettingsData, { _id: cartId }));
         if (!primary) {
@@ -523,6 +548,7 @@ const placeOrderFromAbandonedCart = async (vendorId, adminUserId, cartId, websit
                 shippingAmount: 0,
                 discountAmount: 0,
                 isTaxManual: false,
+                ...(addressId ? { addressId } : { addressText }),
                 abandonedCartIds: carts.map((cart) => cart._id)
             }
         );

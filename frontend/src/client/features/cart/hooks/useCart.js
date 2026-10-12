@@ -7,6 +7,10 @@ import {
   checkoutCart as checkoutCartRequest,
 } from '../api/cartApi';
 import { flattenCartLineItems, buildCartItemsMap } from '../utils/shapeCart';
+import { useClientRealtime } from '../../../realtime/useClientRealtime';
+
+// Must match backend's REALTIME_MODULE_CART (constants/realtimeConstants.js).
+const CART_MODULE = 'CART';
 
 /**
  * Loads and mutates the current shopper's real cart (guest cookie or
@@ -43,6 +47,22 @@ export const useCart = () => {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Something other than this shopper changed their cart (the store placed
+  // the order for it and emptied it): re-read it quietly, with no loading
+  // state, so the open page just updates. Also after a dropped connection,
+  // since a push sent meanwhile was never delivered. Best-effort - a failed
+  // background read leaves the cart on screen as it is.
+  const { subscribe } = useClientRealtime();
+  useEffect(
+    () =>
+      subscribe(CART_MODULE, () => {
+        getCart()
+          .then((result) => setCart(result?.cart || null))
+          .catch(() => {});
+      }),
+    [subscribe]
+  );
 
   const lineItems = useMemo(() => flattenCartLineItems(cart), [cart]);
   const cartItems = useMemo(() => buildCartItemsMap(cart), [cart]);

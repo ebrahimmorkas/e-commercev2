@@ -1,4 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import Dropdown from '../../../../components/common/DropDown';
+import TextArea from '../../../../components/common/TextArea';
+import Spinner from '../../../../components/common/Spinner';
+import { RadioGroup } from '../../../../components/common/Radio';
 import Card from '../../../../components/common/Card';
 import Table from '../../../../components/common/tables';
 import Badge from '../../../../components/common/Badge';
@@ -45,6 +49,19 @@ const SOURCE_DESCRIPTIONS = {
   COMBINED: 'The customer left two carts: one while logged in and one as a guest. Both are shown here together.',
 };
 
+// Where a directly placed order is delivered. Limits match the backend
+// (middlewares/validations/abandonedCartValidations.js).
+const ADDRESS_MODE_OPTIONS = [
+  { value: 'saved', label: "One of the customer's saved addresses" },
+  { value: 'new', label: 'Type a different address' },
+];
+const MIN_ADDRESS_LENGTH = 5;
+const MAX_ADDRESS_LENGTH = 1000;
+
+// Same wording as the Place Order page's saved-address list.
+const describeAddress = (address) =>
+  `${address.address_name} - ${[address.room_no, address.building, address.address_in_words].filter(Boolean).join(', ')} (${address.pincode})`;
+
 /**
  * @param {boolean} [props.canPlaceOrder] - Place Order is on for this account
  *   (its Company Master switch + module) - shows the Place Order column / button.
@@ -52,7 +69,17 @@ const SOURCE_DESCRIPTIONS = {
  *   Order page filled in with a row's customer and products.
  */
 const AbandonedCartsPage = ({ canPlaceOrder = false, onOpenPlaceOrder }) => {
-  const { carts, loading, error, placeOrder, placingOrder } = useAbandonedCarts();
+  const { carts, loading, error, placeOrder, placingOrder, loadAddresses } = useAbandonedCarts();
+  // "Place order directly": the delivery address step of the Place Order modal.
+  const [addressStep, setAddressStep] = useState(false);
+  const [addressMode, setAddressMode] = useState('saved');
+  const [addresses, setAddresses] = useState([]);
+  const [addressesLoading, setAddressesLoading] = useState(false);
+  const [selectedAddressId, setSelectedAddressId] = useState('');
+  const [addressText, setAddressText] = useState('');
+  const [addressError, setAddressError] = useState('');
+  // The cart whose saved addresses are being loaded - a late answer for another cart is dropped.
+  const addressRequestRef = useRef(null);
   // Row ids, not the rows themselves: the list re-reads itself on every live
   // update, and a row that left it (the customer came back) closes its modal.
   const [productsCartId, setProductsCartId] = useState(null);
@@ -123,7 +150,7 @@ const AbandonedCartsPage = ({ canPlaceOrder = false, onOpenPlaceOrder }) => {
                   onClick={(e) => {
                     // The row itself opens the products modal - this button only asks how to place the order.
                     e.stopPropagation();
-                    setOrderCartId(row._id);
+                    openOrderModal(row._id);
                   }}
                 >
                   Place Order
@@ -136,13 +163,58 @@ const AbandonedCartsPage = ({ canPlaceOrder = false, onOpenPlaceOrder }) => {
     [canPlaceOrder]
   );
 
+  // Always opens on the question, never on a previous cart's address.
+  const openOrderModal = (cartId) => {
+    setAddressStep(false);
+    setAddresses([]);
+    setSelectedAddressId('');
+    setAddressText('');
+    setAddressError('');
+    setOrderCartId(cartId);
+  };
+
   const closeOrderModal = () => {
-    if (!placingOrder) setOrderCartId(null);
+    if (placingOrder) return;
+    addressRequestRef.current = null;
+    setOrderCartId(null);
+  };
+
+  // "Place order directly" first asks where to deliver: one of the customer's
+  // saved addresses, or one the admin types.
+  const handleChooseDirect = async () => {
+    const cartId = orderCart._id;
+    addressRequestRef.current = cartId;
+    setAddressStep(true);
+    setAddressError('');
+    setAddressesLoading(true);
+    const list = await loadAddresses(orderCart.userId);
+    // The admin moved on to another cart (or closed this) while it loaded.
+    if (addressRequestRef.current !== cartId) return;
+    setAddresses(list);
+    setAddressMode(list.length > 0 ? 'saved' : 'new');
+    setAddressesLoading(false);
   };
 
   const handlePlaceDirectly = async () => {
-    const success = await placeOrder(orderCart._id);
+    let address;
+    if (addressMode === 'saved') {
+      if (!selectedAddressId) {
+        setAddressError('Select one of the saved addresses.');
+        return;
+      }
+      address = { addressId: selectedAddressId };
+    } else {
+      const trimmed = addressText.trim();
+      if (trimmed.length < MIN_ADDRESS_LENGTH) {
+        setAddressError(`Enter the full delivery address (at least ${MIN_ADDRESS_LENGTH} characters).`);
+        return;
+      }
+      address = { addressText: trimmed };
+    }
+    setAddressError('');
+    const success = await placeOrder(orderCart._id, address);
     if (success) {
+      addressRequestRef.current = null;
       setOrderCartId(null);
       setProductsCartId(null);
     }
@@ -150,10 +222,13 @@ const AbandonedCartsPage = ({ canPlaceOrder = false, onOpenPlaceOrder }) => {
 
   const handleGoToPlaceOrder = () => {
     const cart = orderCart;
+    addressRequestRef.current = null;
     setOrderCartId(null);
     setProductsCartId(null);
     onOpenPlaceOrder?.(cart);
   };
+
+  const addressOptions = addresses.map((address) => ({ value: String(address._id), label: describeAddress(address) }));
 
   return (
     <div className="max-w-8xl mx-auto p-6">
@@ -199,7 +274,7 @@ const AbandonedCartsPage = ({ canPlaceOrder = false, onOpenPlaceOrder }) => {
               Close
             </Button>
             {canPlaceOrder && productsCart && (
-              <Button variant="primary" onClick={() => setOrderCartId(productsCart._id)}>
+              <Button variant="primary" onClick={() => openOrderModal(productsCart._id)}>
                 Place Order
               </Button>
             )}
@@ -230,24 +305,105 @@ const AbandonedCartsPage = ({ canPlaceOrder = false, onOpenPlaceOrder }) => {
         title="Place Order"
         size="md"
         footer={
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={closeOrderModal} disabled={placingOrder}>
               Cancel
             </Button>
+            {addressStep && (
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    addressRequestRef.current = null;
+                    setAddressStep(false);
+                    setAddressError('');
+                  }}
+                  disabled={placingOrder}
+                >
+                  Back
+                </Button>
+                <Button variant="primary" onClick={handlePlaceDirectly} loading={placingOrder} loadingText="Placing order..." disabled={addressesLoading || (addressMode === 'saved' && addressOptions.length === 0)}>
+                  Place order
+                </Button>
+              </>
+            )}
           </div>
         }
       >
-        {orderCart && (
+        {orderCart && addressStep && (
+          <div className="space-y-3">
+            <p className={`text-sm ${theme.text.body}`}>
+              Where should the order for {orderCart.userName || 'this customer'} be delivered?
+            </p>
+            {addressesLoading ? (
+              <div className="flex justify-center py-4">
+                <Spinner />
+              </div>
+            ) : (
+              <>
+                <RadioGroup
+                  label="Delivery address"
+                  name="abandoned-cart-address-mode"
+                  options={ADDRESS_MODE_OPTIONS}
+                  value={addressMode}
+                  onChange={(value) => {
+                    setAddressMode(value);
+                    setAddressError('');
+                  }}
+                />
+                {addressMode === 'saved' ? (
+                  addressOptions.length === 0 ? (
+                    <p className={`text-sm ${theme.text.subheading}`}>This customer has no saved addresses. Type the address instead.</p>
+                  ) : (
+                    <Dropdown
+                      label="Saved address"
+                      options={addressOptions}
+                      value={selectedAddressId}
+                      onChange={(value) => {
+                        setSelectedAddressId(value);
+                        setAddressError('');
+                      }}
+                      placeholder="Select an address"
+                      error={addressError}
+                    />
+                  )
+                ) : (
+                  <div>
+                    <TextArea
+                      label="Delivery address"
+                      placeholder="Flat / building, street, area, city, state, pincode"
+                      rows={4}
+                      maxLength={MAX_ADDRESS_LENGTH}
+                      value={addressText}
+                      onChange={(e) => setAddressText(e.target.value)}
+                      disabled={placingOrder}
+                    />
+                    {/* TextArea only shows its own per-keystroke validation errors, so the submit-time one is shown here. */}
+                    {addressError && (
+                      <p className={`mt-1 text-sm ${theme.alert.error.text}`} role="alert">
+                        {addressError}
+                      </p>
+                    )}
+                  </div>
+                )}
+                <p className={`text-xs ${theme.text.muted}`}>
+                  A typed address is used for this order only. It is not saved to the customer&apos;s address book.
+                </p>
+              </>
+            )}
+          </div>
+        )}
+        {orderCart && !addressStep && (
           <div className="space-y-4">
             <p className={`text-sm ${theme.text.body}`}>
               How do you want to place the order for {orderCart.userName || 'this customer'} ({orderCart.itemCount} product{orderCart.itemCount === 1 ? '' : 's'})?
             </p>
             <div className="space-y-1">
-              <Button variant="primary" fullWidth onClick={handlePlaceDirectly} loading={placingOrder} loadingText="Placing order...">
+              <Button variant="primary" fullWidth onClick={handleChooseDirect}>
                 Place order directly
               </Button>
               <p className={`text-xs ${theme.text.muted}`}>
-                Orders everything in the cart right now at today&apos;s prices, with no shipping price, discount or address. You can add those on the order afterwards.
+                Orders everything in the cart at today&apos;s prices, with no shipping price or discount. You only choose the delivery address next.
               </p>
             </div>
             <div className="space-y-1">

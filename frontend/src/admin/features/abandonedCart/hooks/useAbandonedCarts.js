@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as abandonedCartApi from '../api/abandonedCartApi';
+import { getUserAddresses } from '../../adminPlaceOrder/api/adminPlaceOrderApi';
 import { useRealtime } from '../../../realtime/useRealtime';
 import { useToast } from '../../../../components/common/Toast';
 
@@ -56,12 +57,25 @@ export const useAbandonedCarts = () => {
 
   useEffect(() => subscribe(ABANDONED_CART_MODULE, () => refreshSilently()), [subscribe, refreshSilently]);
 
-  // Places the order for a row's cart straight away. Resolves true on success;
-  // the row then leaves the list (the server also pushes that).
-  const placeOrder = async (cartId) => {
+  // The customer's saved addresses, for choosing where the order is delivered
+  // (the same list the Place Order page offers). Resolves [] when it fails -
+  // the admin can still type the address.
+  const loadAddresses = useCallback(async (userId) => {
+    try {
+      const list = await getUserAddresses(userId);
+      return Array.isArray(list) ? list : [];
+    } catch {
+      return [];
+    }
+  }, []);
+
+  // Places the order for a row's cart straight away, delivered to `address`
+  // ({ addressId } or { addressText }). Resolves true on success; the row
+  // then leaves the list (the server also pushes that).
+  const placeOrder = async (cartId, address) => {
     setPlacingOrder(true);
     try {
-      const order = await abandonedCartApi.placeOrderFromAbandonedCart(cartId);
+      const order = await abandonedCartApi.placeOrderFromAbandonedCart(cartId, address);
       toast.success(`Order ${order?.orderNumber || ''} placed successfully`);
       await refreshSilently();
       return true;
@@ -73,7 +87,7 @@ export const useAbandonedCarts = () => {
     }
   };
 
-  return { carts, loading, error, refetch: fetchCarts, placeOrder, placingOrder };
+  return { carts, loading, error, refetch: fetchCarts, placeOrder, placingOrder, loadAddresses };
 };
 
 export default useAbandonedCarts;

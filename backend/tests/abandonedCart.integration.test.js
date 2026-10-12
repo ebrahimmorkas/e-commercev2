@@ -37,10 +37,14 @@ const testDbUri = () => {
 let connected = false;
 // Every push the services send to the vendor's admins, instead of a real socket.
 let pushes = [];
+// Every push to one customer's own sockets: [userId, module, type].
+let customerPushes = [];
+const originalEmitToUser = realtimeService.emitToUser;
 const originalEmit = realtimeService.emitToVendorAdmins;
 
 test.before(async () => {
     realtimeService.emitToVendorAdmins = (vendorId, event, payload) => { pushes.push(payload.type); return true; };
+    realtimeService.emitToUser = (vendorId, userId, event, payload) => { customerPushes.push([userId.toString(), payload.module, payload.type]); return true; };
     try {
         await mongoose.connect(testDbUri(), { serverSelectionTimeoutMS: 3000 });
         connected = mongoose.connection.db.databaseName.endsWith('-abandonedcart-test');
@@ -53,6 +57,7 @@ test.before(async () => {
 
 test.after(async () => {
     realtimeService.emitToVendorAdmins = originalEmit;
+    realtimeService.emitToUser = originalEmitToUser;
     if (connected) await mongoose.connection.db.dropDatabase();
     await mongoose.disconnect();
 });
@@ -84,6 +89,7 @@ const reset = async () => {
         { _id: BOB, vendorId: VENDOR, name: 'Bob', email: 'bob@shop.test', phone_no: '9000000002', role: 'user', status: 'A' }
     ]);
     pushes = [];
+    customerPushes = [];
 };
 
 const listing = async (cs = settings) => (await abandonedCartService.fetchAbandonedCartsForAdmin(VENDOR, cs)).meta.data;
@@ -239,13 +245,34 @@ test('placing the order from an abandoned cart orders everything in it and empti
     const adminPlaceOrderService = require('../services/adminPlaceOrderService');
     const original = adminPlaceOrderService.placeOrderOnBehalfOfUser;
     let received = null;
+    let emptiesCart = true;
     adminPlaceOrderService.placeOrderOnBehalfOfUser = async (vendorId, adminUserId, wm, cm, cs, payload) => {
         received = payload;
-        await abandonedCartService.emptyCartsAfterAdminOrder(vendorId, payload.userId, payload.abandonedCartIds, adminUserId);
+        if (emptiesCart) await abandonedCartService.emptyCartsAfterAdminOrder(vendorId, payload.userId, payload.abandonedCartIds, adminUserId);
         return { isSuccess: true, statusCode: 201, message: 'Order placed successfully', meta: { order: { _id: id(), orderNumber: 'T-9' } } };
     };
+    const savedAddressId = id();
     try {
-        const result = await abandonedCartService.placeOrderFromAbandonedCart(VENDOR, id(), userCart._id, masters, masters, guestSettings);
+        // A delivery address is required: a saved one or a typed one, never both.
+        const noAddress = await abandonedCartService.placeOrderFromAbandonedCart(VENDOR, id(), userCart._id, masters, masters, guestSettings);
+        assert.equal(noAddress.statusCode, 400);
+        const blankAddress = await abandonedCartService.placeOrderFromAbandonedCart(VENDOR, id(), userCart._id, masters, masters, guestSettings, { addressText: '   ' });
+        assert.equal(blankAddress.statusCode, 400);
+        const bothAddresses = await abandonedCartService.placeOrderFromAbandonedCart(VENDOR, id(), userCart._id, masters, masters, guestSettings, { addressId: savedAddressId, addressText: '12 Hill Road' });
+        assert.equal(bothAddresses.statusCode, 400);
+        assert.equal(received, null, 'no order is attempted without a valid address');
+        assert.equal((await Cart.findById(userCart._id)).products.length > 0, true, 'the cart is left alone when the order is refused');
+
+        // A typed address goes on the order as text (this stand-in order leaves the cart as it is).
+        emptiesCart = false;
+        const typed = await abandonedCartService.placeOrderFromAbandonedCart(VENDOR, id(), userCart._id, masters, masters, guestSettings, { addressText: '  12 Hill Road, Pune  ' });
+        assert.equal(typed.isSuccess, true, typed.message);
+        assert.equal(received.addressText, '12 Hill Road, Pune');
+        assert.equal('addressId' in received, false);
+        emptiesCart = true;
+        received = null;
+
+        const result = await abandonedCartService.placeOrderFromAbandonedCart(VENDOR, id(), userCart._id, masters, masters, guestSettings, { addressId: savedAddressId });
         assert.equal(result.isSuccess, true, result.message);
         assert.equal(result.meta.order.orderNumber, 'T-9');
     } finally {
@@ -256,6 +283,9 @@ test('placing the order from an abandoned cart orders everything in it and empti
     assert.deepEqual(received.items.map((item) => item.quantity), [3, 4]);
     assert.equal(received.shippingAmount, 0);
     assert.equal(received.abandonedCartIds.length, 2);
+    // The chosen saved address goes on the order, with no typed one beside it.
+    assert.equal(received.addressId.toString(), savedAddressId.toString());
+    assert.equal('addressText' in received, false);
 
     for (const cartId of [userCart._id, guestCart._id]) {
         const emptied = await Cart.findById(cartId);
@@ -265,8 +295,10 @@ test('placing the order from an abandoned cart orders everything in it and empti
     assert.equal((await Cart.findById(bobCart._id)).products.length, 1, "another customer's cart is never touched");
     assert.deepEqual((await listing(guestSettings)).map((entry) => entry.userName), ['Bob']);
     assert.deepEqual(pushes, ['RECOVERED', 'RECOVERED']);
+    // The customer's own open storefront is told to re-read its cart.
+    assert.deepEqual(customerPushes, [[ALICE.toString(), 'CART', 'EMPTIED']]);
 
     // Once the customer has come back to it there is nothing to order.
-    const gone = await abandonedCartService.placeOrderFromAbandonedCart(VENDOR, id(), userCart._id, masters, masters, guestSettings);
+    const gone = await abandonedCartService.placeOrderFromAbandonedCart(VENDOR, id(), userCart._id, masters, masters, guestSettings, { addressText: '12 Hill Road, Pune' });
     assert.equal(gone.statusCode, 404);
 });
