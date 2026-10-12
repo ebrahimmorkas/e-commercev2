@@ -7,7 +7,10 @@ const REALTIME_MODULE_ABANDONED_CART = 'ABANDONED_CART';
 
 const ABANDONED_CART_NOTIFICATION_TYPES = {
     NEW: 'NEW',
-    RECOVERED: 'RECOVERED'
+    RECOVERED: 'RECOVERED',
+    // An already-listed customer's abandoned cart changed (another cart of
+    // theirs was flagged, a quantity changed, an item was removed).
+    UPDATED: 'UPDATED'
 };
 
 // How a flagged/listed abandoned "customer" row was identified - purely

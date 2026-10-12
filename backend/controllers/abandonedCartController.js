@@ -11,6 +11,16 @@ const formatAbandonedCartGroupForResponse = (group) => ({
     _id: group._id ? common.encodeId(group._id) : group._id,
     linkedCartIds: Array.isArray(group.linkedCartIds) ? group.linkedCartIds.map((id) => common.encodeId(id)) : group.linkedCartIds,
     userId: group.userId ? common.encodeId(group.userId) : group.userId,
+    // Encoded the way Place Order's own product picker encodes them, so the
+    // admin's Place Order page can take these lines over as they are.
+    items: Array.isArray(group.items)
+        ? group.items.map((item) => ({
+            ...item,
+            productId: common.encodeId(item.productId),
+            variantId: common.encodeId(item.variantId),
+            sizeId: common.encodeId(item.sizeId),
+        }))
+        : group.items,
 });
 
 /**
@@ -59,6 +69,37 @@ const getAllAbandonedCartsAdmin = async (req, res) => {
   }
 };
 
+// Places the order for one customer's abandoned cart straight from the list.
+const placeOrderFromAbandonedCart = async (req, res) => {
+  const vendorId = req.vendorId;
+  let id;
+  try {
+    const blockReason = await getAbandonedCartFeatureBlockReason(req);
+    if (blockReason) {
+      return common.sendError(res, blockReason.statusCode, blockReason.message);
+    }
+
+    id = common.decodeId(req.params.id);
+    // Exactly one of the two is sent (see placeOrderFromAbandonedCartSchema).
+    const address = req.body.addressId
+      ? { addressId: common.decodeId(req.body.addressId) }
+      : { addressText: req.body.addressText };
+    const result = await abandonedCartService.placeOrderFromAbandonedCart(
+      vendorId, req.user._id, id, req.websiteMasterData, req.companyMasterData, req.companySettingsData, address
+    );
+
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+
+    const order = result.meta.order;
+    return common.sendSuccess(res, result.statusCode, result.message, { _id: common.encodeId(order._id), orderNumber: order.orderNumber });
+  } catch (error) {
+    logger.logException('abandonedCartController: placeOrderFromAbandonedCart - Exception while placing an order from an abandoned cart', { vendorId, id, error });
+  }
+};
+
 module.exports = {
-  getAllAbandonedCartsAdmin
+  getAllAbandonedCartsAdmin,
+  placeOrderFromAbandonedCart
 };

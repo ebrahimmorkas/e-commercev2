@@ -14,7 +14,18 @@ const REALTIME_SOCKET_ROLES = {
     DELIVERY_AGENT: 'deliveryAgent'
 };
 
+// The customer's own cart, on the customer channel. Sent when something other
+// than the customer changed it, so their open storefront re-reads it.
+const REALTIME_MODULE_CART = 'CART';
+
+const CART_NOTIFICATION_TYPES = {
+    // An admin placed the order for this cart (Abandoned Carts) and it was emptied.
+    EMPTIED: 'EMPTIED'
+};
+
 module.exports = {
+    REALTIME_MODULE_CART,
+    CART_NOTIFICATION_TYPES,
     REALTIME_USER_NOTIFICATION_EVENT,
     REALTIME_SOCKET_ROLES
 };

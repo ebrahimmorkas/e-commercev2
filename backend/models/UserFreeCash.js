@@ -51,10 +51,19 @@ const cashRefundHistorySchema = new mongoose.Schema(
             required: true
         },
 
+        // The return that gave the amount back - or, when an admin's Edit
+        // Order took the Free Cash off the order instead (the order no longer
+        // qualified for it), null with orderId set.
         orderReturnId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "OrderReturn",
-            required: true
+            default: null
+        },
+
+        orderId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Order",
+            default: null
         }
     },
     {

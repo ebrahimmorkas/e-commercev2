@@ -55,6 +55,22 @@ const invalidateCartTotalCache = async (vendorId, cartOwner) => {
     await redisService.del(redisKeys.cartTotal(vendorId, ownerCacheKey(cartOwner)));
 };
 
+// Saves a cart the customer just changed (a discount or Free Cash applied or
+// removed): like every other change to a cart it restarts the abandonment
+// clock, and the admin is told when a cart they were shown as abandoned came back.
+const saveCartAfterCustomerChange = async (vendorId, cartOwner, cart) => {
+    try {
+        const wasAbandoned = abandonedCartService.markCartActivity(cart);
+        await cart.save();
+        await invalidateCartTotalCache(vendorId, cartOwner);
+        if (wasAbandoned) {
+            abandonedCartService.notifyCartRecovered(vendorId, cart);
+        }
+    } catch (err) {
+        throw err;
+    }
+};
+
 // A size is excluded for a location if ANY of the location's known IDs
 // (country/state/city) or zip code appear in that size's exclude arrays.
 // Any/all of the location fields may be null (cookie not set, or guest with
@@ -312,8 +328,13 @@ const updateCartItemQuantity = async (vendorId, cartOwner, companyMasterData, we
         applyLinePrice(sizeEntry, resolved.product, resolved.variant, resolved.size, isBulkPricingOn);
         await recalculateCartPromotions(vendorId, cart, cartLines(cart), companyMasterData, websiteMasterData, companySettingsData);
 
+        // Any change to the cart restarts its abandonment clock.
+        const wasAbandoned = abandonedCartService.markCartActivity(cart);
         await cart.save();
         await invalidateCartTotalCache(vendorId, cartOwner);
+        if (wasAbandoned) {
+            abandonedCartService.notifyCartRecovered(vendorId, cart);
+        }
 
         return common.returnResult(true, 200, 'Cart item quantity updated successfully', { cart });
     } catch (err) {
@@ -350,8 +371,14 @@ const removeCartItem = async (vendorId, cartOwner, payload, companyMasterData, w
         }
         await recalculateCartPromotions(vendorId, cart, cartLines(cart), companyMasterData, websiteMasterData, companySettingsData);
 
+        // Any change to the cart restarts its abandonment clock (an emptied
+        // cart is never flagged again - there is nothing in it to show).
+        const wasAbandoned = abandonedCartService.markCartActivity(cart);
         await cart.save();
         await invalidateCartTotalCache(vendorId, cartOwner);
+        if (wasAbandoned) {
+            abandonedCartService.notifyCartRecovered(vendorId, cart);
+        }
 
         return common.returnResult(true, 200, 'Item removed from cart successfully', { cart });
     } catch (err) {
@@ -617,11 +644,20 @@ const mergeGuestCartIntoUserCart = async (vendorId, userId, guestCartId, locatio
             pruneEmptyProducts(userCart);
         }
 
+        // The guest's products were just put into this cart, so its abandonment
+        // clock starts now - without this a cart filled only by a login merge
+        // was never stamped and could never be flagged abandoned.
+        const wasAbandoned = abandonedCartService.markCartActivity(userCart) || guestCart.isAbandoned === true;
+
         userCart.createdBy = userCart.createdBy || userId;
         userCart.updatedBy = userId;
         await userCart.save();
 
         await Cart.deleteOne({ _id: guestCart._id });
+        // Either cart was on the admin's abandoned list: the customer is back.
+        if (wasAbandoned) {
+            abandonedCartService.notifyCartRecovered(vendorId, userCart);
+        }
         await invalidateCartTotalCache(vendorId, { type: 'user', id: userId });
         await invalidateCartTotalCache(vendorId, { type: 'guest', id: guestCartId });
 
@@ -797,7 +833,7 @@ const DISCOUNT_LOCK = { CART: 'CART', SCHEDULE: 'SCHEDULE' };
 // cart checks, so a `lock` is only ever reported to a customer the discount is really for.
 const resolveDiscountEligibility = (discount, ctx) => {
     try {
-        const { userId, formatMoney } = ctx;
+        const { userId } = ctx;
         if (!userId) return { eligible: false, reason: LOGIN_TO_USE_DISCOUNTS };
 
         if (discount.isDiscountForceClosed) {
@@ -847,6 +883,21 @@ const resolveDiscountEligibility = (discount, ctx) => {
         if (!window.open) {
             return { eligible: false, reason: window.reason, lock: DISCOUNT_LOCK.SCHEDULE };
         }
+
+        return resolveDiscountCartCriteria(discount, ctx);
+    } catch (err) {
+        throw err;
+    }
+};
+
+// The half of resolveDiscountEligibility that depends only on what is being
+// bought: which lines the discount applies to, its minimum spend / quantity,
+// and what it takes off. On its own it re-checks a discount already used on a
+// placed order after an admin edits that order's items (orderEditService) -
+// who-may-use-it, usage limits and the schedule were settled when it was placed.
+const resolveDiscountCartCriteria = (discount, ctx) => {
+    try {
+        const { formatMoney } = ctx;
 
         // What in the cart it applies to.
         const matchedLines = matchDiscountLines(discount, ctx);
@@ -1125,8 +1176,7 @@ const applyDiscountsToCart = async (vendorId, cartOwner, userId, companyMasterDa
         // What a discount takes off changes how much Free Cash still fits.
         await recalculateAppliedFreeCash(vendorId, cart, lines, companyMasterData, websiteMasterData, companySettingsData, formatMoney);
         cart.updatedBy = userId;
-        await cart.save();
-        await invalidateCartTotalCache(vendorId, cartOwner);
+        await saveCartAfterCustomerChange(vendorId, cartOwner, cart);
 
         return common.returnResult(true, 200, 'Discounts applied successfully', { cart, appliedDiscounts: applied, rejectedDiscounts: rejected });
     } catch (err) {
@@ -1144,8 +1194,7 @@ const removeDiscountsFromCart = async (vendorId, cartOwner, userId, companyMaste
         cart.totalDiscountAmount = 0;
         await recalculateAppliedFreeCash(vendorId, cart, cartLines(cart), companyMasterData, websiteMasterData, companySettingsData);
         cart.updatedBy = userId || null;
-        await cart.save();
-        await invalidateCartTotalCache(vendorId, cartOwner);
+        await saveCartAfterCustomerChange(vendorId, cartOwner, cart);
         return common.returnResult(true, 200, 'Discounts removed successfully', { cart });
     } catch (err) {
         throw err;
@@ -1646,8 +1695,7 @@ const applyFreeCashToCart = async (vendorId, cartOwner, userId, companyMasterDat
         cart.freeCash = applied;
         cart.totalFreeCashAmount = sumAppliedFreeCash(applied);
         cart.updatedBy = userId;
-        await cart.save();
-        await invalidateCartTotalCache(vendorId, cartOwner);
+        await saveCartAfterCustomerChange(vendorId, cartOwner, cart);
 
         return common.returnResult(true, 200, 'Free Cash applied successfully', { cart, appliedFreeCash: applied, rejectedFreeCash: rejected });
     } catch (err) {
@@ -1664,8 +1712,7 @@ const removeFreeCashFromCart = async (vendorId, cartOwner, userId) => {
         cart.freeCash = [];
         cart.totalFreeCashAmount = 0;
         cart.updatedBy = userId || null;
-        await cart.save();
-        await invalidateCartTotalCache(vendorId, cartOwner);
+        await saveCartAfterCustomerChange(vendorId, cartOwner, cart);
         return common.returnResult(true, 200, 'Free Cash removed successfully', { cart });
     } catch (err) {
         throw err;
@@ -1889,6 +1936,54 @@ const refundFreeCashForReturn = async (vendorId, order, orderReturn, companyMast
     }
 };
 
+// Called from orderEditService.updateOrderItems: an admin reduced the order's
+// items and it no longer qualifies for (all of) the Free Cash it used, so that
+// amount goes back onto the customer's grant to be used again. refunds:
+// [{ userFreeCashId, amount }] in the store currency, the one grants are kept
+// in. Not tied to the return-refund settings - nothing was returned, the
+// order simply never used this much.
+const refundFreeCashForOrderEdit = async (vendorId, order, refunds, adminUserId, companyMasterData, websiteMasterData, companySettingsData) => {
+    try {
+        const now = new Date();
+
+        for (const refund of refunds || []) {
+            if (!(refund.amount > 0)) continue;
+
+            const grant = await UserFreeCash.findOne({ _id: refund.userFreeCashId, vendorId });
+            if (!grant) continue;
+
+            // Never more than is currently outstanding as used on this grant.
+            const cappedRefund = Math.round(Math.min(refund.amount, grant.usedAmount) * 100) / 100;
+            if (cappedRefund <= 0) continue;
+
+            grant.usedAmount = Math.round((grant.usedAmount - cappedRefund) * 100) / 100;
+            grant.remainingAmount = Math.min(
+                Math.round((grant.remainingAmount + cappedRefund) * 100) / 100,
+                grant.amount
+            );
+            if (grant.remainingAmount > 0 && !grant.isRevoked && !grant.isCashExpired) {
+                grant.isCashUsed = false;
+            }
+            grant.cashRefundHistory.push({
+                amountRefunded: cappedRefund,
+                remainingAmount: grant.remainingAmount,
+                refundedDate: now,
+                orderReturnId: null,
+                orderId: order._id
+            });
+            grant.updatedBy = adminUserId;
+            await grant.save();
+
+            promotionEmailService.notifyFreeCashOrderEvent({
+                vendorId, module: EMAIL_MODULES.FREE_CASH_REFUNDED, grant: grant.toObject(), order, amount: cappedRefund,
+                companyMasterData, websiteMasterData, companySettingsData, userId: adminUserId
+            });
+        }
+    } catch (err) {
+        throw err;
+    }
+};
+
 /*
 |--------------------------------------------------------------------------
 | CHECKOUT
@@ -2062,6 +2157,16 @@ const checkoutCart = async (vendorId, cartOwner, userId, locationContext, compan
 | item it already decremented before failing the whole order.
 */
 
+// One product/variant/size line, as a string key - a line can only be on an
+// order once, so this identifies it on both the order and its cart.
+const orderLineKey = (line) => {
+    try {
+        return `${line.productId}:${line.variantId}:${line.sizeId}`;
+    } catch (err) {
+        throw err;
+    }
+};
+
 // A checked-out cart's line items, flattened to exactly what a stock write
 // needs. Mirrors checkoutCart's own eligibleLineItems loop, but reads
 // isCheckedOut off the (already checked-out) cart instead of re-deriving it,
@@ -2151,7 +2256,11 @@ const decrementStockForOrder = async (cart) => {
 // itself. A missing cart is logged and swallowed rather than thrown - the
 // order is already cancelled by the time this runs, so a stock-restore
 // hiccup must never fail that back to the caller.
-const restoreStockForOrder = async (cartId) => {
+//
+// orderOwnedLineKeys (optional Set of orderLineKey): lines whose stock the
+// order itself now holds (an admin changed their quantity in Edit Order, so
+// they carry their own stockDeductedQuantity) - the caller gives those back.
+const restoreStockForOrder = async (cartId, orderOwnedLineKeys = null) => {
     try {
         const cart = await Cart.findById(cartId);
         if (!cart) {
@@ -2160,6 +2269,7 @@ const restoreStockForOrder = async (cartId) => {
         }
         const items = checkedOutLineItems(cart);
         for (const item of items) {
+            if (orderOwnedLineKeys && orderOwnedLineKeys.has(orderLineKey(item))) continue;
             await adjustSizeStock(item.productId, item.variantId, item.sizeId, item.quantity, false);
         }
     } catch (err) {
@@ -2181,9 +2291,18 @@ module.exports = {
     listEligibleDiscountsForCart,
     consumeFreeCashForOrder,
     refundFreeCashForReturn,
+    refundFreeCashForOrderEdit,
     checkoutCart,
     decrementStockForOrder,
     restoreStockForOrder,
+    orderLineKey,
+    // shared with orderEditService.js (re-checking a placed order's promotions)
+    buildDiscountContext,
+    resolveDiscountCartCriteria,
+    sumAppliedDiscounts,
+    loadProductCategoryMap,
+    allocateFreeCash,
+    sumAppliedFreeCash,
     // For tests only (tests/discountEligibility.test.js).
     _internal: {
         resolveDiscountEligibility,

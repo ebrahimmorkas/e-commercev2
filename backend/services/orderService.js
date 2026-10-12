@@ -9,6 +9,7 @@ const OrderReturn = require('../models/OrderReturn');
 const OrderExchange = require('../models/OrderExchange');
 const CourierMaster = require('../models/CourierMaster');
 const cartService = require('./cartService');
+const abandonedCartService = require('./abandonedCartService');
 const discountUsageService = require('./discountUsageService');
 const counterService = require('./counterService');
 const emailService = require('./emailService');
@@ -356,6 +357,10 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
             cart.status = 'D';
             cart.updatedBy = userId;
             await cart.save();
+            // A cart the admin was shown as abandoned has just been ordered.
+            if (cart.isAbandoned === true) {
+                abandonedCartService.notifyCartRecovered(vendorId, cart);
+            }
         } catch (err) {
             // Stock was already reserved above - give it back since no order
             // actually made it through.
@@ -382,6 +387,17 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
     }
 };
 
+// The lines whose stock the order itself holds (see Order.items.stockDeductedQuantity).
+const orderOwnedStockLineKeys = (order) => {
+    try {
+        return new Set((order.items || [])
+            .filter((item) => item.stockDeductedQuantity !== null && item.stockDeductedQuantity !== undefined)
+            .map((item) => cartService.orderLineKey(item)));
+    } catch (err) {
+        throw err;
+    }
+};
+
 // Normal orders give stock back from their linked Cart. Admin-placed orders
 // have no Cart - they restore exactly what was deducted, per item.
 const restoreStockForCancelledOrder = async (order) => {
@@ -390,10 +406,12 @@ const restoreStockForCancelledOrder = async (order) => {
             await adminPlaceOrderService.restoreStockForAdminOrder(order);
             return;
         }
-        await cartService.restoreStockForOrder(order.cartId);
-        // Products added by an admin after placement (Edit Order) aren't on the
-        // cart; they carry their own stockDeductedQuantity. Cart-based items
-        // have none (null), so this only gives back the added ones.
+        // Products an admin added after placement (Edit Order) aren't on the
+        // cart, and a cart line whose quantity an admin changed is held by the
+        // order from then on: both carry their own stockDeductedQuantity and
+        // are given back from the order. Every other cart line has none (null)
+        // and is given back from the cart.
+        await cartService.restoreStockForOrder(order.cartId, orderOwnedStockLineKeys(order));
         await adminPlaceOrderService.restoreStockForAdminOrder(order);
     } catch (err) {
         throw err;
@@ -408,7 +426,7 @@ const restoreStockForCancelledOrder = async (order) => {
 | so restarting it takes the stock again - exactly the lines that restore gives
 | back: the cart's checked-out lines for a normal order, plus every line that
 | carries its own stockDeductedQuantity (admin-placed orders, and products an
-| admin added later). Checked up front so the admin is told every product that
+| admin added or changed the quantity of later). Checked up front so the admin is told every product that
 | is short, then taken line by line; a line lost to a race undoes the rest.
 */
 const buildRestartStockLines = async (order, allowOutOfStock) => {
@@ -417,10 +435,13 @@ const buildRestartStockLines = async (order, allowOutOfStock) => {
         if (!order.isPlacedByAdmin && order.cartId) {
             const cart = await Cart.findById(order.cartId);
             if (cart) {
+                // Lines the order holds the stock for are taken from order.items below.
+                const orderOwned = orderOwnedStockLineKeys(order);
                 for (const productEntry of cart.products) {
                     for (const variantEntry of productEntry.variants) {
                         for (const sizeEntry of variantEntry.sizes) {
                             if (!sizeEntry.isCheckedOut) continue;
+                            if (orderOwned.has(cartService.orderLineKey({ productId: productEntry.productId, variantId: variantEntry.variantId, sizeId: sizeEntry.sizeId }))) continue;
                             lines.push({
                                 productId: productEntry.productId,
                                 variantId: variantEntry.variantId,
@@ -489,7 +510,7 @@ const findRestartStockShortages = async (lines) => {
 
 const reserveStockForRestart = async (order, companySettingsData) => {
     try {
-        const allowOutOfStock = companySettingsData?.allowOutOfStockProductsAdding === true;
+        const allowOutOfStock = adminPlaceOrderService.isOutOfStockAllowedForAdmin(companySettingsData);
         const lines = await buildRestartStockLines(order, allowOutOfStock);
 
         const shortLabels = await findRestartStockShortages(lines);

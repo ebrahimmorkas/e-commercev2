@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getOrderByIdAdmin, getOrderStepOptions, advanceOrderStep, assignDeliveryAgent, unassignDeliveryAgent, changeDeliveryDate, setOrderCourier, setOrderShippingPrice, updateOrderShippingPrice, getOrderUserAddresses, updateOrderShippingAddress, addProductsToOrder } from '../api/orderAdminApi';
+import { getOrderByIdAdmin, getOrderStepOptions, advanceOrderStep, assignDeliveryAgent, unassignDeliveryAgent, changeDeliveryDate, setOrderCourier, setOrderShippingPrice, updateOrderShippingPrice, getOrderUserAddresses, updateOrderShippingAddress, addProductsToOrder, updateOrderItems } from '../api/orderAdminApi';
 import { useToast } from '../../../../components/common/Toast';
 import { useRealtime } from '../../../realtime/useRealtime';
 import { REALTIME_RECONNECTED } from '../../../../utils/socketClient';
@@ -157,6 +157,27 @@ export const useOrderAdmin = (orderId) => {
     }
   };
 
+  // Changes the quantity of / removes products already on the order (quantity 0 = remove).
+  const updateItems = async (items, applyBulkPricing = false) => {
+    setMutating(true);
+    try {
+      const result = await updateOrderItems(orderId, items, applyBulkPricing);
+      await refreshOrderSilently();
+      toast.success('Order updated');
+      // A discount / Free Cash the smaller order no longer qualifies for was given back to the customer.
+      const removed = (result?.promotionChanges || []).filter((change) => change.isRemoved).map((change) => change.name);
+      if (removed.length > 0) {
+        toast.info(`No longer applies to this order and was given back to the customer: ${removed.join(', ')}`);
+      }
+      return true;
+    } catch (err) {
+      toast.error(err.message || 'Could not update the order');
+      return false;
+    } finally {
+      setMutating(false);
+    }
+  };
+
   const assignAgent = async (deliveryAgentUserId, deliveryDate) => {
     setMutating(true);
     try {
@@ -218,7 +239,7 @@ export const useOrderAdmin = (orderId) => {
     }
   };
 
-  return { order, stepOptions, loading, error, mutating, refetch: fetchOrder, advanceStep, assignAgent, unassignAgent, changeDate, saveCourier, addShippingPrice, editShippingPrice, canEditShippingPrice, canEditShippingAddress, loadUserAddresses, editShippingAddress, canEditOrder, addProducts };
+  return { order, stepOptions, loading, error, mutating, refetch: fetchOrder, advanceStep, assignAgent, unassignAgent, changeDate, saveCourier, addShippingPrice, editShippingPrice, canEditShippingPrice, canEditShippingAddress, loadUserAddresses, editShippingAddress, canEditOrder, addProducts, updateItems };
 };
 
 export default useOrderAdmin;

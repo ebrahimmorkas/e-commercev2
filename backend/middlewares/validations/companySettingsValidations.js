@@ -108,6 +108,7 @@ const companySettingsFieldsSchema = {
         })
         .label('Low stock alert threshold'),
     allowOutOfStockProductsAdding: Joi.boolean().label('Allow out-of-stock products to be added to cart'),
+    allowOutOfStockProductsAddingForAdmin: Joi.boolean().label('Allow out-of-stock products to be added to cart for admin'),
     fewItemsReturnOnly: Joi.boolean().label('Few items return only'),
     fewItemsExchangeOnly: Joi.boolean().label('Few items exchange only'),
     isOrderCancellationAllowed: Joi.boolean().label('Order cancellation allowed'),

@@ -11,6 +11,7 @@ const { generateUniqueTrackingNumber } = require('./trackingNumberService');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
 const bulkPricing = require('../utils/bulkPricing');
+const abandonedCartService = require('./abandonedCartService');
 const taxCalculationService = require('./taxCalculationService');
 const currencyService = require('./currencyService');
 const userLocationService = require('./userLocationService');
@@ -226,9 +227,20 @@ const fetchActiveProducts = async (vendorId, websiteMasterData, companyMasterDat
     }
 };
 
+// Whether an admin may order more of a size than is in stock (Place Order and
+// Edit Order). The admin's own switch in Company Settings - the storefront
+// cart keeps using allowOutOfStockProductsAdding.
+const isOutOfStockAllowedForAdmin = (companySettingsData) => {
+    try {
+        return companySettingsData?.allowOutOfStockProductsAddingForAdmin === true;
+    } catch (err) {
+        throw err;
+    }
+};
+
 // Variant dropdown -> size dropdown data for one product, active variants and
 // sizes only. Stock is returned so the UI can flag out-of-stock sizes; whether
-// they may still be ordered is decided server-side by allowOutOfStockProductsAdding.
+// they may still be ordered is decided server-side by allowOutOfStockProductsAddingForAdmin.
 const loadProductOptions = async (vendorId, companySettingsData, productId) => {
     try {
         const product = await Product.findOne({ _id: productId, vendorId, status: 'A' }).lean();
@@ -236,7 +248,7 @@ const loadProductOptions = async (vendorId, companySettingsData, productId) => {
             return common.returnResult(false, 404, 'Product not found.');
         }
 
-        const allowOutOfStock = companySettingsData?.allowOutOfStockProductsAdding === true;
+        const allowOutOfStock = isOutOfStockAllowedForAdmin(companySettingsData);
         const variants = (product.variants || [])
             .filter((variant) => variant.status === 'A')
             .map((variant) => ({
@@ -645,13 +657,13 @@ const placeOrderOnBehalfOfUser = async (vendorId, adminUserId, websiteMasterData
             return common.returnResult(false, featureCheck.statusCode, featureCheck.message);
         }
 
-        const { userId, isWalkInCustomer, walkInCustomer, applyTax, applyBulkPricing, isTaxManual, manualTaxAmount, items, shippingAmount, discountAmount, addressId, addressText, orderNumber, remarks } = payload;
+        const { userId, isWalkInCustomer, walkInCustomer, applyTax, applyBulkPricing, isTaxManual, manualTaxAmount, items, shippingAmount, discountAmount, addressId, addressText, orderNumber, remarks, abandonedCartIds } = payload;
         const isWalkIn = isWalkInCustomer === true;
         const isTaxOff = isWalkIn && applyTax === false;
         if (isTaxOff && isTaxManual === true) {
             return common.returnResult(false, 400, 'Tax cannot be entered manually when "Apply tax" is switched off.');
         }
-        const allowOutOfStock = companySettingsData?.allowOutOfStockProductsAdding === true;
+        const allowOutOfStock = isOutOfStockAllowedForAdmin(companySettingsData);
 
         // Walk-in (cash counter) orders have no User at all.
         let user = null;
@@ -860,6 +872,12 @@ const placeOrderOnBehalfOfUser = async (vendorId, adminUserId, websiteMasterData
         // Never fails the order: if this can't issue the invoice now, it is issued on first download.
         await invoiceService.tryIssueInvoiceForOrder(order, { companySettingsData, companyMasterData, websiteMasterData });
 
+        // Placed from the customer's abandoned cart (Abandoned Carts page): the
+        // cart is emptied so the same products can't be ordered a second time.
+        if (user) {
+            await abandonedCartService.emptyCartsAfterAdminOrder(vendorId, user._id, abandonedCartIds, adminUserId);
+        }
+
         logger.logInfo(1, 0, 'Admin placed order on behalf of user', { vendorId, adminUserId, userId: user ? user._id : null, isWalkIn, orderId: order._id });
 
         return common.returnResult(true, 201, 'Order placed successfully', { order });
@@ -891,5 +909,6 @@ module.exports = {
     resolveAdminOrderCurrency,
     buildTaxPreview,
     deductStockForLine,
-    restoreDeductedStock
+    restoreDeductedStock,
+    isOutOfStockAllowedForAdmin
 };

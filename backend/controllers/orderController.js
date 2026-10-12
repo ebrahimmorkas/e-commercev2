@@ -576,6 +576,64 @@ const addProductsToOrder = async (req, res) => {
     }
 };
 
+const encodeOrderLineIds = (line) => ({
+    ...line,
+    productId: encodeIfPresent(line.productId),
+    variantId: encodeIfPresent(line.variantId),
+    sizeId: encodeIfPresent(line.sizeId),
+});
+
+// Live preview of changing the quantity of / removing products already on the order.
+const previewOrderItemChanges = async (req, res) => {
+    const vendorId = req.vendorId;
+    let id;
+    try {
+        id = common.decodeId(req.params.id);
+        const validityResult = await checkOrderEditingOn(req);
+        if (!validityResult.isSuccess) {
+            return common.sendError(res, validityResult.statusCode, validityResult.message);
+        }
+        const payload = { items: decodeOrderLineItems(req.body.items), applyBulkPricing: req.body.applyBulkPricing };
+        const result = await orderEditService.previewOrderItemChanges(
+            vendorId, id, payload, req.companyMasterData, req.websiteMasterData, req.companySettingsData
+        );
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, {
+            ...result.meta,
+            lines: result.meta.lines.map(encodeOrderLineIds),
+        });
+    } catch (error) {
+        logger.logException('orderController: previewOrderItemChanges - Exception while previewing order item changes', { vendorId, id, error });
+    }
+};
+
+const updateOrderItems = async (req, res) => {
+    const vendorId = req.vendorId;
+    let id;
+    try {
+        id = common.decodeId(req.params.id);
+        const validityResult = await checkOrderEditingOn(req);
+        if (!validityResult.isSuccess) {
+            return common.sendError(res, validityResult.statusCode, validityResult.message);
+        }
+        const payload = { items: decodeOrderLineItems(req.body.items), applyBulkPricing: req.body.applyBulkPricing };
+        const result = await orderEditService.updateOrderItems(
+            vendorId, req.user._id, id, payload, req.companyMasterData, req.websiteMasterData, req.companySettingsData
+        );
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, {
+            ...result.meta,
+            order: formatOrderForResponse(result.meta.order),
+        });
+    } catch (error) {
+        logger.logException('orderController: updateOrderItems - Exception while updating order items', { vendorId, id, error });
+    }
+};
+
 const ADDRESS_EDIT_FLAG = 'isEditingShippingAddressAfterOrderIsPlacedFeatureOn';
 
 const getOrderUserAddresses = async (req, res) => {
@@ -739,6 +797,8 @@ module.exports = {
     getEditOrderProductOptions,
     addProductsToOrder,
     previewAddProductsTax,
+    previewOrderItemChanges,
+    updateOrderItems,
     getOrderUserAddresses,
     updateOrderShippingAddress,
     updateOrderShippingPrice,

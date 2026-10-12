@@ -305,7 +305,10 @@ const buildGrantEvents = (grant, campaign, now, lookups) => {
                 balance = remainingAfter;
             } else if (step.type === FREE_CASH_EVENT_TYPES.REFUNDED) {
                 event.amount = roundMoney(step.refund.amountRefunded);
-                const returnedOrderId = step.refund.orderReturnId ? lookups.returnOrderById.get(step.refund.orderReturnId.toString()) : null;
+                // Given back by a return, or straight from the order when an admin edited it.
+                const returnedOrderId = step.refund.orderReturnId
+                    ? lookups.returnOrderById.get(step.refund.orderReturnId.toString())
+                    : (step.refund.orderId || null);
                 event.orderId = returnedOrderId || null;
                 event.orderNumber = returnedOrderId ? (lookups.orderNumberById.get(returnedOrderId.toString()) || null) : null;
                 balance = roundMoney(step.refund.remainingAmount);

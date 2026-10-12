@@ -10,6 +10,7 @@ import CategoryPathPicker from '../../../../components/common/CategoryPathPicker
 import Button from '../../../../components/common/Buttons';
 import Spinner from '../../../../components/common/Spinner';
 import EmptyState from '../../../../components/common/EmptyState';
+import Alert from '../../../../components/common/Alert';
 import { useToast } from '../../../../components/common/Toast';
 import * as api from '../api/adminPlaceOrderApi';
 import { bulkUnitPrice } from '../../../../utils/bulkPricing';
@@ -128,6 +129,75 @@ const lineUnitPrice = (line, applyBulkPricing) =>
 // walk-in sale with "Apply tax" unticked has no tax to enter.
 const isTaxAllowed = (values) => !(values.isWalkIn && !values.applyTax);
 
+// The customer search option an abandoned cart's customer is shown under: the
+// first one we actually have a value for.
+const PREFILL_SEARCH_FIELDS = [
+  ['name', 'userName'],
+  ['email', 'userEmail'],
+  ['phone', 'userPhone'],
+];
+
+/**
+ * Everything the form needs to open on an abandoned cart (see the `prefill`
+ * prop): the customer in the User dropdown, their saved addresses, and the
+ * cart's products as order lines at today's price and stock - built from the
+ * same product options the picker uses. A product that is no longer on sale
+ * is left out and reported in `skipped`.
+ */
+const loadAbandonedCartPrefill = async (prefill, searchFields) => {
+  const [fieldKey, valueKey] =
+    PREFILL_SEARCH_FIELDS.find(([key, value]) => prefill[value] && searchFields.some((field) => field.key === key)) || [searchFields[0]?.key || '', 'userName'];
+
+  const [usersRes, addressesRes] = await Promise.allSettled([
+    fieldKey ? api.getUsers({ searchField: fieldKey }) : Promise.resolve([]),
+    api.getUserAddresses(prefill.userId),
+  ]);
+  let users = usersRes.status === 'fulfilled' && Array.isArray(usersRes.value) ? usersRes.value : [];
+  // Kept in the list even when the (capped) user list doesn't contain them.
+  if (!users.some((user) => user.userId === prefill.userId)) {
+    users = [{ userId: prefill.userId, value: prefill[valueKey] || 'Customer', name: prefill.userName }, ...users];
+  }
+
+  const productIds = [...new Set((prefill.items || []).map((item) => item.productId))];
+  const optionResults = await Promise.allSettled(productIds.map((productId) => api.getProductOptions(productId)));
+  const optionsByProduct = new Map(productIds.map((productId, index) => [productId, optionResults[index].status === 'fulfilled' ? optionResults[index].value : null]));
+
+  const items = [];
+  const skipped = [];
+  for (const item of prefill.items || []) {
+    const options = optionsByProduct.get(item.productId);
+    const variant = options?.variants.find((v) => v.variantId === item.variantId);
+    const size = variant?.sizes.find((s) => s.sizeId === item.sizeId);
+    if (!size || !size.isSelectable) {
+      skipped.push(item.productName);
+      continue;
+    }
+    items.push({
+      key: `${item.productId}:${item.variantId}:${item.sizeId}`,
+      productId: item.productId,
+      variantId: item.variantId,
+      sizeId: item.sizeId,
+      productName: options.product.name,
+      variantName: variant.variantName,
+      sizeName: size.sizeName,
+      sku: size.sku,
+      unitPrice: size.price,
+      bulkPricing: size.bulkPricing || [],
+      stock: size.stock,
+      allowOutOfStock: options.allowOutOfStockProductsAdding === true,
+      quantityText: String(item.quantity),
+    });
+  }
+
+  return {
+    searchField: fieldKey,
+    users,
+    addresses: addressesRes.status === 'fulfilled' && Array.isArray(addressesRes.value) ? addressesRes.value : [],
+    items,
+    skipped,
+  };
+};
+
 /**
  * Summary card with a live, server-calculated tax preview (or the admin's typed
  * tax) - a component of its own so the preview hook can use the Form's values.
@@ -190,11 +260,21 @@ const OrderSummaryCard = ({ values, items, subtotal, discountValue, shippingValu
  * (sidebar) and, as defense in depth, by
  * companyMaster.isAdminPlacingOrderOnBehalfOfUserIsOn - same two-layer check
  * AddUserPage does. Built entirely from the shared components.
+ *
+ * @param {Object|null} [props.prefill] - A row handed over from the Abandoned
+ *   Carts page ({ _id, linkedCartIds, userId, userName, userEmail, userPhone,
+ *   items: [{ productId, variantId, sizeId, productName, quantity }] }): the
+ *   page opens with that customer picked and the cart's products in the items
+ *   table, and the customer's cart is emptied once the order is placed.
  */
-const AdminPlaceOrderPage = () => {
+const AdminPlaceOrderPage = ({ prefill = null }) => {
   const toast = useToast();
 
   const [loading, setLoading] = useState(true);
+  // What the Form starts with - the abandoned cart's customer when there is a prefill.
+  const [initialValues, setInitialValues] = useState(EMPTY_VALUES);
+  // { userId, userName, cartIds } while the form still holds an abandoned cart's order.
+  const [abandonedCart, setAbandonedCart] = useState(null);
   const [companyMaster, setCompanyMaster] = useState(null);
   const [searchFields, setSearchFields] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -236,12 +316,29 @@ const AdminPlaceOrderPage = () => {
       setSearchFields(fieldsRes.status === 'fulfilled' && Array.isArray(fieldsRes.value) ? fieldsRes.value : []);
       setCategories(categoriesRes.status === 'fulfilled' && Array.isArray(categoriesRes.value) ? categoriesRes.value : []);
       setProducts(productsRes.status === 'fulfilled' && Array.isArray(productsRes.value) ? productsRes.value : []);
+
+      const fields = fieldsRes.status === 'fulfilled' && Array.isArray(fieldsRes.value) ? fieldsRes.value : [];
+      if (prefill) {
+        const filled = await loadAbandonedCartPrefill(prefill, fields);
+        if (cancelled) return;
+        setUsers(filled.users);
+        setAddresses(filled.addresses);
+        setItems(filled.items);
+        setCustomerUserId(prefill.userId);
+        setInitialValues({ ...EMPTY_VALUES, searchField: filled.searchField, userId: prefill.userId });
+        setAbandonedCart({ userId: prefill.userId, userName: prefill.userName, cartIds: [prefill._id, ...(prefill.linkedCartIds || [])] });
+        if (filled.skipped.length > 0) {
+          toast.warning(`Not added, no longer available: ${filled.skipped.join(', ')}`);
+        }
+      }
       setLoading(false);
     };
     load();
     return () => {
       cancelled = true;
     };
+    // Runs once per hand-over: the page is keyed by the prefill in App.jsx.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const isCategoryNestingAllowed = companyMaster ? !!companyMaster.isCategoryNestingAllowed : true;
@@ -449,6 +546,8 @@ const AdminPlaceOrderPage = () => {
       if (values.wAddress.trim()) payload.walkInCustomer.address = values.wAddress.trim();
     } else {
       payload.userId = values.userId;
+      // Still the abandoned cart's customer: their cart is emptied once the order is placed.
+      if (abandonedCart && abandonedCart.userId === values.userId) payload.abandonedCartIds = abandonedCart.cartIds;
       if (values.addressId) payload.addressId = values.addressId;
       if (values.addressText.trim()) payload.addressText = values.addressText.trim();
     }
@@ -466,6 +565,8 @@ const AdminPlaceOrderPage = () => {
       setIsWalkIn(false);
       setCustomerUserId('');
       setApplyBulkPricing(false);
+      setInitialValues(EMPTY_VALUES);
+      setAbandonedCart(null);
       setFormKey((key) => key + 1);
       loadProducts();
     } catch (err) {
@@ -497,7 +598,7 @@ const AdminPlaceOrderPage = () => {
           description="Placing an order on behalf of a customer isn't enabled for your account. Contact support to enable it."
         />
       ) : (
-        <Form key={formKey} initialValues={EMPTY_VALUES} validationSchema={buildValidationSchema(isWalkIn)} onSubmit={handleSubmit}>
+        <Form key={formKey} initialValues={initialValues} validationSchema={buildValidationSchema(isWalkIn)} onSubmit={handleSubmit}>
           {({ values, errors, touched, submitAttempted, setFieldValue, handleChange, handleBlur, handleReset }) => {
             const showError = (name) => ((touched[name] || submitAttempted) && errors[name]) || '';
             const textError = (name) => showError(name) && <p className="mt-1 text-sm text-red-600" role="alert">{showError(name)}</p>;
@@ -596,6 +697,11 @@ const AdminPlaceOrderPage = () => {
 
             return (
               <div className="space-y-5">
+                {abandonedCart && abandonedCart.userId === values.userId && (
+                  <Alert variant="info" title="Filled in from an abandoned cart">
+                    {abandonedCart.userName ? `${abandonedCart.userName}'s` : "This customer's"} abandoned cart is filled in below. Review it, then place the order - their cart is emptied once the order is placed.
+                  </Alert>
+                )}
                 <Card title={<span className="font-bold">1. Customer</span>} subtitle={values.isWalkIn ? 'Enter the walk-in customer details' : 'Choose how to search, then pick the customer this order is for'}>
                   <div className="space-y-4">
                     <div>
