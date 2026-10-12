@@ -20,6 +20,8 @@ const CartOrderSection = ({ draft, onChange, orderSteps, companyMaster = null })
 
   const isReturnOn = companyMaster?.isReturnFeatureOn !== false;
   const isExchangeOn = companyMaster?.isExchangeFeatureOn !== false;
+  // The admin's own out-of-stock switch is only offered while Edit Order is on for the account.
+  const isEditOrderOn = companyMaster?.isEditingOrderFeatureOn === true;
   const steps = orderSteps?.steps || [];
   const stepOptions = steps.map((step) => ({ value: step.code, label: step.name }));
   const lastStep = steps[steps.length - 1] || null;
@@ -39,12 +41,22 @@ const CartOrderSection = ({ draft, onChange, orderSteps, companyMaster = null })
     <div className="space-y-6">
       <div>
         <h3 className={`text-sm font-semibold ${theme.text.heading} mb-3`}>Cart</h3>
-        <Switch
-          label="Allow Out-of-Stock Products to Be Added to Cart"
-          checked={draft.allowOutOfStockProductsAdding}
-          onChange={(e) => set({ allowOutOfStockProductsAdding: e.target.checked })}
-          color={theme.switch.color}
-        />
+        <div className="space-y-3">
+          <Switch
+            label="Allow Out-of-Stock Products to Be Added to Cart"
+            checked={draft.allowOutOfStockProductsAdding}
+            onChange={(e) => set({ allowOutOfStockProductsAdding: e.target.checked })}
+            color={theme.switch.color}
+          />
+          {isEditOrderOn && (
+            <Switch
+              label="Allow Out-of-Stock Products to Be Added to Cart for admin"
+              checked={draft.allowOutOfStockProductsAddingForAdmin}
+              onChange={(e) => set({ allowOutOfStockProductsAddingForAdmin: e.target.checked })}
+              color={theme.switch.color}
+            />
+          )}
+        </div>
       </div>
 
       {(isReturnOn || isExchangeOn) && (

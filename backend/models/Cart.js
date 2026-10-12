@@ -372,8 +372,10 @@ const cartSchema = new mongoose.Schema(
             default: []
         },
 
-        // Stamped (and reset) every time a product is added to this cart -
-        // NOT touched by quantity/discount/free-cash updates. This is the
+        // Stamped (and reset) on every change the customer makes to this cart:
+        // a product added, a quantity changed, an item removed, a discount or
+        // Free Cash applied or removed (the name predates that - it used to be
+        // product adds only). This is the
         // clock the abandoned-cart scanner measures a vendor's configured
         // timeForAbondonedCartReflection against. See addProductToCart in
         // cartService.js and abandonedCartService.js.

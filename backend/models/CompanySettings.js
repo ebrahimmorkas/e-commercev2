@@ -422,6 +422,12 @@ const companySettingsSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  // The same rule for the admin's own order flows (Place Order and Edit
+  // Order) - the storefront cart keeps using allowOutOfStockProductsAdding.
+  allowOutOfStockProductsAddingForAdmin: {
+    type: Boolean,
+    default: false
+  },
   // End of Cart
 
   // Start of Return/Exchange
@@ -712,7 +718,7 @@ const companySettingsSchema = new mongoose.Schema({
 
   // Start of Abandoned Cart
   // Minutes of inactivity (measured from the cart's lastProductAddedAt,
-  // reset every time a product is added) after which an active cart is
+  // reset on every change the customer makes to the cart) after which an active cart is
   // flagged abandoned and reflected to the admin. See abandonedCartService.js.
   timeForAbondonedCartReflection: {
     type: Number,

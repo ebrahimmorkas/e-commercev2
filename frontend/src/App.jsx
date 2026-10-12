@@ -56,9 +56,20 @@ function App() {
   // Customers picked on the Customers page for the Send Email module's To
   // field. Cleared when navigating anywhere through the sidebar.
   const [sendEmailPrefill, setSendEmailPrefill] = useState(null);
+  // An abandoned cart row handed over from the Abandoned Carts page, for the
+  // Place Order page to open on. Cleared when navigating through the sidebar.
+  const [placeOrderPrefill, setPlaceOrderPrefill] = useState(null);
   const navigate = (page) => {
     setSendEmailPrefill(null);
+    setPlaceOrderPrefill(null);
     setActivePage(page);
+  };
+  // Place Order is offered on an abandoned cart only while the admin has Place
+  // Order itself (its Company Master switch is on and the module is assigned).
+  const canPlaceOrder = navItems.some((item) => item.key === 'adminPlaceOrder');
+  const openPlaceOrderFor = (abandonedCart) => {
+    setPlaceOrderPrefill(abandonedCart);
+    setActivePage('adminPlaceOrder');
   };
   const openSendEmailFor = (customers) => {
     setSendEmailPrefill(customers);
@@ -121,7 +132,8 @@ function App() {
         ) : effectiveActivePage === 'orders' ? (
           <OrdersPage />
         ) : effectiveActivePage === 'adminPlaceOrder' ? (
-          <AdminPlaceOrderPage />
+          // Keyed so a hand-off from Abandoned Carts starts a fresh form.
+          <AdminPlaceOrderPage key={placeOrderPrefill ? placeOrderPrefill._id : 'blank'} prefill={placeOrderPrefill} />
         ) : effectiveActivePage === 'customers' ? (
           <CustomersPage onAddUser={() => setActivePage('addUser')} onSendEmail={openSendEmailFor} />
         ) : effectiveActivePage === 'addUser' ? (
@@ -138,7 +150,7 @@ function App() {
           // Keyed so a new hand-off from Customers starts a fresh form.
           <SendEmailPage key={sendEmailPrefill ? sendEmailPrefill.map((c) => c._id).join(',') : 'blank'} prefillCustomers={sendEmailPrefill} />
         ) : effectiveActivePage === 'abandonedCarts' ? (
-          <AbandonedCartsPage />
+          <AbandonedCartsPage canPlaceOrder={canPlaceOrder} onOpenPlaceOrder={openPlaceOrderFor} />
         ) : effectiveActivePage === 'banners' ? (
           <BannersPage />
         ) : effectiveActivePage === 'freeCash' ? (

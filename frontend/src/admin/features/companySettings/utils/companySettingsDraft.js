@@ -58,6 +58,8 @@ export const emptyDraft = () => ({
   lowStockAlertThreshold: '',
 
   allowOutOfStockProductsAdding: false,
+  // The admin's own flows (Place Order, Edit Order).
+  allowOutOfStockProductsAddingForAdmin: false,
 
   fewItemsReturnOnly: false,
   fewItemsExchangeOnly: false,
@@ -169,6 +171,7 @@ export const mapApiSettingsToDraft = (doc) => ({
   lowStockAlertThreshold: doc.lowStockAlertThreshold == null ? '' : String(doc.lowStockAlertThreshold),
 
   allowOutOfStockProductsAdding: !!doc.allowOutOfStockProductsAdding,
+  allowOutOfStockProductsAddingForAdmin: !!doc.allowOutOfStockProductsAddingForAdmin,
 
   fewItemsReturnOnly: !!doc.fewItemsReturnOnly,
   fewItemsExchangeOnly: !!doc.fewItemsExchangeOnly,

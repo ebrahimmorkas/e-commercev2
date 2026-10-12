@@ -1,21 +1,28 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as abandonedCartApi from '../api/abandonedCartApi';
 import { useRealtime } from '../../../realtime/useRealtime';
+import { useToast } from '../../../../components/common/Toast';
 
+// Must match backend's constants/abandonedCartConstants.js.
 const ABANDONED_CART_MODULE = 'ABANDONED_CART';
-const NOTIFICATION_TYPE_NEW = 'NEW';
-const NOTIFICATION_TYPE_RECOVERED = 'RECOVERED';
 
 /**
  * Owns the abandoned-carts list for the admin page: the initial fetch, plus
- * live NEW/RECOVERED updates pushed over the shared realtime channel - no
- * polling or manual refresh needed once mounted.
+ * live updates over the shared realtime channel - no polling or manual
+ * refresh needed once mounted.
+ *
+ * Every push (NEW / RECOVERED / UPDATED, and the synthetic RECONNECTED after
+ * a dropped connection) just re-reads the list quietly: a customer's row
+ * folds several carts together (logged-in + guest), so the server's own
+ * grouping is the only reliable source for what a row should now show.
  */
 export const useAbandonedCarts = () => {
   const [carts, setCarts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [placingOrder, setPlacingOrder] = useState(false);
   const { subscribe } = useRealtime();
+  const toast = useToast();
 
   const fetchCarts = useCallback(async () => {
     setLoading(true);
@@ -31,33 +38,42 @@ export const useAbandonedCarts = () => {
     }
   }, []);
 
+  // Same read without the loading state, so a live update never blanks the table.
+  // Best-effort: a failed background refresh leaves the current rows as they are.
+  const refreshSilently = useCallback(async () => {
+    try {
+      const data = await abandonedCartApi.getAllAbandonedCartsAdmin();
+      setCarts(Array.isArray(data) ? data : []);
+      setError('');
+    } catch {
+      // Keep what is on screen.
+    }
+  }, []);
+
   useEffect(() => {
     fetchCarts();
   }, [fetchCarts]);
 
-  useEffect(() => {
-    return subscribe(ABANDONED_CART_MODULE, (payload) => {
-      const { type, data } = payload;
+  useEffect(() => subscribe(ABANDONED_CART_MODULE, () => refreshSilently()), [subscribe, refreshSilently]);
 
-      if (type === NOTIFICATION_TYPE_NEW) {
-        setCarts((prev) => {
-          if (prev.some((cart) => cart._id === data.cartId)) return prev;
-          return [{ _id: data.cartId, ...data }, ...prev];
-        });
-        return;
-      }
+  // Places the order for a row's cart straight away. Resolves true on success;
+  // the row then leaves the list (the server also pushes that).
+  const placeOrder = async (cartId) => {
+    setPlacingOrder(true);
+    try {
+      const order = await abandonedCartApi.placeOrderFromAbandonedCart(cartId);
+      toast.success(`Order ${order?.orderNumber || ''} placed successfully`);
+      await refreshSilently();
+      return true;
+    } catch (err) {
+      toast.error(err.message || 'Could not place the order');
+      return false;
+    } finally {
+      setPlacingOrder(false);
+    }
+  };
 
-      if (type === NOTIFICATION_TYPE_RECOVERED) {
-        // A recovered cart might have been folded into a combined row
-        // (source: COMBINED) alongside another still-abandoned cart for the
-        // same customer - refetching (rather than patching in place) is the
-        // simplest way to keep that combined math correct in every case.
-        fetchCarts();
-      }
-    });
-  }, [subscribe, fetchCarts]);
-
-  return { carts, loading, error, refetch: fetchCarts };
+  return { carts, loading, error, refetch: fetchCarts, placeOrder, placingOrder };
 };
 
 export default useAbandonedCarts;

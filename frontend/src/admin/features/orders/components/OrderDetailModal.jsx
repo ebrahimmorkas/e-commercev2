@@ -17,6 +17,7 @@ import CourierSection from './CourierSection';
 import AddShippingPriceForm from './AddShippingPriceForm';
 import EditShippingAddressForm from './EditShippingAddressForm';
 import EditOrderForm from './EditOrderForm';
+import EditOrderItemsForm from './EditOrderItemsForm';
 import { formatOrderMoney, formatOrderShipping, canEditShipping, canEditShippingAddressFor, canEditOrderFor, formatOrderDateTime, stepBadgeVariant, isOrderLocked, isOrderClosed, orderSourceLabel, orderSourceVariant } from '../utils/formatOrder';
 import theme from '../theme/theme';
 
@@ -82,7 +83,7 @@ const CustomerBlock = ({ order }) => {
  * GET/PATCH /api/orders/admin/... (orderAdminApi.js).
  */
 const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
-  const { order, stepOptions, loading, error, mutating, advanceStep, assignAgent, unassignAgent, changeDate, saveCourier, addShippingPrice, editShippingPrice, canEditShippingPrice, canEditShippingAddress, loadUserAddresses, editShippingAddress, canEditOrder, addProducts } = useOrderAdmin(orderId);
+  const { order, stepOptions, loading, error, mutating, advanceStep, assignAgent, unassignAgent, changeDate, saveCourier, addShippingPrice, editShippingPrice, canEditShippingPrice, canEditShippingAddress, loadUserAddresses, editShippingAddress, canEditOrder, addProducts, updateItems } = useOrderAdmin(orderId);
   const { download: downloadInvoice, downloading: downloadingInvoice } = useInvoiceDownload(downloadInvoiceAdmin);
   const { download: downloadCreditNote, downloading: downloadingCreditNote } = useInvoiceDownload(downloadCreditNoteAdmin);
   const [activeForm, setActiveForm] = useState(null); // null | 'advance' | 'assign' | 'deliveryDate' | 'shipping' | 'editShipping' | 'editAddress' | 'editOrder'
@@ -125,6 +126,15 @@ const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
 
   const handleAddProducts = async (items, applyBulkPricing, manualTaxAmount) => {
     const success = await addProducts(items, applyBulkPricing, manualTaxAmount);
+    if (success) {
+      setActiveForm(null);
+      onChanged?.();
+    }
+    return success;
+  };
+
+  const handleUpdateItems = async (items, applyBulkPricing) => {
+    const success = await updateItems(items, applyBulkPricing);
     if (success) {
       setActiveForm(null);
       onChanged?.();
@@ -293,12 +303,20 @@ const OrderDetailModal = ({ orderId, onClose, onChanged }) => {
                   submitting={mutating}
                 />
               ) : activeForm === 'editOrder' ? (
-                <EditOrderForm
-                  order={order}
-                  onSubmit={handleAddProducts}
-                  onCancel={() => setActiveForm(null)}
-                  submitting={mutating}
-                />
+                <div className="space-y-6">
+                  {/* Quantities / removal of what is already on the order, then adding new products. */}
+                  {order.items?.length > 0 && (
+                    <div className="pb-6 border-b border-gray-200">
+                      <EditOrderItemsForm order={order} onSubmit={handleUpdateItems} submitting={mutating} />
+                    </div>
+                  )}
+                  <EditOrderForm
+                    order={order}
+                    onSubmit={handleAddProducts}
+                    onCancel={() => setActiveForm(null)}
+                    submitting={mutating}
+                  />
+                </div>
               ) : activeForm === 'editAddress' ? (
                 <EditShippingAddressForm
                   order={order}

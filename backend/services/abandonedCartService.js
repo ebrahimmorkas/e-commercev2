@@ -5,6 +5,7 @@ const WebsiteMaster = require('../models/WebsiteMaster');
 const User = require('../models/User');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
+const bulkPricing = require('../utils/bulkPricing');
 const redisService = require('./redisService');
 const redisKeys = require('../utils/redisKeys');
 const realtimeService = require('./realtimeService');
@@ -22,20 +23,66 @@ const countCartItems = (cart) => (cart.products || []).reduce(
     0
 );
 
+// One product/variant/size, as a string key.
+const lineKey = (line) => {
+    try {
+        return `${line.productId}:${line.variantId}:${line.sizeId}`;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// What the customer left behind across these carts: one entry per
+// product/variant/size, the quantities of a line that is in more than one of
+// the carts (logged-in + guest) added together.
+const listCartItems = (carts) => {
+    try {
+        const items = new Map();
+        for (const cart of carts) {
+            for (const product of (cart.products || [])) {
+                for (const variant of product.variants) {
+                    for (const size of variant.sizes) {
+                        const line = { productId: product.productId, variantId: variant.variantId, sizeId: size.sizeId };
+                        const existing = items.get(lineKey(line));
+                        if (existing) {
+                            existing.quantity += size.quantity;
+                            continue;
+                        }
+                        items.set(lineKey(line), {
+                            ...line,
+                            productName: product.productName,
+                            variantName: variant.variantName,
+                            sizeName: size.sizeName,
+                            quantity: size.quantity
+                        });
+                    }
+                }
+            }
+        }
+        return Array.from(items.values());
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Only a cart that still has something in it is worth showing the admin.
+const HAS_PRODUCTS = { 'products.0': { $exists: true } };
+
 /*
 |--------------------------------------------------------------------------
-| ACTIVITY STAMPING (called from cartService.addProductToCart)
+| ACTIVITY STAMPING (called from cartService on every change to a cart)
 |--------------------------------------------------------------------------
 | Stamped for both a logged-in user's cart and a guest cart - Pass 2 also
 | tracks abandonment for guest carts (see the scanner below), so a guest
 | cart's clock needs to be just as live as a logged-in cart's.
 */
 
-// Stamps/resets the activity clock on a cart that was just added to, and
-// reports back whether it had previously been flagged abandoned (so the
-// caller can notify the admin it was recovered) without saving here itself -
-// the caller (cartService.addProductToCart) already saves the cart once,
-// covering every other field it touched in the same request.
+// Restarts the abandonment clock on a cart the customer just changed (added
+// a product, changed a quantity, removed an item, applied or removed a
+// discount / Free Cash, logged in and had a guest cart merged in), and
+// reports back whether it had been flagged abandoned (so the caller can tell
+// the admin it was recovered) without saving here itself - the caller already
+// saves the cart once, covering every other field it touched in the same request.
 const markCartActivity = (cart) => {
     try {
         const wasAbandoned = cart.isAbandoned === true;
@@ -49,7 +96,7 @@ const markCartActivity = (cart) => {
 };
 
 // Best-effort push - never throws, so a notification failure can never break
-// the add-to-cart flow that triggered it.
+// the cart request that triggered it.
 const notifyCartRecovered = (vendorId, cart) => {
     try {
         realtimeService.emitToVendorAdmins(vendorId, REALTIME_NOTIFICATION_EVENT, {
@@ -62,27 +109,71 @@ const notifyCartRecovered = (vendorId, cart) => {
     }
 };
 
+// An already-listed customer's row changed without being recovered (another
+// cart of theirs was just flagged) - tells the admin page to refresh it.
+const notifyAbandonedCartUpdated = (vendorId, cart) => {
+    try {
+        realtimeService.emitToVendorAdmins(vendorId, REALTIME_NOTIFICATION_EVENT, {
+            module: REALTIME_MODULE_ABANDONED_CART,
+            type: ABANDONED_CART_NOTIFICATION_TYPES.UPDATED,
+            data: { cartId: cart._id }
+        });
+    } catch (err) {
+        logger.logWarning('Exception in abandonedCartService.notifyAbandonedCartUpdated', { vendorId, cartId: cart?._id, error: err });
+    }
+};
+
 /*
 |--------------------------------------------------------------------------
 | SCANNER
 |--------------------------------------------------------------------------
-| Periodically flags active carts that have gone quiet for longer than their
-| vendor's configured timeForAbondonedCartReflection, and pushes a live
-| notification to that vendor's admin(s). Considers two kinds of candidate:
+| Flags active carts that have gone quiet for longer than their vendor's
+| configured timeForAbondonedCartReflection, and pushes a live notification
+| to that vendor's admin(s). Considers two kinds of candidate:
 |   - a logged-in user's cart (userId set) - always considered (Pass 1).
 |   - a guest cart carrying a possibleUserId hint - only considered when the
 |     vendor has abondonedCartOnlyForLoggedInUsers === false (Pass 2 opt-in).
 | A truly anonymous guest cart (no possibleUserId) is never a candidate -
 | there's nothing to show the admin for it.
 |
+| Timing: the scan runs on a fixed interval, and every scan also looks ahead
+| one interval - when a cart falls due before the next tick, one extra scan is
+| scheduled for that exact moment (scheduleExactScan). So a cart is flagged
+| when its configured time is up, not up to an interval later.
+|
 | Candidates are grouped by the real customer they belong to (userId if
 | present, else possibleUserId) so a customer with BOTH a stale logged-in
 | cart and a stale guest cart gets ONE combined alert instead of two.
 |
-| This function is its own entry point (invoked off a setInterval, not from
-| a controller), so its catch block logs directly instead of re-throwing to
+| This function is its own entry point (invoked off a timer, not from a
+| controller), so its catch block logs directly instead of re-throwing to
 | nowhere.
 */
+let scanIntervalHandle = null;
+let exactScanHandle = null;
+let exactScanAt = null;
+
+// Runs one extra scan at `dueAt` unless one is already set for then or sooner.
+// Only while the scanner itself is running.
+const scheduleExactScan = (dueAt) => {
+    try {
+        if (!scanIntervalHandle) return;
+        const at = new Date(dueAt).getTime();
+        if (exactScanHandle && exactScanAt <= at) return;
+
+        clearTimeout(exactScanHandle);
+        exactScanAt = at;
+        // A few ms late rather than early, so the cart is due when the scan reads it.
+        exactScanHandle = setTimeout(async () => {
+            exactScanHandle = null;
+            exactScanAt = null;
+            await scanAndFlagAbandonedCarts();
+        }, Math.max(0, at - Date.now()) + 25);
+    } catch (err) {
+        logger.logWarning('Exception in abandonedCartService.scheduleExactScan', { error: err });
+    }
+};
+
 const scanAndFlagAbandonedCarts = async () => {
     try {
         const websiteMasterData = await WebsiteMaster.findOne();
@@ -91,13 +182,16 @@ const scanAndFlagAbandonedCarts = async () => {
         }
 
         const now = new Date();
+        // Everything due now, plus what falls due before the next regular scan.
+        const horizon = new Date(now.getTime() + ABANDONED_CART_SCAN_INTERVAL_MS);
 
         const candidates = await Cart.aggregate([
             {
                 $match: {
                     status: 'A',
-                    isAbandoned: false,
-                    lastProductAddedAt: { $ne: null },
+                    // $ne: true - carts saved before this field existed have no value at all.
+                    isAbandoned: { $ne: true },
+                    ...HAS_PRODUCTS,
                     $or: [
                         { userId: { $ne: null } },
                         { userId: null, possibleUserId: { $ne: null } }
@@ -135,53 +229,69 @@ const scanAndFlagAbandonedCarts = async () => {
             },
             {
                 $addFields: {
-                    reflectionMinutes: { $ifNull: ['$companySettings.timeForAbondonedCartReflection', DEFAULT_ABANDONED_CART_MINUTES] }
+                    reflectionMinutes: { $ifNull: ['$companySettings.timeForAbondonedCartReflection', DEFAULT_ABANDONED_CART_MINUTES] },
+                    // A cart that got its products without the clock being stamped
+                    // (older carts) is measured from when it was last saved.
+                    lastActivityAt: { $ifNull: ['$lastProductAddedAt', '$updatedAt'] }
                 }
             },
             {
                 $addFields: {
-                    cutoff: { $subtract: [now, { $multiply: ['$reflectionMinutes', 60000] }] }
+                    dueAt: { $add: ['$lastActivityAt', { $multiply: ['$reflectionMinutes', 60000] }] }
                 }
             },
-            { $match: { $expr: { $lte: ['$lastProductAddedAt', '$cutoff'] } } },
-            { $project: { _id: 1, vendorId: 1, userId: 1, possibleUserId: 1 } }
+            { $match: { $expr: { $lte: ['$dueAt', horizon] } } },
+            { $project: { _id: 1, vendorId: 1, userId: 1, possibleUserId: 1, lastProductAddedAt: 1, lastActivityAt: 1, dueAt: 1 } }
         ]);
 
-        if (candidates.length === 0) {
+        const dueNow = candidates.filter((candidate) => candidate.dueAt <= now);
+        const upcoming = candidates.filter((candidate) => candidate.dueAt > now);
+        if (upcoming.length > 0) {
+            scheduleExactScan(new Date(Math.min(...upcoming.map((candidate) => candidate.dueAt.getTime()))));
+        }
+
+        if (dueNow.length === 0) {
             return;
         }
 
         const groups = new Map();
-        for (const candidate of candidates) {
+        for (const candidate of dueNow) {
             const ownerId = (candidate.userId || candidate.possibleUserId).toString();
             const key = `${candidate.vendorId.toString()}:${ownerId}`;
             if (!groups.has(key)) {
-                groups.set(key, { vendorId: candidate.vendorId, ownerId, cartIds: [] });
+                groups.set(key, { vendorId: candidate.vendorId, ownerId, candidates: [] });
             }
-            groups.get(key).cartIds.push(candidate._id);
+            groups.get(key).candidates.push(candidate);
         }
 
         let flaggedCount = 0;
 
         for (const group of groups.values()) {
             const freshDocs = [];
-            for (const cartId of group.cartIds) {
-                const doc = await Cart.findOne({ _id: cartId, status: 'A', isAbandoned: false });
-                if (!doc) continue;
-
-                doc.isAbandoned = true;
-                doc.abandonedAt = now;
-                await doc.save();
-                freshDocs.push(doc);
+            for (const candidate of group.candidates) {
+                // One atomic claim: only a cart that is still unflagged AND untouched
+                // since it was read is flagged, so a customer acting at this very
+                // moment (or a second scan running at once) can never be overridden.
+                const doc = await Cart.findOneAndUpdate(
+                    {
+                        _id: candidate._id,
+                        status: 'A',
+                        isAbandoned: { $ne: true },
+                        ...HAS_PRODUCTS,
+                        lastProductAddedAt: candidate.lastProductAddedAt || null
+                    },
+                    { $set: { isAbandoned: true, abandonedAt: now, lastProductAddedAt: candidate.lastActivityAt } },
+                    { returnDocument: 'after' }
+                );
+                if (doc) freshDocs.push(doc);
             }
             if (freshDocs.length === 0) continue;
             flaggedCount += freshDocs.length;
 
             // If this same customer already has another abandoned cart from
-            // an earlier tick, admin was already alerted about them - flag
-            // this one silently rather than pushing a second notification.
-            // The admin listing still folds every abandoned cart for this
-            // customer into one row next time it's fetched.
+            // an earlier tick, admin was already alerted about them - no
+            // second NEW alert, only an UPDATED so the open page folds this
+            // cart into that customer's row.
             const alreadyNotified = await Cart.findOne({
                 vendorId: group.vendorId,
                 status: 'A',
@@ -192,7 +302,10 @@ const scanAndFlagAbandonedCarts = async () => {
                     { possibleUserId: group.ownerId }
                 ]
             });
-            if (alreadyNotified) continue;
+            if (alreadyNotified) {
+                notifyAbandonedCartUpdated(group.vendorId, freshDocs[0]);
+                continue;
+            }
 
             const primary = freshDocs.find((d) => d.userId) || freshDocs[0];
             const linkedDocs = freshDocs.filter((d) => d._id.toString() !== primary._id.toString());
@@ -231,8 +344,6 @@ const scanAndFlagAbandonedCarts = async () => {
     }
 };
 
-let scanIntervalHandle = null;
-
 const startAbandonedCartScanner = () => {
     if (scanIntervalHandle) return;
 
@@ -246,6 +357,9 @@ const startAbandonedCartScanner = () => {
         await scanAndFlagAbandonedCarts();
     }, ABANDONED_CART_SCAN_INTERVAL_MS);
 
+    // Straight away too, so nothing waits a whole interval after a restart.
+    scanAndFlagAbandonedCarts();
+
     logger.logInfo(1, 0, 'Abandoned cart scanner started', { intervalMs: ABANDONED_CART_SCAN_INTERVAL_MS });
 };
 
@@ -254,6 +368,9 @@ const stopAbandonedCartScanner = () => {
         clearInterval(scanIntervalHandle);
         scanIntervalHandle = null;
     }
+    clearTimeout(exactScanHandle);
+    exactScanHandle = null;
+    exactScanAt = null;
 };
 
 /*
@@ -267,23 +384,23 @@ const stopAbandonedCartScanner = () => {
 | decides whether guest (possibleUserId-only) carts are included at all.
 */
 
-const fetchAbandonedCartsForAdmin = async (vendorId, companySettingsData) => {
+// The Mongo filter for the abandoned carts the admin is shown. `extra` narrows
+// it further (one customer's carts).
+const abandonedCartsFilter = (vendorId, companySettingsData, extra = {}) => {
     try {
         const includeGuestCarts = companySettingsData?.abondonedCartOnlyForLoggedInUsers === false;
+        const base = { vendorId, status: 'A', isAbandoned: true, ...HAS_PRODUCTS, ...extra };
+        return includeGuestCarts
+            ? { ...base, $or: [{ userId: { $ne: null } }, { userId: null, possibleUserId: { $ne: null } }] }
+            : { ...base, userId: { $ne: null } };
+    } catch (err) {
+        throw err;
+    }
+};
 
-        const filter = includeGuestCarts
-            ? {
-                vendorId,
-                status: 'A',
-                isAbandoned: true,
-                $or: [
-                    { userId: { $ne: null } },
-                    { userId: null, possibleUserId: { $ne: null } }
-                ]
-            }
-            : { vendorId, status: 'A', isAbandoned: true, userId: { $ne: null } };
-
-        const carts = await Cart.find(filter);
+const fetchAbandonedCartsForAdmin = async (vendorId, companySettingsData) => {
+    try {
+        const carts = await Cart.find(abandonedCartsFilter(vendorId, companySettingsData));
 
         const groups = new Map();
         for (const cart of carts) {
@@ -299,8 +416,8 @@ const fetchAbandonedCartsForAdmin = async (vendorId, companySettingsData) => {
             const primary = groupCarts.find((c) => c.userId) || groupCarts[0];
             const linkedCarts = groupCarts.filter((c) => c._id.toString() !== primary._id.toString());
             const user = userMap.get(ownerId);
-            const itemCount = groupCarts.reduce((sum, c) => sum + countCartItems(c), 0);
             const mostRecent = (field) => groupCarts.reduce((latest, c) => (!latest || c[field] > latest ? c[field] : latest), null);
+            const items = listCartItems(groupCarts);
 
             return {
                 _id: primary._id,
@@ -309,7 +426,9 @@ const fetchAbandonedCartsForAdmin = async (vendorId, companySettingsData) => {
                 userName: user?.name || null,
                 userEmail: user?.email || null,
                 userPhone: user?.phone_no || null,
-                itemCount,
+                itemCount: items.length,
+                // What the customer left behind, across every cart folded into this row.
+                items,
                 source: groupCarts.length > 1
                     ? ABANDONED_CART_SOURCES.COMBINED
                     : (primary.userId ? ABANDONED_CART_SOURCES.LOGGED_IN : ABANDONED_CART_SOURCES.GUEST_KNOWN),
@@ -324,11 +443,107 @@ const fetchAbandonedCartsForAdmin = async (vendorId, companySettingsData) => {
     }
 };
 
+/*
+|--------------------------------------------------------------------------
+| PLACING THE ORDER FOR AN ABANDONED CART (admin)
+|--------------------------------------------------------------------------
+| The admin can turn a customer's abandoned cart into an order - straight
+| from the list (placeOrderFromAbandonedCart) or through the Place Order page
+| with the cart's products filled in. Either way it is an ordinary admin
+| "Place Order" (adminPlaceOrderService), and once it is placed the
+| customer's cart(s) are emptied so the same products can't be ordered twice.
+*/
+
+// Empties the customer's abandoned cart(s) an order was just placed from:
+// products, discounts and Free Cash go, the abandoned flag is cleared, and the
+// admin page is told the row is gone. Only ever touches this vendor's carts
+// that belong to this customer. Best-effort: the order is already placed.
+const emptyCartsAfterAdminOrder = async (vendorId, userId, cartIds, adminUserId) => {
+    try {
+        if (!userId || !Array.isArray(cartIds) || cartIds.length === 0) return;
+
+        const carts = await Cart.find({
+            _id: { $in: cartIds },
+            vendorId,
+            status: 'A',
+            $or: [{ userId }, { userId: null, possibleUserId: userId }]
+        });
+
+        for (const cart of carts) {
+            cart.products = [];
+            cart.discounts = [];
+            cart.totalDiscountAmount = 0;
+            cart.freeCash = [];
+            cart.totalFreeCashAmount = 0;
+            cart.isAbandoned = false;
+            cart.abandonedAt = null;
+            cart.updatedBy = adminUserId;
+            await cart.save();
+
+            const ownerKey = cart.userId ? `user:${cart.userId}` : `guest:${cart.guestId}`;
+            await redisService.del(redisKeys.cartTotal(vendorId, ownerKey));
+            notifyCartRecovered(vendorId, cart);
+        }
+    } catch (err) {
+        logger.logWarning('Exception in abandonedCartService.emptyCartsAfterAdminOrder', { vendorId, userId, error: err });
+    }
+};
+
+// One click from the Abandoned Carts list: orders everything in this
+// customer's abandoned cart(s) for them, at today's prices (their bulk
+// pricing tier price where the store has bulk pricing on, as in their cart),
+// with no shipping price, discount or address - those can be set on the
+// order afterwards. cartId is the row's primary cart.
+const placeOrderFromAbandonedCart = async (vendorId, adminUserId, cartId, websiteMasterData, companyMasterData, companySettingsData) => {
+    try {
+        // Required here, not at the top: adminPlaceOrderService itself requires this file.
+        const adminPlaceOrderService = require('./adminPlaceOrderService');
+
+        const primary = await Cart.findOne(abandonedCartsFilter(vendorId, companySettingsData, { _id: cartId }));
+        if (!primary) {
+            return common.returnResult(false, 404, 'This cart is no longer abandoned. The customer may have come back to it.');
+        }
+
+        const ownerId = primary.userId || primary.possibleUserId;
+        const carts = await Cart.find(abandonedCartsFilter(vendorId, companySettingsData, {
+            $and: [{ $or: [{ userId: ownerId }, { userId: null, possibleUserId: ownerId }] }]
+        }));
+        const items = listCartItems(carts).map((item) => ({
+            productId: item.productId, variantId: item.variantId, sizeId: item.sizeId, quantity: item.quantity
+        }));
+
+        const applyBulkPricing = await bulkPricing.isBulkPricingActive(vendorId, websiteMasterData, companyMasterData);
+        const result = await adminPlaceOrderService.placeOrderOnBehalfOfUser(
+            vendorId, adminUserId, websiteMasterData, companyMasterData, companySettingsData,
+            {
+                userId: ownerId,
+                isWalkInCustomer: false,
+                items,
+                applyBulkPricing,
+                shippingAmount: 0,
+                discountAmount: 0,
+                isTaxManual: false,
+                abandonedCartIds: carts.map((cart) => cart._id)
+            }
+        );
+        if (!result.isSuccess) {
+            return common.returnResult(false, result.statusCode, result.message);
+        }
+
+        logger.logInfo(1, 0, 'Order placed from an abandoned cart', { vendorId, adminUserId, userId: ownerId, orderId: result.meta.order._id });
+        return common.returnResult(true, 201, 'Order placed successfully', { order: result.meta.order });
+    } catch (err) {
+        throw err;
+    }
+};
+
 module.exports = {
     markCartActivity,
     notifyCartRecovered,
     scanAndFlagAbandonedCarts,
     startAbandonedCartScanner,
     stopAbandonedCartScanner,
-    fetchAbandonedCartsForAdmin
+    fetchAbandonedCartsForAdmin,
+    emptyCartsAfterAdminOrder,
+    placeOrderFromAbandonedCart
 };

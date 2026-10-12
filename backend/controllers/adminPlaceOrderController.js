@@ -225,6 +225,8 @@ const placeOrder = async (req, res) => {
             ...req.body,
             userId: decodeIfPresent(req.body.userId),
             addressId: decodeIfPresent(req.body.addressId),
+            // Sent when the order comes from the Abandoned Carts page (see abandonedCartController).
+            abandonedCartIds: (req.body.abandonedCartIds || []).map((id) => common.decodeId(id)),
             items: (req.body.items || []).map((item) => ({
                 ...item,
                 productId: decodeIfPresent(item.productId),

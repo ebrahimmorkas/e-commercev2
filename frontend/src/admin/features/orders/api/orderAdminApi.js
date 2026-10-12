@@ -117,6 +117,25 @@ export const addProductsToOrder = (id, items, applyBulkPricing = false, manualTa
 export const previewAddProductsTax = ({ orderId, items, applyBulkPricing }) =>
   apiRequest(`${BASE}/admin/${orderId}/add-products/tax-preview`, { method: 'POST', body: { items, applyBulkPricing } });
 
+/**
+ * Edit Order: changes the quantity of / removes products already on the
+ * order. Only the changed lines are sent; quantity 0 removes the line.
+ * @param {string} id
+ * @param {Array<{ productId: string, variantId: string, sizeId: string, quantity: number }>} items
+ * @param {boolean} [applyBulkPricing] - Charge increased lines their bulk pricing tier price.
+ * @returns {Promise<{ order: Object, promotionChanges: Array, warnings: string[] }>}
+ */
+export const updateOrderItems = (id, items, applyBulkPricing = false) =>
+  apiRequest(`${BASE}/admin/${id}/items`, { method: 'PUT', body: { items, applyBulkPricing } });
+
+/**
+ * Live preview of those changes - nothing is saved.
+ * @param {{ orderId: string, items: Array, applyBulkPricing: boolean }} request
+ * @returns {Promise<{ lines: Array, previous: Object, updated: Object, promotionChanges: Array, warnings: string[] }>}
+ */
+export const previewOrderItemChanges = ({ orderId, items, applyBulkPricing }) =>
+  apiRequest(`${BASE}/admin/${orderId}/items/preview`, { method: 'POST', body: { items, applyBulkPricing } });
+
 /** The store's active delivery agents, for the Assign dropdown. @returns {Promise<{ agents: Array<{ _id, name, phone_no, openOrderCount }> }>} */
 export const getAssignableDeliveryAgents = () => apiRequest(`${BASE}/admin/delivery-agents`);
 
@@ -165,4 +184,4 @@ export const downloadInvoiceAdmin = (id) => apiDownload(`${BASE}/admin/${id}/inv
  */
 export const downloadCreditNoteAdmin = (id) => apiDownload(`${BASE}/admin/${id}/invoice?type=credit-note`);
 
-export default { getAllOrdersAdmin, getOrderByIdAdmin, getOrderStatusOptions, getOrderStepOptions, advanceOrderStep, getAssignableDeliveryAgents, unassignDeliveryAgent, changeDeliveryDate, setOrderCourier, setOrderShippingPrice, updateOrderShippingPrice, getOrderUserAddresses, updateOrderShippingAddress, getEditCategories, getEditProducts, searchEditProducts, getEditProductOptions, addProductsToOrder, previewAddProductsTax, assignDeliveryAgent, downloadInvoiceAdmin, downloadCreditNoteAdmin };
+export default { getAllOrdersAdmin, getOrderByIdAdmin, getOrderStatusOptions, getOrderStepOptions, advanceOrderStep, getAssignableDeliveryAgents, unassignDeliveryAgent, changeDeliveryDate, setOrderCourier, setOrderShippingPrice, updateOrderShippingPrice, getOrderUserAddresses, updateOrderShippingAddress, getEditCategories, getEditProducts, searchEditProducts, getEditProductOptions, addProductsToOrder, previewAddProductsTax, updateOrderItems, previewOrderItemChanges, assignDeliveryAgent, downloadInvoiceAdmin, downloadCreditNoteAdmin };

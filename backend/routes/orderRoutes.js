@@ -22,7 +22,8 @@ const {
     setShippingPriceSchema,
     setShippingAddressSchema,
     addOrderProductsSchema,
-    addOrderProductsTaxPreviewSchema
+    addOrderProductsTaxPreviewSchema,
+    updateOrderItemsSchema
 } = require('../middlewares/validations/orderValidations');
 
 const vendorContext = [authenticate, vendorDetection, ensureVendorDataCached, checkModuleAssigned('ORDERS')];
@@ -147,6 +148,26 @@ router.post(
     validate(orderIdParamSchema, 'params'),
     validate(addOrderProductsSchema, 'body'),
     orderController.addProductsToOrder
+);
+
+// Change the quantity of / remove the products already on the order
+// (quantity 0 = remove). The preview saves nothing.
+router.post(
+    '/admin/:id/items/preview',
+    ...vendorContext,
+    authorize('admin'),
+    validate(orderIdParamSchema, 'params'),
+    validate(updateOrderItemsSchema, 'body'),
+    orderController.previewOrderItemChanges
+);
+
+router.put(
+    '/admin/:id/items',
+    ...vendorContext,
+    authorize('admin'),
+    validate(orderIdParamSchema, 'params'),
+    validate(updateOrderItemsSchema, 'body'),
+    orderController.updateOrderItems
 );
 
 router.get(

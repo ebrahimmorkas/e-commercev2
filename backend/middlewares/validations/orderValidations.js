@@ -112,6 +112,43 @@ const addOrderProductsTaxPreviewSchema = Joi.object({
     applyBulkPricing: Joi.boolean().default(false).label('Apply bulk pricing')
 });
 
+// Changes to the lines already on a placed order: a new quantity per line,
+// 0 = remove the line. Only the lines being changed are sent, each one once.
+// Whether the order can lose its last line, and stock, are checked in
+// orderEditService (they need the order itself).
+const updateOrderItemsListSchema = Joi.array().items(
+    Joi.object({
+        productId: objectId().required().label('Product'),
+        variantId: objectId().required().label('Variant'),
+        sizeId: objectId().required().label('Size'),
+        quantity: Joi.number().integer().min(0).max(100000).required().label('Quantity')
+            .messages({
+                'number.base': '{{#label}} must be a number.',
+                'number.integer': '{{#label}} must be a whole number.',
+                'number.min': '{{#label}} cannot be negative.',
+                'number.max': '{{#label}} cannot exceed {{#limit}}.',
+                'number.unsafe': '{{#label}} is too large.'
+            })
+    })
+)
+    .min(1)
+    .max(100)
+    .unique((a, b) => a.productId === b.productId && a.variantId === b.variantId && a.sizeId === b.sizeId)
+    .required()
+    .label('Items')
+    .messages({
+        'array.min': 'Change at least one product on the order.',
+        'array.max': 'At most {{#limit}} products can be changed at once.',
+        'array.unique': 'The same product, variant and size is listed more than once.'
+    });
+
+// The same body for the live preview and for saving.
+const updateOrderItemsSchema = Joi.object({
+    items: updateOrderItemsListSchema,
+    // Same "Apply Bulk Pricing" choice as Place Order, for the lines whose quantity goes up.
+    applyBulkPricing: Joi.boolean().default(false).label('Apply bulk pricing')
+});
+
 const cancelOrderSchema = Joi.object({
     cancellationReason: Joi.string().trim().min(1).max(500).required().label('Cancellation reason')
 });
@@ -127,5 +164,6 @@ module.exports = {
     setShippingPriceSchema,
     setShippingAddressSchema,
     addOrderProductsSchema,
-    addOrderProductsTaxPreviewSchema
+    addOrderProductsTaxPreviewSchema,
+    updateOrderItemsSchema
 };

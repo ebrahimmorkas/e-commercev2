@@ -17,6 +17,10 @@ const logger = require('../utils/logger');
 | Nothing is given back when an order is cancelled, EXCEPT a firstOrderOnly
 | discount, which is released for everyone but the customer who cancelled
 | (or fully returned) that order.
+| An admin's Edit Order is different: when reducing the order's items leaves
+| it no longer qualifying for a discount, that discount comes off the order
+| and the use is given back in full, so the customer can use it again
+| (applyDiscountChangesForEditedOrder).
 */
 
 // Claims the limited discounts on this cart for the order being placed.
@@ -184,7 +188,59 @@ const releaseFirstOrderDiscountsIfFullyReturned = async (vendorId, order) => {
     }
 };
 
+// An admin reduced an order's items (orderEditService.updateOrderItems) and
+// its discounts were re-checked. changes: [{ discountId, previousAmount,
+// newAmount }] in the store currency - newAmount 0 means the order no longer
+// qualifies, so the discount came off it and the customer gets the use back:
+// their usage record stops counting, the discount's totals are reversed, a
+// first-order claim is freed (for them too) and they no longer take one of
+// its limited customer places. A smaller newAmount only corrects the totals.
+const applyDiscountChangesForEditedOrder = async (vendorId, order, changes, adminUserId) => {
+    try {
+        const roundMoney = (value) => Math.round(value * 100) / 100;
+
+        for (const change of changes || []) {
+            const usageFilter = { vendorId, orderId: order._id, discountId: change.discountId, status: 'A' };
+
+            if (change.newAmount > 0) {
+                const updated = await DiscountUsage.updateOne(usageFilter, { $set: { discountAmount: change.newAmount, updatedBy: adminUserId } });
+                if (updated.modifiedCount > 0) {
+                    await Discount.updateOne(
+                        { _id: change.discountId, vendorId },
+                        { $inc: { totalDiscountGiven: roundMoney(change.newAmount - change.previousAmount) } }
+                    );
+                }
+                continue;
+            }
+
+            const removed = await DiscountUsage.updateOne(usageFilter, { $set: { status: 'D', deletedBy: adminUserId, updatedBy: adminUserId } });
+            if (removed.modifiedCount > 0) {
+                await Discount.updateOne(
+                    { _id: change.discountId, vendorId },
+                    { $inc: { totalUsageCount: -1, totalDiscountGiven: -roundMoney(change.previousAmount) } }
+                );
+            }
+
+            await Discount.updateOne(
+                { _id: change.discountId, vendorId, firstOrderClaimedOrderId: order._id },
+                { $set: { isDiscountUsedForFirstTime: false, firstOrderClaimedBy: null, firstOrderClaimedOrderId: null } }
+            );
+
+            // Still one of the discount's limited customers only if another order of theirs used it.
+            const usedOnAnotherOrder = await DiscountUsage.exists({ vendorId, discountId: change.discountId, userId: order.userId, status: 'A' });
+            if (!usedOnAnotherOrder) {
+                await Discount.updateOne({ _id: change.discountId, vendorId }, { $pull: { usedByUserIds: order.userId } });
+            }
+
+            logger.logInfo(1, 0, 'Discount taken off an edited order and given back to the customer', { vendorId, orderId: order._id, discountId: change.discountId });
+        }
+    } catch (err) {
+        throw err;
+    }
+};
+
 module.exports = {
+    applyDiscountChangesForEditedOrder,
     claimDiscountsForOrder,
     releaseDiscountClaims,
     recordDiscountUsageForOrder,
