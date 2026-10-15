@@ -173,7 +173,7 @@ const GeneralInfoSection = ({ draft, onChange, errors = {} }) => {
           <InputField
             label="Company Name"
             name="companyName"
-            placeholder="e.g. Hutaib Tailoring Materials"
+            placeholder="e.g. Your Company Name"
             value={draft.companyName}
             onChange={(e) => set({ companyName: e.target.value })}
           />

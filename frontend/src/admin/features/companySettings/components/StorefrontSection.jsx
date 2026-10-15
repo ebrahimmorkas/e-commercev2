@@ -31,7 +31,7 @@ const StorefrontSection = ({ draft, onChange, companyMaster, catalogue, settings
         {draft.showAnnouncements && (
           <Switch
             label="Rotate Announcements"
-            description="Cycle through multiple active announcements instead of showing one at a time."
+            description="On: cycles through all active announcements. Off: shows only the first one."
             checked={draft.isAnnouncementRotationOn}
             onChange={(e) => set({ isAnnouncementRotationOn: e.target.checked })}
             color={theme.switch.color}
@@ -52,7 +52,7 @@ const StorefrontSection = ({ draft, onChange, companyMaster, catalogue, settings
         {draft.showBanners && (
           <Switch
             label="Rotate Banners"
-            description="Cycle through multiple active banners instead of showing only the default one."
+            description="On: cycles through all active banners. Off: shows only the default one."
             checked={draft.isBannerRotationOn}
             onChange={(e) => set({ isBannerRotationOn: e.target.checked })}
             color={theme.switch.color}

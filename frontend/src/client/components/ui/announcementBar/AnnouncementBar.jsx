@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import theme from './theme/theme';
 import { useStorefrontAnnouncements } from '../../../features/announcements/hooks/useStorefrontAnnouncements';
 
@@ -39,15 +40,23 @@ const MarqueeItems = ({ announcements, hidden = false }) => (
  * placeholder text.
  */
 const AnnouncementBar = () => {
-  const { announcements, loading } = useStorefrontAnnouncements();
+  const { announcements, loading, isRotating } = useStorefrontAnnouncements();
+  const [index, setIndex] = useState(0);
 
   if (loading || announcements.length === 0) return null;
 
+  // Rotation off: just the first announcement. Rotation on: one announcement
+  // per marquee pass, advancing each time the scroll animation loops.
+  const visible = [announcements[isRotating ? index % announcements.length : 0]];
+
   return (
     <div className={`group overflow-hidden border-b py-2.5 ${theme.bar.background} ${theme.bar.border}`}>
-      <div className="flex w-max animate-marquee group-hover:[animation-play-state:paused]">
-        <MarqueeItems announcements={announcements} />
-        <MarqueeItems announcements={announcements} hidden />
+      <div
+        className="flex w-max animate-marquee group-hover:[animation-play-state:paused]"
+        onAnimationIteration={isRotating ? () => setIndex((i) => i + 1) : undefined}
+      >
+        <MarqueeItems announcements={visible} />
+        <MarqueeItems announcements={visible} hidden />
       </div>
     </div>
   );
