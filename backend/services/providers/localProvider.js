@@ -1,31 +1,37 @@
 const fs = require('fs/promises');
 const path = require('path');
 const { randomUUID } = require('crypto');
-const imageProviderConfig = require('../../config/imageProviderConfig');
 
-const { basePath, baseUrl } = imageProviderConfig.local;
+// This server's own disk. "credentials" here is just { basePath, baseUrl }
+// (config/storageProviderConfig.js) - local has no account; every vendor's
+// files sit under their own <vendorId>/ folder.
 
 // buffer -> { url, key }
-const upload = async (buffer, meta) => {
-    const relativeDir = path.join(String(meta.vendorId), meta.module);
-    const fileName = `${randomUUID()}-${meta.originalName}`;
-    const relativePath = path.join(relativeDir, fileName);
+const upload = async (buffer, meta, credentials) => {
+    try {
+        const { basePath, baseUrl } = credentials;
+        const relativeDir = path.join(String(meta.vendorId), meta.module);
+        const fileName = `${randomUUID()}-${meta.originalName}`;
+        const relativePath = path.join(relativeDir, fileName);
 
-    const absoluteDir = path.join(basePath, relativeDir);
-    const absolutePath = path.join(basePath, relativePath);
+        const absoluteDir = path.join(basePath, relativeDir);
+        const absolutePath = path.join(basePath, relativePath);
 
-    await fs.mkdir(absoluteDir, { recursive: true });
-    await fs.writeFile(absolutePath, buffer);
+        await fs.mkdir(absoluteDir, { recursive: true });
+        await fs.writeFile(absolutePath, buffer);
 
-    // key stores the relative path so we can locate/delete the file later
-    const key = relativePath.split(path.sep).join('/');
-    const url = `${baseUrl}/${key}`;
+        // key stores the relative path so we can locate/delete the file later
+        const key = relativePath.split(path.sep).join('/');
+        const url = `${baseUrl}/${key}`;
 
-    return { url, key };
+        return { url, key };
+    } catch (err) {
+        throw err;
+    }
 };
 
-const deleteFile = async (key) => {
-    const absolutePath = path.join(basePath, key);
+const deleteFile = async (key, credentials) => {
+    const absolutePath = path.join(credentials.basePath, key);
     try {
         await fs.unlink(absolutePath);
     } catch (err) {

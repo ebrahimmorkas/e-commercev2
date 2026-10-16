@@ -1,5 +1,7 @@
 const VideoAsset = require('../models/VideoAsset');
 const { getProvider } = require('./providers/videoProviderFactory');
+const storageCredentialsService = require('./storageCredentialsService');
+const { STORAGE_AREAS } = require('../constants/storageConstants');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
 const { fileTypeFromFile } = require('file-type');
@@ -18,16 +20,6 @@ const MIME_EXTENSION_MAP = {
     'video/webm': ['webm'],
     'video/matroska': ['mkv'],
     'video/vnd.avi': ['avi']
-};
-
-// Resolves which provider a vendor's upload should go to right now.
-// enforceMainVideoService=true always wins with mainVideoService.
-// Otherwise vendor's own videoService is used, falling back to mainVideoService if unset.
-const resolveVideoProvider = (companyMasterData, websiteMasterData) => {
-    if (websiteMasterData && websiteMasterData.enforceMainVideoService === true) {
-        return websiteMasterData.mainVideoService;
-    }
-    return (companyMasterData && companyMasterData.videoService) || (websiteMasterData && websiteMasterData.mainVideoService);
 };
 
 // Hard ceiling (MB) used only when neither WebsiteMaster nor CompanyMaster
@@ -165,10 +157,12 @@ const uploadVideo = async ({
                 }
             }
 
-            const providerName = resolveVideoProvider(companyMasterData, websiteMasterData);
-            if (!providerName) {
-                return common.returnResult(false, 400, 'No video storage provider configured for this vendor.');
+            // Which provider + whose account (the vendor's own or the platform's).
+            const target = await storageCredentialsService.resolveUploadTarget({ area: STORAGE_AREAS.VIDEO, vendorId, companyMasterData, websiteMasterData });
+            if (!target.isSuccess) {
+                return target;
             }
+            const { provider: providerName, credentials, storageAccount } = target.meta;
 
             const provider = getProvider(providerName);
             const { url, key } = await provider.upload(file.path, {
@@ -176,7 +170,7 @@ const uploadVideo = async ({
                 module,
                 originalName: file.originalname,
                 mimeType: verifiedMimeType
-            });
+            }, credentials);
 
             const videoAsset = await VideoAsset.create({
                 vendorId,
@@ -184,6 +178,7 @@ const uploadVideo = async ({
                 provider: providerName,
                 url,
                 key,
+                storageAccount,
                 originalName: file.originalname,
                 mimeType: verifiedMimeType,
                 size: file.size,
@@ -259,14 +254,22 @@ const updateVideo = async ({
             }
             const verifiedMimeType = contentCheck.detectedMime;
 
-            // Re-resolve provider in case enforcement/vendor preference has changed since the last upload.
-            const providerName = resolveVideoProvider(companyMasterData, websiteMasterData);
-            if (!providerName) {
-                return common.returnResult(false, 400, 'No video storage provider configured for this vendor.');
+            // Re-resolve provider + account in case enforcement/vendor preference or
+            // the vendor's account has changed since the last upload. Resolved
+            // BEFORE the old file is removed, so a vendor whose account isn't set
+            // up keeps their current video.
+            const target = await storageCredentialsService.resolveUploadTarget({
+                area: STORAGE_AREAS.VIDEO,
+                vendorId: existingVideo.vendorId,
+                companyMasterData,
+                websiteMasterData
+            });
+            if (!target.isSuccess) {
+                return target;
             }
+            const { provider: providerName, credentials, storageAccount } = target.meta;
 
-            const oldProvider = getProvider(existingVideo.provider);
-            await oldProvider.delete(existingVideo.key);
+            await storageCredentialsService.deleteStoredAsset({ area: STORAGE_AREAS.VIDEO, asset: existingVideo, getProvider });
 
             const newProvider = getProvider(providerName);
             const { url, key } = await newProvider.upload(file.path, {
@@ -274,11 +277,12 @@ const updateVideo = async ({
                 module: existingVideo.module,
                 originalName: file.originalname,
                 mimeType: verifiedMimeType
-            });
+            }, credentials);
 
             existingVideo.provider = providerName;
             existingVideo.url = url;
             existingVideo.key = key;
+            existingVideo.storageAccount = storageAccount;
             existingVideo.originalName = file.originalname;
             existingVideo.mimeType = verifiedMimeType;
             existingVideo.size = file.size;
@@ -304,8 +308,7 @@ const deleteVideo = async ({ videoId, userId }) => {
             return common.returnResult(false, 404, 'Video not found.');
         }
 
-        const provider = getProvider(existingVideo.provider);
-        await provider.delete(existingVideo.key);
+        await storageCredentialsService.deleteStoredAsset({ area: STORAGE_AREAS.VIDEO, asset: existingVideo, getProvider });
 
         existingVideo.status = 'D';
         existingVideo.deletedBy = userId;
@@ -320,7 +323,6 @@ const deleteVideo = async ({ videoId, userId }) => {
 };
 
 module.exports = {
-    resolveVideoProvider,
     resolveMaxVideoSizeMB,
     resolveAllowedVideoFormats,
     getFileExtension,

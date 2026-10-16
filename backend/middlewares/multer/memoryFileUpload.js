@@ -7,8 +7,8 @@ const ALLOWED_IMAGE_TYPES = new RegExp(process.env.ALLOWED_IMAGE_TYPES_FOR_IMAGE
 
 /**
  * Creates a multer instance backed by memory storage (no disk writes), so the
- * calling controller/service can stream req.file.buffer straight to storageService
- * (Cloudinary / S3 / R2 / whichever provider is active) without ever touching disk.
+ * calling controller/service can stream req.file.buffer straight to imageUploadService
+ * (the vendor's own Cloudinary / S3 / R2 account) without ever touching disk.
  *
  * Reusable across any module that needs cloud-uploaded images — categories,
  * banners, products, etc. Usage:
