@@ -52,7 +52,7 @@ const HomePage = ({ onAddToCart, onProductClick, cartItems = {}, onIncrementItem
   });
 
   const scrollToProducts = () => document.getElementById('all-products')?.scrollIntoView({ behavior: 'smooth' });
-  const { banner, loading: bannerLoading } = useStorefrontBanner();
+  const { banner, loading: bannerLoading, isRotating, next: nextBanner } = useStorefrontBanner();
 
   return (
     <div className={theme.page.background}>
@@ -69,20 +69,23 @@ const HomePage = ({ onAddToCart, onProductClick, cartItems = {}, onIncrementItem
         // size the section by the video's own aspect ratio instead and use
         // object-contain so the whole frame stays visible (letterboxed by the
         // section background rather than cropped).
-        <section className="relative w-full aspect-video sm:aspect-auto sm:h-screen overflow-hidden bg-slate-900">
+        <section className="relative w-full sm:h-screen overflow-hidden sm:bg-slate-900">
           <video
-            className="absolute inset-0 h-full w-full object-contain sm:object-cover"
+            key={banner._id || banner.video}
+            className="block w-full h-auto sm:absolute sm:inset-0 sm:h-full sm:object-cover"
             src={banner.video}
             autoPlay
             muted
-            loop
+            loop={!isRotating}
+            onEnded={isRotating ? nextBanner : undefined}
             playsInline
           />
         </section>
       ) : banner?.image ? (
-        <section className="relative w-full aspect-video sm:aspect-auto sm:h-screen overflow-hidden bg-slate-900">
+        <section className="relative w-full sm:h-screen overflow-hidden sm:bg-slate-900">
           <img
-            className="absolute inset-0 h-full w-full object-contain sm:object-cover"
+            key={banner._id || banner.image}
+            className="block w-full h-auto sm:absolute sm:inset-0 sm:h-full sm:object-cover"
             src={banner.image}
             alt={banner.name || 'Banner'}
           />

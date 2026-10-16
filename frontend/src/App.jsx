@@ -52,7 +52,7 @@ function App() {
   const sidebarSubtitle = companyName ? 'Admin Panel' : undefined;
   const featureAccess = useFeatureAccess(isAuthenticated && !isDeliveryAgent);
   const navItems = filterNavItemsByFeatureAccess(filterNavItemsByAssignedModules(DEFAULT_NAV_ITEMS, assignedCodes), featureAccess);
-  const [activePage, setActivePage] = useSessionStorageState('ecom.admin.activePage', 'announcements');
+  const [activePage, setActivePage] = useSessionStorageState('ecom.admin.activePage', 'orders');
   // Customers picked on the Customers page for the Send Email module's To
   // field. Cleared when navigating anywhere through the sidebar.
   const [sendEmailPrefill, setSendEmailPrefill] = useState(null);
@@ -76,8 +76,7 @@ function App() {
     setActivePage('sendEmail');
   };
 
-  // The hardcoded initial 'announcements' page may not be assigned to this
-  // vendor - fall back to the first section that actually is, once
+  // The initial 'orders' page may not be assigned to this vendor - fall back to the first section that actually is, once
   // assignedCodes has loaded (navItems is unfiltered, so this is a no-op,
   // while it's still loading).
   const isActivePageAllowed = navItems.some((item) => item.key === activePage);

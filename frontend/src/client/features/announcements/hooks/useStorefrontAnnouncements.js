@@ -43,8 +43,11 @@ export const useStorefrontAnnouncements = () => {
   const loading = announcementsLoading || companySettingsLoading;
   const showAnnouncements = companySettings?.showAnnouncements !== false;
   const announcements = showAnnouncements ? rawAnnouncements : [];
+  // CompanySettings.isAnnouncementRotationOn: on = cycle through every active
+  // announcement; off = only the first one is shown.
+  const isRotating = companySettings?.isAnnouncementRotationOn === true && announcements.length > 1;
 
-  return { announcements, loading };
+  return { announcements, loading, isRotating };
 };
 
 export default useStorefrontAnnouncements;

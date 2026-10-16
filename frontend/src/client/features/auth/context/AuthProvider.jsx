@@ -106,6 +106,9 @@ const AuthProvider = ({ children }) => {
         // belongs in the admin panel, not browsing the storefront.
         setAccessToken(data.accessToken);
         setIsLeavingForAdmin(true);
+        // A fresh sign-in always opens on Orders, not wherever the last session left off
+        // (the admin's page choice is kept in sessionStorage - see App.jsx).
+        sessionStorage.removeItem('ecom.admin.activePage');
         window.location.href = '/admin';
         return { success: true, redirected: true };
       }
