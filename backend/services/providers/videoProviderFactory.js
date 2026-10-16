@@ -1,24 +1,29 @@
 const cloudinaryVideoProvider = require('./cloudinaryVideoProvider');
-const awsVideoProvider = require('./awsVideoProvider');
-const r2VideoProvider = require('./r2VideoProvider');
+const { createVideoProvider } = require('./s3Provider');
 const localVideoProvider = require('./localVideoProvider');
+const { STORAGE_PROVIDERS } = require('../../constants/storageConstants');
 
 const providers = {
-    cloudinary: cloudinaryVideoProvider,
-    aws: awsVideoProvider,
-    r2: r2VideoProvider,
-    local: localVideoProvider
+    [STORAGE_PROVIDERS.CLOUDINARY]: cloudinaryVideoProvider,
+    [STORAGE_PROVIDERS.AWS]: createVideoProvider(STORAGE_PROVIDERS.AWS),
+    [STORAGE_PROVIDERS.R2]: createVideoProvider(STORAGE_PROVIDERS.R2),
+    [STORAGE_PROVIDERS.LOCAL]: localVideoProvider
 };
 
 // Every provider adapter implements the same interface:
-//   upload(filePath, meta) -> Promise<{ url, key }>
-//   delete(key) -> Promise<void>
+//   upload(filePath, meta, credentials) -> Promise<{ url, key }>
+//   delete(key, credentials) -> Promise<void>
+// credentials comes from storageCredentialsService - adapters never read .env themselves.
 const getProvider = (providerName) => {
-    const provider = providers[providerName];
-    if (!provider) {
-        throw new Error(`Unsupported video provider: ${providerName}`);
+    try {
+        const provider = providers[providerName];
+        if (!provider) {
+            throw new Error(`Unsupported video provider: ${providerName}`);
+        }
+        return provider;
+    } catch (err) {
+        throw err;
     }
-    return provider;
 };
 
 module.exports = {

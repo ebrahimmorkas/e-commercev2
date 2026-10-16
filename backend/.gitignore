@@ -5,3 +5,5 @@ node_modules/
 logs/
 .env.render
 uploads/
+# Plain-text vendor storage credentials read by seeds/seedCompanyMaster.js
+seeds/private/

@@ -1,7 +1,16 @@
-// Single source of truth for all image-storage provider credentials.
-// One set of credentials per provider, read from .env (see .env.example.imageUpload).
+// The PLATFORM's own storage accounts (the website owner's), read from .env.
+// One account per provider, shared by images, videos and files.
+//
+// A vendor normally uploads to their OWN account (CompanyMaster.storageCredentials).
+// These are only used when WebsiteMaster forces every vendor onto a provider
+// the vendor did not choose themselves (enforceMain*Service), when the vendor
+// has no own fileService, and to delete files uploaded before per-vendor
+// accounts existed - see services/storageCredentialsService.js.
+//
+// local has no account: it is this server's own disk, shared by every vendor
+// (each vendor's files sit under their own <vendorId>/ folder).
 
-const imageProviderConfig = {
+const storageProviderConfig = {
     cloudinary: {
         cloudName: process.env.CLOUDINARY_CLOUD_NAME,
         apiKey: process.env.CLOUDINARY_API_KEY,
@@ -27,4 +36,4 @@ const imageProviderConfig = {
     }
 };
 
-module.exports = imageProviderConfig;
+module.exports = storageProviderConfig;

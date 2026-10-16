@@ -1,5 +1,7 @@
 const FileAsset = require('../models/FileAsset');
 const { getProvider } = require('./providers/fileProviderFactory');
+const storageCredentialsService = require('./storageCredentialsService');
+const { STORAGE_AREAS } = require('../constants/storageConstants');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
 const { fileTypeFromBuffer } = require('file-type');
@@ -54,19 +56,6 @@ const getFileExtension = (originalName = '') => {
     try {
         const parts = String(originalName).split('.');
         return parts.length > 1 ? parts.pop().toLowerCase() : '';
-    } catch (err) {
-        throw err;
-    }
-};
-
-// Same rule as imageUploadService: the website-wide provider when it's
-// enforced, else the vendor's own, else the website-wide default.
-const resolveFileProvider = (companyMasterData, websiteMasterData) => {
-    try {
-        if (websiteMasterData && websiteMasterData.enforceMainFileService === true) {
-            return websiteMasterData.mainFileService;
-        }
-        return (companyMasterData && companyMasterData.fileService) || (websiteMasterData && websiteMasterData.mainFileService) || null;
     } catch (err) {
         throw err;
     }
@@ -167,10 +156,12 @@ const uploadFile = async ({
             }
         }
 
-        const providerName = resolveFileProvider(companyMasterData, websiteMasterData);
-        if (!providerName) {
-            return common.returnResult(false, 400, 'No file storage provider configured for this vendor.');
+        // Which provider + whose account (the vendor's own or the platform's).
+        const target = await storageCredentialsService.resolveUploadTarget({ area: STORAGE_AREAS.FILE, vendorId, companyMasterData, websiteMasterData });
+        if (!target.isSuccess) {
+            return target;
         }
+        const { provider: providerName, credentials, storageAccount } = target.meta;
 
         const provider = getProvider(providerName);
         const { url, key } = await provider.upload(file.buffer, {
@@ -178,7 +169,7 @@ const uploadFile = async ({
             module,
             originalName: file.originalname,
             mimeType: contentCheck.mimeType
-        });
+        }, credentials);
 
         const fileAsset = await FileAsset.create({
             vendorId,
@@ -186,6 +177,7 @@ const uploadFile = async ({
             provider: providerName,
             url,
             key,
+            storageAccount,
             originalName: file.originalname,
             mimeType: contentCheck.mimeType,
             extension: validation.extension,
@@ -209,8 +201,7 @@ const deleteFile = async ({ vendorId, fileId, userId }) => {
             return common.returnResult(false, 404, 'File not found.');
         }
 
-        const provider = getProvider(existingFile.provider);
-        await provider.delete(existingFile.key);
+        await storageCredentialsService.deleteStoredAsset({ area: STORAGE_AREAS.FILE, asset: existingFile, getProvider });
 
         existingFile.status = 'D';
         existingFile.deletedBy = userId;
@@ -224,7 +215,6 @@ const deleteFile = async ({ vendorId, fileId, userId }) => {
 };
 
 module.exports = {
-    resolveFileProvider,
     uploadFile,
     deleteFile,
     validateFileContent

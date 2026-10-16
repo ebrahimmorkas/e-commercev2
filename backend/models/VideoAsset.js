@@ -36,6 +36,17 @@ const videoAssetSchema = new mongoose.Schema({
         required: true
     },
 
+    // Which account of that provider holds the file (never a secret), e.g.
+    // "cloudinary:<cloudName>", "aws:<region>:<bucket>", "r2:<accountId>:<bucket>"
+    // or "local" - see buildStorageAccountId in services/storageCredentialsService.js.
+    // Deletes and replaces use the credentials of exactly this account. null =
+    // uploaded before per-vendor storage accounts existed, i.e. the .env account.
+    storageAccount: {
+        type: String,
+        trim: true,
+        default: null
+    },
+
     originalName: {
         type: String
     },

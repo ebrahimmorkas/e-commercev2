@@ -1,5 +1,7 @@
 const ImageAsset = require('../models/ImageAsset');
 const { getProvider } = require('./providers/providerFactory');
+const storageCredentialsService = require('./storageCredentialsService');
+const { STORAGE_AREAS } = require('../constants/storageConstants');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
 const { fileTypeFromBuffer } = require('file-type');
@@ -9,16 +11,6 @@ const MIME_EXTENSION_MAP = {
     'image/png': ['png'],
     'image/webp': ['webp'],
     'image/gif': ['gif']
-};
-
-// Resolves which provider a vendor's upload should go to right now.
-// enforceMainImageService=true always wins with mainImageService.
-// Otherwise vendor's own imageService is used, falling back to mainImageService if unset.
-const resolveImageProvider = (companyMasterData, websiteMasterData) => {
-    if (websiteMasterData && websiteMasterData.enforceMainImageService === true) {
-        return websiteMasterData.mainImageService;
-    }
-    return (companyMasterData && companyMasterData.imageService) || (websiteMasterData && websiteMasterData.mainImageService);
 };
 
 const getFileExtension = (originalName = '') => {
@@ -105,10 +97,12 @@ const uploadImage = async ({
             }
         }
 
-        const providerName = resolveImageProvider(companyMasterData, websiteMasterData);
-        if (!providerName) {
-            return common.returnResult(false, 400, 'No image storage provider configured for this vendor.');
+        // Which provider + whose account (the vendor's own or the platform's).
+        const target = await storageCredentialsService.resolveUploadTarget({ area: STORAGE_AREAS.IMAGE, vendorId, companyMasterData, websiteMasterData });
+        if (!target.isSuccess) {
+            return target;
         }
+        const { provider: providerName, credentials, storageAccount } = target.meta;
 
         const provider = getProvider(providerName);
         const { url, key } = await provider.upload(file.buffer, {
@@ -116,7 +110,7 @@ const uploadImage = async ({
             module,
             originalName: file.originalname,
             mimeType: verifiedMimeType
-        });
+        }, credentials);
 
         const imageAsset = await ImageAsset.create({
             vendorId,
@@ -124,6 +118,7 @@ const uploadImage = async ({
             provider: providerName,
             url,
             key,
+            storageAccount,
             originalName: file.originalname,
             mimeType: verifiedMimeType,
             size: file.size,
@@ -195,14 +190,22 @@ const updateImage = async ({
         }
         const verifiedMimeType = contentCheck.detectedMime;
 
-        // Re-resolve provider in case enforcement/vendor preference has changed since the last upload.
-        const providerName = resolveImageProvider(companyMasterData, websiteMasterData);
-        if (!providerName) {
-            return common.returnResult(false, 400, 'No image storage provider configured for this vendor.');
+        // Re-resolve provider + account in case enforcement/vendor preference or
+        // the vendor's account has changed since the last upload. Resolved
+        // BEFORE the old file is removed, so a vendor whose account isn't set
+        // up keeps their current image.
+        const target = await storageCredentialsService.resolveUploadTarget({
+            area: STORAGE_AREAS.IMAGE,
+            vendorId: existingImage.vendorId,
+            companyMasterData,
+            websiteMasterData
+        });
+        if (!target.isSuccess) {
+            return target;
         }
+        const { provider: providerName, credentials, storageAccount } = target.meta;
 
-        const oldProvider = getProvider(existingImage.provider);
-        await oldProvider.delete(existingImage.key);
+        await storageCredentialsService.deleteStoredAsset({ area: STORAGE_AREAS.IMAGE, asset: existingImage, getProvider });
 
         const newProvider = getProvider(providerName);
         const { url, key } = await newProvider.upload(file.buffer, {
@@ -210,11 +213,12 @@ const updateImage = async ({
             module: existingImage.module,
             originalName: file.originalname,
             mimeType: verifiedMimeType
-        });
+        }, credentials);
 
         existingImage.provider = providerName;
         existingImage.url = url;
         existingImage.key = key;
+        existingImage.storageAccount = storageAccount;
         existingImage.originalName = file.originalname;
         existingImage.mimeType = verifiedMimeType;
         existingImage.size = file.size;
@@ -237,8 +241,7 @@ const deleteImage = async ({ imageId, userId }) => {
             return common.returnResult(false, 404, 'Image not found.');
         }
 
-        const provider = getProvider(existingImage.provider);
-        await provider.delete(existingImage.key);
+        await storageCredentialsService.deleteStoredAsset({ area: STORAGE_AREAS.IMAGE, asset: existingImage, getProvider });
 
         existingImage.status = 'D';
         existingImage.deletedBy = userId;
@@ -253,7 +256,6 @@ const deleteImage = async ({ imageId, userId }) => {
 };
 
 module.exports = {
-    resolveImageProvider,
     uploadImage,
     getImages,
     getImageById,

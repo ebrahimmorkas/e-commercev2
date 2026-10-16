@@ -1,6 +1,59 @@
 const mongoose = require('mongoose');
 const { VALID_PAYMENT_GATEWAYS } = require('../constants/paymentGatewayConstants');
 
+// The vendor's own storage accounts (see storageCredentials below). Every
+// secret is encrypted with common.encryptSecret (AES-256-GCM, random IV) and
+// only ever decrypted inside services/storageCredentialsService.js. The plain
+// fields (cloudName, region, bucket, accountId, endpoint, publicUrl) are not
+// secret - they appear in every public file URL - and are what an ImageAsset /
+// VideoAsset / FileAsset's storageAccount is matched against.
+const cloudinaryCredentialsSchema = new mongoose.Schema({
+    cloudName: { type: String, trim: true, default: null },
+    encryptedApiKey: { type: String, default: null },
+    encryptedApiSecret: { type: String, default: null }
+}, { _id: false });
+
+const awsCredentialsSchema = new mongoose.Schema({
+    region: { type: String, trim: true, default: null },
+    bucket: { type: String, trim: true, default: null },
+    encryptedAccessKeyId: { type: String, default: null },
+    encryptedSecretAccessKey: { type: String, default: null }
+}, { _id: false });
+
+const r2CredentialsSchema = new mongoose.Schema({
+    accountId: { type: String, trim: true, default: null },
+    bucket: { type: String, trim: true, default: null },
+    // Optional - defaults to https://<accountId>.r2.cloudflarestorage.com.
+    endpoint: { type: String, trim: true, default: null },
+    // Public base URL files are served from, e.g. https://media.yourdomain.com
+    publicUrl: { type: String, trim: true, default: null },
+    encryptedAccessKeyId: { type: String, default: null },
+    encryptedSecretAccessKey: { type: String, default: null }
+}, { _id: false });
+
+// One account per provider, so switching the area's provider (e.g. imageService
+// cloudinary -> aws) does not lose the other account's credentials.
+const storageAreaCredentialsSchema = new mongoose.Schema({
+    cloudinary: { type: cloudinaryCredentialsSchema, default: undefined },
+    aws: { type: awsCredentialsSchema, default: undefined },
+    r2: { type: r2CredentialsSchema, default: undefined }
+}, { _id: false });
+
+const storageCredentialsSchema = new mongoose.Schema({
+    image: { type: storageAreaCredentialsSchema, default: undefined },
+    video: { type: storageAreaCredentialsSchema, default: undefined },
+    file: { type: storageAreaCredentialsSchema, default: undefined }
+}, { _id: false });
+
+// Defence in depth for storageCredentials: it is select: false (never loaded
+// unless a query asks for '+storageCredentials'), and this also strips it from
+// any document that is turned into JSON / a plain object - so it can never
+// reach an API response, the Redis/in-memory cache or a log.
+const stripStorageCredentials = (doc, ret) => {
+    delete ret.storageCredentials;
+    return ret;
+};
+
 const companyMasterSchema = mongoose.Schema({
     vendorId: {
         type: mongoose.Types.ObjectId,
@@ -210,6 +263,18 @@ const companyMasterSchema = mongoose.Schema({
         type: [String],
         enum: ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi'],
         default: []
+    },
+
+    // The vendor's own storage accounts, per area (image / video / file) and
+    // per provider. Entered by the platform owner with seeds/seedCompanyMaster.js
+    // (never through an API). Used for the area's upload whenever the provider
+    // in use is the vendor's own imageService / videoService / fileService -
+    // see resolveUploadTarget in services/storageCredentialsService.js.
+    // NEVER loaded by default and never serialised (see stripStorageCredentials).
+    storageCredentials: {
+        type: storageCredentialsSchema,
+        select: false,
+        default: undefined
     },
 
     // Email
@@ -934,7 +999,9 @@ const companyMasterSchema = mongoose.Schema({
     }
     // End of Store Availability
 }, {
-  timestamps: true
+  timestamps: true,
+  toJSON: { transform: stripStorageCredentials },
+  toObject: { transform: stripStorageCredentials }
 });
 
 module.exports = mongoose.model('CompanyMaster', companyMasterSchema);

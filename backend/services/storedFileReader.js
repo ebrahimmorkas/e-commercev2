@@ -1,6 +1,6 @@
 const fs = require('fs/promises');
 const path = require('path');
-const imageProviderConfig = require('../config/imageProviderConfig');
+const storageProviderConfig = require('../config/storageProviderConfig');
 
 // Reads a stored file's bytes back (an ImageAsset or FileAsset), e.g. to
 // attach it to an email. Local files come straight from disk; S3/R2/
@@ -10,7 +10,7 @@ const FETCH_TIMEOUT_MS = 20000;
 const readStoredAsset = async (asset) => {
     try {
         if (asset.provider === 'local') {
-            const { basePath } = imageProviderConfig.local;
+            const { basePath } = storageProviderConfig.local;
             return await fs.readFile(path.join(basePath, asset.key));
         }
         const response = await fetch(asset.url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });

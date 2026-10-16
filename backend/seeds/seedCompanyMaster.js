@@ -1,4 +1,6 @@
 require('dotenv').config({ quiet: true });
+const fs = require('fs');
+const path = require('path');
 const mongoose = require('mongoose');
 
 const Vendor = require('../models/Vendor');
@@ -7,6 +9,9 @@ const CountryMaster = require('../models/CountryMaster');
 const WeightMaster = require('../models/WeightMaster');
 const SizeMaster = require('../models/SizeMaster');
 const ModuleMaster = require('../models/ModuleMaster');
+const storageCredentialsService = require('../services/storageCredentialsService');
+const { storageCredentialsSchema } = require('../middlewares/validations/storageCredentialsValidations');
+const { AREA_SERVICE_FIELDS, CREDENTIAL_PROVIDERS } = require('../constants/storageConstants');
 
 // CompanyMaster for mouldmarket.in: every built feature switched on and every
 // count limit set as high as it goes, so this vendor is effectively unlimited.
@@ -18,8 +23,25 @@ const ModuleMaster = require('../models/ModuleMaster');
 // Safe to re-run: the vendor's CompanyMaster is updated in place; sizes,
 // weight units and modules are only ever added (an existing assignedModules
 // entry, including a revoked one, is left alone).
+//
+// STORAGE ACCOUNTS - the vendor's own Cloudinary / S3 / R2 accounts for
+// images, videos and files (CompanyMaster.storageCredentials):
+//   1. copy seeds/storageCredentials.example.json to
+//      seeds/private/storageCredentials.json (git-ignored - never commit it)
+//      and fill in only the areas/providers you want to set. A provider you
+//      give replaces that provider's saved account; anything you leave out
+//      is kept as it is.
+//   2. make sure CREDENTIALS_ENCRYPTION_KEY in .env is the SAME key the
+//      server runs with - the secrets are encrypted with it.
+//   3. run the seed, then delete seeds/private/storageCredentials.json.
+// Without that file the seed leaves the saved storage accounts untouched.
+// Uploads in an area whose provider (imageService / videoService /
+// fileService) has no account here are refused with a message telling the
+// vendor their account has not been set up.
 
 const VENDOR_DOMAIN = 'mouldmarket.in';
+
+const STORAGE_CREDENTIALS_FILE = path.join(__dirname, 'private', 'storageCredentials.json');
 
 // Only India is assigned to this vendor.
 const ALLOWED_COUNTRY_SHORT_NAMES = ['IN'];
@@ -235,8 +257,86 @@ const COMPANY_MASTER = {
     showPlanExpirePage: false
 };
 
+// Reads, validates and encrypts seeds/private/storageCredentials.json.
+// Returns the $set entries ({ 'storageCredentials.image.cloudinary': {...} })
+// or null when the file does not exist.
+function loadStorageCredentialUpdates() {
+    try {
+        if (!fs.existsSync(STORAGE_CREDENTIALS_FILE)) {
+            return null;
+        }
+
+        // A missing / malformed key would make common.js fall back to a random
+        // per-process key, and the server could never decrypt what is saved.
+        if (!/^[0-9a-fA-F]{64}$/.test(process.env.CREDENTIALS_ENCRYPTION_KEY || '')) {
+            throw new Error('CREDENTIALS_ENCRYPTION_KEY in .env must be set to 64 hex characters (the same key the server uses) before saving storage credentials.');
+        }
+
+        let parsed;
+        try {
+            parsed = JSON.parse(fs.readFileSync(STORAGE_CREDENTIALS_FILE, 'utf8'));
+        } catch (parseError) {
+            throw new Error(`${STORAGE_CREDENTIALS_FILE} is not valid JSON.`);
+        }
+
+        const { error, value } = storageCredentialsSchema.validate(parsed, {
+            abortEarly: false,
+            errors: { wrap: { label: false } }
+        });
+        if (error) {
+            const details = error.details.map((detail) => `  - ${detail.path.join('.')}: ${detail.message.replace(/"/g, '')}`).join('\n');
+            throw new Error(`Invalid storage credentials in ${STORAGE_CREDENTIALS_FILE}:\n${details}`);
+        }
+
+        const updates = {};
+        Object.keys(value).forEach((area) => {
+            Object.keys(value[area]).forEach((provider) => {
+                updates[`storageCredentials.${area}.${provider}`] = storageCredentialsService.encryptAccount(provider, value[area][provider]);
+            });
+        });
+        return updates;
+    } catch (error) {
+        throw error;
+    }
+}
+
+// Which saved account each area will use - account ids only (cloud name /
+// bucket), never a secret - plus a warning for every area whose provider has
+// no complete account yet.
+async function describeStorageAccounts(vendorId, company) {
+    try {
+        const saved = await CompanyMaster.findOne({ vendorId }).select('+storageCredentials').lean();
+        const credentials = (saved && saved.storageCredentials) || {};
+        const lines = [];
+
+        Object.keys(AREA_SERVICE_FIELDS).forEach((area) => {
+            const service = company[AREA_SERVICE_FIELDS[area].vendorService];
+            if (!service) {
+                lines.push(`  ${area}: not set -> the website's default provider with the website's own .env account`);
+                return;
+            }
+            if (!CREDENTIAL_PROVIDERS.includes(service)) {
+                lines.push(`  ${area}: ${service} (no account needed)`);
+                return;
+            }
+
+            const stored = credentials[area] && credentials[area][service];
+            lines.push(storageCredentialsService.isStoredAccountComplete(service, stored)
+                ? `  ${area}: ${service} -> ${storageCredentialsService.buildStorageAccountId(service, stored)}`
+                : `  ${area}: ${service} -> WARNING: no account saved, ${area} uploads will be refused`);
+        });
+
+        return lines.join('\n');
+    } catch (error) {
+        throw error;
+    }
+}
+
 async function seedCompanyMaster() {
     try {
+        // Validated before touching the DB, so a bad file changes nothing.
+        const storageCredentialUpdates = loadStorageCredentialUpdates();
+
         await mongoose.connect(process.env.MONGODB_URI);
 
         const vendor = await Vendor.findOne({ domain: VENDOR_DOMAIN });
@@ -273,7 +373,8 @@ async function seedCompanyMaster() {
                 $set: {
                     ...COMPANY_MASTER,
                     vendorId: vendor._id,
-                    allowedCountries: countries.map((country) => country._id)
+                    allowedCountries: countries.map((country) => country._id),
+                    ...(storageCredentialUpdates || {})
                 },
                 $addToSet: {
                     allowedWeights: { $each: weights.map((weight) => weight._id) },
@@ -308,12 +409,19 @@ async function seedCompanyMaster() {
         if (added > 0) await company.save();
 
         process.stdout.write(`CompanyMaster ready for ${VENDOR_DOMAIN}: ${company.assignedModules.length} modules assigned (${added} new).\n`);
+        process.stdout.write(storageCredentialUpdates
+            ? `Storage accounts saved from ${STORAGE_CREDENTIALS_FILE} - delete that file now.\n`
+            : `No ${STORAGE_CREDENTIALS_FILE} found - saved storage accounts left unchanged.\n`);
+        process.stdout.write(`Storage accounts in use:\n${await describeStorageAccounts(vendor._id, company)}\n`);
         await mongoose.connection.close();
         process.exit(0);
     } catch (error) {
         process.stderr.write(`seedCompanyMaster failed: ${error.message}\n`);
         await mongoose.connection.close();
-        process.exit(1);
+        // exitCode, not process.exit(1): a failure can happen before the logger
+        // (loaded via storageCredentialsService) has finished starting, and
+        // pino throws if the process is killed at that moment.
+        process.exitCode = 1;
     }
 }
 
