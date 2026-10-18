@@ -120,7 +120,8 @@ const getPlatformAccount = (provider) => {
 
 // Plain-text account (validated by storageCredentialsValidations) -> the shape
 // stored in CompanyMaster.storageCredentials.<area>.<provider>, with every
-// secret encrypted. Used by seeds/seedCompanyMaster.js.
+// secret encrypted. accountEmail / notes (ACCOUNT_REFERENCE_FIELDS) are kept
+// as-is. Used by utils/storageCredentialsFile.js.
 const encryptAccount = (provider, plainCredentials) => {
     try {
         const fields = PROVIDER_CREDENTIAL_FIELDS[provider];

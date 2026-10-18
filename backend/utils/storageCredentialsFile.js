@@ -54,9 +54,9 @@ function loadStorageCredentialUpdates(filePath = STORAGE_CREDENTIALS_FILE) {
     }
 }
 
-// Which saved account each area will use - account ids only (cloud name /
-// bucket), never a secret - plus a warning for every area whose provider has
-// no complete account yet.
+// Which saved account each area will use - account id (cloud name / bucket),
+// the reference accountEmail and notes, never a secret - plus a warning for
+// every area whose provider has no complete account yet.
 async function describeStorageAccounts(vendorId) {
     try {
         const saved = await CompanyMaster.findOne({ vendorId }).select('+storageCredentials').lean();
@@ -78,9 +78,15 @@ async function describeStorageAccounts(vendorId) {
             }
 
             const stored = credentials[area] && credentials[area][service];
-            lines.push(storageCredentialsService.isStoredAccountComplete(service, stored)
-                ? `  ${area}: ${service} -> ${storageCredentialsService.buildStorageAccountId(service, stored)}`
-                : `  ${area}: ${service} -> WARNING: no account saved, ${area} uploads will be refused`);
+            if (!storageCredentialsService.isStoredAccountComplete(service, stored)) {
+                lines.push(`  ${area}: ${service} -> WARNING: no account saved, ${area} uploads will be refused`);
+                return;
+            }
+            lines.push(`  ${area}: ${service} -> ${storageCredentialsService.buildStorageAccountId(service, stored)}`);
+            lines.push(stored.accountEmail
+                ? `      account email: ${stored.accountEmail}`
+                : '      account email: NOT RECORDED - re-save this account with its accountEmail');
+            if (stored.notes) lines.push(`      notes: ${stored.notes.replace(/\s*\n\s*/g, ' / ')}`);
         });
 
         return lines.join('\n');

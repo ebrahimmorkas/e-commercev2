@@ -31,6 +31,8 @@ const {
 //      and fill in only the areas/providers you want to set. A provider you
 //      give replaces that provider's saved account; anything you leave out
 //      is kept as it is.
+//      Every account needs accountEmail (the email the provider account was
+//      created with - for your own reference only) and may have notes.
 //   2. make sure CREDENTIALS_ENCRYPTION_KEY in .env is the SAME key the
 //      server runs with - the secrets are encrypted with it.
 //   3. run the seed, then delete seeds/private/storageCredentials.json.
