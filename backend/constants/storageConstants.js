@@ -47,6 +47,15 @@ const PROVIDER_CREDENTIAL_FIELDS = {
     }
 };
 
+// Saved next to every account for the platform owner's own reference - which
+// email the provider account was signed up with, plus free-text notes. Not
+// credentials: never passed to a provider and not needed for an account to be
+// complete (accounts saved before these existed keep working). accountEmail
+// is required whenever an account is saved (storageCredentialsValidations).
+const ACCOUNT_REFERENCE_FIELDS = ['accountEmail', 'notes'];
+
+const ACCOUNT_NOTES_MAX_LENGTH = 500;
+
 // Names shown in messages to the vendor.
 const PROVIDER_LABELS = {
     [STORAGE_PROVIDERS.CLOUDINARY]: 'Cloudinary',
@@ -85,6 +94,8 @@ module.exports = {
     VALID_STORAGE_PROVIDERS,
     CREDENTIAL_PROVIDERS,
     PROVIDER_CREDENTIAL_FIELDS,
+    ACCOUNT_REFERENCE_FIELDS,
+    ACCOUNT_NOTES_MAX_LENGTH,
     PROVIDER_LABELS,
     AREA_LABELS,
     AREA_SERVICE_FIELDS,

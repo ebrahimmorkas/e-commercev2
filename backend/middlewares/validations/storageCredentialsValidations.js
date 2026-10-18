@@ -1,4 +1,5 @@
 const Joi = require('joi');
+const { ACCOUNT_NOTES_MAX_LENGTH } = require('../../constants/storageConstants');
 
 // Validates the PLAIN-TEXT storage credentials a vendor's CompanyMaster is
 // given by seeds/seedCompanyMaster.js (there is no API for this - CompanyMaster
@@ -7,7 +8,7 @@ const Joi = require('joi');
 // of being silently dropped.
 //
 // Shape (every area and every provider is optional, but a provider that is
-// given must be complete):
+// given must be complete, including accountEmail):
 //   {
 //     image: { cloudinary: {...}, aws: {...}, r2: {...} },
 //     video: { ... },
@@ -60,13 +61,34 @@ const httpsUrl = Joi.string().trim().max(500).uri({ scheme: ['https'] }).replace
     'string.uriCustomScheme': '{#label} must be an https:// URL'
 });
 
+// Reference only - which email the provider account was signed up with, so it
+// can be found again later. Required on every saved account.
+const accountEmail = Joi.string().trim().lowercase().max(254)
+    .email({ minDomainSegments: 2, tlds: { allow: true } })
+    .messages({
+        'string.email': 'accountEmail must be the email address the provider account was created with',
+        'any.required': 'accountEmail is required - the email address the provider account was created with'
+    });
+// Free text for anything else worth remembering about the account (plan,
+// who created it, ...). Control characters other than newlines/tabs are refused.
+const notes = Joi.string().trim().allow('').max(ACCOUNT_NOTES_MAX_LENGTH)
+    .pattern(/^[^\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]*$/)
+    .messages({ 'string.pattern.base': 'notes may not contain control characters' });
+
+const accountReference = {
+    accountEmail: accountEmail.required(),
+    notes
+};
+
 const cloudinaryCredentialsSchema = Joi.object({
+    ...accountReference,
     cloudName: cloudName.required(),
     apiKey: cloudinaryApiKey.required(),
     apiSecret: cloudinaryApiSecret.required()
 });
 
 const awsCredentialsSchema = Joi.object({
+    ...accountReference,
     accessKeyId: accessKeyId.required(),
     secretAccessKey: secretAccessKey.required(),
     region: awsRegion.required(),
@@ -74,6 +96,7 @@ const awsCredentialsSchema = Joi.object({
 });
 
 const r2CredentialsSchema = Joi.object({
+    ...accountReference,
     accountId: r2AccountId.required(),
     accessKeyId: accessKeyId.required(),
     secretAccessKey: secretAccessKey.required(),
