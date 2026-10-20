@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as productApi from '../api/productApi';
 import { useToast } from '../../../../components/common/Toast';
+import { saveBlob } from '../../../../utils/saveBlob';
+import { DEFAULT_PRODUCT_SORT, EMPTY_PRODUCT_FILTERS, countActiveFilters, toProductFilterParams } from '../utils/productListFilters';
 
-export const ADMIN_PRODUCTS_PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 350;
 
 const describeError = (err) => {
@@ -18,34 +19,49 @@ const describeError = (err) => {
  * errors via toast (including any Joi field errors from the backend) and
  * refetches the list afterwards rather than trying to patch it locally.
  *
- * The list is paginated and searched on the server (GET
- * /products/get-products-admin?page&limit&q), so only one page of products
- * is ever in memory - the page stays fast however big the catalogue is.
+ * The list is paginated, searched, filtered and sorted on the server (GET
+ * /products/get-products-admin?page&limit&q&sort&categoryId&minPrice&maxPrice&stockStatus),
+ * so only one page of products is ever in memory - the page stays fast
+ * however big the catalogue is.
  * While another page or search loads, the previous rows stay on screen
  * (`loading` is true) instead of the table blanking out.
  */
 export const useProducts = () => {
   // What the admin typed (instant) vs. what the server is asked for (debounced).
   const [searchText, setSearchTextState] = useState('');
-  const [params, setParams] = useState({ page: 1, q: '' });
+  // limit null = the vendor's default page size - the server fills it in, so
+  // the first load needs no Company Settings round trip. A pick on the page
+  // only lasts for this visit.
+  const [params, setParams] = useState({ page: 1, q: '', sort: DEFAULT_PRODUCT_SORT, filters: EMPTY_PRODUCT_FILTERS, limit: null });
   const [reloadToken, setReloadToken] = useState(0);
-  const requestKey = `${params.page}|${params.q}|${reloadToken}`;
+  const requestKey = `${JSON.stringify(params)}|${reloadToken}`;
   const [result, setResult] = useState({ key: null, products: [], pagination: null, error: '' });
-  // Size of the whole catalogue (last unsearched total), for "12 of 10,014 products".
+  // Size of the whole catalogue (last unsearched, unfiltered total), for "12 of 10,014 products".
   const [catalogTotal, setCatalogTotal] = useState(0);
+  // Total stock at or below this (and above 0) is "Low stock" - sent by the server with every page.
+  const [lowStockThreshold, setLowStockThreshold] = useState(null);
+  const activeFilterCount = countActiveFilters(params.filters);
   const [mutating, setMutating] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const searchTimerRef = useRef(null);
   const toast = useToast();
 
   useEffect(() => {
     let cancelled = false;
     productApi
-      .getProductsAdmin({ page: params.page, limit: ADMIN_PRODUCTS_PAGE_SIZE, q: params.q })
+      .getProductsAdmin({
+        page: params.page,
+        limit: params.limit || undefined,
+        q: params.q,
+        sort: params.sort,
+        ...toProductFilterParams(params.filters),
+      })
       .then((data) => {
         if (cancelled) return;
         const pagination = data?.pagination || null;
         setResult({ key: requestKey, products: Array.isArray(data?.products) ? data.products : [], pagination, error: '' });
-        if (!params.q && pagination) setCatalogTotal(pagination.total);
+        if (!params.q && countActiveFilters(params.filters) === 0 && pagination) setCatalogTotal(pagination.total);
+        if (typeof data?.lowStockThreshold === 'number') setLowStockThreshold(data.lowStockThreshold);
       })
       .catch((err) => {
         if (!cancelled) setResult({ key: requestKey, products: [], pagination: null, error: describeError(err) });
@@ -64,10 +80,16 @@ export const useProducts = () => {
   const setSearchText = useCallback((text) => {
     setSearchTextState(text);
     clearTimeout(searchTimerRef.current);
-    searchTimerRef.current = setTimeout(() => setParams({ page: 1, q: text.trim() }), text ? SEARCH_DEBOUNCE_MS : 0);
+    searchTimerRef.current = setTimeout(() => setParams((prev) => ({ ...prev, page: 1, q: text.trim() })), text ? SEARCH_DEBOUNCE_MS : 0);
   }, []);
 
+  // A new sort or filter always starts again from page 1.
+  const setSort = useCallback((sort) => setParams((prev) => ({ ...prev, page: 1, sort: sort || DEFAULT_PRODUCT_SORT })), []);
+  const setFilters = useCallback((filters) => setParams((prev) => ({ ...prev, page: 1, filters: { ...EMPTY_PRODUCT_FILTERS, ...filters } })), []);
+  const clearFilters = useCallback(() => setParams((prev) => ({ ...prev, page: 1, filters: EMPTY_PRODUCT_FILTERS })), []);
+
   const setPage = useCallback((page) => setParams((prev) => ({ ...prev, page })), []);
+  const setPageSize = useCallback((limit) => setParams((prev) => ({ ...prev, page: 1, limit: Number(limit) || null })), []);
 
   // Reloads the current page. A page emptied by a delete steps back one page.
   const fetchProducts = useCallback(() => setReloadToken((token) => token + 1), []);
@@ -227,6 +249,32 @@ export const useProducts = () => {
     }
   };
 
+  // Download: what the list shows right now (search + filters + sort, every
+  // page), or just `selectedIds` when products are ticked.
+  const exportProducts = async (selectedIds = []) => {
+    setExporting(true);
+    try {
+      const data = await productApi.exportProducts({
+        ids: selectedIds,
+        q: params.q,
+        sort: params.sort,
+        ...toProductFilterParams(params.filters),
+      });
+      saveBlob(data.blob, data.filename || 'products.zip');
+      if (data.failedImageCount > 0) {
+        toast.warning(`${data.productCount} product(s) downloaded, but ${data.failedImageCount} image(s) could not be included - see the Instructions sheet.`);
+      } else {
+        toast.success(`${data.productCount} product(s) downloaded`);
+      }
+      return true;
+    } catch (err) {
+      toast.error(describeError(err));
+      return false;
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // Excel bulk upload. Resolves to { success, result } - result is the per-row
   // outcome (totalRows/successCount/failedCount/failedRecords) for the caller to render.
   const runBulkUpload = async (excelFile, mainImagesZip, additionalImagesZip) => {
@@ -249,8 +297,18 @@ export const useProducts = () => {
     catalogTotal,
     page: params.page,
     setPage,
+    // What's on screen: the admin's pick, else the page size the server used.
+    pageSize: params.limit || result.pagination?.limit || null,
+    setPageSize,
     searchText,
     setSearchText,
+    sort: params.sort,
+    setSort,
+    filters: params.filters,
+    setFilters,
+    clearFilters,
+    activeFilterCount,
+    lowStockThreshold,
     loading,
     initialLoading: loading && result.key === null,
     error: result.error,
@@ -266,6 +324,8 @@ export const useProducts = () => {
     bulkRemoveProducts,
     bulkCloneProducts: bulkCloneProductsAction,
     runBulkUpload,
+    exportProducts,
+    exporting,
   };
 };
 

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const productController = require('../controllers/productController');
 const validate = require('../middlewares/validate');
-const { createProductSchema, updateProductSchema, toggleProductStatusSchema, deleteProductSchema, cloneProductSchema, bulkCloneProductSchema, bulkProductStatusSchema, bulkDeleteProductSchema, idParamSchema, productListQuerySchema, brandIdParamSchema, categoryIdParamSchema } = require('../middlewares/validations/productValidations');
+const { createProductSchema, updateProductSchema, toggleProductStatusSchema, deleteProductSchema, cloneProductSchema, bulkCloneProductSchema, bulkProductStatusSchema, bulkDeleteProductSchema, idParamSchema, productListQuerySchema, adminProductListQuerySchema, productExportQuerySchema, brandIdParamSchema, categoryIdParamSchema } = require('../middlewares/validations/productValidations');
 const authenticate = require('../middlewares/authenticate');
 const authorize = require('../middlewares/authorize');
 const vendorDetection = require('../middlewares/vendorDetection');
@@ -35,7 +35,7 @@ const parseProductData = (req, res, next) => {
 
 router.post( '/add-product', ...adminAccess, checkModuleAssigned('PRODUCTS'), imageUpload.any(), parseProductData, validate(createProductSchema, 'body'), productController.createProduct );
 
-router.get( '/get-products-admin', ...adminAccess, checkModuleAssigned('PRODUCTS'), validate(productListQuerySchema, 'query'), productController.getAllProductsAdmin );
+router.get( '/get-products-admin', ...adminAccess, checkModuleAssigned('PRODUCTS'), validate(adminProductListQuerySchema, 'query'), productController.getAllProductsAdmin );
 
 // Lightweight, server-searched { _id, name, productCode, status } rows for admin product pickers.
 router.get( '/get-product-options-admin', ...adminAccess, checkModuleAssigned('PRODUCTS'), validate(productListQuerySchema, 'query'), productController.getProductOptionsAdmin );
@@ -56,6 +56,9 @@ router.get( '/get-products-by-category-admin/:categoryId', ...adminAccess, check
 router.get( '/bulk-upload-products/sample-file', ...adminAccess, checkModuleAssigned('PRODUCTS'), productController.downloadBulkUploadSampleFile );
 
 router.get( '/bulk-update-products/sample-file', ...adminAccess, checkModuleAssigned('BULK_UPDATE_PRODUCTS'), productController.downloadBulkUpdateSampleFile );
+
+// Products page > Download: a zip of the products (Bulk Update excel format) + their images.
+router.get( '/export-products', ...adminAccess, checkModuleAssigned('PRODUCTS'), validate(productExportQuerySchema, 'query'), productController.exportProducts );
 
 router.post( '/bulk-upload-products', ...adminAccess, checkModuleAssigned('PRODUCTS'), productBulkUpload, productController.bulkUploadProducts );
 

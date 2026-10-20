@@ -25,6 +25,8 @@ const path = require('path');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
 const inventoryService = require('./inventoryService');
+const lowStockAlertService = require('./lowStockAlertService');
+const { ADMIN_PRODUCT_PAGE_SIZES, DEFAULT_ADMIN_PRODUCTS_PER_PAGE } = require('../constants/productListConstants');
 
 // Normalizes a size's `image` for reuse in a freshly-built plain object
 // (e.g. carrying it forward across an update, see updateProduct below).
@@ -1447,7 +1449,11 @@ const PRODUCT_LIST_LIMITS = {
     client: { defaultLimit: 24, maxLimit: 100, defaultSort: 'featured' },
     admin: { defaultLimit: 20, maxLimit: 100, defaultSort: 'newest' }
 };
-const PRODUCT_LIST_SORTS = ['featured', 'newest', 'price_asc', 'price_desc', 'name_asc'];
+const PRODUCT_LIST_SORTS = {
+    client: ['featured', 'newest', 'price_asc', 'price_desc', 'name_asc'],
+    admin: ['newest', 'price_asc', 'price_desc', 'name_asc', 'name_desc', 'stock_asc', 'stock_desc']
+};
+const ADMIN_STOCK_STATUSES = ['in_stock', 'low_stock', 'out_of_stock'];
 // Recommended-product lookups by id are small by nature; this caps a hand-crafted request.
 const MAX_PRODUCT_IDS_PER_LOOKUP = 50;
 const MAX_PRODUCT_OPTIONS = 50;
@@ -1459,7 +1465,7 @@ const normalizeListQuery = (query = {}, audience) => {
     const { defaultLimit, maxLimit, defaultSort } = PRODUCT_LIST_LIMITS[audience];
     const page = Math.max(1, parseInt(query.page, 10) || 1);
     const limit = Math.min(maxLimit, Math.max(1, parseInt(query.limit, 10) || defaultLimit));
-    const sort = PRODUCT_LIST_SORTS.includes(query.sort) ? query.sort : defaultSort;
+    const sort = PRODUCT_LIST_SORTS[audience].includes(query.sort) ? query.sort : defaultSort;
     const q = typeof query.q === 'string' ? query.q.trim().slice(0, 100) : '';
     return { page, limit, sort, q };
 };
@@ -1508,12 +1514,18 @@ const buildProductSearchFilter = async (q, audience, vendorId, status) => {
     return { $or: clauses };
 };
 
-// Sort keys computed per product (lowest / highest size price), for the
-// sorts no plain index can serve.
+// A product's stock = every size of every variant added together (the admin list's Stock column).
+const TOTAL_STOCK_EXPRESSION = { $sum: { $map: { input: '$variants', as: 'v', in: { $sum: '$$v.sizes.stock' } } } };
+
+// Sort keys computed per product (lowest / highest size price, total stock),
+// for the sorts no plain index can serve.
 const COMPUTED_SORT_KEYS = {
     price_asc: { $min: { $map: { input: '$variants', as: 'v', in: { $min: '$$v.sizes.price' } } } },
-    price_desc: { $max: { $map: { input: '$variants', as: 'v', in: { $max: '$$v.sizes.price' } } } }
+    price_desc: { $max: { $map: { input: '$variants', as: 'v', in: { $max: '$$v.sizes.price' } } } },
+    stock_asc: TOTAL_STOCK_EXPRESSION,
+    stock_desc: TOTAL_STOCK_EXPRESSION
 };
+const DESCENDING_SORTS = ['price_desc', 'stock_desc'];
 
 // "featured" = admin-set precedence first (1, 2, 3...), then products with
 // no precedence, newest first. Two index-backed range reads (see the
@@ -1549,10 +1561,11 @@ const findProductPageIds = async (filter, sort, skip, limit) => {
         const docs = await Product.find(filter, { _id: 1 }).sort({ _id: -1 }).skip(skip).limit(limit).lean();
         return docs.map((doc) => doc._id);
     }
-    if (sort === 'name_asc') {
+    if (sort === 'name_asc' || sort === 'name_desc') {
+        const direction = sort === 'name_desc' ? -1 : 1;
         const docs = await Product.find(filter, { _id: 1 })
             .collation({ locale: 'en', strength: 2 })
-            .sort({ name: 1, _id: 1 })
+            .sort({ name: direction, _id: direction })
             .skip(skip)
             .limit(limit)
             .lean();
@@ -1561,7 +1574,7 @@ const findProductPageIds = async (filter, sort, skip, limit) => {
     const rows = await Product.aggregate([
         { $match: filter },
         { $project: { sortKey: COMPUTED_SORT_KEYS[sort] } },
-        { $sort: { sortKey: sort === 'price_desc' ? -1 : 1, _id: -1 } },
+        { $sort: { sortKey: DESCENDING_SORTS.includes(sort) ? -1 : 1, _id: -1 } },
         { $skip: skip },
         { $limit: limit }
     ]);
@@ -1590,9 +1603,9 @@ const shapeProductsForClient = async (rawProducts, companySettingsData, location
 // A storefront page can come back with fewer than `limit` products when the
 // shopper's location excludes some of them - `total` counts before that
 // per-location hiding, which only applies to products with exclusions set.
-const fetchProductPage = async ({ vendorId, audience, query, extraFilter = null, companySettingsData = null, locationCookies = {} }) => {
-    const { page, limit, sort, q } = normalizeListQuery(query, audience);
-
+// The Mongo filter of a product list: vendor + status (storefront = active
+// only; admin = active and inactive), `extraFilter`, and the search text.
+const buildProductListFilter = async ({ vendorId, audience, query, q, extraFilter = null }) => {
     let status = 'A';
     if (audience === 'admin') {
         status = ['A', 'I'].includes(query.status) ? query.status : { $in: ['A', 'I'] };
@@ -1602,7 +1615,12 @@ const fetchProductPage = async ({ vendorId, audience, query, extraFilter = null,
     if (extraFilter) clauses.push(extraFilter);
     const searchFilter = await buildProductSearchFilter(q, audience, toObjectId(vendorId), status);
     if (searchFilter) clauses.push(searchFilter);
-    const filter = clauses.length === 1 ? clauses[0] : { $and: clauses };
+    return clauses.length === 1 ? clauses[0] : { $and: clauses };
+};
+
+const fetchProductPage = async ({ vendorId, audience, query, extraFilter = null, companySettingsData = null, locationCookies = {} }) => {
+    const { page, limit, sort, q } = normalizeListQuery(query, audience);
+    const filter = await buildProductListFilter({ vendorId, audience, query, q, extraFilter });
 
     const [total, ids] = await Promise.all([
         Product.countDocuments(filter),
@@ -1628,11 +1646,151 @@ const fetchProductPage = async ({ vendorId, audience, query, extraFilter = null,
     };
 };
 
-// query: { page, limit, sort, q, status ('A' | 'I' | omitted = both) }
-const fetchAllProductsForAdmin = async (vendorId, query = {}) => {
+const toPriceOrNull = (value) => {
     try {
-        const result = await fetchProductPage({ vendorId, audience: 'admin', query });
-        return common.returnResult(true, 200, 'Products fetched successfully', result);
+        if (value === undefined || value === null || value === '') return null;
+        const parsed = Number(value);
+        return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// The admin list's filters as one Mongo filter (null = no filter picked).
+// Category = that category or any category below it, as main or sub category.
+// Price = at least one size priced inside the range. Stock = the product's
+// total stock, either against the vendor's low stock threshold (the same one
+// the Inventory module uses) or inside a min/max range - one or the other.
+const toStockOrNull = (value) => {
+    try {
+        if (value === undefined || value === null || value === '') return null;
+        const parsed = Number(value);
+        return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+    } catch (err) {
+        throw err;
+    }
+};
+
+const buildAdminProductFilters = async (vendorId, query, lowStockThreshold) => {
+    try {
+        const clauses = [];
+
+        if (query.categoryId) {
+            if (!mongoose.Types.ObjectId.isValid(query.categoryId)) {
+                return common.returnResult(false, 400, 'Category is invalid.');
+            }
+            const categoryDoc = await Category.findOne({ _id: query.categoryId, vendorId, status: { $ne: 'D' } }, { _id: 1 }).lean();
+            if (!categoryDoc) {
+                return common.returnResult(false, 404, 'Category not found.');
+            }
+            const descendantIds = await categoryService.getDescendantIdsForAdmin(vendorId, categoryDoc._id);
+            const categoryIds = [categoryDoc._id, ...descendantIds];
+            clauses.push({ $or: [{ mainCategory: { $in: categoryIds } }, { subCategory: { $in: categoryIds } }] });
+        }
+
+        const minPrice = toPriceOrNull(query.minPrice);
+        const maxPrice = toPriceOrNull(query.maxPrice);
+        if (minPrice !== null && maxPrice !== null && minPrice > maxPrice) {
+            return common.returnResult(false, 400, 'Maximum price must be greater than or equal to the minimum price.');
+        }
+        if (minPrice !== null || maxPrice !== null) {
+            const priceRange = {};
+            if (minPrice !== null) priceRange.$gte = minPrice;
+            if (maxPrice !== null) priceRange.$lte = maxPrice;
+            clauses.push({ variants: { $elemMatch: { sizes: { $elemMatch: { price: priceRange } } } } });
+        }
+
+        const minStock = toStockOrNull(query.minStock);
+        const maxStock = toStockOrNull(query.maxStock);
+        const hasStockRange = minStock !== null || maxStock !== null;
+        if (hasStockRange && ADMIN_STOCK_STATUSES.includes(query.stockStatus)) {
+            return common.returnResult(false, 400, 'Use either a stock status or a stock range, not both.');
+        }
+        if (minStock !== null && maxStock !== null && minStock > maxStock) {
+            return common.returnResult(false, 400, 'Maximum stock must be greater than or equal to the minimum stock.');
+        }
+        if (hasStockRange) {
+            const stockBounds = [];
+            if (minStock !== null) stockBounds.push({ $gte: [TOTAL_STOCK_EXPRESSION, minStock] });
+            if (maxStock !== null) stockBounds.push({ $lte: [TOTAL_STOCK_EXPRESSION, maxStock] });
+            clauses.push({ $expr: stockBounds.length === 1 ? stockBounds[0] : { $and: stockBounds } });
+        }
+
+        if (ADMIN_STOCK_STATUSES.includes(query.stockStatus)) {
+            const stockConditions = {
+                out_of_stock: { $lte: [TOTAL_STOCK_EXPRESSION, 0] },
+                low_stock: { $and: [{ $gt: [TOTAL_STOCK_EXPRESSION, 0] }, { $lte: [TOTAL_STOCK_EXPRESSION, lowStockThreshold] }] },
+                in_stock: { $gt: [TOTAL_STOCK_EXPRESSION, lowStockThreshold] }
+            };
+            clauses.push({ $expr: stockConditions[query.stockStatus] });
+        }
+
+        const filter = clauses.length === 0 ? null : clauses.length === 1 ? clauses[0] : { $and: clauses };
+        return common.returnResult(true, 200, 'Filters built successfully', { filter });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// query: { page, limit, sort, q, status ('A' | 'I' | omitted = both),
+//          categoryId (decoded), minPrice, maxPrice, stockStatus | minStock + maxStock }
+// vendorData: { websiteMasterData, companyMasterData, companySettingsData } - for the low stock
+// threshold, and the page size (Company Settings > Product) when the request sends no limit.
+const fetchAllProductsForAdmin = async (vendorId, query = {}, vendorData = {}) => {
+    try {
+        const vendorPageSize = vendorData.companySettingsData?.adminProductsPerPage;
+        const defaultPageSize = ADMIN_PRODUCT_PAGE_SIZES.includes(vendorPageSize) ? vendorPageSize : DEFAULT_ADMIN_PRODUCTS_PER_PAGE;
+        const pageQuery = { ...query, limit: query.limit || defaultPageSize };
+
+        const { threshold: lowStockThreshold } = lowStockAlertService.resolveLowStockSettings(
+            vendorData.websiteMasterData,
+            vendorData.companyMasterData,
+            vendorData.companySettingsData
+        );
+        const filters = await buildAdminProductFilters(vendorId, query, lowStockThreshold);
+        if (!filters.isSuccess) {
+            return filters;
+        }
+        const result = await fetchProductPage({ vendorId, audience: 'admin', query: pageQuery, extraFilter: filters.meta.filter });
+        return common.returnResult(true, 200, 'Products fetched successfully', { ...result, lowStockThreshold, defaultPageSize });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// The ids of every product the admin list would show for `query` (search,
+// filters, sort - every page, not just one), or of just `query.ids` (ticked
+// rows) in that same sort order. More than `maxCount` matches is a 400 so a
+// huge export never builds in memory. meta = { ids }.
+const findAdminProductIdsForExport = async (vendorId, query = {}, vendorData = {}, maxCount) => {
+    try {
+        const { threshold: lowStockThreshold } = lowStockAlertService.resolveLowStockSettings(
+            vendorData.websiteMasterData,
+            vendorData.companyMasterData,
+            vendorData.companySettingsData
+        );
+        const { sort, q } = normalizeListQuery(query, 'admin');
+
+        let filter;
+        if (Array.isArray(query.ids) && query.ids.length > 0) {
+            filter = { vendorId: toObjectId(vendorId), status: { $in: ['A', 'I'] }, _id: { $in: query.ids.map(toObjectId) } };
+        } else {
+            const filters = await buildAdminProductFilters(vendorId, query, lowStockThreshold);
+            if (!filters.isSuccess) {
+                return filters;
+            }
+            filter = await buildProductListFilter({ vendorId, audience: 'admin', query, q, extraFilter: filters.meta.filter });
+        }
+
+        const total = await Product.countDocuments(filter);
+        if (total === 0) {
+            return common.returnResult(false, 404, 'No products to download.');
+        }
+        if (total > maxCount) {
+            return common.returnResult(false, 400, `${total} products match, but one download can hold up to ${maxCount}. Narrow it down with search or filters, or tick the products you want.`);
+        }
+        const ids = await findProductPageIds(filter, sort, 0, maxCount);
+        return common.returnResult(true, 200, 'Products found', { ids });
     } catch (err) {
         throw err;
     }
@@ -2046,11 +2204,22 @@ const BULK_SAMPLE_GENERAL_NOTES = {
     ]
 };
 
-const buildBulkProductSampleFile = async (mode) => {
+const BULK_INSTRUCTION_COLUMNS = [
+    { header: 'Sheet', width: 20 },
+    { header: 'Column', width: 46 },
+    { header: 'Required', width: 12 },
+    { header: 'What to enter', width: 140 }
+];
+
+// The six sheets (with each column's `key`) plus the Instructions rows for
+// mode 'upload' | 'update'. Shared by the sample files and the product export,
+// so an exported file always has exactly the columns the upload reads.
+const buildBulkWorkbookLayout = (mode) => {
     try {
         const isUpdate = mode === 'update';
 
         const sheets = PRODUCT_WORKBOOK_SHEETS.map((sheet) => ({
+            key: sheet.key,
             name: sheet.sheetName,
             columns: sheet.columns().filter((column) => isUpdate || !column.updateOnly)
         }));
@@ -2064,22 +2233,24 @@ const buildBulkProductSampleFile = async (mode) => {
             }
         }
 
+        return { sheets, instructionRows, instructionColumns: BULK_INSTRUCTION_COLUMNS };
+    } catch (err) {
+        throw err;
+    }
+};
+
+const buildBulkProductSampleFile = async (mode) => {
+    try {
+        const isUpdate = mode === 'update';
+        const { sheets, instructionRows, instructionColumns } = buildBulkWorkbookLayout(mode);
+
         const buffer = await buildExcelTemplate({
             sheets: [
                 ...sheets.map((sheet) => ({
                     name: sheet.name,
                     columns: sheet.columns.map((column) => ({ header: column.header, width: Math.max(18, column.header.length + 4) }))
                 })),
-                {
-                    name: 'Instructions',
-                    columns: [
-                        { header: 'Sheet', width: 20 },
-                        { header: 'Column', width: 46 },
-                        { header: 'Required', width: 12 },
-                        { header: 'What to enter', width: 140 }
-                    ],
-                    rows: instructionRows
-                }
+                { name: 'Instructions', columns: instructionColumns, rows: instructionRows }
             ]
         });
 
@@ -3590,5 +3761,7 @@ module.exports = {
     fetchProductsByCategoryForAdmin,
     bulkUploadProducts,
     bulkUpdateProducts,
-    buildBulkProductSampleFile
+    buildBulkProductSampleFile,
+    buildBulkWorkbookLayout,
+    findAdminProductIdsForExport
 };

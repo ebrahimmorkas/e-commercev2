@@ -255,7 +255,7 @@ export const apiDownload = async (path, { auth = true, _isRetry = false } = {}) 
 
   const disposition = response.headers.get('Content-Disposition') || '';
   const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
-  return { blob: await response.blob(), filename: match ? decodeURIComponent(match[1]) : null };
+  return { blob: await response.blob(), filename: match ? decodeURIComponent(match[1]) : null, headers: response.headers };
 };
 
 export default apiRequest;

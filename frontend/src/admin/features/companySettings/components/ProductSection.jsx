@@ -1,5 +1,7 @@
 import Switch from '../../../../components/common/Switch';
 import InputField from '../../../../components/common/InputField';
+import Dropdown from '../../../../components/common/DropDown';
+import { ADMIN_PRODUCT_PAGE_SIZES } from '../../products/utils/productListFilters';
 import theme from '../theme/theme';
 
 /**
@@ -9,6 +11,8 @@ import theme from '../theme/theme';
  * @param {boolean} props.isLowStockAlertOn - Low stock alert is on for the account
  *   (WebsiteMaster AND CompanyMaster); its settings are hidden otherwise.
  */
+const pageSizeOptions = ADMIN_PRODUCT_PAGE_SIZES.map((size) => ({ value: String(size), label: `${size} products` }));
+
 const ProductSection = ({ draft, onChange, errors = {}, isLowStockAlertOn = false }) => {
   const set = (patch) => onChange(patch);
 
@@ -46,6 +50,16 @@ const ProductSection = ({ draft, onChange, errors = {}, isLowStockAlertOn = fals
         onChange={(e) => set({ useShortNameForBrand: e.target.checked })}
         color={theme.switch.color}
       />
+
+      <div className="max-w-sm">
+        <Dropdown
+          label="Products per Page (Admin)"
+          options={pageSizeOptions}
+          value={String(draft.adminProductsPerPage)}
+          onChange={(value) => set({ adminProductsPerPage: Number(value) })}
+          helperText="How many products the admin Products list shows when it opens. You can still switch it on that page for a visit."
+        />
+      </div>
 
       {isLowStockAlertOn && (
         <div className="border border-gray-200 rounded-lg p-4 space-y-4">

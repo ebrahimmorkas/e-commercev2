@@ -10,10 +10,14 @@ import EmptyState from '../../../../components/common/EmptyState';
 import SearchInput from '../../../../components/common/SearchInput';
 import Spinner from '../../../../components/common/Spinner';
 import Pagination from '../../../../components/common/Pagination';
-import { useProducts, ADMIN_PRODUCTS_PAGE_SIZE } from '../hooks/useProducts';
+import Dropdown from '../../../../components/common/DropDown';
+import { useProducts } from '../hooks/useProducts';
 import { useProductLookups } from '../hooks/useProductLookups';
 import ProductForm from '../components/ProductForm';
 import BulkUploadProductsModal from '../components/BulkUploadProductsModal';
+import ProductFilterModal from '../components/ProductFilterModal';
+import ActiveFilterChips from '../components/ActiveFilterChips';
+import { PRODUCT_SORT_OPTIONS, ADMIN_PRODUCT_PAGE_SIZES } from '../utils/productListFilters';
 import { mapApiProductToDraft } from '../utils/productDraft';
 import theme from '../theme/theme';
 import { useStoreCurrency } from '../../../currency/useStoreCurrency';
@@ -48,11 +52,23 @@ const BackIcon = () => (
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
   </svg>
 );
+const DownloadIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+  </svg>
+);
+const FilterIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h18l-7 8.5V19l-4 2v-8.5L3 4z" />
+  </svg>
+);
 const ImagePlaceholderIcon = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M4 8h16M4 4h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z" />
   </svg>
 );
+
+const pageSizeOptions = ADMIN_PRODUCT_PAGE_SIZES.map((size) => ({ value: String(size), label: String(size) }));
 
 const allSizes = (product) => (product.variants || []).flatMap((v) => v.sizes || []);
 
@@ -85,11 +101,12 @@ const Thumbnail = ({ product, size = 'w-10 h-10' }) => {
 
 const ProductsPage = () => {
   // Prices are in the store currency (Company Settings).
-  const { formatMoney } = useStoreCurrency();
+  const { formatMoney, symbol: currencySymbol } = useStoreCurrency();
   const {
-    products, pagination, catalogTotal, page, setPage, searchText, setSearchText, loading, initialLoading,
+    products, pagination, catalogTotal, page, setPage, pageSize, setPageSize, searchText, setSearchText, sort, setSort, filters, setFilters,
+    clearFilters, activeFilterCount, lowStockThreshold, loading, initialLoading,
     error, mutating, createProduct, editProduct, removeProduct, toggleStatus, cloneProduct, fetchProductById,
-    bulkToggleStatus, bulkRemoveProducts, bulkCloneProducts, runBulkUpload,
+    bulkToggleStatus, bulkRemoveProducts, bulkCloneProducts, runBulkUpload, exportProducts, exporting,
   } = useProducts();
   const lookups = useProductLookups();
 
@@ -102,6 +119,7 @@ const ProductsPage = () => {
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const [bulkCloneConfirmOpen, setBulkCloneConfirmOpen] = useState(false);
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
   // Whether the open add/edit form has anything typed into it, and whether the "discard?" prompt is showing.
   const [formDirty, setFormDirty] = useState(false);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
@@ -124,11 +142,43 @@ const ProductsPage = () => {
     setSelectedIds([]);
   };
 
+  const handlePageSizeChange = (value) => {
+    setPageSize(value);
+    setSelectedIds([]);
+  };
+
+  // Filters and sort change which rows are on screen too.
+  const handleSortChange = (value) => {
+    setSort(value);
+    setSelectedIds([]);
+  };
+
+  const handleFiltersChange = (nextFilters) => {
+    setFilters(nextFilters);
+    setSelectedIds([]);
+  };
+
+  const handleApplyFilters = (nextFilters) => {
+    handleFiltersChange(nextFilters);
+    setFilterOpen(false);
+  };
+
+  const handleClearFilters = () => {
+    clearFilters();
+    setSelectedIds([]);
+  };
+
+  const handleResetAll = () => {
+    handleSearchChange('');
+    handleClearFilters();
+  };
+
   const openAdd = () => {
     setEditingDraft(null);
     setSelectedIds([]);
-    // A leftover search would hide the product the admin is about to add.
+    // A leftover search or filter would hide the product the admin is about to add.
     setSearchText('');
+    clearFilters();
     setView('add');
   };
 
@@ -193,6 +243,8 @@ const ProductsPage = () => {
     () => selectedProducts.filter((p) => p.status === 'A').map((p) => p._id),
     [selectedProducts]
   );
+  const isCategoryFeatureOn = lookups.companyMaster ? !!lookups.companyMaster.isCategoryFeatureOn : true;
+  const isCategoryNestingAllowed = lookups.companyMaster ? !!lookups.companyMaster.isCategoryNestingAllowed : true;
   const isCloningAllowed = lookups.companyMaster?.featureAccess?.isCloningProductAllowed ?? !!lookups.companyMaster?.isCloningProductAllowed;
 
   // Tracks which specific bulk action is in flight so only that button shows
@@ -231,6 +283,16 @@ const ProductsPage = () => {
   };
 
   const bulkActions = [
+    {
+      key: 'download',
+      label: `Download (${selectedIds.length})`,
+      icon: <DownloadIcon />,
+      variant: theme.button.outline,
+      onClick: () => exportProducts(selectedIds),
+      loading: exporting,
+      disabled: exporting,
+      hidden: selectedIds.length === 0,
+    },
     {
       key: 'activate',
       label: `Mark Active (${activateEligibleIds.length})`,
@@ -320,18 +382,30 @@ const ProductsPage = () => {
     [categoryNameById, mutating, toggleStatus, formatMoney]
   );
 
-  const noMatchesState = (
-    <EmptyState
-      size="sm"
-      title="No matching products"
-      description={`Nothing matches "${searchText.trim()}". Try a different name, code, SKU, brand or category.`}
-      action={
-        <Button variant={theme.button.secondary} onClick={() => handleSearchChange('')}>
-          Clear search
-        </Button>
-      }
-    />
+  const isSearching = searchText.trim() !== '';
+  const isNarrowed = isSearching || activeFilterCount > 0;
+  let noMatchesDescription = 'No products match the selected filters. Try removing one.';
+  let noMatchesAction = (
+    <Button variant={theme.button.secondary} onClick={handleClearFilters}>
+      Clear filters
+    </Button>
   );
+  if (isSearching && activeFilterCount > 0) {
+    noMatchesDescription = `Nothing matches "${searchText.trim()}" with the selected filters.`;
+    noMatchesAction = (
+      <Button variant={theme.button.secondary} onClick={handleResetAll}>
+        Clear search &amp; filters
+      </Button>
+    );
+  } else if (isSearching) {
+    noMatchesDescription = `Nothing matches "${searchText.trim()}". Try a different name, code, SKU, brand or category.`;
+    noMatchesAction = (
+      <Button variant={theme.button.secondary} onClick={() => handleSearchChange('')}>
+        Clear search
+      </Button>
+    );
+  }
+  const noMatchesState = <EmptyState size="sm" title="No matching products" description={noMatchesDescription} action={noMatchesAction} />;
 
   const actions = [
     { label: 'Edit', icon: <PencilIcon />, variant: theme.button.secondary, onClick: openEdit },
@@ -401,7 +475,20 @@ const ProductsPage = () => {
         title={<span className="font-bold">Products</span>}
         subtitle="Manage your storefront's products, variants and sizes"
         headerActions={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Downloads what the list shows (search + filters, every page), or only the ticked products. */}
+            {catalogTotal > 0 && (
+              <Button
+                variant={theme.button.secondary}
+                leftIcon={<DownloadIcon />}
+                onClick={() => exportProducts(selectedIds)}
+                loading={exporting}
+                loadingText="Preparing…"
+                disabled={exporting || (pagination?.total ?? 0) === 0}
+              >
+                {selectedIds.length > 0 ? `Download (${selectedIds.length})` : 'Download'}
+              </Button>
+            )}
             <Button variant={theme.button.secondary} leftIcon={<UploadIcon />} onClick={() => setBulkUploadOpen(true)}>
               Bulk Upload
             </Button>
@@ -419,7 +506,7 @@ const ProductsPage = () => {
           <div className="flex justify-center py-16">
             <Spinner size="lg" />
           </div>
-        ) : catalogTotal === 0 && !searchText && products.length === 0 ? (
+        ) : catalogTotal === 0 && !isNarrowed && products.length === 0 ? (
           <EmptyState
             title="No products yet"
             description="Create your first product to start selling."
@@ -431,15 +518,51 @@ const ProductsPage = () => {
           />
         ) : (
           <>
-            <SearchInput
-              value={searchText}
-              onChange={handleSearchChange}
-              placeholder="Search name, code, SKU, barcode, brand, category…"
-              ariaLabel="Search products"
-              matchCount={pagination?.total ?? 0}
-              totalCount={catalogTotal}
-              itemLabel="products"
+            {/* Toolbar: search, then Filters + Sort (they drop below the search on smaller screens) */}
+            <div className="mb-4 flex flex-col lg:flex-row lg:items-start gap-3">
+              <SearchInput
+                value={searchText}
+                onChange={handleSearchChange}
+                placeholder="Search name, code, SKU, barcode, brand, category…"
+                ariaLabel="Search products"
+                matchCount={pagination?.total ?? 0}
+                totalCount={catalogTotal}
+                itemLabel="products"
+                className="mb-0! flex-1 min-w-0"
+              />
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={activeFilterCount > 0 ? theme.button.primary : theme.button.secondary}
+                  leftIcon={<FilterIcon />}
+                  onClick={() => setFilterOpen(true)}
+                  className="whitespace-nowrap"
+                >
+                  Filters
+                  {activeFilterCount > 0 && (
+                    <span className="ml-1.5 inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-white text-blue-700 text-xs font-semibold">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </Button>
+                <div className="flex-1 lg:flex-none lg:w-56">
+                  <Dropdown options={PRODUCT_SORT_OPTIONS} value={sort} onChange={handleSortChange} placeholder="Sort by" aria-label="Sort products" />
+                </div>
+              </div>
+            </div>
+
+            <ActiveFilterChips
+              filters={filters}
+              onChange={handleFiltersChange}
+              onClearAll={handleClearFilters}
+              categories={lookups.categories}
+              formatMoney={formatMoney}
+              lowStockThreshold={lowStockThreshold}
             />
+            {activeFilterCount > 0 && !isSearching && pagination && (
+              <p className={`-mt-2 mb-4 text-sm ${theme.text.muted}`} aria-live="polite">
+                {pagination.total.toLocaleString('en-IN')} of {catalogTotal.toLocaleString('en-IN')} products match
+              </p>
+            )}
 
             {/* Desktop / tablet: full data table */}
             <div className="hidden md:block">
@@ -508,19 +631,39 @@ const ProductsPage = () => {
               ))}
             </div>
 
-            {pagination && pagination.totalPages > 1 && (
+            {/* Footer: range + page size on the left, pages on the right. Shown even on a single
+                page so the page size can still be changed. */}
+            {pagination && pagination.total > 0 && (
               <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-                <p className={`text-sm ${theme.text.muted}`}>
-                  {((page - 1) * ADMIN_PRODUCTS_PAGE_SIZE + 1).toLocaleString('en-IN')}–
-                  {Math.min(page * ADMIN_PRODUCTS_PAGE_SIZE, pagination.total).toLocaleString('en-IN')} of {pagination.total.toLocaleString('en-IN')} products
-                </p>
-                <Pagination
-                  currentPage={page}
-                  totalPages={pagination.totalPages}
-                  onPageChange={handlePageChange}
-                  disabled={loading}
-                  size="sm"
-                />
+                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+                  <p className={`text-sm ${theme.text.muted}`}>
+                    {((page - 1) * pagination.limit + 1).toLocaleString('en-IN')}–
+                    {Math.min(page * pagination.limit, pagination.total).toLocaleString('en-IN')} of {pagination.total.toLocaleString('en-IN')} products
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm whitespace-nowrap ${theme.text.body}`}>Show</span>
+                    <div className="w-24">
+                      <Dropdown
+                        options={pageSizeOptions}
+                        value={pageSize ? String(pageSize) : ''}
+                        onChange={handlePageSizeChange}
+                        size="sm"
+                        disabled={loading}
+                        aria-label="Products per page"
+                      />
+                    </div>
+                    <span className={`text-sm whitespace-nowrap ${theme.text.body}`}>per page</span>
+                  </div>
+                </div>
+                {pagination.totalPages > 1 && (
+                  <Pagination
+                    currentPage={page}
+                    totalPages={pagination.totalPages}
+                    onPageChange={handlePageChange}
+                    disabled={loading}
+                    size="sm"
+                  />
+                )}
               </div>
             )}
           </>
@@ -610,6 +753,19 @@ const ProductsPage = () => {
           Clone <span className={`font-medium ${theme.text.heading}`}>{selectedIds.length}</span> selected product{selectedIds.length === 1 ? '' : 's'}? Each will be created as a new, independent product.
         </p>
       </Modal>
+
+      {filterOpen && (
+        <ProductFilterModal
+          onClose={() => setFilterOpen(false)}
+          filters={filters}
+          onApply={handleApplyFilters}
+          categories={lookups.categories}
+          isCategoryFeatureOn={isCategoryFeatureOn}
+          isCategoryNestingAllowed={isCategoryNestingAllowed}
+          lowStockThreshold={lowStockThreshold}
+          currencySymbol={currencySymbol}
+        />
+      )}
 
       <Modal
         isOpen={bulkUploadOpen}

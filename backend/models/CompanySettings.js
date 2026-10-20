@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { ADMIN_PRODUCT_PAGE_SIZES, DEFAULT_ADMIN_PRODUCTS_PER_PAGE } = require('../constants/productListConstants');
 
 const companySettingsSchema = new mongoose.Schema({
     vendorId: {
@@ -403,6 +404,13 @@ const companySettingsSchema = new mongoose.Schema({
     type: Number,
     min: 0,
     default: null
+  },
+  // How many products the admin Products list shows per page when it opens.
+  // The admin can switch it on the page for that visit only.
+  adminProductsPerPage: {
+    type: Number,
+    enum: ADMIN_PRODUCT_PAGE_SIZES,
+    default: DEFAULT_ADMIN_PRODUCTS_PER_PAGE
   },
   // End of product
 
