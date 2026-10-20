@@ -22,6 +22,9 @@ const theme = {
   social: {
     icon: 'text-slate-400 hover:text-amber-400 transition-colors',
   },
+  tryOn: {
+    button: 'inline-flex items-center px-4 py-2 rounded-full text-sm font-semibold bg-amber-400 text-slate-900 hover:bg-amber-300 transition-colors cursor-pointer',
+  },
   copyright: {
     text: 'text-slate-500',
     border: 'border-slate-800',

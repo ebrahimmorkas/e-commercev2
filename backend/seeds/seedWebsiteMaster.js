@@ -63,6 +63,8 @@ const WEBSITE_MASTER = {
     // Products
     isBrandFeatureOn: true,
     isCourierFeatureOn: true,
+    // Virtual Try-On - off by default (see scripts/enableFaceDetectionForVendor.js).
+    isFaceDetectionFeatureOn: false,
     isProductReviewFeatureOn: true,
     isBulkPricingFeatureOn: true,
     isCloningProductAllowed: true,

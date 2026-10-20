@@ -556,6 +556,14 @@ const companyMasterSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
+
+    // Virtual Try-On (face detection + spectacles overlay on the storefront).
+    // Per-vendor entitlement, off by default; also needs the WebsiteMaster
+    // switch and the FACE_DETECTION module.
+    isFaceDetectionFeatureOn: {
+        type: Boolean,
+        default: false
+    },
     // null = unlimited.
     numberOfCouriersAllowed: {
         type: Number,

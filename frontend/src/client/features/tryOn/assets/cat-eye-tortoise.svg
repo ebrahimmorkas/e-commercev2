@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="330" viewBox="0 0 300 110">
+  <defs>
+    <linearGradient id="tortoise" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5a2d12"/>
+      <stop offset="0.45" stop-color="#9c4a1a"/>
+      <stop offset="0.7" stop-color="#3b1c0b"/>
+      <stop offset="1" stop-color="#b8662a"/>
+    </linearGradient>
+  </defs>
+  <g fill="rgba(200,160,140,0.16)" stroke="url(#tortoise)" stroke-width="9" stroke-linejoin="round">
+    <path d="M10 20 Q75 8 130 26 Q132 70 110 88 Q75 100 42 88 Q20 74 10 20 Z"/>
+    <path d="M290 20 Q225 8 170 26 Q168 70 190 88 Q225 100 258 88 Q280 74 290 20 Z"/>
+  </g>
+  <path d="M130 34 Q150 26 170 34" fill="none" stroke="url(#tortoise)" stroke-width="7" stroke-linecap="round"/>
+</svg>
