@@ -166,6 +166,10 @@ const COMPANY_MASTER = {
     isCourierFeatureOn: true,
     numberOfCouriersAllowed: UNLIMITED,
 
+    // Virtual Try-On - off by default; turn on per vendor with
+    // scripts/enableFaceDetectionForVendor.js
+    isFaceDetectionFeatureOn: false,
+
     // Groups - every group type
     isGroupFeatureOn: true,
     numberOfGroupsAllowed: UNLIMITED,

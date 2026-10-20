@@ -18,6 +18,7 @@ const orderStepService = require('./orderStepService');
 const FileAsset = require('../models/FileAsset');
 const { readStoredAsset } = require('./storedFileReader');
 const { LOW_STOCK_ALERT_FEATURE_FLAG } = require('../constants/inventoryConstants');
+const moduleMasterService = require('./moduleMasterService');
 
 // The store currency (every price is entered in it - see currencyService.js)
 // must be an active currency of a country the vendor serves
@@ -1141,7 +1142,33 @@ const getCatalogueFile = async (vendorId, companyMasterData, websiteMasterData) 
     }
 };
 
+// --- Virtual Try-On (storefront footer button) -------------------------------
+const FACE_DETECTION_MODULE_CODE = 'FACE_DETECTION';
+const FACE_DETECTION_FLAG = 'isFaceDetectionFeatureOn';
+
+// On only when the flag is on in BOTH masters AND the FACE_DETECTION module
+// is actively assigned to the vendor (same rule as the admin sidebar).
+const isFaceDetectionOn = async (companyMasterData, websiteMasterData) => {
+    try {
+        if (!isTwoLevelOn(FACE_DETECTION_FLAG, companyMasterData, websiteMasterData)) {
+            return false;
+        }
+        const moduleResult = await moduleMasterService.fetchModuleByCode(FACE_DETECTION_MODULE_CODE);
+        if (!moduleResult.isSuccess) {
+            return false;
+        }
+        const moduleId = moduleResult.meta.module._id.toString();
+        const assignment = (companyMasterData?.assignedModules || []).find(
+            (entry) => entry.moduleId && entry.moduleId.toString() === moduleId
+        );
+        return moduleMasterService.isAssignmentActive(assignment);
+    } catch (err) {
+        throw err;
+    }
+};
+
 module.exports = {
+  isFaceDetectionOn,
   setCatalogue,
   removeCatalogue,
   getCatalogueFile,

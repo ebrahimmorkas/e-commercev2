@@ -192,6 +192,12 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // Global switch for the storefront Virtual Try-On (face detection +
+    // spectacles overlay). Paired with CompanyMaster.isFaceDetectionFeatureOn.
+    isFaceDetectionFeatureOn: {
+        type: Boolean,
+        default: false
+    },
     // Global switch, on by default - paired with
     // CompanyMaster.isBulkUpdatingProductsAllowed (per-vendor entitlement,
     // off by default) via checkFeatureOnOrOff. See bulkUpdateProducts in

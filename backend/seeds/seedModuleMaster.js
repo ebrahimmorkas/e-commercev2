@@ -28,7 +28,8 @@ const modules = [
     { moduleName: "Company Settings", shortModuleName: "Company Settings", code: "COMPANY_SETTINGS", precedence: 12, isSystemModule: true, description: "Vendor's own store configuration." },
     { moduleName: "Groups", shortModuleName: "Groups", code: "GROUP", precedence: 13, isSystemModule: false, description: "Reusable member groups (products, categories, users, brands, orders) for targeting other features." },
     { moduleName: "Email Templates", shortModuleName: "Email Templates", code: "EMAIL_TEMPLATE", precedence: 14, isSystemModule: false, description: "Vendor-authored email templates and their assignment to notification modules." },
-    { moduleName: "Send Email", shortModuleName: "Send Email", code: "SEND_EMAIL", precedence: 14.1, isSystemModule: false, description: "Vendor composes and sends emails to customers (and, if allowed, to other addresses), with a history of what was sent." }
+    { moduleName: "Send Email", shortModuleName: "Send Email", code: "SEND_EMAIL", precedence: 14.1, isSystemModule: false, description: "Vendor composes and sends emails to customers (and, if allowed, to other addresses), with a history of what was sent." },
+    { moduleName: "Virtual Try-On", shortModuleName: "Try-On", code: "FACE_DETECTION", precedence: 15, isSystemModule: false, description: "Storefront Virtual Try-On - detects the customer's face (live camera or uploaded photo) and puts spectacles on it. Runs fully in the browser; no image is sent to the server." }
 ];
 
 async function seedModuleMaster() {

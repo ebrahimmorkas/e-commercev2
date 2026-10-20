@@ -85,7 +85,8 @@ const MODULE_FEATURE_FLAG = {
     SEND_EMAIL: ['isSendEmailModuleOn', 'isSendingEmailFeatureOn'],
     ADMIN_PLACE_ORDER: 'isAdminPlacingOrderOnBehalfOfUserIsOn',
     DELIVERY_AGENTS: 'isOrderStatusUpdationAllowedByDeliveryAgents',
-    COURIER: 'isCourierFeatureOn'
+    COURIER: 'isCourierFeatureOn',
+    FACE_DETECTION: 'isFaceDetectionFeatureOn'
 };
 
 // A module can be actively assigned yet still be effectively off if whoever

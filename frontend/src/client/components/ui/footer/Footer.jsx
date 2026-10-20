@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import theme from './theme/theme';
 import { InstagramIcon, FacebookIcon, MailIcon, PhoneIcon, MapPinIcon } from './icons';
 import { useStorefrontCompanySettings } from '../../../features/companySettings/hooks/useStorefrontCompanySettings';
 import { POLICY_LINKS } from '../../../features/companySettings/constants';
 import PolicyModal from '../../../features/companySettings/components/PolicyModal';
+
+// Loaded only when opened - it pulls in the face-detection library.
+const TryOnModal = lazy(() => import('../../../features/tryOn/components/TryOnModal'));
 
 const instagramUrl = (handle) => `https://instagram.com/${handle.replace(/^@/, '').trim()}`;
 const facebookUrl = (handle) => `https://facebook.com/${handle.trim()}`;
@@ -23,6 +26,7 @@ const facebookUrl = (handle) => `https://facebook.com/${handle.trim()}`;
 const Footer = ({ onOpenPolicyPage }) => {
   const { companySettings } = useStorefrontCompanySettings();
   const [activeModalLink, setActiveModalLink] = useState(null);
+  const [isTryOnOpen, setIsTryOnOpen] = useState(false);
 
   const brandName = companySettings?.companyName?.trim() || 'Our Store';
   const logoUrl = companySettings?.companyLogo?.url;
@@ -54,6 +58,12 @@ const Footer = ({ onOpenPolicyPage }) => {
             <p className={`mt-2 text-sm ${theme.tagline.text} line-clamp-4`}>
               {companySettings.aboutUs.replace(/<[^>]+>/g, ' ').trim().slice(0, 160)}
             </p>
+          )}
+          {/* Shown only when Virtual Try-On is on for this vendor (both masters + FACE_DETECTION module). */}
+          {companySettings?.isFaceDetectionAvailable && (
+            <button type="button" onClick={() => setIsTryOnOpen(true)} className={`mt-4 ${theme.tryOn.button}`}>
+              Virtual Try-On
+            </button>
           )}
         </div>
 
@@ -136,6 +146,12 @@ const Footer = ({ onOpenPolicyPage }) => {
       <p className={`mx-auto max-w-7xl px-4 sm:px-6 pb-8 pt-6 border-t text-xs text-center ${theme.copyright.border} ${theme.copyright.text}`}>
         © {new Date().getFullYear()} {brandName}. All rights reserved.
       </p>
+
+      {isTryOnOpen && (
+        <Suspense fallback={null}>
+          <TryOnModal onClose={() => setIsTryOnOpen(false)} />
+        </Suspense>
+      )}
 
       {isModalMode && (
         <PolicyModal

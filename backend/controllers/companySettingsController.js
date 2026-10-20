@@ -226,6 +226,8 @@ const getCompanySettings = async (req, res) => {
     // Only whether a catalogue can be downloaded - never its storage details.
     publicSettings.catalogueAvailable = !!settings.catalogue?.fileAssetId
       && companySettingsService.isCatalogueOn(req.companyMasterData);
+    // Whether the storefront shows the Virtual Try-On button.
+    publicSettings.isFaceDetectionAvailable = await companySettingsService.isFaceDetectionOn(req.companyMasterData, req.websiteMasterData);
     return common.sendSuccess(res, 200, "Company settings fetched successfully", publicSettings);
   } catch (error) {
     logger.logException('Error fetching company settings', { vendorId, error });
