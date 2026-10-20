@@ -1,4 +1,5 @@
 const productService = require('../services/productService');
+const productExportService = require('../services/productExportService');
 const logger = require('../utils/logger.js');
 const common = require('../utils/common');
 
@@ -221,7 +222,18 @@ const readClientListQuery = (req) => {
 const getAllProductsAdmin = async (req, res) => {
     const vendorId = req.vendorId;
     try {
-        const result = await productService.fetchAllProductsForAdmin(vendorId, readListQuery(req));
+        // A category id that doesn't decode is a 400, not a 500.
+        const categoryId = common.tryDecodeId(req.query.categoryId);
+        if (req.query.categoryId && !categoryId) {
+            return common.sendError(res, 400, 'Validation failed', [{ field: 'categoryId', message: 'Category is invalid.' }]);
+        }
+        const query = { ...readListQuery(req), categoryId };
+        const vendorData = {
+            websiteMasterData: req.websiteMasterData,
+            companyMasterData: req.companyMasterData,
+            companySettingsData: req.companySettingsData
+        };
+        const result = await productService.fetchAllProductsForAdmin(vendorId, query, vendorData);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
@@ -499,6 +511,46 @@ const downloadBulkUpdateSampleFile = async (req, res) => {
     }
 };
 
+// Products page > Download: products.xlsx (Bulk Update format) + image zips, as one zip.
+const exportProducts = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        const categoryId = common.tryDecodeId(req.query.categoryId);
+        if (req.query.categoryId && !categoryId) {
+            return common.sendError(res, 400, 'Validation failed', [{ field: 'categoryId', message: 'Category is invalid.' }]);
+        }
+        const query = readListQuery(req);
+        // parseIdListQuery drops ids that don't decode - any drop means a bad id was sent.
+        const sentIdCount = String(req.query.ids || '').split(',').filter((id) => id.trim()).length;
+        if (query.ids.length !== sentIdCount) {
+            return common.sendError(res, 400, 'Validation failed', [{ field: 'ids', message: 'One or more product IDs are invalid.' }]);
+        }
+        query.categoryId = categoryId;
+
+        const vendorData = {
+            websiteMasterData: req.websiteMasterData,
+            companyMasterData: req.companyMasterData,
+            companySettingsData: req.companySettingsData
+        };
+        const result = await productExportService.buildProductExport(vendorId, query, vendorData);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+
+        const { buffer, fileName, productCount, failedImageCount } = result.meta;
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.setHeader('Content-Length', buffer.length);
+        // Read by the page for its "downloaded N products" message.
+        res.setHeader('X-Product-Count', String(productCount));
+        res.setHeader('X-Failed-Image-Count', String(failedImageCount));
+        res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Product-Count, X-Failed-Image-Count');
+        return res.status(200).end(buffer);
+    } catch (error) {
+        logger.logException('productController: exportProducts - Exception while exporting products', { vendorId, error });
+    }
+};
+
 const updateProduct = async (req, res) => {
     const vendorId = req.vendorId;
     try {
@@ -662,6 +714,7 @@ module.exports = {
     cloneProduct,
     bulkCloneProducts,
     getAllProductsAdmin,
+    exportProducts,
     getProductByIdAdmin,
     getProductOptionsAdmin,
     getAllProductsClient,

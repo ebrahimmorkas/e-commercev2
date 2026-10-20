@@ -1,4 +1,5 @@
 const Joi = require('joi');
+const { ADMIN_PRODUCT_PAGE_SIZES } = require('../../constants/productListConstants');
 
 // Ids are common.encodeId-encoded (see productController.js's
 // decodeProductPayloadIds/formatProductForResponse), never raw hex
@@ -276,6 +277,43 @@ const productListQuerySchema = Joi.object({
     ids: Joi.string().trim().allow('').max(5000).label('Product IDs')
 });
 
+// The admin list adds filters and stock/Z-A sorts on top of the storefront's.
+// categoryId is an encoded id (decoded in the controller) and matches that
+// category plus every sub category below it. minPrice/maxPrice match a product
+// with at least one size priced inside the range. stockStatus works on the
+// product's TOTAL stock (all sizes): out_of_stock = 0, low_stock = 1 up to the
+// low stock threshold, in_stock = above it. minStock/maxStock are a range on
+// that same total (min = max = exact), used INSTEAD of stockStatus, never with it.
+const adminProductListQuerySchema = productListQuerySchema.keys({
+    // Left out = the vendor's Company Settings default (adminProductsPerPage).
+    limit: Joi.number().integer().valid(...ADMIN_PRODUCT_PAGE_SIZES)
+        .messages({ 'any.only': `{{#label}} must be one of ${ADMIN_PRODUCT_PAGE_SIZES.join(', ')}.` })
+        .label('Limit'),
+    sort: Joi.string().valid('newest', 'price_asc', 'price_desc', 'name_asc', 'name_desc', 'stock_asc', 'stock_desc').label('Sort'),
+    categoryId: Joi.string().trim().min(1).max(200).label('Category'),
+    minPrice: Joi.number().min(0).max(1000000000).label('Minimum price'),
+    maxPrice: Joi.number().min(0).max(1000000000)
+        .when('minPrice', { is: Joi.exist(), then: Joi.number().min(Joi.ref('minPrice')) })
+        .messages({ 'number.min': '{{#label}} must be greater than or equal to the minimum price' })
+        .label('Maximum price'),
+    stockStatus: Joi.string().valid('in_stock', 'low_stock', 'out_of_stock').label('Stock status'),
+    minStock: Joi.number().integer().min(0).max(1000000000).label('Minimum stock'),
+    maxStock: Joi.number().integer().min(0).max(1000000000)
+        .when('minStock', { is: Joi.exist(), then: Joi.number().min(Joi.ref('minStock')) })
+        .messages({ 'number.min': '{{#label}} must be greater than or equal to the minimum stock' })
+        .label('Maximum stock')
+}).without('stockStatus', ['minStock', 'maxStock'])
+    .messages({ 'object.without': 'Use either a stock status or a stock range, not both.' });
+
+// Products page > Download: the admin list's search/filters/sort (every page,
+// so no page/limit), or `ids` = comma-separated encoded ids of ticked products
+// (up to one page of 100, hence the longer max).
+const productExportQuerySchema = adminProductListQuerySchema.keys({
+    page: Joi.any().strip(),
+    limit: Joi.any().strip(),
+    ids: Joi.string().trim().allow('').max(10000).label('Product IDs')
+});
+
 const brandIdParamSchema = Joi.object({
     brandId: objectId().required().label('Brand ID')
 });
@@ -365,6 +403,8 @@ module.exports = {
     bulkDeleteProductSchema,
     idParamSchema,
     productListQuerySchema,
+    adminProductListQuerySchema,
+    productExportQuerySchema,
     brandIdParamSchema,
     categoryIdParamSchema
 };

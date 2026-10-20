@@ -36,11 +36,13 @@ const toQueryString = (params = {}) => {
 };
 
 /**
- * One page of the admin product list - the backend paginates and searches
- * (name, code, keywords, brand, category, variant/size code, SKU, barcode).
- * Resolves to { products, pagination: { page, limit, total, totalPages, hasMore } }.
+ * One page of the admin product list - the backend paginates, searches
+ * (name, code, keywords, brand, category, variant/size code, SKU, barcode),
+ * filters and sorts. categoryId also matches every sub category below it.
+ * Resolves to { products, pagination: { page, limit, total, totalPages, hasMore }, lowStockThreshold }.
  *
- * @param {{ page?: number, limit?: number, q?: string, status?: 'A'|'I', sort?: string }} [params]
+ * @param {{ page?: number, limit?: number, q?: string, status?: 'A'|'I', sort?: string,
+ *   categoryId?: string, minPrice?: number, maxPrice?: number, stockStatus?: 'in_stock'|'low_stock'|'out_of_stock' }} [params]
  */
 export const getProductsAdmin = (params) => apiRequest(`${BASE}/get-products-admin${toQueryString(params)}`);
 
@@ -111,6 +113,25 @@ export const bulkUploadProducts = (excelFile, mainImagesZip, additionalImagesZip
  */
 export const downloadBulkUploadSampleFile = () => apiDownload(`${BASE}/bulk-upload-products/sample-file`);
 
+/**
+ * Products page > Download: a zip of products.xlsx (Bulk Update format) plus
+ * main-images.zip / additional-images.zip. Takes the list's own params (q,
+ * sort, categoryId, minPrice, maxPrice, stockStatus, minStock, maxStock) - or
+ * `ids` (ticked products), which wins over them.
+ * @returns {Promise<{ blob: Blob, filename: string|null, productCount: number, failedImageCount: number }>}
+ */
+export const exportProducts = async ({ ids, ...params } = {}) => {
+  const { blob, filename, headers } = await apiDownload(
+    `${BASE}/export-products${toQueryString(ids?.length ? { ids: ids.join(','), sort: params.sort } : params)}`
+  );
+  return {
+    blob,
+    filename,
+    productCount: Number(headers?.get('X-Product-Count')) || 0,
+    failedImageCount: Number(headers?.get('X-Failed-Image-Count')) || 0,
+  };
+};
+
 export default {
   getProductsAdmin,
   getProductOptionsAdmin,
@@ -125,4 +146,5 @@ export default {
   bulkCloneProducts,
   bulkUploadProducts,
   downloadBulkUploadSampleFile,
+  exportProducts,
 };
