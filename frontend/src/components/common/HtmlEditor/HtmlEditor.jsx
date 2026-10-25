@@ -3,6 +3,7 @@ import TextArea from '../TextArea';
 import Tabs from '../Tabs';
 import Button from '../Buttons';
 import LinkDialog from './LinkDialog';
+import { cleanPastedHtml } from './cleanPastedHtml';
 
 // Each entry wraps the current selection in `before`/`after` (or drops the
 // placeholder in when nothing is selected).
@@ -90,6 +91,30 @@ const HtmlEditor = ({
     });
   };
 
+  // Pasting formatted content (web page, Word) into a plain textarea drops the
+  // formatting; convert it to clean HTML tags instead. Plain-text pastes and
+  // pastes that already look like HTML source are left alone.
+  const handlePaste = (e) => {
+    if (disabled || e.target.tagName !== 'TEXTAREA') return;
+    const html = e.clipboardData.getData('text/html');
+    if (!html) return;
+    const plain = e.clipboardData.getData('text/plain');
+    if (/^\s*</.test(plain)) return;
+    const cleaned = cleanPastedHtml(html);
+    if (!cleaned) return;
+    e.preventDefault();
+    // Replace the current selection with the cleaned markup.
+    const { selectionStart: start, selectionEnd: end } = e.target;
+    onChange?.(`${value.slice(0, start)}${cleaned}${value.slice(end)}`);
+    const cursor = start + cleaned.length;
+    requestAnimationFrame(() => {
+      const el = getTextarea();
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(cursor, cursor);
+    });
+  };
+
   const insertVariable = (key) => insertAtSelection(`{{${key}}}`);
 
   const openLinkDialog = () => {
@@ -116,7 +141,7 @@ const HtmlEditor = ({
   };
 
   return (
-    <div className={`w-full ${className}`} ref={wrapperRef}>
+    <div className={`w-full ${className}`} ref={wrapperRef} onPaste={handlePaste}>
       {label && (
         <label htmlFor={name} className="block text-sm font-medium text-gray-700 mb-1">
           {label}
