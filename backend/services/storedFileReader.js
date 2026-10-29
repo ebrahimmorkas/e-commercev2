@@ -4,7 +4,7 @@ const storageProviderConfig = require('../config/storageProviderConfig');
 
 // Reads a stored file's bytes back (an ImageAsset or FileAsset), e.g. to
 // attach it to an email. Local files come straight from disk; S3/R2/
-// Cloudinary files are fetched from their public URL.
+// Cloudinary/ImageKit files are fetched from their public URL.
 const FETCH_TIMEOUT_MS = 20000;
 
 const readStoredAsset = async (asset) => {

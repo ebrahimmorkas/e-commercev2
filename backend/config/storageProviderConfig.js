@@ -30,6 +30,10 @@ const storageProviderConfig = {
         endpoint: process.env.R2_ENDPOINT, // e.g. https://<accountId>.r2.cloudflarestorage.com
         publicUrl: process.env.R2_PUBLIC_URL // e.g. https://media.yourdomain.com
     },
+    imagekit: {
+        urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT, // e.g. https://ik.imagekit.io/<imagekitId>
+        privateKey: process.env.IMAGEKIT_PRIVATE_KEY
+    },
     local: {
         basePath: process.env.LOCAL_STORAGE_BASE_PATH || 'uploads',
         baseUrl: process.env.LOCAL_STORAGE_BASE_URL || 'http://localhost:5000/uploads'

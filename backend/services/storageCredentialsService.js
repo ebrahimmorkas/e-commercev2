@@ -18,7 +18,7 @@ const {
 | PER-VENDOR STORAGE ACCOUNTS
 |--------------------------------------------------------------------------
 | Every vendor uploads images, videos and files to their OWN Cloudinary /
-| S3 / R2 account, saved encrypted in CompanyMaster.storageCredentials
+| S3 / R2 / ImageKit account, saved encrypted in CompanyMaster.storageCredentials
 | (select: false - see models/CompanyMaster). This service is the ONLY place
 | those credentials are read and decrypted, and the decrypted values only
 | ever go straight into a provider call - never into a response, the Redis /
@@ -91,6 +91,11 @@ const buildStorageAccountId = (provider, credentials) => {
         if (provider === STORAGE_PROVIDERS.CLOUDINARY) return `cloudinary:${credentials.cloudName}`;
         if (provider === STORAGE_PROVIDERS.AWS) return `aws:${credentials.region}:${credentials.bucket}`;
         if (provider === STORAGE_PROVIDERS.R2) return `r2:${credentials.accountId}:${credentials.bucket}`;
+        // The endpoint without https:// and trailing slash, e.g. imagekit:ik.imagekit.io/<imagekitId>
+        if (provider === STORAGE_PROVIDERS.IMAGEKIT) {
+            const endpoint = String(credentials.urlEndpoint || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+            return endpoint ? `imagekit:${endpoint.toLowerCase()}` : null;
+        }
         return null;
     } catch (err) {
         throw err;

@@ -19,7 +19,7 @@ const videoAssetSchema = new mongoose.Schema({
     // Which storage provider actually holds this file right now.
     provider: {
         type: String,
-        enum: ['cloudinary', 'aws', 'r2', 'local'],
+        enum: ['cloudinary', 'aws', 'r2', 'imagekit', 'local'],
         required: true
     },
 
@@ -30,15 +30,15 @@ const videoAssetSchema = new mongoose.Schema({
     },
 
     // Provider-specific identifier needed to delete/replace the file later
-    // (Cloudinary publicId, S3/R2 object key, or local relative file path).
+    // (Cloudinary publicId, S3/R2 object key, ImageKit fileId, or local relative file path).
     key: {
         type: String,
         required: true
     },
 
     // Which account of that provider holds the file (never a secret), e.g.
-    // "cloudinary:<cloudName>", "aws:<region>:<bucket>", "r2:<accountId>:<bucket>"
-    // or "local" - see buildStorageAccountId in services/storageCredentialsService.js.
+    // "cloudinary:<cloudName>", "aws:<region>:<bucket>", "r2:<accountId>:<bucket>",
+    // "imagekit:<urlEndpoint host+path>" or "local" - see buildStorageAccountId in services/storageCredentialsService.js.
     // Deletes and replaces use the credentials of exactly this account. null =
     // uploaded before per-vendor storage accounts existed, i.e. the .env account.
     storageAccount: {

@@ -35,7 +35,9 @@ const logger = require('../utils/logger');
 | The download is one zip: products.xlsx + the two image zips.
 */
 
-const MAX_EXPORT_PRODUCTS = 1000;
+// Used when the vendor's CompanyMaster has no maxProductsInDownloadInAdminPanel
+// yet (saved before the field existed) - same as the model's default.
+const DEFAULT_MAX_EXPORT_PRODUCTS = 1000;
 const IMAGE_FETCH_CONCURRENCY = 6;
 const IMAGE_FETCH_TIMEOUT_MS = 20000;
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
@@ -50,6 +52,18 @@ const IMAGE_EXTENSIONS_BY_TYPE = {
     'image/gif': '.gif',
     'image/avif': '.avif',
     'image/svg+xml': '.svg'
+};
+
+// CompanyMaster.maxProductsInDownloadInAdminPanel -> the most products one
+// download may hold: null = no limit, 0 = none, missing = the default.
+const resolveMaxExportProducts = (companyMasterData) => {
+    try {
+        const value = companyMasterData ? companyMasterData.maxProductsInDownloadInAdminPanel : undefined;
+        if (value === undefined) return DEFAULT_MAX_EXPORT_PRODUCTS;
+        return value;
+    } catch (err) {
+        throw err;
+    }
 };
 
 const idKey = (id) => {
@@ -414,7 +428,12 @@ const buildExportNotes = (productCount, failures) => {
 // meta = { buffer, fileName } - a zip of products.xlsx + the image zips.
 const buildProductExport = async (vendorId, query = {}, vendorData = {}) => {
     try {
-        const found = await productService.findAdminProductIdsForExport(vendorId, query, vendorData, MAX_EXPORT_PRODUCTS);
+        const maxCount = resolveMaxExportProducts(vendorData.companyMasterData);
+        if (maxCount === 0) {
+            return common.returnResult(false, 403, 'Downloading products is not enabled for your store. Please contact the website administrator.');
+        }
+
+        const found = await productService.findAdminProductIdsForExport(vendorId, query, vendorData, maxCount);
         if (!found.isSuccess) {
             return found;
         }
@@ -452,6 +471,11 @@ const buildProductExport = async (vendorId, query = {}, vendorData = {}) => {
         const zipEntries = [{ name: EXCEL_FILE_NAME, buffer: excelBuffer }];
         if (entries.main.length > 0) zipEntries.push({ name: MAIN_IMAGES_ZIP_NAME, buffer: createZipBuffer(entries.main) });
         if (entries.additional.length > 0) zipEntries.push({ name: ADDITIONAL_IMAGES_ZIP_NAME, buffer: createZipBuffer(entries.additional) });
+        // The downloaded image bytes are now inside the image zips - let them go
+        // before the final zip is built, so a big (or unlimited) download does
+        // not hold every image in memory several times over.
+        entries.main.length = 0;
+        entries.additional.length = 0;
 
         if (failures.length > 0) {
             logger.logInfo(1, 0, 'Product export: some images could not be downloaded', { vendorId, failedCount: failures.length });
@@ -470,5 +494,5 @@ const buildProductExport = async (vendorId, query = {}, vendorData = {}) => {
 
 module.exports = {
     buildProductExport,
-    MAX_EXPORT_PRODUCTS
+    DEFAULT_MAX_EXPORT_PRODUCTS
 };

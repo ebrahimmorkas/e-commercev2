@@ -101,7 +101,7 @@ const websiteMasterSchema = mongoose.Schema({
     },
     mainImageService: {
         type: String,
-        enum: ['cloudinary', 'aws', 'r2', 'local'],
+        enum: ['cloudinary', 'aws', 'r2', 'imagekit', 'local'],
         required: true
     },
     enforceMainImageService: {
@@ -112,7 +112,7 @@ const websiteMasterSchema = mongoose.Schema({
     // pattern as the image/video services (see fileUploadService.js).
     mainFileService: {
         type: String,
-        enum: ['cloudinary', 'aws', 'r2', 'local'],
+        enum: ['cloudinary', 'aws', 'r2', 'imagekit', 'local'],
         default: 'local'
     },
     enforceMainFileService: {
@@ -128,7 +128,7 @@ const websiteMasterSchema = mongoose.Schema({
     },
     mainVideoService: {
         type: String,
-        enum: ['cloudinary', 'aws', 'r2', 'local'],
+        enum: ['cloudinary', 'aws', 'r2', 'imagekit', 'local'],
         required: true
     },
     enforceMainVideoService: {

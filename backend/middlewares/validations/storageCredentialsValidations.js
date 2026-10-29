@@ -10,7 +10,7 @@ const { ACCOUNT_NOTES_MAX_LENGTH } = require('../../constants/storageConstants')
 // Shape (every area and every provider is optional, but a provider that is
 // given must be complete, including accountEmail):
 //   {
-//     image: { cloudinary: {...}, aws: {...}, r2: {...} },
+//     image: { cloudinary: {...}, aws: {...}, r2: {...}, imagekit: {...} },
 //     video: { ... },
 //     file:  { ... }
 //   }
@@ -54,6 +54,11 @@ const awsRegion = Joi.string().trim().lowercase().pattern(/^[a-z]{2}(-gov)?-[a-z
 // Cloudflare account ids are 32 hex characters.
 const r2AccountId = Joi.string().trim().lowercase().pattern(/^[a-f0-9]{32}$/).messages({
     'string.pattern.base': 'accountId must be the 32-character Cloudflare account id'
+});
+
+// ImageKit private API key from Developer options, e.g. "private_AbC...=".
+const imagekitPrivateKey = Joi.string().trim().min(16).max(256).pattern(/^private_[A-Za-z0-9+/=_-]+$/).messages({
+    'string.pattern.base': 'privateKey must be the ImageKit private API key (it starts with "private_")'
 });
 
 // Base URLs are stored without a trailing slash, since keys are appended as "/<key>".
@@ -105,12 +110,28 @@ const r2CredentialsSchema = Joi.object({
     publicUrl: httpsUrl.label('publicUrl').required()
 });
 
+const imagekitCredentialsSchema = Joi.object({
+    ...accountReference,
+    // https://ik.imagekit.io/<imagekitId> (or a custom domain) - files are
+    // served from <urlEndpoint>/<filePath>, so no query string or fragment.
+    urlEndpoint: httpsUrl.label('urlEndpoint')
+        .pattern(/^[^?#]+$/)
+        .messages({ 'string.pattern.base': 'urlEndpoint must not contain a query string or fragment, e.g. https://ik.imagekit.io/your_imagekit_id' })
+        .required(),
+    privateKey: imagekitPrivateKey.required(),
+    // Only needed for browser uploads, which this app does not do.
+    publicKey: Joi.any().forbidden().messages({
+        'any.unknown': 'publicKey is not needed - ImageKit uploads from the server use only urlEndpoint and privateKey'
+    })
+});
+
 const storageAreaCredentialsSchema = Joi.object({
     cloudinary: cloudinaryCredentialsSchema,
     aws: awsCredentialsSchema,
-    r2: r2CredentialsSchema
+    r2: r2CredentialsSchema,
+    imagekit: imagekitCredentialsSchema
 }).min(1).messages({
-    'object.min': '{#label} must contain at least one provider (cloudinary, aws or r2)'
+    'object.min': '{#label} must contain at least one provider (cloudinary, aws, r2 or imagekit)'
 });
 
 const storageCredentialsSchema = Joi.object({

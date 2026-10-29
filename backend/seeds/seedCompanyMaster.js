@@ -24,7 +24,7 @@ const {
 // weight units and modules are only ever added (an existing assignedModules
 // entry, including a revoked one, is left alone).
 //
-// STORAGE ACCOUNTS - the vendor's own Cloudinary / S3 / R2 accounts for
+// STORAGE ACCOUNTS - the vendor's own Cloudinary / S3 / R2 / ImageKit accounts for
 // images, videos and files (CompanyMaster.storageCredentials):
 //   1. copy seeds/storageCredentials.example.json to
 //      seeds/private/storageCredentials.json (git-ignored - never commit it)
@@ -55,7 +55,7 @@ const UNLIMITED = 999999999999;
 // bigger than the app's own hard ceilings, so these are set to those ceilings.
 //   - images: 20 MB (middlewares/imageUpload.js)
 //   - email attachments and videos: 100 MB (middlewares/emailContentUpload.js)
-// The storage provider's own plan limit (Cloudinary) still applies on top.
+// The storage provider's own plan limit (Cloudinary / ImageKit) still applies on top.
 const MAX_IMAGE_MB = 20;
 const MAX_FILE_MB = 100;
 
@@ -136,6 +136,9 @@ const COMPANY_MASTER = {
     // Not a limit: how many products the storefront loads per page / scroll
     // step (the model allows 1-100). 24 keeps pages fast.
     productsPerPage: 24,
+    // Admin Products page > Download: at most this many products per download
+    // (null = every product, 0 = downloading not allowed).
+    maxProductsInDownloadInAdminPanel: 1000,
     allowedProductImageMB: MAX_IMAGE_MB,
     allowedProductImagesFormat: IMAGE_FORMATS,
     isBulkUploadForFeatureOn: true,
