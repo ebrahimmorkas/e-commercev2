@@ -136,6 +136,9 @@ const COMPANY_MASTER = {
     // Not a limit: how many products the storefront loads per page / scroll
     // step (the model allows 1-100). 24 keeps pages fast.
     productsPerPage: 24,
+    // Admin Products page > Download: at most this many products per download
+    // (null = every product, 0 = downloading not allowed).
+    maxProductsInDownloadInAdminPanel: 1000,
     allowedProductImageMB: MAX_IMAGE_MB,
     allowedProductImagesFormat: IMAGE_FORMATS,
     isBulkUploadForFeatureOn: true,
