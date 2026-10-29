@@ -11,6 +11,7 @@
 //   cloudinary  https://res.cloudinary.com/<cloudName>/...         -> cloudinary:<cloudName>
 //   aws         https://<bucket>.s3.<region>.amazonaws.com/...      -> aws:<region>:<bucket>
 //   r2          URL starts with the .env R2_PUBLIC_URL               -> r2:<accountId>:<bucket> (.env)
+//   imagekit    URL starts with the .env IMAGEKIT_URL_ENDPOINT       -> imagekit:<urlEndpoint> (.env)
 //   local                                                            -> local
 // An asset whose URL matches none of these is left as it is and reported.
 //
@@ -51,6 +52,13 @@ function deriveStorageAccount(asset) {
             const publicUrl = String(r2.publicUrl || '').replace(/\/+$/, '');
             const isEnvAccount = publicUrl && r2.accountId && r2.bucket && url.startsWith(`${publicUrl}/`);
             return isEnvAccount ? storageCredentialsService.buildStorageAccountId(asset.provider, r2) : null;
+        }
+
+        if (asset.provider === STORAGE_PROVIDERS.IMAGEKIT) {
+            const imagekit = storageProviderConfig.imagekit;
+            const urlEndpoint = String(imagekit.urlEndpoint || '').replace(/\/+$/, '');
+            const isEnvAccount = urlEndpoint && url.startsWith(`${urlEndpoint}/`);
+            return isEnvAccount ? storageCredentialsService.buildStorageAccountId(asset.provider, imagekit) : null;
         }
 
         return null;

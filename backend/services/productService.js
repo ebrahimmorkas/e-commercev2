@@ -1761,7 +1761,8 @@ const fetchAllProductsForAdmin = async (vendorId, query = {}, vendorData = {}) =
 // The ids of every product the admin list would show for `query` (search,
 // filters, sort - every page, not just one), or of just `query.ids` (ticked
 // rows) in that same sort order. More than `maxCount` matches is a 400 so a
-// huge export never builds in memory. meta = { ids }.
+// download never gets bigger than the vendor allows; maxCount null = no limit
+// (CompanyMaster.maxProductsInDownloadInAdminPanel). meta = { ids }.
 const findAdminProductIdsForExport = async (vendorId, query = {}, vendorData = {}, maxCount) => {
     try {
         const { threshold: lowStockThreshold } = lowStockAlertService.resolveLowStockSettings(
@@ -1786,10 +1787,10 @@ const findAdminProductIdsForExport = async (vendorId, query = {}, vendorData = {
         if (total === 0) {
             return common.returnResult(false, 404, 'No products to download.');
         }
-        if (total > maxCount) {
+        if (maxCount !== null && total > maxCount) {
             return common.returnResult(false, 400, `${total} products match, but one download can hold up to ${maxCount}. Narrow it down with search or filters, or tick the products you want.`);
         }
-        const ids = await findProductPageIds(filter, sort, 0, maxCount);
+        const ids = await findProductPageIds(filter, sort, 0, total);
         return common.returnResult(true, 200, 'Products found', { ids });
     } catch (err) {
         throw err;

@@ -5,7 +5,8 @@ const { ACCOUNT_NOTES_MAX_LENGTH } = require('../constants/storageConstants');
 // The vendor's own storage accounts (see storageCredentials below). Every
 // secret is encrypted with common.encryptSecret (AES-256-GCM, random IV) and
 // only ever decrypted inside services/storageCredentialsService.js. The plain
-// fields (cloudName, region, bucket, accountId, endpoint, publicUrl) are not
+// fields (cloudName, region, bucket, accountId, endpoint, publicUrl,
+// urlEndpoint) are not
 // secret - they appear in every public file URL - and are what an ImageAsset /
 // VideoAsset / FileAsset's storageAccount is matched against.
 //
@@ -43,12 +44,20 @@ const r2CredentialsSchema = new mongoose.Schema({
     encryptedSecretAccessKey: { type: String, default: null }
 }, { _id: false });
 
+const imagekitCredentialsSchema = new mongoose.Schema({
+    ...accountReferenceFields,
+    // e.g. https://ik.imagekit.io/<imagekitId> or a custom domain added in ImageKit.
+    urlEndpoint: { type: String, trim: true, default: null },
+    encryptedPrivateKey: { type: String, default: null }
+}, { _id: false });
+
 // One account per provider, so switching the area's provider (e.g. imageService
 // cloudinary -> aws) does not lose the other account's credentials.
 const storageAreaCredentialsSchema = new mongoose.Schema({
     cloudinary: { type: cloudinaryCredentialsSchema, default: undefined },
     aws: { type: awsCredentialsSchema, default: undefined },
-    r2: { type: r2CredentialsSchema, default: undefined }
+    r2: { type: r2CredentialsSchema, default: undefined },
+    imagekit: { type: imagekitCredentialsSchema, default: undefined }
 }, { _id: false });
 
 const storageCredentialsSchema = new mongoose.Schema({
@@ -236,7 +245,7 @@ const companyMasterSchema = mongoose.Schema({
     // Image
     imageService: {
         type: String,
-        enum: ['cloudinary', 'aws', 'r2', 'local'],
+        enum: ['cloudinary', 'aws', 'r2', 'imagekit', 'local'],
         default: 'cloudinary'
     },
 
@@ -244,7 +253,7 @@ const companyMasterSchema = mongoose.Schema({
     // services/fileUploadService.js). null = use WebsiteMaster.mainFileService.
     fileService: {
         type: String,
-        enum: ['cloudinary', 'aws', 'r2', 'local', null],
+        enum: ['cloudinary', 'aws', 'r2', 'imagekit', 'local', null],
         default: null
     },
 
@@ -258,7 +267,7 @@ const companyMasterSchema = mongoose.Schema({
     },
     videoService: {
         type: String,
-        enum: ['cloudinary', 'aws', 'r2', 'local'],
+        enum: ['cloudinary', 'aws', 'r2', 'imagekit', 'local'],
         default: 'cloudinary'
     },
     // Vendor-specific hard cap (MB) for video uploads. Only takes effect when
@@ -472,6 +481,19 @@ const companyMasterSchema = mongoose.Schema({
         default: 24,
         min: 1,
         max: 100
+    },
+    // Admin Products page > Download: the most products one download may hold.
+    // null = no limit (every product), 0 = downloading is not allowed. A
+    // CompanyMaster saved before this field existed counts as the default -
+    // see resolveMaxExportProducts in productExportService.js.
+    maxProductsInDownloadInAdminPanel: {
+        type: Number,
+        default: 1000,
+        min: 0,
+        validate: {
+            validator: (value) => value === null || Number.isInteger(value),
+            message: 'maxProductsInDownloadInAdminPanel must be a whole number or null'
+        }
     },
     allowedSizes: {
         type: [mongoose.Schema.Types.ObjectId],
