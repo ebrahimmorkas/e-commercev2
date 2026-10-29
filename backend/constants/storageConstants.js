@@ -17,6 +17,7 @@ const STORAGE_PROVIDERS = {
     CLOUDINARY: 'cloudinary',
     AWS: 'aws',
     R2: 'r2',
+    IMAGEKIT: 'imagekit',
     LOCAL: 'local'
 };
 
@@ -24,7 +25,7 @@ const VALID_STORAGE_PROVIDERS = Object.values(STORAGE_PROVIDERS);
 
 // Providers that need an account (credentials). 'local' writes to this
 // server's own disk, so it has none.
-const CREDENTIAL_PROVIDERS = [STORAGE_PROVIDERS.CLOUDINARY, STORAGE_PROVIDERS.AWS, STORAGE_PROVIDERS.R2];
+const CREDENTIAL_PROVIDERS = [STORAGE_PROVIDERS.CLOUDINARY, STORAGE_PROVIDERS.AWS, STORAGE_PROVIDERS.R2, STORAGE_PROVIDERS.IMAGEKIT];
 
 // Per provider: every field a complete account needs, and which of them are
 // encrypted at rest (common.encryptSecret). The rest are not secret - they
@@ -44,6 +45,14 @@ const PROVIDER_CREDENTIAL_FIELDS = {
         encrypted: ['accessKeyId', 'secretAccessKey'],
         // Defaults to https://<accountId>.r2.cloudflarestorage.com when unset.
         optional: ['endpoint']
+    },
+    // Server-side uploads/deletes need only the private key; the public key is
+    // for browser uploads, which this app does not do. urlEndpoint
+    // (https://ik.imagekit.io/<imagekitId>, or a custom domain added in
+    // ImageKit) is what file URLs are built from.
+    [STORAGE_PROVIDERS.IMAGEKIT]: {
+        required: ['urlEndpoint', 'privateKey'],
+        encrypted: ['privateKey']
     }
 };
 
@@ -61,6 +70,7 @@ const PROVIDER_LABELS = {
     [STORAGE_PROVIDERS.CLOUDINARY]: 'Cloudinary',
     [STORAGE_PROVIDERS.AWS]: 'Amazon S3',
     [STORAGE_PROVIDERS.R2]: 'Cloudflare R2',
+    [STORAGE_PROVIDERS.IMAGEKIT]: 'ImageKit',
     [STORAGE_PROVIDERS.LOCAL]: 'Local storage'
 };
 

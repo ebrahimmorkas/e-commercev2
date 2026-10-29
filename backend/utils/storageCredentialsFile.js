@@ -54,7 +54,7 @@ function loadStorageCredentialUpdates(filePath = STORAGE_CREDENTIALS_FILE) {
     }
 }
 
-// Which saved account each area will use - account id (cloud name / bucket),
+// Which saved account each area will use - account id (cloud name / bucket / endpoint),
 // the reference accountEmail and notes, never a secret - plus a warning for
 // every area whose provider has no complete account yet.
 async function describeStorageAccounts(vendorId) {

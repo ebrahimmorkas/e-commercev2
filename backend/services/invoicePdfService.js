@@ -35,18 +35,29 @@ const formatDate = (value) => {
 };
 
 // ---- Logo -----------------------------------------------------------------------------
-// The logo lives on the storage provider (Cloudinary/S3/...). It is downloaded once and kept
+// The logo lives on the storage provider (Cloudinary/S3/ImageKit/...). It is downloaded once and kept
 // in memory by URL - a replaced logo gets a new URL, so a stale entry is never reused.
 // Any failure just means the invoice is printed without a logo.
 const logoCache = new Map();
 const LOGO_CACHE_MAX = 20;
 const LOGO_TIMEOUT_MS = 4000;
 
-const toPdfFriendlyLogoUrl = (url, width = 300) =>
-    // Cloudinary can convert + shrink on the fly; pdfmake only embeds PNG/JPEG.
-    /res\.cloudinary\.com/.test(url) && url.includes('/upload/') ? url.replace('/upload/', `/upload/f_jpg,w_${width}/`) : url;
+const IMAGEKIT_HOST = /^https?:\/\/ik\.imagekit\.io\//i;
 
-// Product thumbnails use the same download-and-embed path with a smaller Cloudinary width and a bigger cache.
+// Cloudinary and ImageKit can convert + shrink on the fly; pdfmake only embeds PNG/JPEG.
+// (An ImageKit account on a custom domain isn't recognisable from its URL, so its logo is
+// fetched as stored - fine for PNG/JPEG, and anything else just prints without a logo.)
+const toPdfFriendlyLogoUrl = (url, width = 300) => {
+    try {
+        if (/res\.cloudinary\.com/.test(url) && url.includes('/upload/')) return url.replace('/upload/', `/upload/f_jpg,w_${width}/`);
+        if (IMAGEKIT_HOST.test(url) && !/[?&]tr=/.test(url)) return `${url}${url.includes('?') ? '&' : '?'}tr=f-jpg,w-${width}`;
+        return url;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Product thumbnails use the same download-and-embed path with a smaller Cloudinary/ImageKit width and a bigger cache.
 const PRODUCT_IMAGE_WIDTH = 120;
 const PRODUCT_IMAGE_CACHE_MAX = 200;
 

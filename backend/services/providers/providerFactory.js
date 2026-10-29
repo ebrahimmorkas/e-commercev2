@@ -1,5 +1,6 @@
 const cloudinaryProvider = require('./cloudinaryProvider');
 const { createBufferProvider } = require('./s3Provider');
+const imagekitProvider = require('./imagekitProvider');
 const localProvider = require('./localProvider');
 const { STORAGE_PROVIDERS } = require('../../constants/storageConstants');
 
@@ -7,6 +8,7 @@ const providers = {
     [STORAGE_PROVIDERS.CLOUDINARY]: cloudinaryProvider,
     [STORAGE_PROVIDERS.AWS]: createBufferProvider(STORAGE_PROVIDERS.AWS),
     [STORAGE_PROVIDERS.R2]: createBufferProvider(STORAGE_PROVIDERS.R2),
+    [STORAGE_PROVIDERS.IMAGEKIT]: imagekitProvider,
     [STORAGE_PROVIDERS.LOCAL]: localProvider
 };
 

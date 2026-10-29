@@ -24,7 +24,7 @@ const {
 // weight units and modules are only ever added (an existing assignedModules
 // entry, including a revoked one, is left alone).
 //
-// STORAGE ACCOUNTS - the vendor's own Cloudinary / S3 / R2 accounts for
+// STORAGE ACCOUNTS - the vendor's own Cloudinary / S3 / R2 / ImageKit accounts for
 // images, videos and files (CompanyMaster.storageCredentials):
 //   1. copy seeds/storageCredentials.example.json to
 //      seeds/private/storageCredentials.json (git-ignored - never commit it)
@@ -55,7 +55,7 @@ const UNLIMITED = 999999999999;
 // bigger than the app's own hard ceilings, so these are set to those ceilings.
 //   - images: 20 MB (middlewares/imageUpload.js)
 //   - email attachments and videos: 100 MB (middlewares/emailContentUpload.js)
-// The storage provider's own plan limit (Cloudinary) still applies on top.
+// The storage provider's own plan limit (Cloudinary / ImageKit) still applies on top.
 const MAX_IMAGE_MB = 20;
 const MAX_FILE_MB = 100;
 

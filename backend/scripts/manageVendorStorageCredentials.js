@@ -1,4 +1,4 @@
-// Saves / shows ONE vendor's own storage accounts (Cloudinary / S3 / R2 for
+// Saves / shows ONE vendor's own storage accounts (Cloudinary / S3 / R2 / ImageKit for
 // images, videos and files - CompanyMaster.storageCredentials), picked by the
 // vendor's domain. Unlike seeds/seedCompanyMaster.js (which is for
 // mouldmarket.in and resets its whole CompanyMaster), this touches nothing
