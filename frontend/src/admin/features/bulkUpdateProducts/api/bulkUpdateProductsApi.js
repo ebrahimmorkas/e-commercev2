@@ -6,12 +6,14 @@ const BASE = '/products';
  * @param {File} excelFile - .xlsx with Products/Variants/Sizes/MeasurementValues/Descriptions/BulkPricing sheets
  * @param {File} [mainImagesZip] - zip of size main images referenced by MainImageFileName
  * @param {File} [additionalImagesZip] - zip of size additional images referenced by AdditionalImageFileNames
+ * @param {File} [videosZip] - zip of size videos referenced by VideoFileNames
  */
-export const bulkUpdateProducts = (excelFile, mainImagesZip, additionalImagesZip) => {
+export const bulkUpdateProducts = (excelFile, mainImagesZip, additionalImagesZip, videosZip) => {
   const formData = new FormData();
   formData.append('excelFile', excelFile);
   if (mainImagesZip) formData.append('mainImagesZip', mainImagesZip);
   if (additionalImagesZip) formData.append('additionalImagesZip', additionalImagesZip);
+  if (videosZip) formData.append('videosZip', videosZip);
 
   return apiRequest(`${BASE}/bulk-update-products`, { method: 'POST', body: formData });
 };

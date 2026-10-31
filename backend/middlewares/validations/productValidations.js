@@ -1,5 +1,6 @@
 const Joi = require('joi');
 const { ADMIN_PRODUCT_PAGE_SIZES } = require('../../constants/productListConstants');
+const { MAX_VIDEOS_PER_SIZE } = require('../../constants/productVideoConstants');
 
 // Ids are common.encodeId-encoded (see productController.js's
 // decodeProductPayloadIds/formatProductForResponse), never raw hex
@@ -84,6 +85,17 @@ const sizeSchema = Joi.object({
     isDefaultSize: Joi.boolean().default(false),
     sizeType: Joi.string().valid('MEASURABLE', 'LABEL').required().label('Size type'),
     sizeName: Joi.string().trim().min(1).required().label('Size name'),
+    // Product videos of this size, in gallery order: ids returned by
+    // /products/upload-product-video. Left out on update = keep the size's
+    // current videos; [] = remove them all. The per-product count limit,
+    // ownership and the feature switch are checked in productVideoService.
+    videos: Joi.array().items(objectId().label('Video ID')).max(MAX_VIDEOS_PER_SIZE).unique()
+        .messages({
+            'array.unique': 'The same video is listed more than once in this size.',
+            'array.max': `A size can list at most ${MAX_VIDEOS_PER_SIZE} videos.`,
+            'array.base': 'Videos must be a list of video ids.'
+        })
+        .label('Videos'),
     sizeAdditionalDisclaimer: Joi.string().trim().allow('', null).label('Size additional disclaimer'),
     sizeAdditionalDescription: descriptionArraySchema.label('Size additional description'),
     sizeAdditionalBulkPricing: Joi.array().items(bulkPricingItemSchema).label('Size additional bulk pricing'),

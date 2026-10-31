@@ -152,6 +152,14 @@ const websiteMasterSchema = mongoose.Schema({
         enum: ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi'],
         default: []
     },
+    // Product videos (per size, shown in the product gallery). Global kill
+    // switch, on by default like isVideoUploadingFeatureOn - the vendor also
+    // needs CompanyMaster.isProductVideoFeatureOn AND the general video switch
+    // (isVideoUploadingFeatureOn) in both masters. See productVideoService.js.
+    isProductVideoFeatureOn: {
+        type: Boolean,
+        default: true
+    },
     isDiscountFeatureOn: {
         type: Boolean,
         default: true,
@@ -249,6 +257,14 @@ const websiteMasterSchema = mongoose.Schema({
     bulkUploadZipMaxSizeMB: {
         type: Number,
         default: 50
+    },
+    // Bulk product upload/update: the most the product videos zip (videosZip)
+    // may weigh. Kept apart from bulkUploadZipMaxSizeMB because videos are far
+    // bigger than images; the zip is written to disk, never held in memory.
+    bulkUploadVideoZipMaxSizeMB: {
+        type: Number,
+        min: 1,
+        default: 1024
     },
     // Cart
     isCartFeatureOn: {

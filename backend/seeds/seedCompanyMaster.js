@@ -161,6 +161,11 @@ const COMPANY_MASTER = {
     maxVideoSize: MAX_FILE_MB,
     allowedVideoFormat: ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi'],
 
+    // Product videos (per size, in the product gallery). null = no limit.
+    isProductVideoFeatureOn: true,
+    numberOfVideoUploadAllowedInProduct: UNLIMITED,
+    sizeOfVideoUploadAllowedInProduct: MAX_FILE_MB,
+
     // Brands
     isBrandFeatureOn: true,
     numberOfBrandsAllowed: UNLIMITED,

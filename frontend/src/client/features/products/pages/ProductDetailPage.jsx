@@ -8,9 +8,16 @@ import Spinner from '../../../../components/common/Spinner/Spinner';
 import StatusErrorPage from '../../../components/errors/StatusErrorPage';
 import { useCurrency } from '../../../currency/useCurrency';
 import { resolveBulkPrice } from '../utils/bulkTier';
+import { buildSizeGallery } from '../utils/shapeProduct';
 import { useReviewSettings } from '../../reviews/hooks/useReviewSettings';
 import ProductReviewsSection from '../../reviews/components/ProductReviewsSection';
 import { StarRating } from '../../reviews/components/StarRating';
+
+const PlayIcon = () => (
+  <svg className="w-6 h-6 text-white drop-shadow" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M8 5.14v13.72a1 1 0 001.52.85l10.6-6.86a1 1 0 000-1.7L9.52 4.29A1 1 0 008 5.14z" />
+  </svg>
+);
 
 const pickDefaultVariant = (variants) => variants.find((v) => v.isDefaultVariant) || variants[0] || null;
 const pickDefaultSize = (variant) =>
@@ -121,10 +128,10 @@ const ProductDetailPage = ({
     [selectedVariant, selectedSizeId]
   );
 
-  const gallery = useMemo(() => {
-    if (!selectedSize) return [];
-    return [selectedSize.image, ...selectedSize.additionalImages].filter(Boolean);
-  }, [selectedSize]);
+  // Images and videos together - see buildSizeGallery for the order.
+  const videoGallery = product?.videoGallery;
+  const gallery = useMemo(() => buildSizeGallery(selectedSize, videoGallery), [selectedSize, videoGallery]);
+  const isVideoAutoplayOn = videoGallery?.autoplay !== false;
 
   // Same render-time adjustment for the gallery, keyed on the size actually
   // showing it rather than the gallery array (a new array every render would
@@ -132,9 +139,11 @@ const ProductDetailPage = ({
   const [activeImageForSizeId, setActiveImageForSizeId] = useState(null);
   if (selectedSizeId !== activeImageForSizeId) {
     setActiveImageForSizeId(selectedSizeId);
-    setActiveImage(gallery[0] || null);
+    setActiveImage(gallery[0]?.url || null);
     setImageBroken(false);
   }
+  // The gallery item on show is tracked by its url (an image and a video never share one).
+  const activeItemType = gallery.find((item) => item.url === activeImage)?.type || 'image';
 
   const handleSelectVariant = (variant) => {
     setSelectedVariantId(variant.id);
@@ -186,7 +195,20 @@ const ProductDetailPage = ({
           <div
             className={`aspect-square flex items-center justify-center overflow-hidden rounded-xl ${theme.card.imageBackground}`}
           >
-            {activeImage && !imageBroken ? (
+            {activeImage && !imageBroken && activeItemType === 'video' ? (
+              // Browsers only autoplay muted videos, so an autoplaying one starts muted.
+              <video
+                key={activeImage}
+                src={activeImage}
+                controls
+                playsInline
+                autoPlay={isVideoAutoplayOn}
+                muted={isVideoAutoplayOn}
+                preload="metadata"
+                onError={() => setImageBroken(true)}
+                className="w-full h-full object-contain bg-black"
+              />
+            ) : activeImage && !imageBroken ? (
               <img
                 src={activeImage}
                 alt={product.name}
@@ -201,19 +223,29 @@ const ProductDetailPage = ({
           </div>
           {gallery.length > 1 && (
             <div className="mt-3 flex gap-2 flex-wrap">
-              {gallery.map((url, i) => (
+              {gallery.map((item, i) => (
                 <button
                   key={i}
                   type="button"
+                  aria-label={item.type === 'video' ? 'Play video' : 'Show image'}
                   onClick={() => {
-                    setActiveImage(url);
+                    setActiveImage(item.url);
                     setImageBroken(false);
                   }}
-                  className={`w-16 h-16 rounded-lg overflow-hidden border-2 cursor-pointer ${
-                    activeImage === url ? 'border-amber-500' : 'border-transparent'
+                  className={`relative w-16 h-16 rounded-lg overflow-hidden border-2 cursor-pointer ${
+                    activeImage === item.url ? 'border-amber-500' : 'border-transparent'
                   } ${theme.card.imageBackground}`}
                 >
-                  <img src={url} alt="" className="w-full h-full object-contain" />
+                  {item.type === 'video' ? (
+                    <>
+                      <video src={item.url} preload="metadata" muted playsInline className="w-full h-full object-cover bg-black pointer-events-none" />
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/25">
+                        <PlayIcon />
+                      </span>
+                    </>
+                  ) : (
+                    <img src={item.url} alt="" className="w-full h-full object-contain" />
+                  )}
                 </button>
               ))}
             </div>

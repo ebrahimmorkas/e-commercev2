@@ -20,6 +20,7 @@ const redisKeys = {
   abandonedCartScanLock: () => `abandoned-cart-scan-lock`,
   expiryReminderScanLock: () => `expiry-reminder-scan-lock`,
   sendEmailCleanupLock: () => `send-email-cleanup-lock`,
+  unusedProductVideoCleanupLock: () => `unused-product-video-cleanup-lock`,
   sendEmailResumeLock: () => `send-email-resume-lock`,
   moduleMaster: () => `module-master`,
   countryByIsoCode: (isoCode) => `country-by-iso:${isoCode}`,

@@ -1,5 +1,6 @@
 const productService = require('../services/productService');
 const productExportService = require('../services/productExportService');
+const fs = require('fs');
 const currencyService = require('../services/currencyService');
 const logger = require('../utils/logger.js');
 const common = require('../utils/common');
@@ -53,6 +54,8 @@ const decodeProductPayloadIds = (body) => {
                         );
                     }
 
+                    if (Array.isArray(decodedSize.videos)) decodedSize.videos = decodeIdArray(decodedSize.videos);
+
                     if (decodedSize.excludeCountries !== undefined) decodedSize.excludeCountries = decodeIdArray(decodedSize.excludeCountries);
                     if (decodedSize.excludeStates !== undefined) decodedSize.excludeStates = decodeIdArray(decodedSize.excludeStates);
                     if (decodedSize.excludeCities !== undefined) decodedSize.excludeCities = decodeIdArray(decodedSize.excludeCities);
@@ -97,6 +100,9 @@ const formatSizeForResponse = (size) => {
         additionalImages: Array.isArray(size.additionalImages)
             ? size.additionalImages.map((img) => (img ? { ...img, _id: encodeIdOrNull(img._id), imageAssetId: encodeIdOrNull(img.imageAssetId) } : img))
             : size.additionalImages,
+        videos: Array.isArray(size.videos)
+            ? size.videos.map((video) => (video ? { url: video.url, videoAssetId: encodeIdOrNull(video.videoAssetId) } : video))
+            : size.videos,
         excludeCountries: encodeIdArray(size.excludeCountries),
         excludeStates: encodeIdArray(size.excludeStates),
         excludeCities: encodeIdArray(size.excludeCities),
@@ -313,7 +319,10 @@ const getProductByIdClient = async (req, res) => {
     try {
         id = decodeIdOrNull(req.params.id);
         const locationCookies = await readLocationCookies(req);
-        const result = await productService.fetchProductByIdForClient(vendorId, id, req.companySettingsData, locationCookies);
+        const result = await productService.fetchProductByIdForClient(vendorId, id, req.companySettingsData, locationCookies, {
+            websiteMasterData: req.websiteMasterData,
+            companyMasterData: req.companyMasterData
+        });
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
@@ -389,6 +398,7 @@ const bulkUploadProducts = async (req, res) => {
         const excelFile = req.files?.excelFile?.[0];
         const mainImagesZipFile = req.files?.mainImagesZip?.[0];
         const additionalImagesZipFile = req.files?.additionalImagesZip?.[0];
+        const videosZipFile = req.files?.videosZip?.[0];
 
         if (!excelFile) {
             return common.sendError(res, 400, 'Excel file (excelFile) is required');
@@ -407,13 +417,20 @@ const bulkUploadProducts = async (req, res) => {
             return common.sendError(res, 400, `Additional images zip exceeds the allowed limit of ${zipMaxSizeMB}MB`);
         }
 
+        // The videos zip has its own (bigger) limit and is on disk - see productRoutes.js.
+        const videoZipMaxSizeMB = websiteMasterData?.bulkUploadVideoZipMaxSizeMB;
+        if (videosZipFile && videoZipMaxSizeMB != null && videosZipFile.size > videoZipMaxSizeMB * 1024 * 1024) {
+            return common.sendError(res, 400, `Videos zip exceeds the allowed limit of ${videoZipMaxSizeMB}MB`);
+        }
+
         const userId = req.user._id;
 
         const result = await productService.bulkUploadProducts(
             vendorId, userId, excelFile.buffer,
             mainImagesZipFile ? mainImagesZipFile.buffer : null,
             additionalImagesZipFile ? additionalImagesZipFile.buffer : null,
-            companyMasterData, websiteMasterData, companySettingsData
+            companyMasterData, websiteMasterData, companySettingsData,
+            videosZipFile ? videosZipFile.path : null
         );
 
         if (!result.isSuccess) {
@@ -422,6 +439,9 @@ const bulkUploadProducts = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         return handleError(res, 'Error in bulk product upload', error, { vendorId });
+    } finally {
+        // The videos zip was written to disk by the uploader - always remove it.
+        await productService.removeBulkTempFile(req.files?.videosZip?.[0]?.path);
     }
 };
 
@@ -440,6 +460,7 @@ const bulkUpdateProducts = async (req, res) => {
         const excelFile = req.files?.excelFile?.[0];
         const mainImagesZipFile = req.files?.mainImagesZip?.[0];
         const additionalImagesZipFile = req.files?.additionalImagesZip?.[0];
+        const videosZipFile = req.files?.videosZip?.[0];
 
         if (!excelFile) {
             return common.sendError(res, 400, 'Excel file (excelFile) is required');
@@ -458,13 +479,20 @@ const bulkUpdateProducts = async (req, res) => {
             return common.sendError(res, 400, `Additional images zip exceeds the allowed limit of ${zipMaxSizeMB}MB`);
         }
 
+        // The videos zip has its own (bigger) limit and is on disk - see productRoutes.js.
+        const videoZipMaxSizeMB = websiteMasterData?.bulkUploadVideoZipMaxSizeMB;
+        if (videosZipFile && videoZipMaxSizeMB != null && videosZipFile.size > videoZipMaxSizeMB * 1024 * 1024) {
+            return common.sendError(res, 400, `Videos zip exceeds the allowed limit of ${videoZipMaxSizeMB}MB`);
+        }
+
         const userId = req.user._id;
 
         const result = await productService.bulkUpdateProducts(
             vendorId, userId, excelFile.buffer,
             mainImagesZipFile ? mainImagesZipFile.buffer : null,
             additionalImagesZipFile ? additionalImagesZipFile.buffer : null,
-            companyMasterData, websiteMasterData, companySettingsData
+            companyMasterData, websiteMasterData, companySettingsData,
+            videosZipFile ? videosZipFile.path : null
         );
 
         if (!result.isSuccess) {
@@ -473,6 +501,9 @@ const bulkUpdateProducts = async (req, res) => {
         return common.sendSuccess(res, result.statusCode, result.message, result.meta);
     } catch (error) {
         return handleError(res, 'Error in bulk product update', error, { vendorId });
+    } finally {
+        // The videos zip was written to disk by the uploader - always remove it.
+        await productService.removeBulkTempFile(req.files?.videosZip?.[0]?.path);
     }
 };
 
@@ -545,15 +576,29 @@ const exportProducts = async (req, res) => {
             return common.sendError(res, result.statusCode, result.message);
         }
 
-        const { buffer, fileName, productCount, failedImageCount } = result.meta;
+        // The zip is on disk (it can hold videos): stream it, then delete it -
+        // whether the download finished or the browser went away.
+        const { filePath, size, fileName, productCount, failedImageCount, failedVideoCount } = result.meta;
         res.setHeader('Content-Type', 'application/zip');
         res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-        res.setHeader('Content-Length', buffer.length);
+        res.setHeader('Content-Length', size);
         // Read by the page for its "downloaded N products" message.
         res.setHeader('X-Product-Count', String(productCount));
         res.setHeader('X-Failed-Image-Count', String(failedImageCount));
-        res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Product-Count, X-Failed-Image-Count');
-        return res.status(200).end(buffer);
+        res.setHeader('X-Failed-Video-Count', String(failedVideoCount));
+        res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Product-Count, X-Failed-Image-Count, X-Failed-Video-Count');
+        res.status(200);
+
+        const fileStream = fs.createReadStream(filePath);
+        res.on('close', () => {
+            fileStream.destroy();
+            productExportService.removeExportFile(filePath);
+        });
+        fileStream.on('error', (streamError) => {
+            logger.logWarning('productController: exportProducts - the export could not be streamed', { vendorId, error: streamError });
+            res.destroy(streamError);
+        });
+        return fileStream.pipe(res);
     } catch (error) {
         logger.logException('productController: exportProducts - Exception while exporting products', { vendorId, error });
     }

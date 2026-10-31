@@ -59,6 +59,10 @@ const WEBSITE_MASTER = {
     isVideoUploadingFeatureOn: true,
     mainVideoService: 'cloudinary',
     enforceMainVideoService: false,
+    // Product videos (also needs CompanyMaster.isProductVideoFeatureOn).
+    isProductVideoFeatureOn: true,
+    // Bulk product upload/update: the videos zip (kept on disk, not in memory).
+    bulkUploadVideoZipMaxSizeMB: 1024,
 
     // Products
     isBrandFeatureOn: true,

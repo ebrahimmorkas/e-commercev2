@@ -60,6 +60,10 @@ export const emptyDraft = () => ({
   useShortNameForBrand: false,
   // Default page size of the admin Products list.
   adminProductsPerPage: DEFAULT_ADMIN_PRODUCTS_PER_PAGE,
+  // Product gallery: where a size's videos sit among its images (1 = first),
+  // kept as text (edited in a text box), and whether they play on their own.
+  productVideoPositionInGallery: '1',
+  isProductVideoAutoplayOn: true,
   // Low stock alert (only offered while the feature is on for the account).
   receiveLowStockAlert: false,
   lowStockAlertThreshold: '',
@@ -178,6 +182,9 @@ export const mapApiSettingsToDraft = (doc) => ({
   shouldProductsBeHiddenWhenLocationsAreExcluded: !!doc.shouldProductsBeHiddenWhenLocationsAreExcluded,
   useShortNameForBrand: !!doc.useShortNameForBrand,
   adminProductsPerPage: ADMIN_PRODUCT_PAGE_SIZES.includes(doc.adminProductsPerPage) ? doc.adminProductsPerPage : DEFAULT_ADMIN_PRODUCTS_PER_PAGE,
+  productVideoPositionInGallery: doc.productVideoPositionInGallery == null ? '1' : String(doc.productVideoPositionInGallery),
+  // Missing = the backend default (on).
+  isProductVideoAutoplayOn: doc.isProductVideoAutoplayOn !== false,
   receiveLowStockAlert: !!doc.receiveLowStockAlert,
   // Kept as text - it is edited in a text box.
   lowStockAlertThreshold: doc.lowStockAlertThreshold == null ? '' : String(doc.lowStockAlertThreshold),
@@ -272,6 +279,13 @@ export const toEmailList = (text) => [
 
 export const invalidEmails = (list) => (list || []).filter((email) => !EMAIL_PATTERN.test(email));
 
+// The product gallery position of videos: a whole number from 1 to 100.
+export const MAX_PRODUCT_VIDEO_POSITION = 100;
+export const isValidVideoPosition = (value) => {
+  const text = String(value ?? '').trim();
+  return /^\d{1,3}$/.test(text) && Number(text) >= 1 && Number(text) <= MAX_PRODUCT_VIDEO_POSITION;
+};
+
 // A whole number, 0 or more - what the low stock alert threshold must be.
 export const isValidLowStockThreshold = (value) => /^\d{1,7}$/.test(String(value ?? '').trim());
 
@@ -281,6 +295,7 @@ export const buildSavePayload = (draft, { bankTransferEnabled = false, gpayEnabl
     ccList, bccList,
     // Only sent while the low stock alert feature is on for the account (below).
     receiveLowStockAlert, lowStockAlertThreshold,
+    productVideoPositionInGallery,
     discountExpiryReminderDays, freeCashExpiryReminderDays,
     orderCancellationNotAllowedAfterStep,
     markPaymentCompletedAtStep,
@@ -324,6 +339,11 @@ export const buildSavePayload = (draft, { bankTransferEnabled = false, gpayEnabl
 
   // Own entitlement (CompanyMaster.showGpayNumber), separate from the bank group.
   if (gpayEnabled) fields.gpayNumber = draft.gpayNumber;
+
+  // Validated by the page before saving; a blank one is left out (the saved one is kept).
+  if (isValidVideoPosition(productVideoPositionInGallery)) {
+    fields.productVideoPositionInGallery = Number(productVideoPositionInGallery);
+  }
 
   if (amountToRefund !== '') {
     fields.amountToRefund = Number(amountToRefund);

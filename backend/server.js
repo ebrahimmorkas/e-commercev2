@@ -17,6 +17,7 @@ const realtimeService = require('./services/realtimeService');
 const abandonedCartService = require('./services/abandonedCartService');
 const expiryReminderService = require('./services/expiryReminderService');
 const sentEmailCleanupService = require('./services/sentEmailCleanupService');
+const productVideoService = require('./services/productVideoService');
 const keepAliveService = require('./services/keepAliveService');
 // Middlewares
 const { requestContext } = require('./middlewares/requestContext');
@@ -189,6 +190,8 @@ abandonedCartService.startAbandonedCartScanner();
 expiryReminderService.startExpiryReminderScanner();
 // Deletes files uploaded for one Send Email email after the retention period.
 sentEmailCleanupService.startSendEmailCleanup();
+// Removes product videos uploaded from the admin form but never saved into a product.
+productVideoService.startUnusedProductVideoCleanup();
 // Stops Render's free plan from putting the server to sleep (no-op elsewhere).
 keepAliveService.startKeepAlive();
 

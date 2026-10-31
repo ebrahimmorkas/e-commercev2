@@ -5,7 +5,7 @@ import Tabs from '../../../../components/common/Tabs';
 import Button from '../../../../components/common/Buttons';
 import Spinner from '../../../../components/common/Spinner';
 import { useCompanySettings } from '../hooks/useCompanySettings';
-import { emptyDraft, mapApiSettingsToDraft, buildSavePayload, invalidEmails, isValidLowStockThreshold } from '../utils/companySettingsDraft';
+import { emptyDraft, mapApiSettingsToDraft, buildSavePayload, invalidEmails, isValidLowStockThreshold, isValidVideoPosition, MAX_PRODUCT_VIDEO_POSITION } from '../utils/companySettingsDraft';
 import { useToast } from '../../../../components/common/Toast';
 import GeneralInfoSection from '../components/GeneralInfoSection';
 import PoliciesSection from '../components/PoliciesSection';
@@ -64,6 +64,9 @@ const CompanySettingsPage = () => {
     if (isLowStockAlertOn && draft.receiveLowStockAlert && !isValidLowStockThreshold(draft.lowStockAlertThreshold)) {
       nextErrors.lowStockAlertThreshold = 'Enter a whole number (0 or more)';
     }
+    if (isProductVideoOn && !isValidVideoPosition(draft.productVideoPositionInGallery)) {
+      nextErrors.productVideoPositionInGallery = `Enter a whole number from 1 to ${MAX_PRODUCT_VIDEO_POSITION}`;
+    }
     setFormErrors(nextErrors);
     return nextErrors;
   };
@@ -79,6 +82,9 @@ const CompanySettingsPage = () => {
       } else if (errors.lowStockAlertThreshold) {
         setActiveTab('product');
         toast.error('Not saved - enter the stock quantity for the low stock alert on the Product tab.');
+      } else if (errors.productVideoPositionInGallery) {
+        setActiveTab('product');
+        toast.error('Not saved - fix the video position on the Product tab.');
       } else {
         setActiveTab('email');
         toast.error(`Not saved - ${errors.emailLists}.`);
@@ -115,6 +121,9 @@ const CompanySettingsPage = () => {
   // Low stock alert: only offered once it is known to be on for the account
   // (WebsiteMaster AND CompanyMaster) - unlike the tabs above, unknown hides it.
   const isLowStockAlertOn = companyMaster?.isReceivingLowStockAlertFeatureOn === true;
+  // Product video settings: only once product videos are known to be on
+  // (both switches, combined with WebsiteMaster) - unknown hides them.
+  const isProductVideoOn = companyMaster?.isProductVideoFeatureOn === true && companyMaster?.isVideoUploadingFeatureOn === true;
 
   const sectionProps = { draft, onChange: patchDraft };
   // The master email switch (WebsiteMaster AND CompanyMaster); before the
@@ -127,7 +136,7 @@ const CompanySettingsPage = () => {
     { key: 'general', label: 'General', content: <GeneralInfoSection {...sectionProps} errors={formErrors} companyMaster={companyMaster} /> },
     { key: 'policies', label: 'Policies', content: <PoliciesSection {...sectionProps} /> },
     { key: 'storefront', label: 'Storefront', content: <StorefrontSection {...sectionProps} companyMaster={companyMaster} catalogue={settings?.catalogue || null} settingsExist={exists} /> },
-    { key: 'product', label: 'Product', content: <ProductSection {...sectionProps} errors={formErrors} isLowStockAlertOn={isLowStockAlertOn} /> },
+    { key: 'product', label: 'Product', content: <ProductSection {...sectionProps} errors={formErrors} isLowStockAlertOn={isLowStockAlertOn} isProductVideoOn={isProductVideoOn} /> },
     { key: 'cartOrder', label: 'Cart & Order', content: <CartOrderSection {...sectionProps} orderSteps={orderSteps} companyMaster={companyMaster} /> },
     { key: 'payment', label: 'Payment & Bank', content: <PaymentBankSection {...sectionProps} companyMaster={companyMaster} /> },
     // Email and its Discount/Free Cash email settings only while email is on

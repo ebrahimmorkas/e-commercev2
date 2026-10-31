@@ -1,4 +1,10 @@
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
+const crypto = require('crypto');
+const { Readable } = require('stream');
+const { pipeline } = require('stream/promises');
+const archiver = require('archiver');
 const Product = require('../models/Product');
 const Category = require('../models/Category');
 const BrandMaster = require('../models/BrandMaster');
@@ -10,6 +16,7 @@ const CountryMaster = require('../models/CountryMaster');
 const StateMaster = require('../models/StateMaster');
 const CityMaster = require('../models/CityMaster');
 const productService = require('./productService');
+const productVideoService = require('./productVideoService');
 const { buildExcelTemplate } = require('../utils/excelTemplateBuilder');
 const { createZipBuffer } = require('../utils/zipExtractor');
 const common = require('../utils/common');
@@ -32,7 +39,15 @@ const logger = require('../utils/logger');
 | downloaded leaves its file name out (Bulk Update then keeps the current
 | image) and is listed on the Instructions sheet.
 |
-| The download is one zip: products.xlsx + the two image zips.
+| Product videos (when the store has product videos switched on) are
+| streamed from storage into videos.zip and named in VideoFileNames. A size
+| whose videos could not ALL be downloaded gets a blank VideoFileNames (Bulk
+| Update then keeps its current videos, instead of replacing them with only
+| the ones that did download) and is listed on the Instructions sheet.
+|
+| The download is one zip: products.xlsx + the two image zips + videos.zip.
+| It is built on disk (videos can be large); the controller streams it and
+| then deletes it.
 */
 
 // Used when the vendor's CompanyMaster has no maxProductsInDownloadInAdminPanel
@@ -44,6 +59,21 @@ const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 const MAIN_IMAGES_ZIP_NAME = 'main-images.zip';
 const ADDITIONAL_IMAGES_ZIP_NAME = 'additional-images.zip';
 const EXCEL_FILE_NAME = 'products.xlsx';
+const VIDEOS_ZIP_NAME = 'videos.zip';
+const VIDEO_FETCH_CONCURRENCY = 2;
+const VIDEO_FETCH_TIMEOUT_MS = 10 * 60 * 1000;
+const EXPORT_TEMP_DIR = path.join(os.tmpdir(), 'product-exports');
+
+const VIDEO_EXTENSIONS_BY_TYPE = {
+    'video/mp4': '.mp4',
+    'video/x-m4v': '.m4v',
+    'video/quicktime': '.mov',
+    'video/webm': '.webm',
+    'video/x-matroska': '.mkv',
+    'video/matroska': '.mkv',
+    'video/x-msvideo': '.avi',
+    'video/vnd.avi': '.avi'
+};
 
 const IMAGE_EXTENSIONS_BY_TYPE = {
     'image/jpeg': '.jpg',
@@ -174,9 +204,9 @@ const claimFileName = (usedNames, base, extension) => {
 };
 
 // From the response's content type, else the URL's own extension, else .jpg.
-const extensionOf = (url, contentType) => {
+const extensionOf = (url, contentType, typeMap = IMAGE_EXTENSIONS_BY_TYPE) => {
     try {
-        const fromType = IMAGE_EXTENSIONS_BY_TYPE[String(contentType || '').split(';')[0].trim().toLowerCase()];
+        const fromType = typeMap[String(contentType || '').split(';')[0].trim().toLowerCase()];
         if (fromType) return fromType;
         const fromUrl = path.extname(String(url).split(/[?#]/)[0]).toLowerCase();
         return /^\.[a-z0-9]{2,5}$/.test(fromUrl) ? fromUrl : '.jpg';
@@ -248,6 +278,98 @@ const downloadImages = async (jobs) => {
     }
 };
 
+// Streams one video into destinationPath. { ok: true, contentType } | { ok: false, reason }.
+const downloadVideoToFile = async (url, destinationPath) => {
+    try {
+        if (!/^https?:\/\//i.test(String(url || ''))) {
+            return { ok: false, reason: 'not a web address' };
+        }
+        const [fetched] = await Promise.allSettled([fetch(url, { signal: AbortSignal.timeout(VIDEO_FETCH_TIMEOUT_MS) })]);
+        if (fetched.status === 'rejected') {
+            return { ok: false, reason: fetched.reason?.name === 'TimeoutError' ? 'timed out' : 'could not be downloaded' };
+        }
+        const response = fetched.value;
+        if (!response.ok || !response.body) {
+            return { ok: false, reason: `storage answered ${response.status}` };
+        }
+        const [written] = await Promise.allSettled([pipeline(Readable.fromWeb(response.body), fs.createWriteStream(destinationPath))]);
+        if (written.status === 'rejected') {
+            await removeFile(destinationPath);
+            return { ok: false, reason: 'could not be downloaded' };
+        }
+        const stats = await fs.promises.stat(destinationPath);
+        if (stats.size === 0) {
+            await removeFile(destinationPath);
+            return { ok: false, reason: 'empty file' };
+        }
+        return { ok: true, contentType: response.headers.get('content-type') };
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Downloads every planned video to workDir, a couple at a time. Each job gets
+// `fileName` + `filePath` (both null when it failed).
+const downloadVideos = async (jobs, workDir) => {
+    try {
+        const usedNames = new Set();
+        const failures = [];
+
+        let next = 0;
+        const worker = async () => {
+            try {
+                while (next < jobs.length) {
+                    const job = jobs[next];
+                    next += 1;
+                    const tempPath = path.join(workDir, `video-${crypto.randomUUID()}`);
+                    const result = await downloadVideoToFile(job.url, tempPath);
+                    if (!result.ok) {
+                        job.fileName = null;
+                        job.filePath = null;
+                        failures.push(`${job.label}: ${result.reason}`);
+                        continue;
+                    }
+                    job.fileName = claimFileName(usedNames, job.base, extensionOf(job.url, result.contentType, VIDEO_EXTENSIONS_BY_TYPE));
+                    job.filePath = tempPath;
+                }
+            } catch (err) {
+                throw err;
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(VIDEO_FETCH_CONCURRENCY, jobs.length) }, worker));
+
+        return { failures };
+    } catch (err) {
+        throw err;
+    }
+};
+
+const removeFile = async (filePath) => {
+    try {
+        if (filePath) await fs.promises.rm(filePath, { force: true });
+    } catch (err) {
+        logger.logWarning('productExportService - removeFile: could not delete a temp file', { filePath, error: err });
+    }
+};
+
+// Writes a zip to destinationPath. entries: [{ name, buffer } | { name, filePath }].
+// Stored without compression (videos and zips are already compressed).
+const writeZipFile = async (destinationPath, entries) => {
+    try {
+        const archive = archiver('zip', { store: true });
+        const output = fs.createWriteStream(destinationPath);
+        const finished = pipeline(archive, output);
+        for (const entry of entries) {
+            if (entry.filePath) archive.file(entry.filePath, { name: entry.name });
+            else archive.append(entry.buffer, { name: entry.name });
+        }
+        await archive.finalize();
+        await finished;
+    } catch (err) {
+        throw err;
+    }
+};
+
 // The <prefix>Available / Duration / DurationType cells of one size policy.
 const policyColumns = (size, prefix, policyField) => {
     try {
@@ -264,10 +386,11 @@ const policyColumns = (size, prefix, policyField) => {
 
 // Products -> one row object (keyed by column key) per row of each sheet,
 // plus the image downloads the Sizes rows wait on.
-const buildSheetRows = (products, lookups) => {
+const buildSheetRows = (products, lookups, includeVideos = false) => {
     try {
         const rows = { productRows: [], variantRows: [], sizeRows: [], measurementValueRows: [], descriptionRows: [], bulkPricingRows: [] };
         const imageJobs = [];
+        const videoJobs = [];
         const sizeImageLinks = [];
 
         const addDescriptions = (level, refTempCode, entries) => {
@@ -380,7 +503,7 @@ const buildSheetRows = (products, lookups) => {
 
                     const imageBase = safeFileBase([product.productCode, variant.variantCode || `V${variantIndex + 1}`, size.sizeCode || `S${sizeIndex + 1}`].join('_'));
                     const imageLabel = `${product.name} / ${size.sizeName}${size.sku ? ` (SKU ${size.sku})` : ''}`;
-                    const link = { sizeRow, mainJob: null, additionalJobs: [] };
+                    const link = { sizeRow, mainJob: null, additionalJobs: [], videoJobs: [] };
                     if (size.image?.url) {
                         link.mainJob = { url: size.image.url, zip: 'main', base: imageBase, label: `${imageLabel} main image` };
                         imageJobs.push(link.mainJob);
@@ -391,12 +514,20 @@ const buildSheetRows = (products, lookups) => {
                         link.additionalJobs.push(job);
                         imageJobs.push(job);
                     });
+                    if (includeVideos) {
+                        (size.videos || []).forEach((video, videoIndex) => {
+                            if (!video?.url) return;
+                            const job = { url: video.url, base: `${imageBase}_video_${videoIndex + 1}`, label: `${imageLabel} video ${videoIndex + 1}` };
+                            link.videoJobs.push(job);
+                            videoJobs.push(job);
+                        });
+                    }
                     sizeImageLinks.push(link);
                 });
             });
         });
 
-        return { rows, imageJobs, sizeImageLinks };
+        return { rows, imageJobs, videoJobs, sizeImageLinks };
     } catch (err) {
         throw err;
     }
@@ -410,14 +541,20 @@ const exportDateStamp = () => {
     }
 };
 
-const buildExportNotes = (productCount, failures) => {
+const buildExportNotes = (productCount, failures, videoFailures = [], includeVideos = false) => {
     try {
         const notes = [
             ['Download', '', '', `${productCount} product(s) downloaded on ${exportDateStamp()}. This file is in the Bulk Update Products format: edit it and upload it there to change these products.`],
             ['Download', '', '', `Images: when uploading, choose ${MAIN_IMAGES_ZIP_NAME} as the main images zip and ${ADDITIONAL_IMAGES_ZIP_NAME} as the additional images zip. To keep a size's current images instead, clear its MainImageFileName / AdditionalImageFileNames cells.`]
         ];
+        if (includeVideos) {
+            notes.push(['Download', '', '', `Videos: when uploading, choose ${VIDEOS_ZIP_NAME} as the videos zip. To keep a size's current videos instead, clear its VideoFileNames cell.`]);
+        }
         if (failures.length > 0) {
             notes.push(['Download', '', '', `${failures.length} image(s) could not be downloaded; their file names were left blank, so Bulk Update keeps the current image for them: ${failures.join('; ')}`]);
+        }
+        if (videoFailures.length > 0) {
+            notes.push(['Download', '', '', `${videoFailures.length} video(s) could not be downloaded; VideoFileNames was left blank for their sizes, so Bulk Update keeps those sizes' current videos: ${videoFailures.join('; ')}`]);
         }
         return notes;
     } catch (err) {
@@ -428,7 +565,9 @@ const buildExportNotes = (productCount, failures) => {
 // query: the admin list's query (q, sort, categoryId (decoded), minPrice, maxPrice,
 // stockStatus, minStock, maxStock) or { ids } for ticked products.
 // vendorData: { websiteMasterData, companyMasterData, companySettingsData }
-// meta = { buffer, fileName } - a zip of products.xlsx + the image zips.
+// meta = { filePath, size, fileName, productCount, failedImageCount, failedVideoCount }
+// - a zip on disk of products.xlsx + the image zips + videos.zip. The caller
+// streams it and then calls removeExportFile(filePath).
 const buildProductExport = async (vendorId, query = {}, vendorData = {}) => {
     try {
         const maxCount = resolveMaxExportProducts(vendorData.companyMasterData);
@@ -447,55 +586,100 @@ const buildProductExport = async (vendorId, query = {}, vendorData = {}) => {
         const products = ids.map((id) => byId.get(idKey(id))).filter(Boolean);
 
         const lookups = await loadExportLookups(vendorId, products);
-        const { rows, imageJobs, sizeImageLinks } = buildSheetRows(products, lookups);
+        // Videos only when the store can use them - otherwise a re-upload of
+        // the file would be refused for naming videos.
+        const includeVideos = productVideoService.isProductVideoEnabled(vendorData.websiteMasterData, vendorData.companyMasterData);
+        const { rows, imageJobs, videoJobs, sizeImageLinks } = buildSheetRows(products, lookups, includeVideos);
 
-        const { entries, failures } = await downloadImages(imageJobs);
-        sizeImageLinks.forEach(({ sizeRow, mainJob, additionalJobs }) => {
-            sizeRow.mainImageFileName = mainJob?.fileName || '';
-            sizeRow.additionalImageFileNames = additionalJobs.map((job) => job.fileName).filter(Boolean).join(', ');
-        });
+        await fs.promises.mkdir(EXPORT_TEMP_DIR, { recursive: true });
+        const workDir = await fs.promises.mkdtemp(path.join(EXPORT_TEMP_DIR, 'export-'));
+        let isHandedOver = false;
+        try {
+            const { entries, failures } = await downloadImages(imageJobs);
+            const { failures: videoFailures } = await downloadVideos(videoJobs, workDir);
+            sizeImageLinks.forEach(({ sizeRow, mainJob, additionalJobs, videoJobs: sizeVideoJobs }) => {
+                sizeRow.mainImageFileName = mainJob?.fileName || '';
+                sizeRow.additionalImageFileNames = additionalJobs.map((job) => job.fileName).filter(Boolean).join(', ');
+                // All or nothing: a partial list would make Bulk Update REPLACE the
+                // size's videos with only the ones that downloaded.
+                const isEveryVideoDownloaded = sizeVideoJobs.every((job) => job.fileName);
+                sizeRow.videoFileNames = isEveryVideoDownloaded ? sizeVideoJobs.map((job) => job.fileName).join(', ') : '';
+            });
 
-        const layout = productService.buildBulkWorkbookLayout('update');
-        const excelBuffer = await buildExcelTemplate({
-            sheets: [
-                ...layout.sheets.map((sheet) => ({
-                    name: sheet.name,
-                    columns: sheet.columns.map((column) => ({ header: column.header, width: Math.max(18, column.header.length + 4) })),
-                    rows: rows[sheet.key].map((row) => sheet.columns.map((column) => blankIfNull(row[column.key])))
-                })),
-                {
-                    name: 'Instructions',
-                    columns: layout.instructionColumns,
-                    rows: [...buildExportNotes(products.length, failures), ...layout.instructionRows]
-                }
-            ]
-        });
+            const layout = productService.buildBulkWorkbookLayout('update');
+            const excelBuffer = await buildExcelTemplate({
+                sheets: [
+                    ...layout.sheets.map((sheet) => ({
+                        name: sheet.name,
+                        columns: sheet.columns.map((column) => ({ header: column.header, width: Math.max(18, column.header.length + 4) })),
+                        rows: rows[sheet.key].map((row) => sheet.columns.map((column) => blankIfNull(row[column.key])))
+                    })),
+                    {
+                        name: 'Instructions',
+                        columns: layout.instructionColumns,
+                        rows: [...buildExportNotes(products.length, failures, videoFailures, includeVideos), ...layout.instructionRows]
+                    }
+                ]
+            });
 
-        const zipEntries = [{ name: EXCEL_FILE_NAME, buffer: excelBuffer }];
-        if (entries.main.length > 0) zipEntries.push({ name: MAIN_IMAGES_ZIP_NAME, buffer: createZipBuffer(entries.main) });
-        if (entries.additional.length > 0) zipEntries.push({ name: ADDITIONAL_IMAGES_ZIP_NAME, buffer: createZipBuffer(entries.additional) });
-        // The downloaded image bytes are now inside the image zips - let them go
-        // before the final zip is built, so a big (or unlimited) download does
-        // not hold every image in memory several times over.
-        entries.main.length = 0;
-        entries.additional.length = 0;
+            const zipEntries = [{ name: EXCEL_FILE_NAME, buffer: excelBuffer }];
+            if (entries.main.length > 0) zipEntries.push({ name: MAIN_IMAGES_ZIP_NAME, buffer: createZipBuffer(entries.main) });
+            if (entries.additional.length > 0) zipEntries.push({ name: ADDITIONAL_IMAGES_ZIP_NAME, buffer: createZipBuffer(entries.additional) });
+            // The downloaded image bytes are now inside the image zips - let them go
+            // before the final zip is built, so a big (or unlimited) download does
+            // not hold every image in memory several times over.
+            entries.main.length = 0;
+            entries.additional.length = 0;
 
-        if (failures.length > 0) {
-            logger.logInfo(1, 0, 'Product export: some images could not be downloaded', { vendorId, failedCount: failures.length });
+            const downloadedVideos = videoJobs.filter((job) => job.filePath);
+            if (downloadedVideos.length > 0) {
+                const videosZipPath = path.join(workDir, VIDEOS_ZIP_NAME);
+                await writeZipFile(videosZipPath, downloadedVideos.map((job) => ({ name: job.fileName, filePath: job.filePath })));
+                zipEntries.push({ name: VIDEOS_ZIP_NAME, filePath: videosZipPath });
+            }
+
+            if (failures.length > 0) {
+                logger.logInfo(1, 0, 'Product export: some images could not be downloaded', { vendorId, failedCount: failures.length });
+            }
+            if (videoFailures.length > 0) {
+                logger.logInfo(1, 0, 'Product export: some videos could not be downloaded', { vendorId, failedCount: videoFailures.length });
+            }
+
+            // The download itself sits outside workDir, which is removed below.
+            const exportPath = path.join(EXPORT_TEMP_DIR, `products-${crypto.randomUUID()}.zip`);
+            await writeZipFile(exportPath, zipEntries);
+            const stats = await fs.promises.stat(exportPath);
+            isHandedOver = true;
+
+            return common.returnResult(true, 200, 'Products exported', {
+                filePath: exportPath,
+                size: stats.size,
+                fileName: `products-${exportDateStamp()}.zip`,
+                productCount: products.length,
+                failedImageCount: failures.length,
+                failedVideoCount: videoFailures.length
+            });
+        } finally {
+            await fs.promises.rm(workDir, { recursive: true, force: true })
+                .catch((err) => logger.logWarning('productExportService - temp folder was not removed', { workDir, error: err }));
+            if (!isHandedOver) logger.logInfo(0, 1, 'Product export did not finish', { vendorId });
         }
-
-        return common.returnResult(true, 200, 'Products exported', {
-            buffer: createZipBuffer(zipEntries),
-            fileName: `products-${exportDateStamp()}.zip`,
-            productCount: products.length,
-            failedImageCount: failures.length
-        });
     } catch (err) {
         throw err;
     }
 };
 
+// Deletes a finished export once it has been sent. Never throws.
+const removeExportFile = async (filePath) => {
+    try {
+        await removeFile(filePath);
+    } catch (err) {
+        logger.logWarning('productExportService - removeExportFile: could not delete the export', { filePath, error: err });
+    }
+};
+
 module.exports = {
     buildProductExport,
+    removeExportFile,
     DEFAULT_MAX_EXPORT_PRODUCTS
 };
