@@ -110,8 +110,8 @@ const adminListReviewsQuerySchema = Joi.object({
     productId: encodedId('Product').allow(''),
     rating: Joi.number().integer().min(1).max(5).label('Star rating')
         .messages({ 'number.min': 'Star rating must be from 1 to 5.', 'number.max': 'Star rating must be from 1 to 5.' }),
-    fromDate: Joi.date().iso().label('From date').messages({ 'date.format': 'From date must be a valid date.', 'date.base': 'From date must be a valid date.' }),
-    toDate: Joi.date().iso().min(Joi.ref('fromDate')).label('To date')
+    fromDate: Joi.date().iso().raw().label('From date').messages({ 'date.format': 'From date must be a valid date.', 'date.base': 'From date must be a valid date.' }),
+    toDate: Joi.date().iso().raw().min(Joi.ref('fromDate')).label('To date')
         .messages({ 'date.format': 'To date must be a valid date.', 'date.base': 'To date must be a valid date.', 'date.min': 'To date cannot be before the from date.' }),
     sort: Joi.string().trim().valid(...VALID_ADMIN_REVIEW_SORTS).label('Sort')
         .messages({ 'any.only': `Sort must be one of: ${VALID_ADMIN_REVIEW_SORTS.join(', ')}.` }),

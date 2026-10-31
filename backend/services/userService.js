@@ -3,13 +3,31 @@ const User = require('../models/User');
 const RefreshToken = require('../models/RefreshToken');
 const common = require('../utils/common');
 const userLocationService = require('./userLocationService');
+const mongoose = require('mongoose');
+const Order = require('../models/Order');
+const Review = require('../models/Review');
+const Product = require('../models/Product');
+const {
+    CUSTOMER_LIST_SORTS,
+    DEFAULT_CUSTOMER_LIST_SORT,
+    COUNT_DEPENDENT_SORTS,
+    CUSTOMER_ACTIVITY_FILTERS,
+    CUSTOMER_LOGIN_FILTERS
+} = require('../constants/customerListConstants');
 require('dotenv').config({ quiet: true });
 
 const SALT_ROUNDS = Number(process.env.SALT_ROUNDS);
 
 // Fields safe to expose to the admin UI - never password/googleId/authProvider.
 const ADMIN_LIST_PROJECTION = 'name username phone_no whatsapp_no email role status createdAt';
-const ADMIN_DETAIL_PROJECTION = 'name username phone_no whatsapp_no email role status country state city authProvider createdAt updatedAt';
+// Customers page rows (paginated list) - same safe fields plus the counts.
+const CUSTOMER_LIST_PROJECTION = {
+    name: 1, username: 1, phone_no: 1, whatsapp_no: 1, email: 1, role: 1, status: 1,
+    createdAt: 1, lastLoginAt: 1, orderCount: 1, reviewCount: 1
+};
+// Customers page > a customer's orders (the Orders count drill-down).
+const CUSTOMER_ORDER_PROJECTION = 'orderNumber orderPlacedAt createdAt currentStepCode currentStepName payment.status payment.method grandTotal currencyCode currencySymbol currencySymbolPosition currencyDecimalPlaces cancelledAt isPlacedByAdmin';
+const ADMIN_DETAIL_PROJECTION ='name username phone_no whatsapp_no email role status country state city authProvider createdAt updatedAt';
 
 // role: 'user' (customers, the default) or 'deliveryAgent' - the Customers
 // page lists agents read-only; they are managed on the Delivery Agents page.
@@ -21,6 +39,214 @@ const fetchAllUsersAdmin = async (vendorId, role = 'user') => {
             { sort: { name: 1 } }
         );
         return common.returnResult(true, 200, 'Users fetched successfully', { users });
+    } catch (err) {
+        throw err;
+    }
+};
+
+const escapeRegex = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Tie-breakers keep the order stable across pages (equal counts / dates).
+const CUSTOMER_SORT_SPECS = {
+    [CUSTOMER_LIST_SORTS.NEWEST]: { createdAt: -1, _id: -1 },
+    [CUSTOMER_LIST_SORTS.OLDEST]: { createdAt: 1, _id: 1 },
+    [CUSTOMER_LIST_SORTS.NAME_ASC]: { name: 1, _id: 1 },
+    [CUSTOMER_LIST_SORTS.NAME_DESC]: { name: -1, _id: -1 },
+    [CUSTOMER_LIST_SORTS.ORDERS_DESC]: { orderCount: -1, createdAt: -1, _id: -1 },
+    [CUSTOMER_LIST_SORTS.ORDERS_ASC]: { orderCount: 1, createdAt: -1, _id: -1 },
+    [CUSTOMER_LIST_SORTS.REVIEWS_DESC]: { reviewCount: -1, createdAt: -1, _id: -1 },
+    [CUSTOMER_LIST_SORTS.REVIEWS_ASC]: { reviewCount: 1, createdAt: -1, _id: -1 },
+    // null sorts before any date ascending and after every date descending, so
+    // never-logged-in customers come first / last on their own.
+    [CUSTOMER_LIST_SORTS.LOGIN_OLDEST]: { lastLoginAt: 1, createdAt: -1, _id: -1 },
+    [CUSTOMER_LIST_SORTS.LOGIN_NEWEST]: { lastLoginAt: -1, createdAt: -1, _id: -1 }
+};
+
+// The Customers page's Orders / Reviews columns. Orders: every order that
+// isn't deleted - exactly what the admin Orders page lists for this customer
+// (cancelled / refunded / awaiting payment included). Reviews: every live
+// review (any moderation status), not deleted ones.
+const buildCustomerCountStages = (vendorObjectId) => [
+    {
+        $lookup: {
+            from: Order.collection.name,
+            let: { customerId: '$_id' },
+            pipeline: [
+                { $match: { vendorId: vendorObjectId, status: { $ne: 'D' }, $expr: { $eq: ['$userId', '$$customerId'] } } },
+                { $count: 'count' }
+            ],
+            as: 'orderCountResult'
+        }
+    },
+    {
+        $lookup: {
+            from: Review.collection.name,
+            let: { customerId: '$_id' },
+            pipeline: [
+                { $match: { vendorId: vendorObjectId, status: { $in: ['A', 'I'] }, $expr: { $eq: ['$userId', '$$customerId'] } } },
+                { $count: 'count' }
+            ],
+            as: 'reviewCountResult'
+        }
+    },
+    {
+        $addFields: {
+            orderCount: { $ifNull: [{ $arrayElemAt: ['$orderCountResult.count', 0] }, 0] },
+            reviewCount: { $ifNull: [{ $arrayElemAt: ['$reviewCountResult.count', 0] }, 0] }
+        }
+    }
+];
+
+const activityMatch = (field, filterValue) => (
+    filterValue === CUSTOMER_ACTIVITY_FILTERS.HAS ? { [field]: { $gt: 0 } } : { [field]: 0 }
+);
+
+/**
+ * Admin Customers page: one page of customers (role 'user', not deleted) with
+ * each one's order count, review count, joined date and last login.
+ * query = { page, limit, q, sort, status, orders, reviews, login, joinedFrom, joinedTo }
+ * (already validated - listCustomersAdminQuerySchema).
+ */
+const fetchCustomersAdminList = async (vendorId, query) => {
+    try {
+        const { page, limit, q, sort, status, orders, reviews, login, joinedFrom, joinedTo } = query;
+        const vendorObjectId = new mongoose.Types.ObjectId(String(vendorId));
+
+        const match = { vendorId: vendorObjectId, role: 'user', status: status || { $ne: 'D' } };
+        if (q) {
+            const pattern = new RegExp(escapeRegex(q), 'i');
+            match.$or = [{ name: pattern }, { username: pattern }, { email: pattern }, { phone_no: pattern }, { whatsapp_no: pattern }];
+        }
+        if (login === CUSTOMER_LOGIN_FILTERS.NEVER) match.lastLoginAt = null;
+        if (login === CUSTOMER_LOGIN_FILTERS.LOGGED_IN) match.lastLoginAt = { $ne: null };
+        if (joinedFrom || joinedTo) {
+            match.createdAt = {};
+            if (joinedFrom) match.createdAt.$gte = new Date(joinedFrom);
+            if (joinedTo) match.createdAt.$lte = new Date(joinedTo);
+        }
+
+        // Counting is a lookup per customer: only count every matching customer
+        // when the sort or a filter needs it, otherwise just the page's.
+        const countStages = buildCustomerCountStages(vendorObjectId);
+        const needsCountsFirst = COUNT_DEPENDENT_SORTS.includes(sort) || !!orders || !!reviews;
+        const countFilter = {
+            ...(orders ? activityMatch('orderCount', orders) : {}),
+            ...(reviews ? activityMatch('reviewCount', reviews) : {})
+        };
+
+        const pipeline = [
+            { $match: match },
+            ...(needsCountsFirst ? countStages : []),
+            ...(Object.keys(countFilter).length > 0 ? [{ $match: countFilter }] : []),
+            { $sort: CUSTOMER_SORT_SPECS[sort] || CUSTOMER_SORT_SPECS[DEFAULT_CUSTOMER_LIST_SORT] },
+            {
+                $facet: {
+                    total: [{ $count: 'count' }],
+                    users: [
+                        { $skip: (page - 1) * limit },
+                        { $limit: limit },
+                        ...(needsCountsFirst ? [] : countStages),
+                        { $project: CUSTOMER_LIST_PROJECTION }
+                    ]
+                }
+            }
+        ];
+
+        // Case-insensitive A-Z / Z-A ("alice" next to "Alice", not after "Zed").
+        const isNameSort = sort === CUSTOMER_LIST_SORTS.NAME_ASC || sort === CUSTOMER_LIST_SORTS.NAME_DESC;
+        const aggregate = User.aggregate(pipeline);
+        if (isNameSort) aggregate.collation({ locale: 'en', strength: 2 });
+
+        const [[result], totalCustomers] = await Promise.all([
+            aggregate,
+            User.countDocuments({ vendorId: vendorObjectId, role: 'user', status: { $ne: 'D' } })
+        ]);
+
+        const total = result?.total?.[0]?.count || 0;
+        return common.returnResult(true, 200, 'Customers fetched successfully', {
+            users: result?.users || [],
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.max(1, Math.ceil(total / limit)),
+                hasMore: page * limit < total
+            },
+            // Every customer of the store, ignoring search and filters ("12 of 340 customers").
+            totalCustomers
+        });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// The customer must exist in this vendor and not be deleted; staff roles are
+// not customers. Returns the user or null.
+const findCustomerForAdmin = async (vendorId, userId) => {
+    try {
+        return await User.findOne({ _id: userId, vendorId, role: 'user', status: { $ne: 'D' } }).select('_id name').lean();
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Customers page > click the Orders count: the same orders the count counts.
+const fetchCustomerOrdersAdmin = async (vendorId, userId) => {
+    try {
+        const customer = await findCustomerForAdmin(vendorId, userId);
+        if (!customer) {
+            return common.returnResult(false, 404, 'Customer not found');
+        }
+
+        const orders = await Order.find({ vendorId, userId, status: { $ne: 'D' } })
+            .select(CUSTOMER_ORDER_PROJECTION)
+            .sort({ orderPlacedAt: -1, createdAt: -1 })
+            .lean();
+
+        return common.returnResult(true, 200, 'Customer orders fetched successfully', { customer, orders });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Customers page > click the Reviews count: every live review with its
+// moderation status, product and order.
+const fetchCustomerReviewsAdmin = async (vendorId, userId) => {
+    try {
+        const customer = await findCustomerForAdmin(vendorId, userId);
+        if (!customer) {
+            return common.returnResult(false, 404, 'Customer not found');
+        }
+
+        const reviews = await Review.find({ vendorId, userId, status: { $in: ['A', 'I'] } })
+            .select('productId orderId variantName sizeName rating title comment moderationStatus status createdAt')
+            .sort({ createdAt: -1 })
+            .lean();
+
+        const productIds = [...new Set(reviews.map((review) => String(review.productId)))];
+        const orderIds = [...new Set(reviews.map((review) => String(review.orderId)))];
+        const [products, reviewOrders] = await Promise.all([
+            productIds.length > 0 ? Product.find({ _id: { $in: productIds }, vendorId }).select('name').lean() : [],
+            orderIds.length > 0 ? Order.find({ _id: { $in: orderIds }, vendorId }).select('orderNumber').lean() : []
+        ]);
+        const productNameById = new Map(products.map((product) => [String(product._id), product.name]));
+        const orderNumberById = new Map(reviewOrders.map((order) => [String(order._id), order.orderNumber]));
+
+        const shaped = reviews.map((review) => ({
+            _id: review._id,
+            productName: productNameById.get(String(review.productId)) || null,
+            orderNumber: orderNumberById.get(String(review.orderId)) || null,
+            variantName: review.variantName,
+            sizeName: review.sizeName,
+            rating: review.rating,
+            title: review.title,
+            comment: review.comment,
+            moderationStatus: review.moderationStatus,
+            status: review.status,
+            createdAt: review.createdAt
+        }));
+
+        return common.returnResult(true, 200, 'Customer reviews fetched successfully', { customer, reviews: shaped });
     } catch (err) {
         throw err;
     }
@@ -303,6 +529,9 @@ const bulkDeleteUsers = async (vendorId, userId, targetUserIds) => {
 module.exports = {
     createUserByAdmin,
     fetchAllUsersAdmin,
+    fetchCustomersAdminList,
+    fetchCustomerOrdersAdmin,
+    fetchCustomerReviewsAdmin,
     fetchUserByIdAdmin,
     updateUserByAdmin,
     changePasswordByAdmin,

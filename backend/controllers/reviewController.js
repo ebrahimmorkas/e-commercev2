@@ -269,8 +269,8 @@ const getReviewsByProduct = async (req, res) => {
             return common.sendError(res, 400, 'Product is not valid.');
         }
 
-        // Already checked by listReviewsQuerySchema; parsed here because
-        // Express 5's req.query can't be replaced with Joi's converted copy.
+        // Already checked (and converted) by listReviewsQuerySchema; the
+        // parsing below just guards against out-of-range values.
         const page = Math.max(1, parseInt(req.query.page, 10) || 1);
         const limit = Math.min(MAX_REVIEW_PAGE_SIZE, Math.max(1, parseInt(req.query.limit, 10) || DEFAULT_REVIEW_PAGE_SIZE));
         const sort = VALID_REVIEW_SORTS.includes(req.query.sort) ? req.query.sort : REVIEW_SORTS.RECENT;
