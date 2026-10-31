@@ -16,6 +16,14 @@ const bulkPricingSchema = new mongoose.Schema(
             type: Number,
             required: true,
             min: 0
+        },
+        // Tier price for customers outside the store country, in
+        // CompanyMaster.internationalCurrency. null = the local tier price,
+        // converted (see utils/internationalPrice.js).
+        internationalPrice: {
+            type: Number,
+            min: 0,
+            default: null
         }
     },
     { _id: false }
@@ -273,6 +281,19 @@ const sizeSchema = new mongoose.Schema(
             required: true
         },
         cancelledPrice: {
+            type: Number,
+            min: 0,
+            default: null
+        },
+        // price / cancelledPrice for customers outside the store country, in
+        // CompanyMaster.internationalCurrency. Optional: null = the local price
+        // converted at the exchange rate (see utils/internationalPrice.js).
+        internationalPrice: {
+            type: Number,
+            min: 0,
+            default: null
+        },
+        internationalCancelledPrice: {
             type: Number,
             min: 0,
             default: null

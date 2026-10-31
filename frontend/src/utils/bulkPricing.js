@@ -18,4 +18,27 @@ export const bulkUnitPrice = (unitPrice, tiers, quantity) => {
   return tier && tier.price < unitPrice ? tier.price : unitPrice;
 };
 
-export default { bulkUnitPrice };
+/**
+ * The price to use for one local/international price pair - mirrors
+ * backend/utils/internationalPrice.js. For an international customer
+ * (priceZone = { isInternational: true, exchangeRate }) an entered
+ * international price becomes its store-currency equivalent
+ * (internationalPrice / exchangeRate), so converting it at exchangeRate gives
+ * exactly the entered price; no international price = the local price.
+ *
+ * @param {number} price - The local (store currency) price.
+ * @param {number|null} [internationalPrice]
+ * @param {{ isInternational: boolean, exchangeRate: number }|null} [priceZone]
+ * @returns {number}
+ */
+export const zonePrice = (price, internationalPrice, priceZone) => {
+  const isInternational = !!priceZone?.isInternational && Number(priceZone.exchangeRate) > 0;
+  if (!isInternational || internationalPrice === null || internationalPrice === undefined) return price;
+  return Number(internationalPrice) / Number(priceZone.exchangeRate);
+};
+
+/** Bulk tiers with each price resolved by zonePrice. */
+export const zoneTiers = (tiers, priceZone) =>
+  (tiers || []).map((tier) => ({ ...tier, price: zonePrice(tier.price, tier.internationalPrice, priceZone) }));
+
+export default { bulkUnitPrice, zonePrice, zoneTiers };

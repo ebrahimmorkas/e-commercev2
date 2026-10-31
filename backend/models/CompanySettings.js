@@ -18,6 +18,14 @@ const companySettingsSchema = new mongoose.Schema({
     ref: 'CurrencyMaster',
     default: null
   },
+  // The vendor's own on/off switch for converting prices to the customer's
+  // currency - sits BELOW WebsiteMaster.isCurrencyConversionFeatureOn +
+  // CompanyMaster.isCurrencyConversionFeatureOn. Off (or either master off) =
+  // every customer, from any country, sees and pays in currencyId above.
+  isCurrencyConversionFeatureOn: {
+    type: Boolean,
+    default: true
+  },
   // The vendor's own country/state/city (admin Company Settings > General,
   // dropdowns off CompanyMaster.allowedCountries). Used as the tax location
   // whenever the delivery location is unknown: walk-in orders, admin orders

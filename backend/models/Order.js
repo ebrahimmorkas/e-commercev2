@@ -491,6 +491,13 @@ const orderSchema = new mongoose.Schema(
             type: String,
             default: null
         },
+        // True when the order was priced with the products' international
+        // prices (delivery outside the store country while international
+        // pricing was on) - so products added later (Edit Order) use them too.
+        isInternationalPrice: {
+            type: Boolean,
+            default: false
+        },
 
         // Required on normal orders. Admin-placed orders may carry a saved
         // address, a free-text address (adminEnteredAddress), or neither. An

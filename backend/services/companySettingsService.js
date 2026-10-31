@@ -52,7 +52,7 @@ const validateStoreCurrency = async (data, companyMasterData, existingSettings =
 // (handled separately as file uploads) and emailTemplateAssignments (owned by
 // the dedicated assign/unassign endpoints above).
 const SIMPLE_FIELDS = [
-    'currencyId', 'storeCountryId', 'storeStateId', 'storeCityId', 'adminName', 'adminWhatsappNumber', 'adminPhoneNumber', 'adminAddress',
+    'currencyId', 'isCurrencyConversionFeatureOn', 'storeCountryId', 'storeStateId', 'storeCityId', 'adminName', 'adminWhatsappNumber', 'adminPhoneNumber', 'adminAddress',
     'adminCity', 'adminState', 'adminPincode', 'adminEmail', 'companyName', 'instagramId',
     'facebookId', 'privacyPolicy', 'cancelPolicy', 'termsAndConditions', 'aboutUs', 'returnRefundPolicy', 'shippingPolicy', 'policyDisplayMode',
     'contactEmail', 'contactPhoneNumber', 'contactAddress',

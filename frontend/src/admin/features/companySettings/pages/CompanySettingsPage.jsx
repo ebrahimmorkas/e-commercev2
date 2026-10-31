@@ -124,7 +124,7 @@ const CompanySettingsPage = () => {
     : companyMaster?.isSendingEmailFeatureOn !== false;
 
   const tabs = [
-    { key: 'general', label: 'General', content: <GeneralInfoSection {...sectionProps} errors={formErrors} /> },
+    { key: 'general', label: 'General', content: <GeneralInfoSection {...sectionProps} errors={formErrors} companyMaster={companyMaster} /> },
     { key: 'policies', label: 'Policies', content: <PoliciesSection {...sectionProps} /> },
     { key: 'storefront', label: 'Storefront', content: <StorefrontSection {...sectionProps} companyMaster={companyMaster} catalogue={settings?.catalogue || null} settingsExist={exists} /> },
     { key: 'product', label: 'Product', content: <ProductSection {...sectionProps} errors={formErrors} isLowStockAlertOn={isLowStockAlertOn} /> },

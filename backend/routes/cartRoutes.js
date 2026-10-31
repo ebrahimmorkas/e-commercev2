@@ -15,7 +15,7 @@ const checkModuleAssigned = require('../middlewares/checkModuleAssigned');
 // service, since only a logged-in user's cart can be checked out.
 const cartAccess = [vendorDetection, ensureVendorDataCached, authenticate.optional, resolveCartOwner];
 
-router.get('/get-cart', ...cartAccess, cartController.getCart);
+router.get('/get-cart', ...cartAccess, validate(shippingEstimateQuerySchema, 'query'), cartController.getCart);
 
 router.post('/add-to-cart', ...cartAccess, validate(addToCartSchema, 'body'), cartController.addToCart);
 

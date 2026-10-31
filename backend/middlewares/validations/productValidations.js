@@ -32,7 +32,9 @@ const bulkPricingItemSchema = Joi.object({
         .greater(Joi.ref('minimumQuantity'))
         .label('Maximum quantity')
         .messages({ 'number.greater': '{{#label}} must be greater than minimum quantity.' }),
-    price: Joi.number().min(0).required().label('Price')
+    price: Joi.number().min(0).required().label('Price'),
+    // Optional - empty means the local tier price, converted.
+    internationalPrice: Joi.number().min(0).allow(null).label('International price')
 });
 
 // --- Measurement value (matches measurementValueSchema in Product.js) -------
@@ -115,6 +117,11 @@ const sizeSchema = Joi.object({
     }),
     price: Joi.number().min(0).required().label('Price'),
     cancelledPrice: Joi.number().min(0).allow(null).label('Cancelled price'),
+    // Both optional (CompanyMaster.internationalCurrency). An international
+    // cancelled price only makes sense next to an international price - the
+    // two are shown together, struck through over the actual price.
+    internationalPrice: Joi.number().min(0).allow(null).label('International price'),
+    internationalCancelledPrice: Joi.number().min(0).allow(null).label('International cancelled price'),
     // Whole units only: the cart/order flow only ever adds or removes whole
     // quantities (quantity is .integer() there), so a fractional stock such as
     // 1.5 would leave a half unit nobody can buy.
@@ -128,9 +135,21 @@ const sizeSchema = Joi.object({
         if (size.cancelledPrice !== null && size.cancelledPrice !== undefined && size.price >= size.cancelledPrice) {
             return helpers.error('size.priceNotLessThanCancelledPrice');
         }
+        const hasInternationalPrice = size.internationalPrice !== null && size.internationalPrice !== undefined;
+        const hasInternationalCancelledPrice = size.internationalCancelledPrice !== null && size.internationalCancelledPrice !== undefined;
+        if (hasInternationalCancelledPrice && !hasInternationalPrice) {
+            return helpers.error('size.internationalCancelledPriceWithoutPrice');
+        }
+        if (hasInternationalCancelledPrice && size.internationalPrice >= size.internationalCancelledPrice) {
+            return helpers.error('size.internationalPriceNotLessThanCancelledPrice');
+        }
         return size;
     })
-    .messages({ 'size.priceNotLessThanCancelledPrice': 'Price must be less than cancelled price.' });
+    .messages({
+        'size.priceNotLessThanCancelledPrice': 'Price must be less than cancelled price.',
+        'size.internationalCancelledPriceWithoutPrice': 'Enter the international price before the international cancelled price.',
+        'size.internationalPriceNotLessThanCancelledPrice': 'International price must be less than international cancelled price.'
+    });
 
 // Cross-item rules within one variant's sizes array: at most one default
 // size, and no two sizes may resolve to the exact same sizeId + value.

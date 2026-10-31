@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getOrderCurrency } from '../api/adminPlaceOrderApi';
 import { formatCurrencyAmount, convertAmount } from '../../../../utils/money';
 
@@ -12,28 +12,39 @@ import { formatCurrencyAmount, convertAmount } from '../../../../utils/money';
  * Conversion mirrors the backend exactly: a store-currency unit price is
  * converted first, and a line amount is that converted price x quantity.
  *
+ * priceZone: with international pricing on, a customer from outside the store
+ * country gets the products' international prices (utils/bulkPricing zonePrice).
+ *
  * @param {string} userId - The chosen customer ('' for none).
  * @param {boolean} isWalkIn
  */
 export const useOrderCurrency = (userId, isWalkIn) => {
   const requestUserId = !isWalkIn && userId ? userId : '';
-  const [state, setState] = useState({ key: null, currency: null, exchangeRate: 1 });
+  const [state, setState] = useState({ key: null, currency: null, exchangeRate: 1, isInternationalPrice: false });
 
   useEffect(() => {
     let cancelled = false;
     getOrderCurrency(requestUserId || undefined)
       .then((result) => {
-        if (!cancelled) setState({ key: requestUserId, currency: result?.currency || null, exchangeRate: result?.exchangeRate || 1 });
+        if (!cancelled) {
+          setState({
+            key: requestUserId,
+            currency: result?.currency || null,
+            exchangeRate: result?.exchangeRate || 1,
+            isInternationalPrice: result?.isInternationalPrice === true,
+          });
+        }
       })
       .catch(() => {
-        if (!cancelled) setState({ key: requestUserId, currency: null, exchangeRate: 1 });
+        if (!cancelled) setState({ key: requestUserId, currency: null, exchangeRate: 1, isInternationalPrice: false });
       });
     return () => {
       cancelled = true;
     };
   }, [requestUserId]);
 
-  const { currency, exchangeRate } = state;
+  const { currency, exchangeRate, isInternationalPrice } = state;
+  const priceZone = useMemo(() => (isInternationalPrice ? { isInternational: true, exchangeRate } : null), [isInternationalPrice, exchangeRate]);
   const decimals = typeof currency?.decimalPlaces === 'number' ? currency.decimalPlaces : 2;
 
   /** Store-currency amount -> order currency. */
@@ -53,6 +64,7 @@ export const useOrderCurrency = (userId, isWalkIn) => {
     toOrder,
     lineAmount,
     formatMoney,
+    priceZone,
   };
 };
 

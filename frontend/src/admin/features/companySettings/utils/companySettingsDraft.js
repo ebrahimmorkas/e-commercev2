@@ -7,6 +7,7 @@ import { ADMIN_PRODUCT_PAGE_SIZES, DEFAULT_ADMIN_PRODUCTS_PER_PAGE } from '../..
  */
 export const emptyDraft = () => ({
   currencyId: '',
+  isCurrencyConversionFeatureOn: true,
   storeCountryId: '',
   storeStateId: '',
   storeCityId: '',
@@ -122,6 +123,7 @@ export const emptyDraft = () => ({
  */
 export const mapApiSettingsToDraft = (doc) => ({
   currencyId: doc.currencyId ? String(doc.currencyId) : '',
+  isCurrencyConversionFeatureOn: doc.isCurrencyConversionFeatureOn !== false,
   storeCountryId: doc.storeCountryId ? String(doc.storeCountryId) : '',
   storeStateId: doc.storeStateId ? String(doc.storeStateId) : '',
   storeCityId: doc.storeCityId ? String(doc.storeCityId) : '',

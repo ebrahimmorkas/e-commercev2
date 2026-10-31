@@ -280,7 +280,8 @@ const buildSheetRows = (products, lookups) => {
         const addBulkPricing = (level, refTempCode, tiers) => {
             try {
                 (tiers || []).forEach((t) => rows.bulkPricingRows.push({
-                    level, refTempCode, minimumQuantity: t.minimumQuantity, maximumQuantity: t.maximumQuantity, price: t.price
+                    level, refTempCode, minimumQuantity: t.minimumQuantity, maximumQuantity: t.maximumQuantity, price: t.price,
+                    internationalPrice: t.internationalPrice
                 }));
             } catch (err) {
                 throw err;
@@ -336,6 +337,8 @@ const buildSheetRows = (products, lookups) => {
                         brand: lookups.brands.get(idKey(size.brandId))?.brandName || '',
                         price: blankIfNull(size.price),
                         cancelledPrice: blankIfNull(size.cancelledPrice),
+                        internationalPrice: blankIfNull(size.internationalPrice),
+                        internationalCancelledPrice: blankIfNull(size.internationalCancelledPrice),
                         stock: blankIfNull(size.stock),
                         weightValue: size.weight ? blankIfNull(size.weight.value) : '',
                         weightUnitName: size.weight ? lookups.weights.get(idKey(size.weight.unit))?.weightName || '' : '',

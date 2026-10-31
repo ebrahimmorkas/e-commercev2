@@ -12,17 +12,25 @@ import { useStoreLocationOptions } from '../hooks/useStoreLocationOptions';
  * @param {Object} props.draft
  * @param {(patch: Object) => void} props.onChange
  * @param {Object} [props.errors]
+ * @param {Object|null} [props.companyMaster] - combined (WebsiteMaster AND CompanyMaster) flags.
  */
-const GeneralInfoSection = ({ draft, onChange, errors = {} }) => {
+const GeneralInfoSection = ({ draft, onChange, errors = {}, companyMaster = null }) => {
   const set = (patch) => onChange(patch);
   const { countryOptions, stateOptions, cityOptions, currencyOptions } = useStoreLocationOptions(draft.storeCountryId, draft.storeStateId);
+  // The vendor's conversion toggle is only offered once the platform has the
+  // feature on for this account; otherwise customers always get the store currency.
+  const isConversionFeatureOn = companyMaster?.isCurrencyConversionFeatureOn === true;
+  const isConverting = isConversionFeatureOn && draft.isCurrencyConversionFeatureOn;
 
   return (
     <div className="space-y-6">
       <div>
         <h3 className={`text-sm font-semibold ${theme.text.heading}`}>Store Currency</h3>
         <p className={`text-xs ${theme.text.muted} mt-0.5`}>
-          Every price, shipping charge, discount and free cash amount is entered in this currency. Customers from another country you serve see prices converted to their own currency.
+          Every price, shipping charge, discount and free cash amount is entered in this currency.{' '}
+          {isConverting
+            ? 'Customers from another country you serve see prices converted to their own currency.'
+            : 'Every customer, from any country, sees and pays in this currency.'}
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-3">
           <Dropdown
@@ -35,6 +43,17 @@ const GeneralInfoSection = ({ draft, onChange, errors = {} }) => {
             searchable
           />
         </div>
+        {isConversionFeatureOn && (
+          <div className="mt-4">
+            <Switch
+              label="Convert Prices to Customer's Currency"
+              description="When on, customers from another country you serve see and pay in their own currency, converted at the current exchange rate. When off, everyone sees and pays in your store currency. Orders already placed keep their currency."
+              checked={draft.isCurrencyConversionFeatureOn}
+              onChange={(e) => set({ isCurrencyConversionFeatureOn: e.target.checked })}
+              color={theme.switch.color}
+            />
+          </div>
+        )}
       </div>
 
       <div className="pt-4 border-t border-gray-100">

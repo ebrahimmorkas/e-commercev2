@@ -4,6 +4,7 @@ const Cart = require('../models/Cart');
 const Product = require('../models/Product');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
+const internationalPrice = require('../utils/internationalPrice');
 const { RETURN_EXCHANGE_ELIGIBLE_STEP_CODES } = require('../constants/orderStepConstants');
 
 // Mirrors resolveEligibleReturnItems in orderReturnService.js, checking the
@@ -51,8 +52,9 @@ const resolveEligibleExchangeItems = async (order, cart) => {
     }
 };
 
-// Resolves the live product/variant/size the customer wants instead.
-const resolveRequestedReplacement = async (vendorId, productId, variantId, sizeId) => {
+// Resolves the live product/variant/size the customer wants instead. priceZone:
+// an order placed with international prices compares against those.
+const resolveRequestedReplacement = async (vendorId, productId, variantId, sizeId, priceZone = null) => {
     try {
         const product = await Product.findOne({ _id: productId, vendorId, status: 'A' });
         if (!product) return { error: 'Requested replacement product not found.' };
@@ -70,7 +72,7 @@ const resolveRequestedReplacement = async (vendorId, productId, variantId, sizeI
             productName: product.name,
             variantName: variant.displayName || variant.color || 'Default',
             sizeName: size.sizeName,
-            unitPrice: size.price
+            unitPrice: internationalPrice.resolveSizePrices(size, priceZone).price
         };
     } catch (err) {
         throw err;
@@ -132,7 +134,8 @@ const createExchangeRequest = async (vendorId, userId, orderId, payload, company
             }
 
             const replacement = await resolveRequestedReplacement(
-                vendorId, requested.requestedProductId, requested.requestedVariantId, requested.requestedSizeId
+                vendorId, requested.requestedProductId, requested.requestedVariantId, requested.requestedSizeId,
+                order.isInternationalPrice ? { isInternational: true, exchangeRate: order.exchangeRate || 1 } : null
             );
             if (replacement.error) {
                 return common.returnResult(false, 400, replacement.error);

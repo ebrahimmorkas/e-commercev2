@@ -21,6 +21,7 @@ const { CLOSED_STEP_CODES } = require('../constants/orderStepConstants');
 const orderStepService = require('./orderStepService');
 const { notifyOrderChanged } = require('./orderRealtimeService');
 const lowStockAlertService = require('./lowStockAlertService');
+const internationalPrice = require('../utils/internationalPrice');
 
 const round2 = (value) => Math.round(value * 100) / 100;
 
@@ -85,6 +86,12 @@ const orderRateFields = (order) => ({
     decimalPlaces: typeof order.currencyDecimalPlaces === 'number' ? order.currencyDecimalPlaces : 2
 });
 
+// An order placed with international prices keeps using them for added
+// products (utils/internationalPrice.js), at its locked rate.
+const orderPriceZone = (order) => (order.isInternationalPrice
+    ? { isInternational: true, exchangeRate: order.exchangeRate || 1 }
+    : internationalPrice.LOCAL_PRICE_ZONE);
+
 // Loads an order that can still be edited, plus the lines already on it.
 // Orders placed before Order.items existed keep their lines only on the linked
 // cart (legacyItems) - those are saved onto the order with the first addition.
@@ -129,7 +136,7 @@ const previewAddProductsTax = async (vendorId, orderId, payload, companyMasterDa
         }
 
         // Preview only - stock is re-checked (and reserved) when the products are added.
-        const lineResult = await adminPlaceOrderService.resolveOrderLines(vendorId, items, true, bulkPricingResult.meta.isBulkPricingOn);
+        const lineResult = await adminPlaceOrderService.resolveOrderLines(vendorId, items, true, bulkPricingResult.meta.isBulkPricingOn, orderPriceZone(order));
         if (lineResult.error) {
             return common.returnResult(false, 400, lineResult.error);
         }
@@ -186,7 +193,7 @@ const addProductsToOrder = async (vendorId, adminUserId, orderId, payload, compa
             return common.returnResult(false, bulkPricingResult.statusCode, bulkPricingResult.message);
         }
 
-        const lineResult = await adminPlaceOrderService.resolveOrderLines(vendorId, items, allowOutOfStock, bulkPricingResult.meta.isBulkPricingOn);
+        const lineResult = await adminPlaceOrderService.resolveOrderLines(vendorId, items, allowOutOfStock, bulkPricingResult.meta.isBulkPricingOn, orderPriceZone(order));
         if (lineResult.error) {
             return common.returnResult(false, 400, lineResult.error);
         }
@@ -559,7 +566,8 @@ const planOrderItemChanges = async (vendorId, orderId, payload, companyMasterDat
                 vendorId,
                 increases.map((edit) => ({ productId: edit.line.productId, variantId: edit.line.variantId, sizeId: edit.line.sizeId, quantity: edit.newQuantity })),
                 true,
-                bulkPricingResult.meta.isBulkPricingOn
+                bulkPricingResult.meta.isBulkPricingOn,
+                orderPriceZone(order)
             );
             if (lineResult.error) {
                 return common.returnResult(false, 400, lineResult.error);

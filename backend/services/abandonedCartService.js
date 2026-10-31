@@ -1,4 +1,5 @@
 const Cart = require('../models/Cart');
+const Product = require('../models/Product');
 const CompanyMaster = require('../models/CompanyMaster');
 const CompanySettings = require('../models/CompanySettings');
 const WebsiteMaster = require('../models/WebsiteMaster');
@@ -7,6 +8,8 @@ const common = require('../utils/common');
 const logger = require('../utils/logger');
 const bulkPricing = require('../utils/bulkPricing');
 const redisService = require('./redisService');
+const currencyService = require('./currencyService');
+const userLocationService = require('./userLocationService');
 const redisKeys = require('../utils/redisKeys');
 const realtimeService = require('./realtimeService');
 const {
@@ -399,7 +402,70 @@ const abandonedCartsFilter = (vendorId, companySettingsData, extra = {}) => {
     }
 };
 
-const fetchAbandonedCartsForAdmin = async (vendorId, companySettingsData) => {
+// The customer's currency and price zone (local / international) for pricing
+// their row - the same ones "Place order" charges them in (resolved from their
+// saved country, as adminPlaceOrderService.resolveAdminOrderCurrency does).
+// Cached per country, since many customers share one. null = the store
+// currency isn't configured, so no prices are shown.
+const resolveRowCurrency = async (user, cache, companyMasterData, companySettingsData) => {
+    try {
+        const countryId = userLocationService.extractUserLocation(user).countryId;
+        const cacheKey = countryId || '';
+        if (!cache.has(cacheKey)) {
+            const result = await currencyService.resolveCustomerCurrency({ countryId, companyMasterData, companySettingsData });
+            cache.set(cacheKey, result.isSuccess ? result.meta : null);
+        }
+        return cache.get(cacheKey);
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Prices a row's items at what "Place order" would charge today: the
+// customer's local or international price, their bulk tier where bulk pricing
+// is on, converted into their currency (unit price first, then x quantity -
+// the same way an order's lines are converted). An item whose product,
+// variant or size is no longer available gets no price and is left out of
+// the cart value. An available item with less stock than the quantity is
+// flagged isOutOfStock (still priced - it can be ordered when the store lets
+// admins order out-of-stock products).
+const priceRowItems = (items, productMap, currencyMeta, isBulkPricingOn) => {
+    try {
+        if (!currencyMeta) {
+            return { items, currency: null, cartValue: null, hasUnavailableItems: false, hasOutOfStockItems: false };
+        }
+        const priceZone = currencyService.toPriceZone(currencyMeta);
+        const currency = currencyService.shapeCurrency(currencyMeta.currency);
+        const decimals = currency.decimalPlaces;
+        const factor = 10 ** decimals;
+
+        let cartValue = 0;
+        let hasUnavailableItems = false;
+        let hasOutOfStockItems = false;
+        const pricedItems = items.map((item) => {
+            const product = productMap.get(item.productId.toString());
+            const variant = product?.variants.id(item.variantId);
+            const size = variant?.status === 'A' ? variant.sizes.id(item.sizeId) : null;
+            if (!size || size.status !== 'A') {
+                hasUnavailableItems = true;
+                return { ...item, isAvailable: false, isOutOfStock: false, stock: null, unitPrice: null, amount: null };
+            }
+            const { unitPrice: storeUnitPrice } = bulkPricing.resolveUnitPrice(product, variant, size, item.quantity, isBulkPricingOn, priceZone);
+            const unitPrice = currencyService.convertAmount(storeUnitPrice, currencyMeta.exchangeRate, decimals);
+            const amount = Math.round(unitPrice * item.quantity * factor) / factor;
+            cartValue += amount;
+            const isOutOfStock = size.stock < item.quantity;
+            if (isOutOfStock) hasOutOfStockItems = true;
+            return { ...item, isAvailable: true, isOutOfStock, stock: size.stock, unitPrice, amount };
+        });
+
+        return { items: pricedItems, currency, cartValue: Math.round(cartValue * factor) / factor, hasUnavailableItems, hasOutOfStockItems };
+    } catch (err) {
+        throw err;
+    }
+};
+
+const fetchAbandonedCartsForAdmin = async (vendorId, websiteMasterData, companyMasterData, companySettingsData) => {
     try {
         const carts = await Cart.find(abandonedCartsFilter(vendorId, companySettingsData));
 
@@ -410,17 +476,29 @@ const fetchAbandonedCartsForAdmin = async (vendorId, companySettingsData) => {
             groups.get(ownerId).push(cart);
         }
 
-        const users = await User.find({ _id: { $in: Array.from(groups.keys()) } }).select('name email phone_no');
+        const users = await User.find({ _id: { $in: Array.from(groups.keys()) } }).select('name email phone_no country');
         const userMap = new Map(users.map((u) => [u._id.toString(), u]));
 
-        const data = Array.from(groups.entries()).map(([ownerId, groupCarts]) => {
+        // Every product in any listed cart, read once for today's prices.
+        const productIds = [...new Set(carts.flatMap((cart) => (cart.products || []).map((p) => p.productId.toString())))];
+        const products = await Product.find({ _id: { $in: productIds }, vendorId, status: 'A' });
+        const productMap = new Map(products.map((product) => [product._id.toString(), product]));
+        const isBulkPricingOn = await bulkPricing.isBulkPricingActive(vendorId, websiteMasterData, companyMasterData);
+        const currencyCache = new Map();
+        // Same switch adminPlaceOrderService.isOutOfStockAllowedForAdmin reads (that
+        // file requires this one, so it isn't required here at load time).
+        const isOutOfStockOrderAllowed = companySettingsData?.allowOutOfStockProductsAddingForAdmin === true;
+
+        const data = [];
+        for (const [ownerId, groupCarts] of groups.entries()) {
             const primary = groupCarts.find((c) => c.userId) || groupCarts[0];
             const linkedCarts = groupCarts.filter((c) => c._id.toString() !== primary._id.toString());
             const user = userMap.get(ownerId);
             const mostRecent = (field) => groupCarts.reduce((latest, c) => (!latest || c[field] > latest ? c[field] : latest), null);
-            const items = listCartItems(groupCarts);
+            const currencyMeta = await resolveRowCurrency(user, currencyCache, companyMasterData, companySettingsData);
+            const { items, currency, cartValue, hasUnavailableItems, hasOutOfStockItems } = priceRowItems(listCartItems(groupCarts), productMap, currencyMeta, isBulkPricingOn);
 
-            return {
+            data.push({
                 _id: primary._id,
                 linkedCartIds: linkedCarts.map((c) => c._id),
                 userId: ownerId,
@@ -428,15 +506,24 @@ const fetchAbandonedCartsForAdmin = async (vendorId, companySettingsData) => {
                 userEmail: user?.email || null,
                 userPhone: user?.phone_no || null,
                 itemCount: items.length,
-                // What the customer left behind, across every cart folded into this row.
+                // What the customer left behind, across every cart folded into this row,
+                // each priced at today's price in the customer's currency.
                 items,
+                currency,
+                // Sum of the available items' amounts - before tax, shipping and discounts.
+                cartValue,
+                hasUnavailableItems,
+                // Items with less stock than the quantity, and whether Place Order may still order them.
+                hasOutOfStockItems,
+                isOutOfStockOrderAllowed,
                 source: groupCarts.length > 1
                     ? ABANDONED_CART_SOURCES.COMBINED
                     : (primary.userId ? ABANDONED_CART_SOURCES.LOGGED_IN : ABANDONED_CART_SOURCES.GUEST_KNOWN),
                 lastProductAddedAt: mostRecent('lastProductAddedAt'),
                 abandonedAt: mostRecent('abandonedAt')
-            };
-        }).sort((a, b) => new Date(b.abandonedAt) - new Date(a.abandonedAt));
+            });
+        }
+        data.sort((a, b) => new Date(b.abandonedAt) - new Date(a.abandonedAt));
 
         return common.returnResult(true, 200, 'Abandoned carts fetched successfully', { data });
     } catch (err) {

@@ -14,6 +14,7 @@ import { formatShippingEstimate, shippingAmountForTotal } from '../../cart/utils
 import { useTaxEstimate, taxAmountForTotal } from '../../cart/hooks/useTaxEstimate';
 import TaxEstimateRows from '../../cart/components/TaxEstimateRows';
 import { useCurrency } from '../../../currency/useCurrency';
+import { useDeliveryPricing } from '../hooks/useDeliveryPricing';
 
 
 /**
@@ -34,10 +35,33 @@ import { useCurrency } from '../../../currency/useCurrency';
  * @param {Function} [onOrderFailed] - Called when placing fails, so the cart is re-read (e.g. a
  *   discount that no longer applies was taken off and the totals changed).
  */
-const CheckoutPage = ({ lineItems = [], subtotal = 0, totalFreeCashAmount = 0, totalDiscountAmount = 0, cartLoading, initialAddressId = null, onBack, onPlaced, onOrderFailed }) => {
+const CheckoutPage = ({
+  lineItems = [],
+  subtotal: cartSubtotal = 0,
+  totalFreeCashAmount: cartFreeCashAmount = 0,
+  totalDiscountAmount: cartDiscountAmount = 0,
+  cartLoading,
+  initialAddressId = null,
+  onBack,
+  onPlaced,
+  onOrderFailed,
+}) => {
   // Amounts here are in the store currency; shown in the shopper's (the one the order is charged in).
-  const { formatMoney } = useCurrency();
+  const { formatMoney: browsingFormatMoney, currency: browsingCurrency, isInternationalPrice: isBrowsingInternational } = useCurrency();
   const [selectedAddressId, setSelectedAddressId] = useState(initialAddressId);
+  // The cart re-priced for the chosen address: with international pricing its
+  // country decides local vs international prices and the currency - what the
+  // order will actually charge. Until it loads, the cart page's prices show.
+  const deliveryPricing = useDeliveryPricing(
+    selectedAddressId,
+    `${lineItems.length}:${cartSubtotal}:${cartDiscountAmount}:${cartFreeCashAmount}`
+  );
+  const subtotal = deliveryPricing ? deliveryPricing.subtotal : cartSubtotal;
+  const totalDiscountAmount = deliveryPricing ? deliveryPricing.totalDiscountAmount : cartDiscountAmount;
+  const totalFreeCashAmount = deliveryPricing ? deliveryPricing.totalFreeCashAmount : cartFreeCashAmount;
+  const formatMoney = deliveryPricing ? deliveryPricing.formatMoney : browsingFormatMoney;
+  const isRepricedForAddress = !!deliveryPricing
+    && (deliveryPricing.isInternationalPrice !== isBrowsingInternational || deliveryPricing.currency?.code !== browsingCurrency?.code);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState('');
   const { user } = useAuth();
@@ -175,6 +199,11 @@ const CheckoutPage = ({ lineItems = [], subtotal = 0, totalFreeCashAmount = 0, t
 
         <div className={`h-fit rounded-xl border p-4 sm:p-5 ${theme.card.background} ${theme.card.border}`}>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Order Summary</h2>
+          {isRepricedForAddress && (
+            <p className="mt-3 px-3 py-2 rounded-lg text-xs bg-amber-50 border border-amber-200 text-amber-800" role="status">
+              Prices updated for delivery to this address{deliveryPricing.currency?.code ? ` - shown in ${deliveryPricing.currency.code}` : ''}.
+            </p>
+          )}
           <div className="mt-4 flex justify-between text-sm text-slate-600">
             <span>Items ({lineItems.reduce((sum, item) => sum + item.quantity, 0)})</span>
             <span>{formatMoney(subtotal)}</span>

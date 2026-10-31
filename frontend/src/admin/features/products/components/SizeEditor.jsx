@@ -12,6 +12,7 @@ import ShippingFields from './ShippingFields';
 import TagInput from './TagInput';
 import SectionCard from './SectionCard';
 import { TagIcon, RulerIcon, CoinsIcon, ImageIcon, ShieldIcon, LayersIcon, MapPinIcon } from './icons';
+import { useStoreCurrency } from '../../../currency/useStoreCurrency';
 import theme from '../theme/theme';
 
 const TrashIcon = () => (
@@ -58,6 +59,10 @@ const SizeEditor = ({
   const sizeMaster = getSizeMasterById(size.sizeId);
   const isExisting = !!size._id;
   const errorFor = (field) => (fieldError?.field === field ? fieldError.message : '');
+  // International pricing on (internationalCurrency set): the price is the local
+  // one, and an optional international price is entered next to it.
+  const { currency: storeCurrency, internationalCurrency } = useStoreCurrency();
+  const priceLabel = internationalCurrency ? `Local Price${storeCurrency ? ` (${storeCurrency.code})` : ''}` : 'Price';
 
   // Same limits the backend enforces (see ProductForm). With no extension list configured the backend accepts
   // whatever its content check recognises as jpg/png/gif/webp.
@@ -188,10 +193,32 @@ const SizeEditor = ({
 
       <SectionCard icon={<CoinsIcon />} title="Pricing &amp; Stock">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <InputField type="number" label="Price" value={size.price} onChange={(e) => patch({ price: e.target.value })} required error={errorFor('price')} />
+          <InputField type="number" label={priceLabel} value={size.price} onChange={(e) => patch({ price: e.target.value })} required error={errorFor('price')} />
           <InputField type="number" label="Cancelled Price" placeholder="Optional, must be > price" value={size.cancelledPrice} onChange={(e) => patch({ cancelledPrice: e.target.value })} error={errorFor('cancelledPrice')} />
           <InputField type="number" label="Stock" min="0" step="1" value={size.stock} onChange={(e) => patch({ stock: e.target.value })} error={errorFor('stock')} />
         </div>
+        {internationalCurrency && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <InputField
+              type="number"
+              min="0"
+              label={`International Price (${internationalCurrency.code})`}
+              placeholder="Optional - blank uses the local price, converted"
+              value={size.internationalPrice}
+              onChange={(e) => patch({ internationalPrice: e.target.value })}
+              error={errorFor('internationalPrice')}
+            />
+            <InputField
+              type="number"
+              min="0"
+              label={`International Cancelled Price (${internationalCurrency.code})`}
+              placeholder="Optional, must be > international price"
+              value={size.internationalCancelledPrice}
+              onChange={(e) => patch({ internationalCancelledPrice: e.target.value })}
+              error={errorFor('internationalCancelledPrice')}
+            />
+          </div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <InputField label="SKU" value={size.sku} onChange={(e) => patch({ sku: e.target.value })} required error={errorFor('sku')} />
           <InputField label="Barcode" placeholder="Optional, globally unique" value={size.barcode} onChange={(e) => patch({ barcode: e.target.value })} />

@@ -1,5 +1,6 @@
 const productService = require('../services/productService');
 const productExportService = require('../services/productExportService');
+const currencyService = require('../services/currencyService');
 const logger = require('../utils/logger.js');
 const common = require('../utils/common');
 
@@ -277,17 +278,24 @@ const getProductByIdAdmin = async (req, res) => {
 // Cookies carry raw ObjectId strings for Country/State/City (set at login),
 // and a plain zip_code string. Any/all may be absent - handled downstream
 // as "location unknown" (generic excludeText, per spec).
-const readLocationCookies = (req) => ({
+// priceZone: whether this visitor sees the local or the international prices -
+// by their Country cookie / account, else their IP country (IP detection).
+const readLocationCookies = async (req) => ({
     countryId: req.cookies?.Country || null,
     stateId: req.cookies?.State || null,
     cityId: req.cookies?.City || null,
-    zipCode: req.cookies?.zip_code || null
+    zipCode: req.cookies?.zip_code || null,
+    priceZone: await currencyService.resolvePriceZone({
+        countryId: req.cookies?.Country || req.user?.country || req.ipCountryId || null,
+        companyMasterData: req.companyMasterData,
+        companySettingsData: req.companySettingsData
+    })
 });
 
 const getAllProductsClient = async (req, res) => {
     const vendorId = req.vendorId;
     try {
-        const locationCookies = readLocationCookies(req);
+        const locationCookies = await readLocationCookies(req);
         const result = await productService.fetchAllProductsForClient(vendorId, req.companySettingsData, locationCookies, readClientListQuery(req));
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
@@ -304,7 +312,7 @@ const getProductByIdClient = async (req, res) => {
     let id;
     try {
         id = decodeIdOrNull(req.params.id);
-        const locationCookies = readLocationCookies(req);
+        const locationCookies = await readLocationCookies(req);
         const result = await productService.fetchProductByIdForClient(vendorId, id, req.companySettingsData, locationCookies);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
@@ -321,7 +329,7 @@ const getProductsByBrand = async (req, res) => {
     let brandId;
     try {
         brandId = decodeIdOrNull(req.params.brandId);
-        const locationCookies = readLocationCookies(req);
+        const locationCookies = await readLocationCookies(req);
         const result = await productService.fetchProductsByBrandForClient(vendorId, brandId, req.companySettingsData, locationCookies, readClientListQuery(req));
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
@@ -338,7 +346,7 @@ const getProductsByCategory = async (req, res) => {
     let categoryId;
     try {
         categoryId = decodeIdOrNull(req.params.categoryId);
-        const locationCookies = readLocationCookies(req);
+        const locationCookies = await readLocationCookies(req);
         const result = await productService.fetchProductsByCategoryForClient(vendorId, categoryId, req.companySettingsData, locationCookies, readClientListQuery(req));
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
