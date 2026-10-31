@@ -24,6 +24,7 @@ const crypto = require('crypto');
 const path = require('path');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
+const internationalPrice = require('../utils/internationalPrice');
 const inventoryService = require('./inventoryService');
 const lowStockAlertService = require('./lowStockAlertService');
 const { ADMIN_PRODUCT_PAGE_SIZES, DEFAULT_ADMIN_PRODUCTS_PER_PAGE } = require('../constants/productListConstants');
@@ -770,12 +771,43 @@ const resolveSize = async ({
 // the base the next level down must continue from and undercut.
 // ---------------------------------------------------------------------------
 
+const hasPrice = (value) => value !== null && value !== undefined;
+
+// International tier prices are optional, so their bounds only cover the
+// tiers that have one (null when none do - nothing to chain against).
+const internationalTierPrices = (bulkPricingArray) => (bulkPricingArray || [])
+    .map(b => b.internationalPrice)
+    .filter(hasPrice);
+
 const getBulkPricingBounds = (bulkPricingArray) => {
     if (!bulkPricingArray || bulkPricingArray.length === 0) return null;
+    const internationalPrices = internationalTierPrices(bulkPricingArray);
     return {
         maxQuantity: Math.max(...bulkPricingArray.map(b => b.maximumQuantity)),
-        minPrice: Math.min(...bulkPricingArray.map(b => b.price))
+        minPrice: Math.min(...bulkPricingArray.map(b => b.price)),
+        minInternationalPrice: internationalPrices.length > 0 ? Math.min(...internationalPrices) : null
     };
+};
+
+// A single unit should never cost less than (or equal to) the cheapest bulk
+// tier already offered at the product level - locally, and internationally
+// when both the size and a product tier have an international price.
+const validateSizePriceAgainstProductBulkPricing = (size, productBulkPricing) => {
+    if (!productBulkPricing || productBulkPricing.length === 0) {
+        return common.returnResult(true, 200, 'All Good');
+    }
+    const productMaxBulkPrice = Math.max(...productBulkPricing.map(b => b.price));
+    if (size.price <= productMaxBulkPrice) {
+        return common.returnResult(false, 400, `Size price (${size.price}) must be greater than the product's bulk pricing price (${productMaxBulkPrice}).`);
+    }
+    const internationalPrices = internationalTierPrices(productBulkPricing);
+    if (hasPrice(size.internationalPrice) && internationalPrices.length > 0) {
+        const productMaxInternationalBulkPrice = Math.max(...internationalPrices);
+        if (size.internationalPrice <= productMaxInternationalBulkPrice) {
+            return common.returnResult(false, 400, `Size international price (${size.internationalPrice}) must be greater than the product's international bulk pricing price (${productMaxInternationalBulkPrice}).`);
+        }
+    }
+    return common.returnResult(true, 200, 'All Good');
 };
 
 const validateAdditionalBulkPricingChain = (additionalArray, parentBounds, levelLabel) => {
@@ -795,6 +827,10 @@ const validateAdditionalBulkPricingChain = (additionalArray, parentBounds, level
         }
         if (tier.price >= parentBounds.minPrice) {
             return common.returnResult(false, 400, `${levelLabel} bulk pricing price (${tier.price}) must be less than ${parentBounds.minPrice}.`);
+        }
+        if (hasPrice(tier.internationalPrice) && hasPrice(parentBounds.minInternationalPrice)
+            && tier.internationalPrice >= parentBounds.minInternationalPrice) {
+            return common.returnResult(false, 400, `${levelLabel} bulk pricing international price (${tier.internationalPrice}) must be less than ${parentBounds.minInternationalPrice}.`);
         }
         expectedNextMin = tier.maximumQuantity + 1;
     }
@@ -1051,9 +1087,6 @@ const createProduct = async (vendorId, userId, companyMasterData, websiteMasterD
 
         // --- bulk pricing chain setup (point 6) --------------------------------
         const productBulkBounds = getBulkPricingBounds(body.bulkPricing);
-        const productMaxBulkPrice = (body.bulkPricing && body.bulkPricing.length > 0)
-            ? Math.max(...body.bulkPricing.map(b => b.price))
-            : null;
 
         for (const variant of (body.variants || [])) {
             const variantCodeResult = await resolveVariantCode({
@@ -1112,9 +1145,10 @@ const createProduct = async (vendorId, userId, companyMasterData, websiteMasterD
                 // --- size's own selling price vs product's bulk pricing ceiling ----
                 // A single unit should never cost less than (or equal to) the
                 // cheapest bulk tier already offered at the product level.
-                if (variant.isBulkPricingSameFromProductBasicDetails && productMaxBulkPrice !== null) {
-                    if (size.price <= productMaxBulkPrice) {
-                        return common.returnResult(false, 400, `Size price (${size.price}) must be greater than the product's bulk pricing price (${productMaxBulkPrice}).`);
+                if (variant.isBulkPricingSameFromProductBasicDetails) {
+                    const sizePriceResult = validateSizePriceAgainstProductBulkPricing(size, body.bulkPricing);
+                    if (!sizePriceResult.isSuccess) {
+                        return common.returnResult(false, sizePriceResult.statusCode, sizePriceResult.message);
                     }
                 }
 
@@ -1298,7 +1332,10 @@ const resolveSizeVisibility = (size, locationContext, shouldHide) => {
     return { hide: false, excludeText: `This size is not present in ${match.label}.` };
 };
 
-const shapeSizeForResponse = (size, variantCombined, isAdmin, locationContext, shouldHide, brandMap, useShortNameForBrand) => {
+// priceZone (utils/internationalPrice.js): a customer gets the price, cancelled
+// price and bulk tiers for their zone (local or international); admin always
+// gets the raw local AND international prices to edit.
+const shapeSizeForResponse = (size, variantCombined, isAdmin, locationContext, shouldHide, brandMap, useShortNameForBrand, priceZone = null) => {
     const description = combineArrays(variantCombined.description, size.sizeAdditionalDescription, size.isDescriptionSameFromVariantsDetails);
     const disclaimer = combineDisclaimerArray(variantCombined.disclaimer, size.sizeAdditionalDisclaimer, size.isDisclaimerSameFromVariantsDetails);
     const bulkPricing = combineArrays(variantCombined.bulkPricing, size.sizeAdditionalBulkPricing, size.isBulkPricingSameFromVariantsDetails);
@@ -1318,7 +1355,7 @@ const shapeSizeForResponse = (size, variantCombined, isAdmin, locationContext, s
         additionalImages: size.additionalImages,
         description,
         disclaimer,
-        bulkPricing,
+        bulkPricing: isAdmin ? bulkPricing : internationalPrice.resolveTierPrices(bulkPricing, priceZone),
         warranty: size.warranty,
         return: size.return,
         exchange: size.exchange,
@@ -1336,8 +1373,15 @@ const shapeSizeForResponse = (size, variantCombined, isAdmin, locationContext, s
         sizeId: size.sizeId,
         values: size.values,
         labelValue: size.labelValue,
-        price: size.price,
-        cancelledPrice: size.cancelledPrice,
+        ...(isAdmin
+            ? {
+                price: size.price,
+                cancelledPrice: size.cancelledPrice,
+                internationalPrice: size.internationalPrice ?? null,
+                internationalCancelledPrice: size.internationalCancelledPrice ?? null
+            }
+            : internationalPrice.resolveSizePrices(size, priceZone)
+        ),
         stock: size.stock,
         weight: size.weight,
         sku: size.sku,
@@ -1357,7 +1401,7 @@ const shapeSizeForResponse = (size, variantCombined, isAdmin, locationContext, s
     };
 };
 
-const shapeVariantForResponse = (variant, productCombined, isAdmin, locationContext, shouldHide, brandMap, useShortNameForBrand) => {
+const shapeVariantForResponse = (variant, productCombined, isAdmin, locationContext, shouldHide, brandMap, useShortNameForBrand, priceZone = null) => {
     const description = combineArrays(productCombined.description, variant.variantAdditionalDescription, variant.isDescriptionSameFromProductBasicDetails);
     const disclaimer = combineDisclaimerArray(productCombined.disclaimer, variant.variantAdditionalDisclaimer, variant.isDisclaimerSameFromProductBasicDetails);
     const bulkPricing = combineArrays(productCombined.bulkPricing, variant.variantAdditionalBulkPricing, variant.isBulkPricingSameFromProductBasicDetails);
@@ -1365,7 +1409,7 @@ const shapeVariantForResponse = (variant, productCombined, isAdmin, locationCont
     const variantCombined = { description, disclaimer, bulkPricing };
 
     const shapedSizes = (variant.sizes || [])
-        .map(size => shapeSizeForResponse(size, variantCombined, isAdmin, locationContext, shouldHide, brandMap, useShortNameForBrand))
+        .map(size => shapeSizeForResponse(size, variantCombined, isAdmin, locationContext, shouldHide, brandMap, useShortNameForBrand, priceZone))
         .filter(Boolean);
 
     // A variant with zero visible sizes has nothing purchasable left under
@@ -1383,13 +1427,13 @@ const shapeVariantForResponse = (variant, productCombined, isAdmin, locationCont
         variantCode: variant.variantCode,
         description,
         disclaimer,
-        bulkPricing,
+        bulkPricing: isAdmin ? bulkPricing : internationalPrice.resolveTierPrices(bulkPricing, priceZone),
         sizes: shapedSizes,
         status: variant.status
     };
 };
 
-const shapeProductForResponse = (product, isAdmin, locationContext, shouldHide, brandMap = null, useShortNameForBrand = false) => {
+const shapeProductForResponse = (product, isAdmin, locationContext, shouldHide, brandMap = null, useShortNameForBrand = false, priceZone = null) => {
     const productCombined = {
         description: product.description || [],
         disclaimer: product.disclaimer ? [product.disclaimer] : [],
@@ -1397,7 +1441,7 @@ const shapeProductForResponse = (product, isAdmin, locationContext, shouldHide, 
     };
 
     const shapedVariants = (product.variants || [])
-        .map(variant => shapeVariantForResponse(variant, productCombined, isAdmin, locationContext, shouldHide, brandMap, useShortNameForBrand))
+        .map(variant => shapeVariantForResponse(variant, productCombined, isAdmin, locationContext, shouldHide, brandMap, useShortNameForBrand, priceZone))
         .filter(Boolean);
 
     // Whole product has nothing purchasable left after exclusions - hide it
@@ -1422,7 +1466,7 @@ const shapeProductForResponse = (product, isAdmin, locationContext, shouldHide, 
         precedence: product.precedence,
         slug: product.slug,
         productCode: product.productCode,
-        bulkPricing: productCombined.bulkPricing,
+        bulkPricing: isAdmin ? productCombined.bulkPricing : internationalPrice.resolveTierPrices(productCombined.bulkPricing, priceZone),
         status: product.status,
         createdAt: product.createdAt,
         updatedAt: product.updatedAt,
@@ -1527,6 +1571,32 @@ const COMPUTED_SORT_KEYS = {
 };
 const DESCENDING_SORTS = ['price_desc', 'stock_desc'];
 
+// An international visitor (priceZone - utils/internationalPrice.js) sorts by the
+// prices they actually see: a size's international price where it has one
+// (in store-currency terms, like every other amount), else its local price.
+const buildSortKey = (sort, priceZone) => {
+    if (!internationalPrice.isInternationalZone(priceZone) || !['price_asc', 'price_desc'].includes(sort)) {
+        return COMPUTED_SORT_KEYS[sort];
+    }
+    const sizePrice = {
+        $cond: [
+            { $ne: [{ $ifNull: ['$$s.internationalPrice', null] }, null] },
+            { $divide: ['$$s.internationalPrice', Number(priceZone.exchangeRate)] },
+            '$$s.price'
+        ]
+    };
+    const pick = sort === 'price_desc' ? '$max' : '$min';
+    return {
+        [pick]: {
+            $map: {
+                input: '$variants',
+                as: 'v',
+                in: { [pick]: { $map: { input: '$$v.sizes', as: 's', in: sizePrice } } }
+            }
+        }
+    };
+};
+
 // "featured" = admin-set precedence first (1, 2, 3...), then products with
 // no precedence, newest first. Two index-backed range reads (see the
 // { vendorId, status, precedence, _id } index) rather than computing a sort
@@ -1553,7 +1623,7 @@ const findFeaturedPageIds = async (filter, skip, limit) => {
     return ids;
 };
 
-const findProductPageIds = async (filter, sort, skip, limit) => {
+const findProductPageIds = async (filter, sort, skip, limit, priceZone = null) => {
     if (sort === 'featured') {
         return findFeaturedPageIds(filter, skip, limit);
     }
@@ -1573,7 +1643,7 @@ const findProductPageIds = async (filter, sort, skip, limit) => {
     }
     const rows = await Product.aggregate([
         { $match: filter },
-        { $project: { sortKey: COMPUTED_SORT_KEYS[sort] } },
+        { $project: { sortKey: buildSortKey(sort, priceZone) } },
         { $sort: { sortKey: DESCENDING_SORTS.includes(sort) ? -1 : 1, _id: -1 } },
         { $skip: skip },
         { $limit: limit }
@@ -1589,13 +1659,15 @@ const loadProductsInOrder = async (ids, extraFilter = {}) => {
     return ids.map((id) => byId.get(id.toString())).filter(Boolean);
 };
 
+// locationCookies.priceZone: which prices (local / international) this visitor
+// gets - productController resolves it.
 const shapeProductsForClient = async (rawProducts, companySettingsData, locationCookies) => {
     const shouldHide = companySettingsData?.shouldProductsBeHiddenWhenLocationsAreExcluded;
     const locationContext = await buildLocationContext(locationCookies);
     const brandMap = await buildBrandMapForProducts(rawProducts);
     const useShortNameForBrand = !!companySettingsData?.useShortNameForBrand;
     return rawProducts
-        .map((p) => shapeProductForResponse(p, false, locationContext, shouldHide, brandMap, useShortNameForBrand))
+        .map((p) => shapeProductForResponse(p, false, locationContext, shouldHide, brandMap, useShortNameForBrand, locationCookies.priceZone || null))
         .filter(Boolean);
 };
 
@@ -1624,7 +1696,7 @@ const fetchProductPage = async ({ vendorId, audience, query, extraFilter = null,
 
     const [total, ids] = await Promise.all([
         Product.countDocuments(filter),
-        findProductPageIds(filter, sort, (page - 1) * limit, limit)
+        findProductPageIds(filter, sort, (page - 1) * limit, limit, audience === 'admin' ? null : locationCookies.priceZone || null)
     ]);
     const rawProducts = await loadProductsInOrder(ids);
 
@@ -2008,7 +2080,7 @@ const fetchProductByIdForClient = async (vendorId, productId, companySettingsDat
         const brandMap = await buildBrandMapForProducts([rawProduct]);
         const useShortNameForBrand = !!companySettingsData?.useShortNameForBrand;
 
-        const shaped = shapeProductForResponse(rawProduct, false, locationContext, shouldHide, brandMap, useShortNameForBrand);
+        const shaped = shapeProductForResponse(rawProduct, false, locationContext, shouldHide, brandMap, useShortNameForBrand, locationCookies.priceZone || null);
         if (!shaped) {
             return common.returnResult(false, 404, 'Product not found.');
         }
@@ -2079,6 +2151,8 @@ const SIZE_SHEET_COLUMNS = [
     { key: 'brand', header: 'Brand', required: false, note: 'Optional. Name of one of your active brands.' },
     { key: 'price', header: 'Price*', required: true, note: 'Selling price, 0 or more. Must be less than CancelledPrice when that is filled.' },
     { key: 'cancelledPrice', header: 'CancelledPrice', required: false, note: 'Optional struck-through price; must be more than Price.' },
+    { key: 'internationalPrice', header: 'InternationalPrice', required: false, note: 'Optional price for customers outside your store country, in your international currency. Blank = the Price converted at the exchange rate.' },
+    { key: 'internationalCancelledPrice', header: 'InternationalCancelledPrice', required: false, note: 'Optional struck-through international price; needs InternationalPrice and must be more than it.' },
     { key: 'stock', header: 'Stock', required: false, note: 'Optional whole number, 0 or more. Blank = 0.' },
     { key: 'weightValue', header: 'WeightValue', required: false, note: 'Optional number, 0 or more.' },
     { key: 'weightUnitName', header: 'WeightUnitName', required: false, note: 'Required when WeightValue is filled: name of a weight unit available on your plan.' },
@@ -2130,7 +2204,8 @@ const BULK_PRICING_SHEET_COLUMNS = [
     { key: 'refTempCode', header: 'RefTempCode*', required: true, note: 'The ProductTempCode / VariantTempCode / SizeTempCode this tier belongs to.', updateNote: 'A product with no "product" rows here keeps its current bulk pricing; when it has any, they replace the current tiers.' },
     { key: 'minimumQuantity', header: 'MinimumQuantity*', required: true, note: 'A number, 1 or more.' },
     { key: 'maximumQuantity', header: 'MaximumQuantity*', required: true, note: 'A number greater than MinimumQuantity.' },
-    { key: 'price', header: 'Price*', required: true, note: 'Price per unit for this quantity range.' }
+    { key: 'price', header: 'Price*', required: true, note: 'Price per unit for this quantity range.' },
+    { key: 'internationalPrice', header: 'InternationalPrice', required: false, note: 'Optional price per unit for customers outside your store country, in your international currency. Blank = the Price converted.' }
 ];
 
 const escapeRegex = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -2365,7 +2440,8 @@ const bulkDescriptionsFor = (ctx, level, tempCode) =>
 
 const bulkPricingFor = (ctx, level, tempCode) =>
     (ctx.bulkPricingByRef.get(`${level}::${tempCode}`) || []).map(bp => ({
-        minimumQuantity: Number(bp.minimumQuantity), maximumQuantity: Number(bp.maximumQuantity), price: Number(bp.price)
+        minimumQuantity: Number(bp.minimumQuantity), maximumQuantity: Number(bp.maximumQuantity), price: Number(bp.price),
+        internationalPrice: numberOrUndefined(bp.internationalPrice) ?? null
     }));
 
 // prefix: 'warranty' | 'return' | 'exchange' (the three <prefix>Available /
@@ -2497,6 +2573,8 @@ const assembleBulkSize = async (ctx, sizeRow, variantTempCode) => {
             labelValue: sizeType === 'LABEL' ? textOrUndefined(sizeRow.labelValue) : undefined,
             price: Number(sizeRow.price),
             cancelledPrice: numberOrUndefined(sizeRow.cancelledPrice),
+            internationalPrice: numberOrUndefined(sizeRow.internationalPrice),
+            internationalCancelledPrice: numberOrUndefined(sizeRow.internationalCancelledPrice),
             stock: numberOrUndefined(sizeRow.stock),
             weight,
             sku: textOrUndefined(sizeRow.sku),
@@ -3083,9 +3161,6 @@ const mergeVariantsIntoProduct = async ({
         const matchedExistingVariantKeys = new Set();
 
         const productBulkBounds = getBulkPricingBounds(productBulkPricing);
-        const productMaxBulkPrice = (productBulkPricing && productBulkPricing.length > 0)
-            ? Math.max(...productBulkPricing.map(b => b.price))
-            : null;
 
         const usedManualVariantCodesInPayload = new Set();
         const usedManualSizeCodesInPayload = new Set();
@@ -3167,9 +3242,10 @@ const mergeVariantsIntoProduct = async ({
                     }
                 }
 
-                if (variant.isBulkPricingSameFromProductBasicDetails && productMaxBulkPrice !== null) {
-                    if (size.price <= productMaxBulkPrice) {
-                        return common.returnResult(false, 400, `Size price (${size.price}) must be greater than the product's bulk pricing price (${productMaxBulkPrice}).`);
+                if (variant.isBulkPricingSameFromProductBasicDetails) {
+                    const sizePriceResult = validateSizePriceAgainstProductBulkPricing(size, productBulkPricing);
+                    if (!sizePriceResult.isSuccess) {
+                        return common.returnResult(false, sizePriceResult.statusCode, sizePriceResult.message);
                     }
                 }
 
@@ -3545,7 +3621,8 @@ const generateNextCloneName = async (vendorId, sourceName) => {
 // Everything not called out below is copied as-is from the source
 // (description, colors, mainCategory/subCategory, disclaimer,
 // searchKeywords, recommendedProducts, taxIds, precedence, bulkPricing,
-// price/cancelledPrice/weight/policies/geo-exclusions/measurement values,
+// price/cancelledPrice (and their international versions)/weight/policies/
+// geo-exclusions/measurement values,
 // image/additionalImages). Fields regenerated because of a uniqueness
 // constraint (productCode, variantCode, sizeCode, sku, slug) or explicitly
 // decided in conversation (barcode dropped, stock, status, audit fields)

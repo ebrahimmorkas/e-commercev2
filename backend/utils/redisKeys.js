@@ -22,6 +22,7 @@ const redisKeys = {
   sendEmailCleanupLock: () => `send-email-cleanup-lock`,
   sendEmailResumeLock: () => `send-email-resume-lock`,
   moduleMaster: () => `module-master`,
+  countryByIsoCode: (isoCode) => `country-by-iso:${isoCode}`,
 };
 
 module.exports = redisKeys;

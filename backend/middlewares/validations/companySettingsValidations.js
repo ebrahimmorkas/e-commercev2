@@ -45,6 +45,7 @@ const nullableStepCode = () => Joi.alternatives().try(
 
 const companySettingsFieldsSchema = {
     currencyId: nullableObjectId().label('Currency'),
+    isCurrencyConversionFeatureOn: Joi.boolean().label('Convert prices to customer currency'),
     storeCountryId: nullableObjectId().label('Store country'),
     storeStateId: nullableObjectId().label('Store state'),
     storeCityId: nullableObjectId().label('Store city'),

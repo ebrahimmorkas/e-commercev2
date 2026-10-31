@@ -62,6 +62,12 @@ const validateVariants = (draft) => {
       if (!Number.isInteger(stock) || stock < 0) return { ...base, field: 'stock', message: `Size "${size.sizeName}" stock must be a whole number, 0 or more.` };
       // Cancelled price is the "was" price, so it has to be above the selling price (backend rule too).
       if (size.cancelledPrice !== '' && size.cancelledPrice != null && !(Number(size.cancelledPrice) > Number(size.price))) return { ...base, field: 'cancelledPrice', message: `Size "${size.sizeName}" cancelled price must be greater than its price.` };
+      // International prices are optional; the same two rules apply between them (backend rules too).
+      const hasInternationalPrice = size.internationalPrice !== '' && size.internationalPrice != null;
+      const hasInternationalCancelledPrice = size.internationalCancelledPrice !== '' && size.internationalCancelledPrice != null;
+      if (hasInternationalPrice && (Number.isNaN(Number(size.internationalPrice)) || Number(size.internationalPrice) < 0)) return { ...base, field: 'internationalPrice', message: `Size "${size.sizeName}" needs a valid international price.` };
+      if (hasInternationalCancelledPrice && !hasInternationalPrice) return { ...base, field: 'internationalCancelledPrice', message: `Size "${size.sizeName}": enter the international price before the international cancelled price.` };
+      if (hasInternationalCancelledPrice && !(Number(size.internationalCancelledPrice) > Number(size.internationalPrice))) return { ...base, field: 'internationalCancelledPrice', message: `Size "${size.sizeName}" international cancelled price must be greater than its international price.` };
       if (!size.sku.trim()) return { ...base, field: 'sku', message: `Size "${size.sizeName}" needs a SKU.` };
     }
   }

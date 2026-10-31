@@ -791,6 +791,39 @@ const companyMasterSchema = mongoose.Schema({
     },
     // End of Shipping Price
 
+    // Currency Conversion
+    // Whether this vendor's customers see prices converted to their own
+    // country's currency. Paired with WebsiteMaster.isCurrencyConversionFeatureOn
+    // and CompanySettings.isCurrencyConversionFeatureOn - all three must be on,
+    // otherwise everyone sees the store currency (currencyService.resolveCustomerCurrency).
+    isCurrencyConversionFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    // Detects a visitor's country from their IP address, so conversion /
+    // international pricing work without the customer logging in first.
+    // Paired with WebsiteMaster.isIPDetectionFeatureOn.
+    isIPDetectionFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    // Lets the vendor enter a separate international price per product, shown
+    // (in internationalCurrency) to every customer outside the store country.
+    // Paired with WebsiteMaster.isInternationalPriceFeatureOn, and only takes
+    // effect while isIPDetectionFeatureOn is on too. Wins over currency
+    // conversion when both are on.
+    isInternationalPriceFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    // The currency international prices are entered and charged in. Set by
+    // the platform admin per vendor.
+    internationalCurrency: {
+        type: mongoose.Types.ObjectId,
+        ref: 'CurrencyMaster',
+        default: null
+    },
+
     // Payment
     isPaymentGatewayFeatureOn: {
         type: Boolean,

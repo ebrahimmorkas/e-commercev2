@@ -5,11 +5,12 @@ const common = require('../utils/common');
 
 // Storefront: the visitor's currency + the rate from the store currency. The
 // country is the Country cookie (set from the account at login), else the
-// logged-in user's own country; a guest with neither gets the store currency.
+// logged-in user's own country, else (IP detection on) their IP country; a
+// guest with none of these gets the store currency.
 const getCurrencyContext = async (req, res) => {
     const vendorId = req.vendorId;
     try {
-        const countryId = req.cookies?.Country || userLocationService.extractUserLocation(req.user).countryId;
+        const countryId = req.cookies?.Country || userLocationService.extractUserLocation(req.user).countryId || req.ipCountryId || null;
         const result = await currencyService.fetchCurrencyContext({
             countryId,
             companyMasterData: req.companyMasterData,
@@ -24,7 +25,8 @@ const getCurrencyContext = async (req, res) => {
     }
 };
 
-// Admin: the store currency every admin screen shows amounts in.
+// Admin: the store currency every admin screen shows amounts in, plus the
+// international currency while international pricing is on (null otherwise).
 const getStoreCurrency = async (req, res) => {
     const vendorId = req.vendorId;
     try {
@@ -32,7 +34,14 @@ const getStoreCurrency = async (req, res) => {
         if (!storeCurrency) {
             return common.sendError(res, 404, 'Store currency is not configured. Set it in Company Settings.');
         }
-        return common.sendSuccess(res, 200, 'Store currency fetched successfully', { currency: currencyService.shapeCurrency(storeCurrency) });
+        const internationalCurrency = await currencyService.fetchActiveInternationalCurrency({
+            companyMasterData: req.companyMasterData,
+            companySettingsData: req.companySettingsData
+        });
+        return common.sendSuccess(res, 200, 'Store currency fetched successfully', {
+            currency: currencyService.shapeCurrency(storeCurrency),
+            internationalCurrency
+        });
     } catch (error) {
         logger.logException('currencyController: getStoreCurrency - Exception while fetching store currency', { vendorId, error });
     }

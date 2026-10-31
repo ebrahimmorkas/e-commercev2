@@ -238,6 +238,10 @@ const COMPANY_MASTER = {
     isPaymentGatewayFeatureOn: true,
     paymentGateway: null,
     isCODFeatureOn: true,
+    isCurrencyConversionFeatureOn: true,
+    isIPDetectionFeatureOn: false,
+    isInternationalPriceFeatureOn: false,
+    internationalCurrency: null,          // CurrencyMaster _id - see scripts/enableInternationalPricingForVendor.js
     showPaymentQRCodeAndBankDetails: true,
     showGpayNumber: true,
     isShowingPartnerCertificateFeatureOn: true,

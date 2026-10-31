@@ -92,7 +92,7 @@ const reset = async () => {
     customerPushes = [];
 };
 
-const listing = async (cs = settings) => (await abandonedCartService.fetchAbandonedCartsForAdmin(VENDOR, cs)).meta.data;
+const listing = async (cs = settings) => (await abandonedCartService.fetchAbandonedCartsForAdmin(VENDOR, masters, masters, cs)).meta.data;
 
 test('a cart is flagged only after the vendor\'s configured time, and is listed with its products', async (t) => {
     if (skipUnlessDb(t)) return;
@@ -301,4 +301,36 @@ test('placing the order from an abandoned cart orders everything in it and empti
     // Once the customer has come back to it there is nothing to order.
     const gone = await abandonedCartService.placeOrderFromAbandonedCart(VENDOR, id(), userCart._id, masters, masters, guestSettings, { addressText: '12 Hill Road, Pune' });
     assert.equal(gone.statusCode, 404);
+});
+
+test("the listing prices each item at today's price in the customer's currency, leaving out what is no longer available", async (t) => {
+    if (skipUnlessDb(t)) return;
+    await reset();
+    const db = mongoose.connection.db;
+    const currencyId = id();
+    await db.collection('currencymasters').insertOne({ _id: currencyId, name: 'Rupee', short_name: 'INR', symbol: 'Rs', symbol_position: 'PREFIX', decimal_places: 2, status: 'A' });
+    // Today's price differs from the 100 the cart remembers, only 2 Shirts are left, and the Cap is no longer sold.
+    await db.collection('products').updateOne({ _id: PRODUCT.productId }, { $set: { 'variants.0.sizes.0.price': 120.5, 'variants.0.sizes.0.stock': 2 } });
+    await db.collection('products').updateOne({ _id: OTHER.productId }, { $set: { status: 'I' } });
+    await Cart.create({ vendorId: VENDOR, userId: ALICE, products: [cartLine(PRODUCT, 'Shirt', 3), cartLine(OTHER, 'Cap', 2)], lastProductAddedAt: minutesAgo(30), isAbandoned: true, abandonedAt: minutesAgo(20) });
+
+    const [row] = await listing({ ...settings, currencyId });
+    assert.equal(row.currency.code, 'INR');
+    assert.deepEqual(row.items.map((item) => [item.productName, item.isAvailable, item.unitPrice, item.amount]), [
+        ['Shirt', true, 120.5, 361.5],
+        ['Cap', false, null, null]
+    ]);
+    assert.equal(row.cartValue, 361.5, 'only the available items');
+    assert.equal(row.hasUnavailableItems, true);
+    assert.deepEqual(row.items.map((item) => [item.isOutOfStock, item.stock]), [[true, 2], [false, null]], '3 Shirts wanted, 2 in stock');
+    assert.equal(row.hasOutOfStockItems, true);
+    assert.equal(row.isOutOfStockOrderAllowed, false);
+    const [allowed] = await listing({ ...settings, currencyId, allowOutOfStockProductsAddingForAdmin: true });
+    assert.equal(allowed.isOutOfStockOrderAllowed, true);
+
+    // Without a store currency nothing can be priced - the row still lists its products.
+    const [unpriced] = await listing();
+    assert.equal(unpriced.currency, null);
+    assert.equal(unpriced.cartValue, null);
+    assert.equal(unpriced.items.length, 2);
 });

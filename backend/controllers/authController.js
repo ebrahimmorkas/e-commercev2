@@ -186,7 +186,9 @@ const login = async (req, res) => {
             countryId: req.cookies?.Country || null,
             stateId: req.cookies?.State || null,
             cityId: req.cookies?.City || null,
-            zipCode: req.cookies?.zip_code || null
+            zipCode: req.cookies?.zip_code || null,
+            // Country for prices when the account has none: browsing, else IP country.
+            pricingCountryId: req.cookies?.Country || req.ipCountryId || null
         };
 
         const loginUser = await authService.loginUser(
@@ -196,7 +198,8 @@ const login = async (req, res) => {
             guestCartId,
             locationContext,
             req.companyMasterData,
-            req.websiteMasterData
+            req.websiteMasterData,
+            req.companySettingsData
         );
 
         if(!loginUser.isSuccess) {

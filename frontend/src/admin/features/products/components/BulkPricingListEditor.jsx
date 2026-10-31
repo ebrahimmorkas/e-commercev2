@@ -1,5 +1,6 @@
 import InputField from '../../../../components/common/InputField';
 import Button from '../../../../components/common/Buttons';
+import { useStoreCurrency } from '../../../currency/useStoreCurrency';
 import theme from '../theme/theme';
 
 const TrashIcon = () => (
@@ -14,16 +15,19 @@ const PlusIcon = () => (
 );
 
 /**
- * Editor for a bulk pricing tier list: [{ minimumQuantity, maximumQuantity, price }].
+ * Editor for a bulk pricing tier list: [{ minimumQuantity, maximumQuantity, price, internationalPrice? }].
+ * The optional international price column shows only while international
+ * pricing is on (blank = the local tier price, converted).
  * Chaining/continuation rules against a parent level are enforced server-side
  * (see productValidations.js custom rules) - this only edits the raw tiers.
  */
 const BulkPricingListEditor = ({ label = 'Bulk Pricing', value = [], onChange, disabled = false, disabledHint }) => {
+  const { currency: storeCurrency, internationalCurrency } = useStoreCurrency();
   const updateRow = (index, field, val) => {
     const next = value.map((row, i) => (i === index ? { ...row, [field]: val } : row));
     onChange(next);
   };
-  const addRow = () => onChange([...value, { minimumQuantity: '', maximumQuantity: '', price: '' }]);
+  const addRow = () => onChange([...value, { minimumQuantity: '', maximumQuantity: '', price: '', internationalPrice: '' }]);
   const removeRow = (index) => onChange(value.filter((_, i) => i !== index));
 
   if (disabled) {
@@ -42,10 +46,23 @@ const BulkPricingListEditor = ({ label = 'Bulk Pricing', value = [], onChange, d
       <div className="space-y-2">
         {value.map((row, index) => (
           <div key={index} className="flex flex-col sm:flex-row gap-2 rounded-lg border border-gray-100 bg-gray-50/60 sm:bg-transparent sm:border-0 p-2 sm:p-0">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 flex-1">
+            <div className={`grid grid-cols-1 ${internationalCurrency ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-2 flex-1`}>
               <InputField type="number" placeholder="Min qty" value={row.minimumQuantity} onChange={(e) => updateRow(index, 'minimumQuantity', e.target.value)} />
               <InputField type="number" placeholder="Max qty" value={row.maximumQuantity} onChange={(e) => updateRow(index, 'maximumQuantity', e.target.value)} />
-              <InputField type="number" placeholder="Price" value={row.price} onChange={(e) => updateRow(index, 'price', e.target.value)} />
+              <InputField
+                type="number"
+                placeholder={internationalCurrency && storeCurrency ? `Local price (${storeCurrency.code})` : 'Price'}
+                value={row.price}
+                onChange={(e) => updateRow(index, 'price', e.target.value)}
+              />
+              {internationalCurrency && (
+                <InputField
+                  type="number"
+                  placeholder={`International (${internationalCurrency.code}, optional)`}
+                  value={row.internationalPrice ?? ''}
+                  onChange={(e) => updateRow(index, 'internationalPrice', e.target.value)}
+                />
+              )}
             </div>
             <Button
               type="button"

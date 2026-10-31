@@ -12,7 +12,12 @@ import { apiRequest } from '../../../../utils/apiClient';
  * `credentials: 'include'`.
  */
 
-export const getCart = () => apiRequest('/cart/get-cart');
+/**
+ * @param {{ addressId?: string }} [options] - addressId (checkout): price the cart for
+ *   delivery to that saved address; the response then also carries its `currency`.
+ */
+export const getCart = ({ addressId } = {}) =>
+  apiRequest(`/cart/get-cart${addressId ? `?addressId=${encodeURIComponent(addressId)}` : ''}`);
 
 export const addToCart = ({ productId, variantId, sizeId, quantity = 1 }) =>
   apiRequest('/cart/add-to-cart', {

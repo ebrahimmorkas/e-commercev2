@@ -41,6 +41,8 @@ const CurrencyProvider = ({ children }) => {
       currency,
       storeCurrency: context?.storeCurrency || null,
       exchangeRate,
+      // International pricing: this shopper sees the international prices.
+      isInternationalPrice: context?.isInternationalPrice === true,
       convert,
       formatMoney: (storeAmount) => formatCurrencyAmount(convert(storeAmount), currency),
       formatConverted: (amount) => formatCurrencyAmount(amount, currency),

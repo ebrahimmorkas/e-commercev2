@@ -69,7 +69,7 @@ const registerUser = async ({ vendorId, name, username, email, phone_no, whatsap
     }
 };
 
-const loginUser = async ({ identifier, password }, deviceMeta, vendorId, guestCartId, locationContext, companyMasterData, websiteMasterData) => {
+const loginUser = async ({ identifier, password }, deviceMeta, vendorId, guestCartId, locationContext, companyMasterData, websiteMasterData, companySettingsData = null) => {
     try {
         if (!vendorId) {
             // Vendor detection fails
@@ -126,7 +126,12 @@ const loginUser = async ({ identifier, password }, deviceMeta, vendorId, guestCa
                 const mergeLocation = locationContext?.countryId
                     ? locationContext
                     : { ...locationContext, countryId: userLocation.countryId, stateId: userLocation.stateId, cityId: userLocation.cityId };
-                cartMergeResult = await cartService.mergeGuestCartIntoUserCart(vendorId, user._id, guestCartId, mergeLocation, companyMasterData, websiteMasterData);
+                // Prices: the account's country first (same as every logged-in cart
+                // read), else the browsing / IP country.
+                mergeLocation.pricingCountryId = userLocation.countryId || locationContext?.pricingCountryId || null;
+                cartMergeResult = await cartService.mergeGuestCartIntoUserCart(
+                    vendorId, user._id, guestCartId, mergeLocation, companyMasterData, websiteMasterData, companySettingsData
+                );
             } catch (mergeErr) {
                 logger.logWarning('Guest cart merge failed during login', { userId: user._id, guestCartId, mergeErr });
             }

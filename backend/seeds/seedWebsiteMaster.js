@@ -110,6 +110,9 @@ const WEBSITE_MASTER = {
     // Payment
     isPaymentGatewayFeatureOn: true,
     isCODFeatureOn: true,
+    isCurrencyConversionFeatureOn: true,
+    isIPDetectionFeatureOn: false,
+    isInternationalPriceFeatureOn: false,
     mainPaymentGateway: null,            // null = each vendor uses its own CompanyMaster.paymentGateway
     isShowingPaymentQRCodeAndBankDetailsFeatureOn: true,
     isShowingGpayNumberFeatureOn: true,

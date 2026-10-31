@@ -13,7 +13,7 @@ import EmptyState from '../../../../components/common/EmptyState';
 import Alert from '../../../../components/common/Alert';
 import { useToast } from '../../../../components/common/Toast';
 import * as api from '../api/adminPlaceOrderApi';
-import { bulkUnitPrice } from '../../../../utils/bulkPricing';
+import { bulkUnitPrice, zonePrice, zoneTiers } from '../../../../utils/bulkPricing';
 import { useTaxPreview } from '../hooks/useTaxPreview';
 import TaxPreviewRow from '../components/TaxPreviewRow';
 import ProductSearchBox from '../components/ProductSearchBox';
@@ -121,9 +121,15 @@ const lineQuantityError = (line) => {
   return '';
 };
 
+// A line's normal unit price for the customer's price zone (local, or the
+// international price for an international customer - useOrderCurrency).
+const lineBasePrice = (line, priceZone) => zonePrice(line.unitPrice, line.internationalPrice, priceZone);
+
 // Preview of what "Apply Bulk Pricing" charges - the backend re-prices on submit.
-const lineUnitPrice = (line, applyBulkPricing) =>
-  applyBulkPricing ? bulkUnitPrice(line.unitPrice, line.bulkPricing, lineQuantity(line)) : line.unitPrice;
+const lineUnitPrice = (line, applyBulkPricing, priceZone) => {
+  const basePrice = lineBasePrice(line, priceZone);
+  return applyBulkPricing ? bulkUnitPrice(basePrice, zoneTiers(line.bulkPricing, priceZone), lineQuantity(line)) : basePrice;
+};
 
 // "Enter tax manually" is offered whenever the order is taxed at all - a
 // walk-in sale with "Apply tax" unticked has no tax to enter.
@@ -182,6 +188,7 @@ const loadAbandonedCartPrefill = async (prefill, searchFields) => {
       sizeName: size.sizeName,
       sku: size.sku,
       unitPrice: size.price,
+      internationalPrice: size.internationalPrice ?? null,
       bulkPricing: size.bulkPricing || [],
       stock: size.stock,
       allowOutOfStock: options.allowOutOfStockProductsAdding === true,
@@ -295,7 +302,7 @@ const AdminPlaceOrderPage = ({ prefill = null }) => {
   const money = useOrderCurrency(customerUserId, isWalkIn);
   const { formatMoney } = money;
   // A line's amount in the order currency (store unit price converted, x quantity - as the backend does).
-  const orderLineAmount = (line, bulk) => money.lineAmount(lineUnitPrice(line, bulk), lineQuantity(line));
+  const orderLineAmount = (line, bulk) => money.lineAmount(lineUnitPrice(line, bulk, money.priceZone), lineQuantity(line));
   // Mirrors values.applyBulkPricing for the items table columns, which are built outside the Form.
   const [applyBulkPricing, setApplyBulkPricing] = useState(false);
   // Bumped after a successful order so the Form remounts with empty values.
@@ -418,6 +425,7 @@ const AdminPlaceOrderPage = ({ prefill = null }) => {
         sizeName: size.sizeName,
         sku: size.sku,
         unitPrice: size.price,
+        internationalPrice: size.internationalPrice ?? null,
         bulkPricing: size.bulkPricing || [],
         stock: size.stock,
         allowOutOfStock,
@@ -455,12 +463,13 @@ const AdminPlaceOrderPage = ({ prefill = null }) => {
       label: 'Unit price',
       align: 'right',
       render: (row) => {
-        const price = lineUnitPrice(row, applyBulkPricing);
-        if (price === row.unitPrice) return formatMoney(money.toOrder(row.unitPrice));
+        const price = lineUnitPrice(row, applyBulkPricing, money.priceZone);
+        const basePrice = lineBasePrice(row, money.priceZone);
+        if (price === basePrice) return formatMoney(money.toOrder(basePrice));
         return (
           <div>
             <div className="font-medium text-gray-900">{formatMoney(money.toOrder(price))}</div>
-            <div className="text-xs text-gray-400"><span className="line-through">{formatMoney(money.toOrder(row.unitPrice))}</span> <span className="text-emerald-600">Bulk price</span></div>
+            <div className="text-xs text-gray-400"><span className="line-through">{formatMoney(money.toOrder(basePrice))}</span> <span className="text-emerald-600">Bulk price</span></div>
           </div>
         );
       },
@@ -685,7 +694,7 @@ const AdminPlaceOrderPage = ({ prefill = null }) => {
             const allowOutOfStock = productOptions?.allowOutOfStockProductsAdding === true;
             const sizeOptions = (selectedVariant?.sizes || []).map((size) => ({
               value: size.sizeId,
-              label: `${size.sizeName} - ${formatMoney(money.toOrder(size.price))}${size.isOutOfStock ? ' (out of stock)' : ` (${size.stock} in stock)`}`,
+              label: `${size.sizeName} - ${formatMoney(money.toOrder(zonePrice(size.price, size.internationalPrice, money.priceZone)))}${size.isOutOfStock ? ' (out of stock)' : ` (${size.stock} in stock)`}`,
               disabled: !size.isSelectable,
             }));
 
@@ -870,7 +879,7 @@ const AdminPlaceOrderPage = ({ prefill = null }) => {
                             showError={false}
                           />
                           <div className="text-sm text-gray-600 pb-2">
-                            {selectedSize ? <>Unit price: <span className="font-semibold">{formatMoney(money.toOrder(selectedSize.price))}</span></> : null}
+                            {selectedSize ? <>Unit price: <span className="font-semibold">{formatMoney(money.toOrder(zonePrice(selectedSize.price, selectedSize.internationalPrice, money.priceZone)))}</span></> : null}
                           </div>
                           <Button type="button" variant="secondary" onClick={() => addItem(values, setFieldValue)} disabled={!values.sizeId}>
                             Add item

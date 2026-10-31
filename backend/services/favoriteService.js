@@ -3,6 +3,7 @@ const Favorite = require('../models/Favorite');
 const cartService = require('./cartService');
 const orderService = require('./orderService');
 const common = require('../utils/common');
+const internationalPrice = require('../utils/internationalPrice');
 
 // Resolves the live Product/Variant/Size docs for a requested favorite,
 // enforcing: product/variant/size must all exist and be status 'A'. Mirrors
@@ -28,7 +29,9 @@ const resolveActiveProductLine = async (vendorId, productId, variantId, sizeId) 
     }
 };
 
-const buildFavoriteResponse = (favorite, product, variant, size) => {
+// priceZone (utils/internationalPrice.js): the local or international price.
+const buildFavoriteResponse = (favorite, product, variant, size, priceZone = null) => {
+    const { price, cancelledPrice } = internationalPrice.resolveSizePrices(size, priceZone);
     return {
         favoriteId: favorite._id,
         productId: product._id,
@@ -38,8 +41,8 @@ const buildFavoriteResponse = (favorite, product, variant, size) => {
         sizeId: size._id,
         sizeName: size.sizeName,
         labelValue: size.labelValue || null,
-        price: size.price,
-        cancelledPrice: size.cancelledPrice,
+        price,
+        cancelledPrice,
         stock: size.stock,
         sku: size.sku,
         image: size.image?.url || null,
@@ -47,7 +50,7 @@ const buildFavoriteResponse = (favorite, product, variant, size) => {
     };
 };
 
-const addToFavorites = async (vendorId, userId, websiteMasterData, companyMasterData, productId, variantId, sizeId) => {
+const addToFavorites = async (vendorId, userId, websiteMasterData, companyMasterData, productId, variantId, sizeId, priceZone = null) => {
     try {
         const featureCheck = await common.checkFeatureOnOrOff(
             vendorId,
@@ -83,7 +86,7 @@ const addToFavorites = async (vendorId, userId, websiteMasterData, companyMaster
             await existing.save();
 
             return common.returnResult(true, 200, 'Added to favorites', {
-                favorite: buildFavoriteResponse(existing, product, variant, size)
+                favorite: buildFavoriteResponse(existing, product, variant, size, priceZone)
             });
         }
 
@@ -108,7 +111,7 @@ const addToFavorites = async (vendorId, userId, websiteMasterData, companyMaster
         });
 
         return common.returnResult(true, 201, 'Added to favorites', {
-            favorite: buildFavoriteResponse(favorite, product, variant, size)
+            favorite: buildFavoriteResponse(favorite, product, variant, size, priceZone)
         });
     } catch (err) {
         throw err;
@@ -132,7 +135,7 @@ const removeFromFavorites = async (vendorId, userId, productId, variantId, sizeI
     }
 };
 
-const getFavorites = async (vendorId, userId, page = 1, limit = 20) => {
+const getFavorites = async (vendorId, userId, page = 1, limit = 20, priceZone = null) => {
     try {
         const total = await Favorite.countDocuments({ vendorId, userId, status: 'A' });
 
@@ -160,7 +163,7 @@ const getFavorites = async (vendorId, userId, page = 1, limit = 20) => {
             const size = variant.sizes.id(favorite.sizeId);
             if (!size) continue;
 
-            items.push(buildFavoriteResponse(favorite, product, variant, size));
+            items.push(buildFavoriteResponse(favorite, product, variant, size, priceZone));
         }
 
         return common.returnResult(true, 200, 'Favorites fetched successfully', {

@@ -416,6 +416,27 @@ const websiteMasterSchema = mongoose.Schema({
     },
     // End of Shipping Price
 
+    // Currency Conversion
+    // Global switch for converting prices to the customer's own currency.
+    // Paired with CompanyMaster.isCurrencyConversionFeatureOn and
+    // CompanySettings.isCurrencyConversionFeatureOn (see currencyService.resolveCustomerCurrency).
+    isCurrencyConversionFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    // Global switch for detecting the visitor's country from their IP.
+    // Paired with CompanyMaster.isIPDetectionFeatureOn.
+    isIPDetectionFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    // Global switch for separate international product prices. Paired with
+    // CompanyMaster.isInternationalPriceFeatureOn; also needs isIPDetectionFeatureOn.
+    isInternationalPriceFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+
     // Payment
     isPaymentGatewayFeatureOn: {
         type: Boolean,
