@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { formatOrderMoney } from '../utils/formatOrder';
+import { StarRating } from '../../reviews/components/StarRating';
 
 const RETURN_EXCHANGE_LABELS = {
   REQUESTED: 'Requested',
@@ -44,7 +45,38 @@ const StatusPill = ({ label }) => (
   </span>
 );
 
-const OrderItemRow = ({ item, order }) => (
+// Review entry point for one delivered item: the customer's review (stars +
+// Edit) or a "Rate & review" button. `reviewEntry` is null while reviews are
+// off or the order isn't delivered - then nothing shows.
+const ItemReviewAction = ({ item, reviewEntry, onWriteReview, onEditReview }) => {
+  if (!reviewEntry) return null;
+  if (reviewEntry.review) {
+    return (
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <StarRating value={reviewEntry.review.rating} size="xs" />
+        <button
+          type="button"
+          onClick={() => onEditReview?.(item, reviewEntry.review)}
+          className="text-xs font-semibold text-amber-700 hover:underline cursor-pointer"
+        >
+          Edit your review
+        </button>
+      </div>
+    );
+  }
+  if (!reviewEntry.canWrite) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => onWriteReview?.(item)}
+      className="mt-2 inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100 cursor-pointer"
+    >
+      ★ Rate &amp; review
+    </button>
+  );
+};
+
+const OrderItemRow = ({ item, order, reviewEntry, onWriteReview, onEditReview }) => (
   <li className="flex gap-3 py-3">
     <ItemThumb src={item.image?.url} alt={item.productName} />
     <div className="flex-1 min-w-0">
@@ -63,6 +95,7 @@ const OrderItemRow = ({ item, order }) => (
           )}
         </div>
       )}
+      <ItemReviewAction item={item} reviewEntry={reviewEntry} onWriteReview={onWriteReview} onEditReview={onEditReview} />
     </div>
     <div className="text-right shrink-0">
       <p className="text-sm text-slate-700">
@@ -89,8 +122,13 @@ const OrderItemRow = ({ item, order }) => (
  * exchange status. Renders nothing for orders placed before this field
  * existed and whose linked cart is also gone (empty array from the
  * backend's legacy fallback).
+ *
+ * Optional review props: `reviewsByProductId` (productId -> { canWrite,
+ * review } from GET /reviews/my-order/:id), `onWriteReview(item)`,
+ * `onEditReview(item, review)`. The same product bought in two sizes on one
+ * order gets one review, so only its first row carries the action.
  */
-const OrderItems = ({ order }) => {
+const OrderItems = ({ order, reviewsByProductId = null, onWriteReview, onEditReview }) => {
   const items = order?.items || [];
   if (items.length === 0) return null;
 
@@ -98,9 +136,19 @@ const OrderItems = ({ order }) => {
     <div>
       <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 mb-1">Items ({items.length})</h2>
       <ul className="divide-y divide-slate-100">
-        {items.map((item) => (
-          <OrderItemRow key={`${item.productId}-${item.variantId}-${item.sizeId}`} item={item} order={order} />
-        ))}
+        {items.map((item, index) => {
+          const isFirstRowOfProduct = items.findIndex((other) => other.productId === item.productId) === index;
+          return (
+            <OrderItemRow
+              key={`${item.productId}-${item.variantId}-${item.sizeId}`}
+              item={item}
+              order={order}
+              reviewEntry={isFirstRowOfProduct ? reviewsByProductId?.[item.productId] || null : null}
+              onWriteReview={onWriteReview}
+              onEditReview={onEditReview}
+            />
+          );
+        })}
       </ul>
     </div>
   );

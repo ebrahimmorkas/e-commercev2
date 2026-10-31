@@ -86,7 +86,8 @@ const MODULE_FEATURE_FLAG = {
     ADMIN_PLACE_ORDER: 'isAdminPlacingOrderOnBehalfOfUserIsOn',
     DELIVERY_AGENTS: 'isOrderStatusUpdationAllowedByDeliveryAgents',
     COURIER: 'isCourierFeatureOn',
-    FACE_DETECTION: 'isFaceDetectionFeatureOn'
+    FACE_DETECTION: 'isFaceDetectionFeatureOn',
+    REVIEWS: 'isProductReviewFeatureOn'
 };
 
 // A module can be actively assigned yet still be effectively off if whoever

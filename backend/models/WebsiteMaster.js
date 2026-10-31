@@ -163,6 +163,26 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: true
     },
+    // Global half of the "customers may attach photos to a review" switch -
+    // paired with CompanyMaster.isIncludingImageInReviewsAllowed (see
+    // reviewService.js). Only matters while isProductReviewFeatureOn is on.
+    isIncludingImageInReviewsAllowed: {
+        type: Boolean,
+        default: true
+    },
+    // Global halves of the admin Reviews module's two switches (paired with
+    // the same names on CompanyMaster):
+    //   isReviewEditingFeatureOn      - admin may edit customers' reviews
+    //   isReviewApproveRejectFeatureOn - customers' reviews (and edits) wait
+    //                                    for the admin's approval before going live
+    isReviewEditingFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    isReviewApproveRejectFeatureOn: {
+        type: Boolean,
+        default: true
+    },
     isBulkPricingFeatureOn: {
         type: Boolean,
         default: true

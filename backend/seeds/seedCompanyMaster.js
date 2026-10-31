@@ -182,8 +182,13 @@ const COMPANY_MASTER = {
     isNestingCategoryAllowedInGroup: true,
 
     // Reviews
-    isReviewFeatureOn: true,
-    numberOfReviewsAllowedOnProduct: UNLIMITED,
+    isProductReviewFeatureOn: true,
+    isIncludingImageInReviewsAllowed: true,
+    maxImagesPerReview: 5,
+    allowedReviewImageMB: MAX_IMAGE_MB,
+    allowedReviewImagesFormat: IMAGE_FORMATS,
+    isReviewEditingFeatureOn: true,
+    isReviewApproveRejectFeatureOn: true,
 
     // Favorites
     isFavoritesFeatureOn: true,

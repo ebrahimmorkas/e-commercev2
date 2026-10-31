@@ -66,6 +66,9 @@ const WEBSITE_MASTER = {
     // Virtual Try-On - off by default (see scripts/enableFaceDetectionForVendor.js).
     isFaceDetectionFeatureOn: false,
     isProductReviewFeatureOn: true,
+    isIncludingImageInReviewsAllowed: true,
+    isReviewEditingFeatureOn: true,
+    isReviewApproveRejectFeatureOn: true,
     isBulkPricingFeatureOn: true,
     isCloningProductAllowed: true,
     isBulkUploadForProductsFeatureOn: true,

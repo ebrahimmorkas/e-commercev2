@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import theme from '../../Home/theme/theme';
 import Spinner from '../../../../components/common/Spinner/Spinner';
 import Modal from '../../../../components/common/Modal/Modal';
@@ -14,6 +14,9 @@ import { useAuth } from '../../auth/hooks/useAuth';
 import OrderStatusTimeline from '../components/OrderStatusTimeline';
 import OrderItems from '../components/OrderItems';
 import { formatOrderMoney, formatOrderShipping, formatOrderDate, isOrderCancellable } from '../utils/formatOrder';
+import { useReviewSettings } from '../../reviews/hooks/useReviewSettings';
+import { useMyOrderReviewStatus } from '../../reviews/hooks/useMyReviewStatus';
+import ReviewFormModal from '../../reviews/components/ReviewFormModal';
 
 const SummaryRow = ({ label, value, bold = false }) => (
   <div className={`flex justify-between text-sm ${bold ? 'font-bold text-slate-900' : 'text-slate-600'}`}>
@@ -60,6 +63,16 @@ const OrderDetailPage = ({ orderId, onBack, onGoHome }) => {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [reason, setReason] = useState('');
   const [cancelError, setCancelError] = useState('');
+
+  // Reviews: offered per item once the order is delivered (backend decides
+  // eligibility; the feature switches are checked there too).
+  const { settings: reviewSettings, isEnabled: reviewsEnabled } = useReviewSettings();
+  const orderReviews = useMyOrderReviewStatus(order?._id, reviewsEnabled && !!order?.deliveredAt && !order?.cancelledAt);
+  const reviewsByProductId = useMemo(() => {
+    if (!orderReviews.data?.isDelivered) return null;
+    return Object.fromEntries((orderReviews.data.products || []).map((entry) => [entry.productId, entry]));
+  }, [orderReviews.data]);
+  const [reviewForm, setReviewForm] = useState(null); // { item, review? }
 
   const handlePayNow = async () => {
     // Switching an order that was on Cash on Delivery over to QR / bank transfer;
@@ -175,7 +188,12 @@ const OrderDetailPage = ({ orderId, onBack, onGoHome }) => {
 
           {order.items?.length > 0 && (
             <div className="mt-6 pt-6 border-t border-slate-200">
-              <OrderItems order={order} />
+              <OrderItems
+                order={order}
+                reviewsByProductId={reviewsByProductId}
+                onWriteReview={(item) => setReviewForm({ item })}
+                onEditReview={(item, review) => setReviewForm({ item, review })}
+              />
             </div>
           )}
 
@@ -234,6 +252,18 @@ const OrderDetailPage = ({ orderId, onBack, onGoHome }) => {
         customerName={user?.name}
         doneLabel="Close"
         onDone={() => setPayOpen(false)}
+      />
+
+      <ReviewFormModal
+        isOpen={!!reviewForm}
+        onClose={() => setReviewForm(null)}
+        productId={reviewForm?.item?.productId}
+        productName={reviewForm?.item?.productName}
+        orderId={order._id}
+        review={reviewForm?.review}
+        settings={reviewSettings}
+        onSaved={orderReviews.reload}
+        onDeleted={orderReviews.reload}
       />
 
       <Modal isOpen={cancelOpen} onClose={() => setCancelOpen(false)} title="Cancel this order?" size="sm">

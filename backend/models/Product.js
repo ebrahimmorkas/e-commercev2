@@ -451,6 +451,20 @@ const productSchema = new mongoose.Schema(
             type: [variantSchema],
             default: []
         },
+        // Rating summary of the product's live reviews - kept up to date by
+        // reviewService (recalcProductRatingAggregate), never set by the
+        // product form. averageRating is rounded to one decimal; 0 = no reviews.
+        averageRating: {
+            type: Number,
+            min: 0,
+            max: 5,
+            default: 0
+        },
+        totalReviews: {
+            type: Number,
+            min: 0,
+            default: 0
+        },
         ...commonFields
     },
     {

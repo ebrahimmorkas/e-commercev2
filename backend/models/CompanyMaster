@@ -629,14 +629,48 @@ const companyMasterSchema = mongoose.Schema({
         default: false
     },
 
-    // Review
-    isReviewFeatureOn: {
+    // Review - same name as the WebsiteMaster switch it pairs with. How many
+    // reviews one customer may leave on one product is the vendor's own choice
+    // (CompanySettings.maxReviewsPerCustomerPerProduct).
+    isProductReviewFeatureOn: {
         type: Boolean,
         default: false
     },
-    numberOfReviewsAllowedOnProduct: {
+    // Paired with WebsiteMaster.isIncludingImageInReviewsAllowed.
+    isIncludingImageInReviewsAllowed: {
+        type: Boolean,
+        default: false
+    },
+    // Admin Reviews module (paired with the same names on WebsiteMaster).
+    // Editing: the admin may edit any customer review (every change is kept
+    // in Review.history). Approve/Reject: a customer's review or edit only
+    // goes live once the admin approves it. Both off: the admin can only
+    // delete reviews.
+    isReviewEditingFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    isReviewApproveRejectFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    // Photos per review, and the size/format rules each one is checked
+    // against (same conventions as allowedProductImageMB/-ImagesFormat:
+    // empty format list = any image format).
+    maxImagesPerReview: {
         type: Number,
-        default: null
+        min: 1,
+        max: 10,
+        default: 5
+    },
+    allowedReviewImageMB: {
+        type: Number,
+        default: 2
+    },
+    allowedReviewImagesFormat: {
+        type: [String],
+        enum: ['jpg', 'png', 'jpeg'],
+        default: []
     },
 
     // Cart
@@ -757,7 +791,7 @@ const companyMasterSchema = mongoose.Schema({
     },
     // Total ACTIVE favorites this vendor's users may each hold at once.
     // null = no cap, 0 = feature effectively unusable even though the flag
-    // above is on. Same convention as numberOfReviewsAllowedOnProduct.
+    // above is on.
     numberOfItemsAllowedInFavorites: {
         type: Number,
         default: null

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import theme from '../../Home/theme/theme';
 import { useStorefrontProductDetail } from '../hooks/useStorefrontProductDetail';
 import { useRecommendedProducts } from '../hooks/useRecommendedProducts';
@@ -8,6 +8,9 @@ import Spinner from '../../../../components/common/Spinner/Spinner';
 import StatusErrorPage from '../../../components/errors/StatusErrorPage';
 import { useCurrency } from '../../../currency/useCurrency';
 import { resolveBulkPrice } from '../utils/bulkTier';
+import { useReviewSettings } from '../../reviews/hooks/useReviewSettings';
+import ProductReviewsSection from '../../reviews/components/ProductReviewsSection';
+import { StarRating } from '../../reviews/components/StarRating';
 
 const pickDefaultVariant = (variants) => variants.find((v) => v.isDefaultVariant) || variants[0] || null;
 const pickDefaultSize = (variant) =>
@@ -67,6 +70,7 @@ const BulkPricingTable = ({ bulkPricing, activeTier }) => {
  * @param {Function} [props.onSetItemQuantity] - Called with a cart-item id and a typed quantity.
  * @param {Function} [props.onProductClick] - Called with a recommended product's card shape when it's opened.
  * @param {Function} [props.onRecommendedAddToCart] - Called with a recommended product's card shape on its own Add to Cart.
+ * @param {Function} [props.onSignIn] - Opens the login modal (a guest wanting to write a review).
  */
 const ProductDetailPage = ({
   productId,
@@ -78,8 +82,17 @@ const ProductDetailPage = ({
   onSetItemQuantity,
   onProductClick,
   onRecommendedAddToCart,
+  onSignIn,
 }) => {
   const { formatMoney } = useCurrency();
+  const { settings: reviewSettings, showReviews } = useReviewSettings();
+  // Kept current by the reviews section, so the header rating updates right
+  // after the customer posts or edits a review.
+  // Tagged with the product it belongs to, so moving to another product never
+  // shows the previous one's rating.
+  const [ratingSummary, setRatingSummary] = useState(null);
+  const handleSummaryChange = useCallback((summary) => setRatingSummary({ productId, summary }), [productId]);
+  const liveSummary = ratingSummary?.productId === productId ? ratingSummary.summary : null;
   const { product, loading, error, statusCode, reload } = useStorefrontProductDetail(productId);
   const { products: recommendedProducts } = useRecommendedProducts(product?.recommendedProducts);
   const [selectedVariantId, setSelectedVariantId] = useState(null);
@@ -212,6 +225,27 @@ const ProductDetailPage = ({
             {product.category}
           </p>
           <h1 className={`mt-1 text-2xl font-bold ${theme.card.name}`}>{product.name}</h1>
+          {showReviews && (() => {
+            const average = liveSummary?.averageRating ?? product.averageRating;
+            const count = liveSummary?.totalReviews ?? product.totalReviews;
+            return (
+              <button
+                type="button"
+                onClick={() => document.getElementById('reviews')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                className="mt-1.5 flex items-center gap-1.5 text-sm text-slate-600 hover:text-amber-700 cursor-pointer"
+              >
+                {count > 0 ? (
+                  <>
+                    <StarRating value={average} size="sm" />
+                    <span className="font-medium text-slate-800">{average.toFixed(1)}</span>
+                    <span className="hover:underline">({count} {count === 1 ? 'rating' : 'ratings'})</span>
+                  </>
+                ) : (
+                  <span className="hover:underline">Be the first to review this product</span>
+                )}
+              </button>
+            );
+          })()}
           <p className="mt-1 text-xs text-slate-400">{product.productCode}</p>
 
           {product.variants.length > 1 && (
@@ -330,6 +364,14 @@ const ProductDetailPage = ({
           )}
         </div>
       </div>
+
+      <ProductReviewsSection
+        productId={product.id}
+        productName={product.name}
+        settings={reviewSettings}
+        onSignIn={onSignIn}
+        onSummaryChange={handleSummaryChange}
+      />
 
       {recommendedProducts.length > 0 && (
         <div className="mt-16">
