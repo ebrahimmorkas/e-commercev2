@@ -32,7 +32,16 @@ const validate = (schema, property = "body") => {
       return sendError(res, 400, "Validation failed", errors);
     }
 
-    req[property] = value;
+    if (property === "query") {
+      // Express 5 makes req.query a getter-only property (re-parsed from the
+      // URL on every read), so a plain `req.query = value` is silently
+      // ignored and controllers would get the raw strings - no number/date
+      // conversion, no defaults, unknown keys not stripped. An own property
+      // on this request shadows that getter.
+      Object.defineProperty(req, "query", { value, writable: true, enumerable: true, configurable: true });
+    } else {
+      req[property] = value;
+    }
     next();
   };
 };

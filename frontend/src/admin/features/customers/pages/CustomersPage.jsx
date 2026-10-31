@@ -10,12 +10,17 @@ import EmptyState from '../../../../components/common/EmptyState';
 import Spinner from '../../../../components/common/Spinner';
 import BulkActionBar from '../../../../components/common/BulkActionBar';
 import SearchInput from '../../../../components/common/SearchInput';
+import Pagination from '../../../../components/common/Pagination';
+import Dropdown from '../../../../components/common/DropDown';
 import { useCustomers } from '../hooks/useCustomers';
 import { useCustomerLookups } from '../hooks/useCustomerLookups';
 import { useAssignedModules } from '../../../modules/hooks/useAssignedModules';
-import { filterBySearch } from '../../../../utils/searchFilter';
 import CustomerForm from '../components/CustomerForm';
 import DeliveryAgentsReadOnlyList from '../components/DeliveryAgentsReadOnlyList';
+import CustomerFilterModal from '../components/CustomerFilterModal';
+import CustomerFilterChips from '../components/CustomerFilterChips';
+import CustomerActivityModal from '../components/CustomerActivityModal';
+import { CUSTOMER_SORT_OPTIONS, CUSTOMER_PAGE_SIZES, formatDateTime } from '../utils/customerListFilters';
 import theme from '../theme/theme';
 
 const PlusIcon = () => (
@@ -39,10 +44,33 @@ const TrashIcon = () => (
   </svg>
 );
 
-// Client-side search: the admin endpoint returns every customer at once (matching rules:
-// utils/searchFilter.js). Limited to what that list endpoint returns.
-const filterCustomers = (customers, term) =>
-  filterBySearch(customers, term, (c) => [c.name, c.username, c.email, c.phone_no, c.whatsapp_no, c.role]);
+const FilterIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h18l-7 8.5V19l-4 2v-8.5L3 4z" />
+  </svg>
+);
+
+const pageSizeOptions = CUSTOMER_PAGE_SIZES.map((size) => ({ value: String(size), label: String(size) }));
+
+// The Orders / Reviews count - a button that opens that customer's list.
+const CountButton = ({ count, label, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="min-w-8 rounded-md px-2 py-1 text-sm font-semibold tabular-nums text-blue-600 hover:bg-blue-50 hover:underline cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+    aria-label={`View ${count} ${label}`}
+    title={`View ${label}`}
+  >
+    {(count ?? 0).toLocaleString('en-IN')}
+  </button>
+);
+
+const LastLogin = ({ value }) =>
+  value ? (
+    <span className={`whitespace-nowrap text-sm ${theme.text.body}`}>{formatDateTime(value)}</span>
+  ) : (
+    <Badge variant="gray" size="sm">Never</Badge>
+  );
 
 const PASSWORD_PATTERN = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/;
 
@@ -72,7 +100,9 @@ const toRecipient = (customer) => ({ _id: customer._id, name: customer.name, ema
  */
 const CustomersPage = ({ onAddUser, onSendEmail }) => {
   const {
-    customers, loading, error, mutating,
+    customers, pagination, totalCustomers, page, setPage, pageSize, setPageSize,
+    searchText, setSearchText, sort, setSort, filters, setFilters, clearFilters, activeFilterCount,
+    loading, initialLoading, error, mutating,
     fetchCustomerById, editCustomer, changeCustomerPassword, removeCustomer, toggleStatus,
     bulkToggleStatus, bulkRemoveCustomers,
   } = useCustomers();
@@ -93,21 +123,51 @@ const CustomersPage = ({ onAddUser, onSendEmail }) => {
   const [passwordTouched, setPasswordTouched] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [filterOpen, setFilterOpen] = useState(false);
+  // { customer, type: 'orders'|'reviews' } - the Orders / Reviews count the admin clicked.
+  const [activityTarget, setActivityTarget] = useState(null);
   // 'customers' | 'agents' - agents are only listed when the store has delivery agents switched on.
   const [listView, setListView] = useState('customers');
   const showAgentsSwitch = !!companyMaster?.isOrderStatusUpdationAllowedByDeliveryAgents;
   const isAgentsView = showAgentsSwitch && listView === 'agents';
 
-  const filteredCustomers = useMemo(() => filterCustomers(customers, searchTerm), [customers, searchTerm]);
-
-  // A bulk action must never reach rows the admin can no longer see, so narrowing the
-  // search drops any selected customer that just got filtered out.
+  // Search, sort, filters and paging all change which rows are on screen, and a
+  // bulk action must never reach rows the admin can no longer see - so each
+  // one clears the selection.
   const handleSearchChange = (value) => {
-    setSearchTerm(value);
-    const stillVisible = new Set(filterCustomers(customers, value).map((c) => c._id));
-    setSelectedIds((prev) => prev.filter((id) => stillVisible.has(id)));
+    setSearchText(value);
+    setSelectedIds([]);
   };
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage);
+    setSelectedIds([]);
+  };
+  const handlePageSizeChange = (value) => {
+    setPageSize(value);
+    setSelectedIds([]);
+  };
+  const handleSortChange = (value) => {
+    setSort(value);
+    setSelectedIds([]);
+  };
+  const handleFiltersChange = (nextFilters) => {
+    setFilters(nextFilters);
+    setSelectedIds([]);
+  };
+  const handleApplyFilters = (nextFilters) => {
+    handleFiltersChange(nextFilters);
+    setFilterOpen(false);
+  };
+  const handleClearFilters = () => {
+    clearFilters();
+    setSelectedIds([]);
+  };
+  const handleResetAll = () => {
+    handleSearchChange('');
+    handleClearFilters();
+  };
+
+  const openActivity = (customer, type) => setActivityTarget({ customer: { _id: customer._id, name: customer.name }, type });
 
   // Add User needs BOTH gates to actually work (see backend/routes/userRoutes.js):
   // the ADD_USER module assigned to this vendor, and the
@@ -273,6 +333,28 @@ const CustomersPage = ({ onAddUser, onSendEmail }) => {
         render: (row) => <Badge variant={theme.badge.default} size="sm">{row.role}</Badge>,
       },
       {
+        key: 'orderCount',
+        label: 'Orders',
+        align: 'center',
+        render: (row) => <CountButton count={row.orderCount} label="orders" onClick={() => openActivity(row, 'orders')} />,
+      },
+      {
+        key: 'reviewCount',
+        label: 'Reviews',
+        align: 'center',
+        render: (row) => <CountButton count={row.reviewCount} label="reviews" onClick={() => openActivity(row, 'reviews')} />,
+      },
+      {
+        key: 'createdAt',
+        label: 'Joined At',
+        render: (row) => <span className={`whitespace-nowrap text-sm ${theme.text.body}`}>{formatDateTime(row.createdAt) || '—'}</span>,
+      },
+      {
+        key: 'lastLoginAt',
+        label: 'Last Login',
+        render: (row) => <LastLogin value={row.lastLoginAt} />,
+      },
+      {
         key: 'status',
         label: 'Status',
         align: 'center',
@@ -292,18 +374,30 @@ const CustomersPage = ({ onAddUser, onSendEmail }) => {
     [mutating, toggleStatus]
   );
 
-  const noMatchesState = (
-    <EmptyState
-      size="sm"
-      title="No matching customers"
-      description={`Nothing matches "${searchTerm.trim()}". Try a different name, email or phone number.`}
-      action={
-        <Button variant={theme.button.secondary} onClick={() => handleSearchChange('')}>
-          Clear search
-        </Button>
-      }
-    />
+  const isSearching = searchText.trim() !== '';
+  const isNarrowed = isSearching || activeFilterCount > 0;
+  let noMatchesDescription = 'No customers match the selected filters. Try removing one.';
+  let noMatchesAction = (
+    <Button variant={theme.button.secondary} onClick={handleClearFilters}>
+      Clear filters
+    </Button>
   );
+  if (isSearching && activeFilterCount > 0) {
+    noMatchesDescription = `Nothing matches "${searchText.trim()}" with the selected filters.`;
+    noMatchesAction = (
+      <Button variant={theme.button.secondary} onClick={handleResetAll}>
+        Clear search &amp; filters
+      </Button>
+    );
+  } else if (isSearching) {
+    noMatchesDescription = `Nothing matches "${searchText.trim()}". Try a different name, username, email or phone number.`;
+    noMatchesAction = (
+      <Button variant={theme.button.secondary} onClick={() => handleSearchChange('')}>
+        Clear search
+      </Button>
+    );
+  }
+  const noMatchesState = <EmptyState size="sm" title="No matching customers" description={noMatchesDescription} action={noMatchesAction} />;
 
   const actions = [
     { label: 'Edit', icon: <PencilIcon />, variant: theme.button.secondary, onClick: openEdit },
@@ -353,11 +447,11 @@ const CustomersPage = ({ onAddUser, onSendEmail }) => {
 
         {isAgentsView ? (
           <DeliveryAgentsReadOnlyList />
-        ) : loading ? (
+        ) : initialLoading ? (
           <div className="flex justify-center py-16">
             <Spinner size="lg" />
           </div>
-        ) : customers.length === 0 ? (
+        ) : totalCustomers === 0 && !isNarrowed && customers.length === 0 ? (
           <EmptyState
             title="No customers yet"
             description="Customers who sign up on your storefront will show up here."
@@ -371,37 +465,66 @@ const CustomersPage = ({ onAddUser, onSendEmail }) => {
           />
         ) : (
           <>
-            <SearchInput
-              value={searchTerm}
-              onChange={handleSearchChange}
-              placeholder="Search name, username, email or phone…"
-              ariaLabel="Search customers"
-              matchCount={filteredCustomers.length}
-              totalCount={customers.length}
-              itemLabel="customers"
-            />
+            {/* Toolbar: search, then Filters + Sort (they drop below the search on smaller screens) */}
+            <div className="mb-4 flex flex-col lg:flex-row lg:items-start gap-3">
+              <SearchInput
+                value={searchText}
+                onChange={handleSearchChange}
+                placeholder="Search name, username, email or phone…"
+                ariaLabel="Search customers"
+                matchCount={pagination?.total ?? 0}
+                totalCount={totalCustomers}
+                itemLabel="customers"
+                className="mb-0! flex-1 min-w-0"
+              />
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={activeFilterCount > 0 ? theme.button.primary : theme.button.secondary}
+                  leftIcon={<FilterIcon />}
+                  onClick={() => setFilterOpen(true)}
+                  className="whitespace-nowrap"
+                >
+                  Filters
+                  {activeFilterCount > 0 && (
+                    <span className="ml-1.5 inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-white text-blue-700 text-xs font-semibold">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </Button>
+                <div className="flex-1 lg:flex-none lg:w-64">
+                  <Dropdown options={CUSTOMER_SORT_OPTIONS} value={sort} onChange={handleSortChange} placeholder="Sort by" aria-label="Sort customers" />
+                </div>
+              </div>
+            </div>
+
+            <CustomerFilterChips filters={filters} onChange={handleFiltersChange} onClearAll={handleClearFilters} />
+            {activeFilterCount > 0 && !isSearching && pagination && (
+              <p className={`-mt-2 mb-4 text-sm ${theme.text.muted}`} aria-live="polite">
+                {pagination.total.toLocaleString('en-IN')} of {totalCustomers.toLocaleString('en-IN')} customers match
+              </p>
+            )}
 
             {/* Desktop / tablet: full data table */}
             <div className="hidden md:block">
               <BulkActionBar selectedCount={selectedIds.length} onClear={() => setSelectedIds([])} actions={bulkActions} />
-              <Table
-                columns={columns}
-                data={filteredCustomers}
-                emptyComponent={noMatchesState}
-                keyField="_id"
-                actions={selectedIds.length > 0 ? [] : actions}
-                selectable
-                selectedKeys={selectedIds}
-                onSelectionChange={setSelectedIds}
-                pageSize={20}
-                resetPageOn={searchTerm}
-              />
+              <div className={`transition-opacity ${loading ? 'opacity-50 pointer-events-none' : ''}`} aria-busy={loading}>
+                <Table
+                  columns={columns}
+                  data={customers}
+                  emptyComponent={loading ? null : noMatchesState}
+                  keyField="_id"
+                  actions={selectedIds.length > 0 ? [] : actions}
+                  selectable
+                  selectedKeys={selectedIds}
+                  onSelectionChange={setSelectedIds}
+                />
+              </div>
             </div>
 
-            {/* Mobile: card list - a 4-column table never reads well this narrow */}
-            <div className="md:hidden space-y-3">
-              {filteredCustomers.length === 0 && noMatchesState}
-              {filteredCustomers.map((customer) => (
+            {/* Mobile: card list - an 8-column table never reads well this narrow */}
+            <div className={`md:hidden space-y-3 transition-opacity ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
+              {!loading && customers.length === 0 && noMatchesState}
+              {customers.map((customer) => (
                 <div key={customer._id} className="rounded-xl border border-gray-200 p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -422,6 +545,24 @@ const CustomersPage = ({ onAddUser, onSendEmail }) => {
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5 mt-2">
                     <Badge variant={theme.badge.default} size="sm">{customer.role}</Badge>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-2 text-sm">
+                    <div className="flex items-center gap-1">
+                      <span className={theme.text.muted}>Orders</span>
+                      <CountButton count={customer.orderCount} label="orders" onClick={() => openActivity(customer, 'orders')} />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className={theme.text.muted}>Reviews</span>
+                      <CountButton count={customer.reviewCount} label="reviews" onClick={() => openActivity(customer, 'reviews')} />
+                    </div>
+                    <div className="col-span-2">
+                      <span className={theme.text.muted}>Joined </span>
+                      <span className={theme.text.body}>{formatDateTime(customer.createdAt) || '—'}</span>
+                    </div>
+                    <div className="col-span-2 flex items-center gap-1">
+                      <span className={theme.text.muted}>Last login</span>
+                      <LastLogin value={customer.lastLoginAt} />
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
                     <Button variant={theme.button.secondary} size="sm" leftIcon={<PencilIcon />} onClick={() => openEdit(customer)} fullWidth>
@@ -444,9 +585,43 @@ const CustomersPage = ({ onAddUser, onSendEmail }) => {
                 </div>
               ))}
             </div>
+
+            {/* Footer: range + page size on the left, pages on the right. Shown even on a single
+                page so the page size can still be changed. */}
+            {pagination && pagination.total > 0 && (
+              <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+                  <p className={`text-sm ${theme.text.muted}`}>
+                    {((page - 1) * pagination.limit + 1).toLocaleString('en-IN')}–
+                    {Math.min(page * pagination.limit, pagination.total).toLocaleString('en-IN')} of {pagination.total.toLocaleString('en-IN')} customers
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm whitespace-nowrap ${theme.text.body}`}>Show</span>
+                    <div className="w-24">
+                      <Dropdown
+                        options={pageSizeOptions}
+                        value={String(pageSize)}
+                        onChange={handlePageSizeChange}
+                        size="sm"
+                        disabled={loading}
+                        aria-label="Customers per page"
+                      />
+                    </div>
+                    <span className={`text-sm whitespace-nowrap ${theme.text.body}`}>per page</span>
+                  </div>
+                </div>
+                {pagination.totalPages > 1 && (
+                  <Pagination currentPage={page} totalPages={pagination.totalPages} onPageChange={handlePageChange} disabled={loading} size="sm" />
+                )}
+              </div>
+            )}
           </>
         )}
       </Card>
+
+      {filterOpen && <CustomerFilterModal onClose={() => setFilterOpen(false)} filters={filters} onApply={handleApplyFilters} />}
+
+      <CustomerActivityModal target={activityTarget} onClose={() => setActivityTarget(null)} />
 
       <Modal isOpen={!!editTarget} onClose={closeEdit} title="Edit Customer" size="lg">
         {loadingEdit || lookups.loading ? (

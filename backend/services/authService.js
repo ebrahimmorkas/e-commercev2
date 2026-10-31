@@ -48,6 +48,8 @@ const registerUser = async ({ vendorId, name, username, email, phone_no, whatsap
             whatsapp_no,
             password: hashedPassword,
             authProvider: 'local',
+            // Signing up counts as the first login (admin Customers > Last Login).
+            lastLoginAt: new Date(),
             country,
             state,
             city: city || undefined,
@@ -65,6 +67,33 @@ const registerUser = async ({ vendorId, name, username, email, phone_no, whatsap
         if (err.code === 11000) {
             return common.returnResult(false, 409, `User already exists with the given username, email or phone number`);
         }
+        throw err;
+    }
+};
+
+// User.lastLoginAt (admin Customers > Last Login). A session renewal counts
+// too - a customer who comes back days later while still logged in never
+// sees the login form - but the access token renews every 15 minutes, so a
+// renewal only writes when the stored value is older than this.
+const LAST_LOGIN_TOUCH_INTERVAL_MS = 60 * 60 * 1000;
+
+const recordLogin = async (userId) => {
+    try {
+        await User.updateOne({ _id: userId }, { $set: { lastLoginAt: new Date() } });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Conditional update, so a renewal inside the interval costs no write.
+const recordSessionRenewal = async (userId) => {
+    try {
+        const touchBefore = new Date(Date.now() - LAST_LOGIN_TOUCH_INTERVAL_MS);
+        await User.updateOne(
+            { _id: userId, $or: [{ lastLoginAt: null }, { lastLoginAt: { $lt: touchBefore } }] },
+            { $set: { lastLoginAt: new Date() } }
+        );
+    } catch (err) {
         throw err;
     }
 };
@@ -93,6 +122,13 @@ const loginUser = async ({ identifier, password }, deviceMeta, vendorId, guestCa
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) {
             return common.returnResult(false, 401, 'Invalid credentials');
+        }
+
+        // Best-effort, like the cart merge below: never fail the login itself.
+        try {
+            await recordLogin(user._id);
+        } catch (touchErr) {
+            logger.logWarning('Could not record last login', { userId: user._id, touchErr });
         }
 
         const accessToken = generateAccessToken({
@@ -281,6 +317,13 @@ const refreshAccessToken = async (incomingRefreshToken, deviceMeta) => {
                     return common.returnResult(false, 401, 'Session not found. Please login again');
                 }
             }
+        }
+
+        // Best-effort: a failed Last Login write must never log the customer out.
+        try {
+            await recordSessionRenewal(user._id);
+        } catch (touchErr) {
+            logger.logWarning('Could not record session renewal as last login', { userId: user._id, touchErr });
         }
 
         const newAccessToken = generateAccessToken({

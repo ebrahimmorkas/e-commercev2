@@ -130,8 +130,8 @@ const parseDate = (value, endOfDay = false) => {
 const listReviews = async (req, res) => {
     const vendorId = req.vendorId;
     try {
-        // Already checked by adminListReviewsQuerySchema; parsed here because
-        // Express 5's req.query can't be replaced with Joi's converted copy.
+        // Already checked (and converted) by adminListReviewsQuerySchema; the
+        // parsing below just guards against out-of-range values.
         const query = req.query;
         let productId = null;
         if (query.productId) {
