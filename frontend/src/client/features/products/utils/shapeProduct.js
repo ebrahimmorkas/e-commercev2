@@ -61,6 +61,8 @@ export const shapeProductForCard = (product, categoryNameById = new Map()) => {
     sizeId: displaySize?._id || null,
     variantId: displaySize?.variantId || null,
     bulkPricing,
+    averageRating: product.averageRating || 0,
+    totalReviews: product.totalReviews || 0,
   };
 };
 
@@ -115,5 +117,7 @@ export const shapeProductForDetail = (product, categoryNameById = new Map()) => 
     colors: product.colors || [],
     variants,
     recommendedProducts: (product.recommendedProducts || []).map(String),
+    averageRating: product.averageRating || 0,
+    totalReviews: product.totalReviews || 0,
   };
 };

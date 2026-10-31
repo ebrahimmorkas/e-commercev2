@@ -114,7 +114,13 @@ const COMPANY_MASTER_VALUES = {
     allowedProductImageMB: 5,
     allowedProductImagesFormat: IMAGE_FORMATS,
     numberOfBrandsAllowed: 100,
-    numberOfReviewsAllowedOnProduct: 1000,
+    isProductReviewFeatureOn: true,
+    isIncludingImageInReviewsAllowed: true,
+    maxImagesPerReview: 5,
+    allowedReviewImageMB: 5,
+    allowedReviewImagesFormat: IMAGE_FORMATS,
+    isReviewEditingFeatureOn: true,
+    isReviewApproveRejectFeatureOn: true,
 
     // Discounts
     numberOfDiscountsPerMonth: 100,

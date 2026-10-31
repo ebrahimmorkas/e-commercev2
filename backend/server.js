@@ -153,7 +153,7 @@ app.use('/api/address', addressRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/inventory', require('./routes/inventoryRoutes'));
-app.use('/api/reviewRoutes', reviewRoutes);
+app.use('/api/reviews', reviewRoutes);
 app.use('/api/discount', discountRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/orders', orderRoutes);

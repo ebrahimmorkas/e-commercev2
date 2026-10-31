@@ -1468,6 +1468,10 @@ const shapeProductForResponse = (product, isAdmin, locationContext, shouldHide, 
         productCode: product.productCode,
         bulkPricing: isAdmin ? productCombined.bulkPricing : internationalPrice.resolveTierPrices(productCombined.bulkPricing, priceZone),
         status: product.status,
+        // Rating summary (see reviewService.recalcProductRatingAggregate). The
+        // storefront only shows it while reviews are visible for the store.
+        averageRating: product.averageRating || 0,
+        totalReviews: product.totalReviews || 0,
         createdAt: product.createdAt,
         updatedAt: product.updatedAt,
         variants: shapedVariants
@@ -3711,6 +3715,9 @@ const cloneOneProduct = async (vendorId, userId, sourceProduct, companySettingsD
             activeMarkedBy: undefined,
             activeMarkedDate: null,
             inactiveMarkedDate: null,
+            // A clone starts with no reviews of its own.
+            averageRating: 0,
+            totalReviews: 0,
             remarks: 'CLONED'
         });
 

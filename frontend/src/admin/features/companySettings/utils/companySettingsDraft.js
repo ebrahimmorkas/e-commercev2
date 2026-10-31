@@ -43,6 +43,8 @@ export const emptyDraft = () => ({
   isTaxRegistrationOnSignupEnabled: false,
   isCityOptional: false,
   showReviewsToCustomers: true,
+  // '' = no limit (sent as '' and stored as null by the backend).
+  maxReviewsPerCustomerPerProduct: '1',
 
   taxRegistrationNumber: '',
   invoicePrefix: 'SI',
@@ -159,6 +161,9 @@ export const mapApiSettingsToDraft = (doc) => ({
   isTaxRegistrationOnSignupEnabled: !!doc.isTaxRegistrationOnSignupEnabled,
   isCityOptional: !!doc.isCityOptional,
   showReviewsToCustomers: !!doc.showReviewsToCustomers,
+  maxReviewsPerCustomerPerProduct:
+    doc.maxReviewsPerCustomerPerProduct === undefined ? '1'
+      : doc.maxReviewsPerCustomerPerProduct === null ? '' : String(doc.maxReviewsPerCustomerPerProduct),
 
   taxRegistrationNumber: doc.taxRegistrationNumber || '',
   invoicePrefix: doc.invoicePrefix || 'SI',
