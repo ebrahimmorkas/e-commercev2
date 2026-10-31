@@ -179,6 +179,19 @@ const sizeSchema = new mongoose.Schema(
             }],
             default: []
         },
+        // Product videos of this size, in gallery order. Uploaded beforehand
+        // through /products/upload-product-video (VideoAsset module
+        // 'productVideo') and referenced here by id. The count limit
+        // (CompanyMaster.numberOfVideoUploadAllowedInProduct) is per PRODUCT,
+        // across all sizes. See productVideoService.js.
+        videos: {
+            type: [{
+                _id: false,
+                url: { type: String, required: true },
+                videoAssetId: { type: mongoose.Types.ObjectId, ref: 'VideoAsset', required: true }
+            }],
+            default: []
+        },
         sizeAdditionalDisclaimer: {
             type: String,
             default: null
@@ -544,6 +557,9 @@ productSchema.index({ vendorId: 1, status: 1, "variants.sizes.brandId": 1 });
 // productService.js.
 productSchema.index({ "variants.sizes.image.imageAssetId": 1 });
 productSchema.index({ "variants.sizes.additionalImages.imageAssetId": 1 });
+// Same reference lookup for product videos (isVideoAssetStillReferenced in
+// productVideoService.js, and the unused-upload cleanup job).
+productSchema.index({ "variants.sizes.videos.videoAssetId": 1 });
 
 productSchema.index({
     name: "text",

@@ -13,6 +13,7 @@ const { VALID_EMAIL_MODULES } = require('../../constants/emailModuleConstants');
 const { MAX_LOW_STOCK_THRESHOLD } = require('../../constants/inventoryConstants');
 const { ADMIN_PRODUCT_PAGE_SIZES } = require('../../constants/productListConstants');
 const { MAX_REVIEWS_PER_CUSTOMER_PER_PRODUCT } = require('../../constants/reviewConstants');
+const { MAX_PRODUCT_VIDEO_POSITION_IN_GALLERY } = require('../../constants/productVideoConstants');
 
 // Loose opaque-string check rather than hex/length - templateId here refers
 // to EmailTemplateMaster, whose ids are now common.encodeId-encoded (not raw
@@ -108,6 +109,17 @@ const companySettingsFieldsSchema = {
     adminProductsPerPage: Joi.number().integer().valid(...ADMIN_PRODUCT_PAGE_SIZES)
         .messages({ 'any.only': `{{#label}} must be one of ${ADMIN_PRODUCT_PAGE_SIZES.join(', ')}.` })
         .label('Products per page'),
+    // Product gallery (Company Settings > Product): where a size's videos sit
+    // among its images (1 = first), and whether they start playing on their own.
+    productVideoPositionInGallery: Joi.number().integer().min(1).max(MAX_PRODUCT_VIDEO_POSITION_IN_GALLERY)
+        .label('Video position in product gallery')
+        .messages({
+            'number.base': 'Video position in product gallery must be a whole number.',
+            'number.integer': 'Video position in product gallery must be a whole number.',
+            'number.min': 'Video position in product gallery must be 1 or more (1 = first).',
+            'number.max': `Video position in product gallery cannot be more than ${MAX_PRODUCT_VIDEO_POSITION_IN_GALLERY}.`
+        }),
+    isProductVideoAutoplayOn: Joi.boolean().label('Autoplay product videos'),
     // Low stock alert (Company Settings > Product). The threshold is a whole
     // number, required once the alert is switched on; a blank one is ignored.
     receiveLowStockAlert: Joi.boolean().label('Receive low stock alert'),

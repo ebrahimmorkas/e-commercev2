@@ -212,6 +212,8 @@ const ProductsPage = () => {
         ? await editProduct(payload, mainImages, additionalImageUploads)
         : await createProduct(payload, mainImages, additionalImageUploads);
     if (success) closeForm();
+    // ProductForm needs to know - it removes unsaved video uploads otherwise.
+    return success;
   };
 
   const handleConfirmDelete = async () => {

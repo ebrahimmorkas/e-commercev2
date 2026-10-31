@@ -208,6 +208,86 @@ export const apiRequest = async (path, { method = 'GET', body, auth = true, head
 };
 
 /**
+ * Multipart upload with progress (fetch can't report upload progress), with the
+ * same auth header, single refresh-and-retry on 401 and response handling as
+ * apiRequest. For big files such as product videos.
+ *
+ * @param {string} path - relative to the API base URL
+ * @param {Object} options
+ * @param {FormData} options.body
+ * @param {(fraction: number) => void} [options.onProgress] - 0..1 as the file is sent
+ * @param {AbortSignal} [options.signal] - aborting rejects with an AbortError
+ * @param {string} [options.method] - default 'POST'
+ * @param {boolean} [options.auth] - default true
+ */
+export const apiUpload = (path, { body, onProgress, signal, method = 'POST', auth = true, _isRetry = false } = {}) =>
+  new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Upload cancelled', 'AbortError'));
+      return;
+    }
+
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, `${API_BASE_URL}${path}`);
+    xhr.withCredentials = true;
+    if (auth) {
+      const token = getAccessToken();
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    }
+
+    const onAbort = () => xhr.abort();
+    signal?.addEventListener('abort', onAbort);
+    const cleanUp = () => signal?.removeEventListener('abort', onAbort);
+
+    if (onProgress) {
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) onProgress(event.loaded / event.total);
+      };
+    }
+
+    xhr.onabort = () => {
+      cleanUp();
+      reject(new DOMException('Upload cancelled', 'AbortError'));
+    };
+    xhr.onerror = () => {
+      cleanUp();
+      reject(new ApiError('Unable to reach the server. Please check your connection.', 0));
+    };
+    xhr.onload = async () => {
+      cleanUp();
+      let payload = null;
+      try {
+        payload = JSON.parse(xhr.responseText);
+      } catch {
+        // Non-JSON response body; fall through with payload = null
+      }
+
+      const isAuthExempt = AUTH_EXEMPT_PATHS.some((exempt) => path.startsWith(exempt));
+      if (xhr.status === 401 && auth && !_isRetry && !isAuthExempt) {
+        const newToken = await performRefresh();
+        if (newToken) {
+          setAccessToken(newToken);
+          apiUpload(path, { body, onProgress, signal, method, auth, _isRetry: true }).then(resolve, reject);
+          return;
+        }
+        clearAccessToken();
+        sessionExpiredHandler?.();
+      }
+
+      if (xhr.status < 200 || xhr.status >= 300 || !payload?.success) {
+        const message = payload?.message || `Request failed with status ${xhr.status}`;
+        reportStoreUnavailable(payload);
+        const reference = reportServerError(xhr.status, payload);
+        reject(new ApiError(message, xhr.status, payload?.errors || null, reference));
+        return;
+      }
+      resolve(payload.data);
+    };
+
+    xhr.send(body);
+  });
+
+/**
  * Downloads a binary response (e.g. an invoice PDF) with the same auth header and
  * single refresh-and-retry on 401 as apiRequest. Errors still arrive as the API's
  * usual JSON, so they surface as an ApiError with the server's message.

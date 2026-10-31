@@ -91,6 +91,10 @@ const COMPANY_MASTER_VALUES = {
     fileService: 'cloudinary',
     maxVideoSize: 50,
     allowedVideoFormat: ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi'],
+    // Product videos - off unless isVideoUploadingFeatureOn is turned on too.
+    isProductVideoFeatureOn: true,
+    numberOfVideoUploadAllowedInProduct: 5,
+    sizeOfVideoUploadAllowedInProduct: 50,
 
     // Announcements / Banners
     numberOfAnnouncementsAllowed: 10,

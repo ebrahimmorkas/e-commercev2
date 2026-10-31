@@ -17,12 +17,14 @@ import theme from '../theme/theme';
  *  - mainImagesZip / additionalImagesZip (.zip, optional): the images
  *    referenced by MainImageFileName / AdditionalImageFileNames on the
  *    Sizes sheet.
+ *  - videosZip (.zip, optional): the videos referenced by VideoFileNames.
  */
 const BulkUploadProductsModal = ({ onSubmit, onClose, submitting = false }) => {
   const toast = useToast();
   const [excelFile, setExcelFile] = useState(null);
   const [mainImagesZip, setMainImagesZip] = useState(null);
   const [additionalImagesZip, setAdditionalImagesZip] = useState(null);
+  const [videosZip, setVideosZip] = useState(null);
   const [result, setResult] = useState(null);
   const [formError, setFormError] = useState('');
   const [downloadingSample, setDownloadingSample] = useState(false);
@@ -31,7 +33,7 @@ const BulkUploadProductsModal = ({ onSubmit, onClose, submitting = false }) => {
     setFormError('');
     if (!excelFile) return setFormError('An excel file is required.');
 
-    const outcome = await onSubmit(excelFile, mainImagesZip, additionalImagesZip);
+    const outcome = await onSubmit(excelFile, mainImagesZip, additionalImagesZip, videosZip);
     if (outcome.success) setResult(outcome.result);
   };
 
@@ -131,6 +133,13 @@ const BulkUploadProductsModal = ({ onSubmit, onClose, submitting = false }) => {
         label="Additional Images Zip (.zip, optional)"
         accept=".zip"
         onFilesSelected={(files) => setAdditionalImagesZip(files[0] || null)}
+      />
+
+      <FileUpload
+        label="Videos Zip (.zip, optional)"
+        accept=".zip"
+        onFilesSelected={(files) => setVideosZip(files[0] || null)}
+        helperText="The product videos named in VideoFileNames on the Sizes sheet. Needs product videos on your plan."
       />
 
       <div className="flex justify-end gap-3 pt-2">

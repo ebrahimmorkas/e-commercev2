@@ -428,6 +428,21 @@ const companySettingsSchema = new mongoose.Schema({
     enum: ADMIN_PRODUCT_PAGE_SIZES,
     default: DEFAULT_ADMIN_PRODUCTS_PER_PAGE
   },
+  // Product gallery: the position (1 = first) at which a size's videos are
+  // shown among its images. Every video of the size goes there as one block,
+  // in its saved order, e.g. 2 = main image, then the videos, then the
+  // additional images. Past the last image = the videos come last.
+  productVideoPositionInGallery: {
+    type: Number,
+    min: 1,
+    default: 1
+  },
+  // Product gallery: a video starts playing on its own when it is the one on
+  // show. Browsers only allow that muted, so it starts muted.
+  isProductVideoAutoplayOn: {
+    type: Boolean,
+    default: true
+  },
   // End of product
 
   // Start of Brand

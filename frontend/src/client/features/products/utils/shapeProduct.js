@@ -94,6 +94,8 @@ export const shapeProductForDetail = (product, categoryNameById = new Map()) => 
       labelValue: size.labelValue,
       image: size.image?.url || null,
       additionalImages: (size.additionalImages || []).map((img) => img.url).filter(Boolean),
+      // Only sent when the store has product videos on (otherwise []).
+      videos: (size.videos || []).map((video) => video.url).filter(Boolean),
       description: size.description || [],
       disclaimer: size.disclaimer || [],
       bulkPricing: [...(size.bulkPricing || [])].sort((a, b) => a.minimumQuantity - b.minimumQuantity),
@@ -119,5 +121,27 @@ export const shapeProductForDetail = (product, categoryNameById = new Map()) => 
     recommendedProducts: (product.recommendedProducts || []).map(String),
     averageRating: product.averageRating || 0,
     totalReviews: product.totalReviews || 0,
+    // Company Settings: where videos sit in the gallery (1 = first) and whether they autoplay.
+    videoGallery: {
+      position: Number.isInteger(product.videoGallery?.position) && product.videoGallery.position >= 1 ? product.videoGallery.position : 1,
+      autoplay: product.videoGallery?.autoplay !== false,
+    },
   };
+};
+
+/**
+ * A size's gallery, in display order: { type: 'image' | 'video', url }.
+ * Every video of the size goes in as one block at `position` (1 = first):
+ * with 2 it is main image, the videos, then the additional images. A
+ * position past the last image puts the videos last.
+ *
+ * @param {{ image: string|null, additionalImages: string[], videos?: string[] }} size
+ * @param {{ position: number }} videoGallery
+ */
+export const buildSizeGallery = (size, videoGallery) => {
+  if (!size) return [];
+  const images = [size.image, ...(size.additionalImages || [])].filter(Boolean).map((url) => ({ type: 'image', url }));
+  const videos = (size.videos || []).map((url) => ({ type: 'video', url }));
+  const insertAt = Math.min(Math.max((videoGallery?.position || 1) - 1, 0), images.length);
+  return [...images.slice(0, insertAt), ...videos, ...images.slice(insertAt)];
 };

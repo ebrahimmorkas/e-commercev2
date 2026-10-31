@@ -285,6 +285,28 @@ const companyMasterSchema = mongoose.Schema({
         enum: ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi'],
         default: []
     },
+    // Product videos - per-vendor entitlement, off by default (same as
+    // isVideoUploadingFeatureOn, which must be on too). Formats come from
+    // allowedVideoFormat above.
+    isProductVideoFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    // Most videos one product may hold, counted across ALL its variants/sizes.
+    // null = no limit.
+    numberOfVideoUploadAllowedInProduct: {
+        type: Number,
+        min: 0,
+        default: null
+    },
+    // Most one product video may weigh, in MB. null = no product limit - only
+    // WebsiteMaster.maxVideoSize (the site-wide cap) applies when that is set.
+    // Never falls back to maxVideoSize above. See productVideoService.js.
+    sizeOfVideoUploadAllowedInProduct: {
+        type: Number,
+        min: 0,
+        default: null
+    },
 
     // The vendor's own storage accounts, per area (image / video / file) and
     // per provider. Entered by the platform owner with seeds/seedCompanyMaster.js
