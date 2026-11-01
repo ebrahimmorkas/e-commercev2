@@ -30,6 +30,8 @@ const Footer = ({ onOpenPolicyPage }) => {
 
   const brandName = companySettings?.companyName?.trim() || 'Our Store';
   const logoUrl = companySettings?.companyLogo?.url;
+  // Vendor-level switch (CompanyMaster.isFooterAboutSectionOn); shown while settings load.
+  const showAboutSection = companySettings?.isFooterAboutSectionOn !== false;
   const isModalMode = companySettings?.policyDisplayMode === 'MODAL';
 
   const availableLinks = POLICY_LINKS.filter((link) => companySettings?.[link.key]?.trim());
@@ -48,13 +50,13 @@ const Footer = ({ onOpenPolicyPage }) => {
   return (
     <footer className={`border-t ${theme.footer.background} ${theme.footer.border}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
-        <div>
-          {logoUrl ? (
+        {(showAboutSection || companySettings?.isFaceDetectionAvailable) && <div>
+          {showAboutSection && (logoUrl ? (
             <img src={logoUrl} alt={brandName} className="h-10 w-auto object-contain mb-3" />
           ) : (
             <p className={`text-lg font-bold ${theme.brand.text}`}>{brandName}</p>
-          )}
-          {companySettings?.aboutUs?.trim() && (
+          ))}
+          {showAboutSection && companySettings?.aboutUs?.trim() && (
             <p className={`mt-2 text-sm ${theme.tagline.text} line-clamp-4`}>
               {companySettings.aboutUs.replace(/<[^>]+>/g, ' ').trim().slice(0, 160)}
             </p>
@@ -65,7 +67,7 @@ const Footer = ({ onOpenPolicyPage }) => {
               Virtual Try-On
             </button>
           )}
-        </div>
+        </div>}
 
         {availableLinks.length > 0 && (
           <div>
