@@ -2,7 +2,12 @@ const mongoose = require('mongoose');
 const CurrencyMaster = require('../models/CurrencyMaster');
 const CountryMaster = require('../models/CountryMaster');
 const common = require('../utils/common');
+const redisKeys = require('../utils/redisKeys');
+const redisService = require('./redisService');
+const websiteMasterService = require('./websiteMasterService');
 const exchangeRateService = require('./exchangeRateService');
+const internationalPrice = require('../utils/internationalPrice');
+const ipCountryService = require('./ipCountryService');
 
 /*
 |--------------------------------------------------------------------------
@@ -16,6 +21,16 @@ const exchangeRateService = require('./exchangeRateService');
 |   CompanyMaster.allowedCountries, it has a currency, and a FRESH rate exists;
 |   otherwise the store currency (no conversion).
 | - Guests without a Country cookie see the store currency.
+| - Conversion happens only while isCurrencyConversionFeatureOn is on in
+|   WebsiteMaster, CompanyMaster AND CompanySettings. Any one off = every
+|   customer, from any country, sees and pays in the store currency.
+| - International pricing (isInternationalPriceFeatureOn + isIPDetectionFeatureOn
+|   in WebsiteMaster AND CompanyMaster) replaces conversion: customers outside
+|   CompanySettings.storeCountryId - served countries or not - see and pay the
+|   products' international prices in CompanyMaster.internationalCurrency
+|   (no international price = the local price converted to it).
+| - With IP detection on, a visitor's country comes from their IP whenever it
+|   isn't known otherwise (middlewares/ipCountryDetection.js).
 */
 
 const isObjectId = (value) => !!value && mongoose.Types.ObjectId.isValid(value);
@@ -62,18 +77,137 @@ const getCountryCurrency = async (countryId) => {
     }
 };
 
+// WebsiteMaster is read here (Redis-cached, same key as ensureVendorDataCached)
+// so callers outside a request - e.g. promotion emails - get the same answer.
+const loadWebsiteMaster = async () => {
+    try {
+        return await redisService.getOrSet(
+            redisKeys.websiteMaster(),
+            async () => await websiteMasterService.fetchWebsiteMasterData(),
+            3600
+        );
+    } catch (err) {
+        throw err;
+    }
+};
+
+// The three-level isCurrencyConversionFeatureOn switch. A missing flag counts
+// as on: it defaults to true, and vendor data cached before the field existed
+// must not silently switch conversion off.
+const isCurrencyConversionOn = (websiteMasterData, companyMasterData, companySettingsData) => {
+    try {
+        return [websiteMasterData, companyMasterData, companySettingsData]
+            .every((data) => data?.isCurrencyConversionFeatureOn !== false);
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Two-level (WebsiteMaster AND CompanyMaster) switch that defaults to off -
+// so a missing flag counts as off.
+const isMasterFeatureOn = (websiteMasterData, companyMasterData, flag) => {
+    try {
+        return websiteMasterData?.[flag] === true && companyMasterData?.[flag] === true;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// isIPDetectionFeatureOn: a visitor's country may be taken from their IP.
+const isIPDetectionOn = async (companyMasterData, websiteMasterData = null) => {
+    try {
+        const website = websiteMasterData || await loadWebsiteMaster();
+        return isMasterFeatureOn(website, companyMasterData, 'isIPDetectionFeatureOn');
+    } catch (err) {
+        throw err;
+    }
+};
+
+// The international currency when international pricing is live, else null.
+// Live = isInternationalPriceFeatureOn AND isIPDetectionFeatureOn (it needs
+// IP detection - off means international pricing is off too), plus a store
+// country to tell local from international customers and an active
+// CompanyMaster.internationalCurrency.
+const getActiveInternationalCurrency = async (websiteMasterData, companyMasterData, companySettingsData) => {
+    try {
+        if (!isMasterFeatureOn(websiteMasterData, companyMasterData, 'isInternationalPriceFeatureOn')) return null;
+        if (!isMasterFeatureOn(websiteMasterData, companyMasterData, 'isIPDetectionFeatureOn')) return null;
+        if (!isObjectId(companySettingsData?.storeCountryId) || !isObjectId(companyMasterData?.internationalCurrency)) return null;
+        return await CurrencyMaster.findOne({ _id: companyMasterData.internationalCurrency, status: 'A' }).lean();
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Whether a customer's country is known AND is not the store country. The
+// country is a CountryMaster _id, or an unlisted-country key from IP
+// detection (a country not in CountryMaster - always outside the store
+// country unless its ISO code is the store country's). Unknown = not outside.
+const isOutsideStoreCountry = async (countryKey, storeCountryId) => {
+    try {
+        const unlistedIsoCode = ipCountryService.parseUnlistedCountryKey(countryKey);
+        if (unlistedIsoCode) {
+            const storeCountry = await CountryMaster.findOne({ _id: storeCountryId }).select('short_country_name').lean();
+            return !storeCountry || storeCountry.short_country_name !== unlistedIsoCode;
+        }
+        return isObjectId(countryKey) && countryKey.toString() !== storeCountryId.toString();
+    } catch (err) {
+        throw err;
+    }
+};
+
 /**
  * Which currency a customer from `countryId` sees and pays in.
- * @returns returnResult - meta: { storeCurrency, currency, exchangeRate, rateFetchedAt, isConverted }
+ *
+ * International pricing (when live) wins over conversion: a customer outside
+ * the store country gets the international currency and the products'
+ * international prices; one inside it (or of unknown country) the store
+ * currency and local prices. `deliveryCountryId` - the order's shipping
+ * address country - decides this when known (an order's final price follows
+ * where it is delivered, not where it was placed from).
+ *
+ * @returns returnResult - meta: { storeCurrency, currency, exchangeRate, rateFetchedAt, isConverted, isInternationalPrice }
  *   (storeCurrency/currency are CurrencyMaster docs; exchangeRate = currency units per 1 store unit).
  */
-const resolveCustomerCurrency = async ({ countryId, companyMasterData, companySettingsData }) => {
+const resolveCustomerCurrency = async ({ countryId, deliveryCountryId = null, companyMasterData, companySettingsData }) => {
     try {
         const storeCurrency = await getStoreCurrency(companySettingsData);
         if (!storeCurrency) {
             return common.returnResult(false, 500, 'Store currency is not configured. Please contact support.');
         }
-        const storeResult = { storeCurrency, currency: storeCurrency, exchangeRate: 1, rateFetchedAt: null, isConverted: false };
+        const storeResult = { storeCurrency, currency: storeCurrency, exchangeRate: 1, rateFetchedAt: null, isConverted: false, isInternationalPrice: false };
+
+        const websiteMasterData = await loadWebsiteMaster();
+        const internationalCurrency = await getActiveInternationalCurrency(websiteMasterData, companyMasterData, companySettingsData);
+        if (internationalCurrency) {
+            const isInternationalCustomer = await isOutsideStoreCountry(deliveryCountryId || countryId, companySettingsData.storeCountryId);
+            if (!isInternationalCustomer) {
+                return common.returnResult(true, 200, 'Local price', storeResult);
+            }
+
+            let rate = { rate: 1, fetchedAt: null };
+            if (internationalCurrency.short_name !== storeCurrency.short_name) {
+                rate = await exchangeRateService.getFreshRate(storeCurrency.short_name, internationalCurrency.short_name);
+                // Without a rate an international price can't be priced against
+                // the rest of the cart - fall back to local prices.
+                if (!rate) {
+                    return common.returnResult(true, 200, 'No fresh exchange rate - local price', storeResult);
+                }
+            }
+
+            return common.returnResult(true, 200, 'International price', {
+                storeCurrency,
+                currency: internationalCurrency,
+                exchangeRate: rate.rate,
+                rateFetchedAt: rate.fetchedAt,
+                isConverted: internationalCurrency.short_name !== storeCurrency.short_name,
+                isInternationalPrice: true
+            });
+        }
+
+        if (!isCurrencyConversionOn(websiteMasterData, companyMasterData, companySettingsData)) {
+            return common.returnResult(true, 200, 'Currency conversion is off - store currency', storeResult);
+        }
 
         const allowedCountryIds = (companyMasterData?.allowedCountries || []).map((id) => id.toString());
         if (!isObjectId(countryId) || !allowedCountryIds.includes(countryId.toString())) {
@@ -95,8 +229,44 @@ const resolveCustomerCurrency = async ({ countryId, companyMasterData, companySe
             currency: countryCurrency,
             exchangeRate: fresh.rate,
             rateFetchedAt: fresh.fetchedAt,
-            isConverted: true
+            isConverted: true,
+            isInternationalPrice: false
         });
+    } catch (err) {
+        throw err;
+    }
+};
+
+// The international currency (shaped) while international pricing is live for
+// this vendor, else null - admin screens show the international price fields
+// only then.
+const fetchActiveInternationalCurrency = async ({ companyMasterData, companySettingsData }) => {
+    try {
+        const websiteMasterData = await loadWebsiteMaster();
+        const currency = await getActiveInternationalCurrency(websiteMasterData, companyMasterData, companySettingsData);
+        return currency ? shapeCurrency(currency) : null;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// The priceZone (utils/internationalPrice.js) for a resolved currency.
+const toPriceZone = (currencyMeta) => {
+    try {
+        return currencyMeta?.isInternationalPrice
+            ? { isInternational: true, exchangeRate: currencyMeta.exchangeRate }
+            : internationalPrice.LOCAL_PRICE_ZONE;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Which product prices (local / international) a customer gets - same inputs
+// as resolveCustomerCurrency. Local when the store currency isn't configured.
+const resolvePriceZone = async ({ countryId, deliveryCountryId = null, companyMasterData, companySettingsData }) => {
+    try {
+        const result = await resolveCustomerCurrency({ countryId, deliveryCountryId, companyMasterData, companySettingsData });
+        return result.isSuccess ? toPriceZone(result.meta) : internationalPrice.LOCAL_PRICE_ZONE;
     } catch (err) {
         throw err;
     }
@@ -138,7 +308,7 @@ const convertLines = (lines, exchangeRate, decimalPlaces = 2) => {
 // The currency fields every Order carries (see models/Order.js).
 const buildOrderCurrencyFields = (currencyMeta) => {
     try {
-        const { currency, storeCurrency, exchangeRate } = currencyMeta;
+        const { currency, storeCurrency, exchangeRate, isInternationalPrice } = currencyMeta;
         return {
             currencyId: currency._id,
             currencyCode: currency.short_name,
@@ -146,7 +316,8 @@ const buildOrderCurrencyFields = (currencyMeta) => {
             currencySymbolPosition: currency.symbol_position,
             currencyDecimalPlaces: typeof currency.decimal_places === 'number' ? currency.decimal_places : 2,
             exchangeRate: exchangeRate || 1,
-            storeCurrencyCode: storeCurrency.short_name
+            storeCurrencyCode: storeCurrency.short_name,
+            isInternationalPrice: !!isInternationalPrice
         };
     } catch (err) {
         throw err;
@@ -226,17 +397,18 @@ const fetchCurrenciesForVendor = async (allowedCountryIds) => {
 // What the storefront needs to show prices: the customer's currency, the store
 // currency, and the rate between them (prices arrive in store currency and are
 // converted for display with exactly this rate).
-const fetchCurrencyContext = async ({ countryId, companyMasterData, companySettingsData }) => {
+const fetchCurrencyContext = async ({ countryId, deliveryCountryId = null, companyMasterData, companySettingsData }) => {
     try {
-        const result = await resolveCustomerCurrency({ countryId, companyMasterData, companySettingsData });
+        const result = await resolveCustomerCurrency({ countryId, deliveryCountryId, companyMasterData, companySettingsData });
         if (!result.isSuccess) return result;
-        const { storeCurrency, currency, exchangeRate, rateFetchedAt, isConverted } = result.meta;
+        const { storeCurrency, currency, exchangeRate, rateFetchedAt, isConverted, isInternationalPrice } = result.meta;
         return common.returnResult(true, 200, 'Currency fetched successfully', {
             currency: shapeCurrency(currency),
             storeCurrency: shapeCurrency(storeCurrency),
             exchangeRate,
             rateFetchedAt,
-            isConverted
+            isConverted,
+            isInternationalPrice
         });
     } catch (err) {
         throw err;
@@ -247,6 +419,10 @@ module.exports = {
     shapeCurrency,
     getStoreCurrency,
     resolveCustomerCurrency,
+    resolvePriceZone,
+    toPriceZone,
+    fetchActiveInternationalCurrency,
+    isIPDetectionOn,
     convertAmount,
     convertLines,
     buildOrderCurrencyFields,

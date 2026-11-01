@@ -161,6 +161,11 @@ const COMPANY_MASTER = {
     maxVideoSize: MAX_FILE_MB,
     allowedVideoFormat: ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi'],
 
+    // Product videos (per size, in the product gallery). null = no limit.
+    isProductVideoFeatureOn: true,
+    numberOfVideoUploadAllowedInProduct: UNLIMITED,
+    sizeOfVideoUploadAllowedInProduct: MAX_FILE_MB,
+
     // Brands
     isBrandFeatureOn: true,
     numberOfBrandsAllowed: UNLIMITED,
@@ -182,8 +187,13 @@ const COMPANY_MASTER = {
     isNestingCategoryAllowedInGroup: true,
 
     // Reviews
-    isReviewFeatureOn: true,
-    numberOfReviewsAllowedOnProduct: UNLIMITED,
+    isProductReviewFeatureOn: true,
+    isIncludingImageInReviewsAllowed: true,
+    maxImagesPerReview: 5,
+    allowedReviewImageMB: MAX_IMAGE_MB,
+    allowedReviewImagesFormat: IMAGE_FORMATS,
+    isReviewEditingFeatureOn: true,
+    isReviewApproveRejectFeatureOn: true,
 
     // Favorites
     isFavoritesFeatureOn: true,
@@ -238,6 +248,10 @@ const COMPANY_MASTER = {
     isPaymentGatewayFeatureOn: true,
     paymentGateway: null,
     isCODFeatureOn: true,
+    isCurrencyConversionFeatureOn: true,
+    isIPDetectionFeatureOn: false,
+    isInternationalPriceFeatureOn: false,
+    internationalCurrency: null,          // CurrencyMaster _id - see scripts/enableInternationalPricingForVendor.js
     showPaymentQRCodeAndBankDetails: true,
     showGpayNumber: true,
     isShowingPartnerCertificateFeatureOn: true,

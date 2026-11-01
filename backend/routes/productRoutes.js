@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const productController = require('../controllers/productController');
+const productVideoController = require('../controllers/productVideoController');
+const productVideoUpload = require('../middlewares/productVideoUpload');
+const { uploadProductVideoSchema, productVideoIdParamSchema } = require('../middlewares/validations/productVideoValidations');
 const validate = require('../middlewares/validate');
 const { createProductSchema, updateProductSchema, toggleProductStatusSchema, deleteProductSchema, cloneProductSchema, bulkCloneProductSchema, bulkProductStatusSchema, bulkDeleteProductSchema, idParamSchema, productListQuerySchema, adminProductListQuerySchema, productExportQuerySchema, brandIdParamSchema, categoryIdParamSchema } = require('../middlewares/validations/productValidations');
 const authenticate = require('../middlewares/authenticate');
@@ -10,7 +13,19 @@ const ensureVendorDataCached = require('../middlewares/ensureVendorDataCached');
 const checkModuleAssigned = require('../middlewares/checkModuleAssigned');
 const imageUpload = require('../middlewares/imageUpload');
 const createBulkUploader = require('../middlewares/multer/bulkFileUpload');
-const productBulkUpload = createBulkUploader({ zipFieldNames: ['mainImagesZip', 'additionalImagesZip'] });
+// videosZip is written to disk (videos are too big for memory); its ceiling is
+// WebsiteMaster.bulkUploadVideoZipMaxSizeMB, read per request.
+const productBulkUpload = createBulkUploader({
+    zipFieldNames: ['mainImagesZip', 'additionalImagesZip'],
+    diskZipFieldNames: ['videosZip'],
+    resolveDiskZipMaxSizeMB: (req) => {
+        try {
+            return req.websiteMasterData?.bulkUploadVideoZipMaxSizeMB ?? 1024;
+        } catch (err) {
+            throw err;
+        }
+    }
+});
 const common = require('../utils/common');
 
 // Every route that reads or changes the admin catalogue: a logged-in admin of
@@ -34,6 +49,15 @@ const parseProductData = (req, res, next) => {
 };
 
 router.post( '/add-product', ...adminAccess, checkModuleAssigned('PRODUCTS'), imageUpload.any(), parseProductData, validate(createProductSchema, 'body'), productController.createProduct );
+
+// Product videos (admin form): the switch + limits, one upload per video
+// (before the product is saved - the save then lists the returned ids per
+// size), and removing an upload the form never saved.
+router.get( '/product-video-settings', ...adminAccess, checkModuleAssigned('PRODUCTS'), productVideoController.getProductVideoSettings );
+
+router.post( '/upload-product-video', ...adminAccess, checkModuleAssigned('PRODUCTS'), productVideoUpload, validate(uploadProductVideoSchema, 'body'), productVideoController.uploadProductVideo );
+
+router.delete( '/product-video/:videoId', ...adminAccess, checkModuleAssigned('PRODUCTS'), validate(productVideoIdParamSchema, 'params'), productVideoController.discardProductVideo );
 
 router.get( '/get-products-admin', ...adminAccess, checkModuleAssigned('PRODUCTS'), validate(adminProductListQuerySchema, 'query'), productController.getAllProductsAdmin );
 

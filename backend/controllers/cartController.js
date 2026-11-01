@@ -46,22 +46,30 @@ const deepEncodeIds = (value) => {
 // authenticate.js/optionalAuthenticate.js from the User document) instead
 // of cookies - a logged-in user's account location always wins over
 // whatever stale location cookies might still be sitting in their browser.
+// pricingCountryId decides the currency and local vs international prices: the
+// same country, else the visitor's IP country (req.ipCountryId, only set while IP
+// detection is on). Delivery exclusions keep using countryId alone.
 const buildLocationContext = (req) => {
     if (req.user) {
         return {
             countryId: req.user.country || null,
             stateId: req.user.state || null,
             cityId: req.user.city || null,
-            zipCode: null
+            zipCode: null,
+            pricingCountryId: req.user.country || req.ipCountryId || null
         };
     }
     return {
         countryId: req.cookies?.Country || null,
         stateId: req.cookies?.State || null,
         cityId: req.cookies?.City || null,
-        zipCode: req.cookies?.zip_code || null
+        zipCode: req.cookies?.zip_code || null,
+        pricingCountryId: req.cookies?.Country || req.ipCountryId || null
     };
 };
+
+// The shopper's country for amounts in messages - same fallbacks as above.
+const resolvePricingCountryId = (req) => req.cookies?.Country || req.user?.country || req.ipCountryId || null;
 
 const addToCart = async (req, res) => {
     const vendorId = req.vendorId;
@@ -101,7 +109,9 @@ const updateCartItem = async (req, res) => {
             variantId: common.decodeId(req.body.variantId),
             sizeId: common.decodeId(req.body.sizeId)
         };
-        const result = await cartService.updateCartItemQuantity(vendorId, req.cartOwner, req.companyMasterData, req.websiteMasterData, req.companySettingsData, payload);
+        const result = await cartService.updateCartItemQuantity(
+            vendorId, req.cartOwner, req.companyMasterData, req.websiteMasterData, req.companySettingsData, payload, buildLocationContext(req)
+        );
         if (!result.isSuccess) {
             // Over stock: tell the storefront how many are left so it can use that instead.
             const stockError = result.meta?.availableStock !== undefined
@@ -137,7 +147,12 @@ const removeCartItem = async (req, res) => {
 const getCart = async (req, res) => {
     const vendorId = req.vendorId;
     try {
-        const locationContext = buildLocationContext(req);
+        // addressId (checkout): price the cart for delivery to that saved address -
+        // local or international prices follow the delivery country.
+        const locationContext = {
+            ...buildLocationContext(req),
+            pricingAddressId: req.query.addressId ? common.decodeId(req.query.addressId) : null
+        };
         const result = await cartService.getCart(vendorId, req.cartOwner, locationContext, req.companyMasterData, req.websiteMasterData, req.companySettingsData);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
@@ -159,7 +174,7 @@ const applyDiscounts = async (req, res) => {
         // The shopper's country only formats amounts in messages ("Add items worth X more").
         const result = await cartService.applyDiscountsToCart(
             vendorId, req.cartOwner, userId, req.companyMasterData, req.websiteMasterData, payload,
-            req.cookies?.Country || req.user?.country || null, req.companySettingsData
+            resolvePricingCountryId(req), req.companySettingsData
         );
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
@@ -196,7 +211,7 @@ const applyFreeCash = async (req, res) => {
         };
         const result = await cartService.applyFreeCashToCart(
             vendorId, req.cartOwner, userId, req.companyMasterData, req.websiteMasterData, req.companySettingsData, payload,
-            req.cookies?.Country || req.user?.country || null
+            resolvePricingCountryId(req)
         );
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message, deepEncodeIds(result.meta));
@@ -228,7 +243,7 @@ const getEligibleFreeCash = async (req, res) => {
         // The shopper's country only formats amounts in messages ("Add items worth X more").
         const result = await cartService.listEligibleFreeCashForCart(
             vendorId, req.cartOwner, userId, req.companyMasterData, req.websiteMasterData, req.companySettingsData,
-            req.cookies?.Country || req.user?.country || null
+            resolvePricingCountryId(req)
         );
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
@@ -245,7 +260,7 @@ const getEligibleDiscounts = async (req, res) => {
         const userId = req.user ? req.user._id : null;
         const result = await cartService.listEligibleDiscountsForCart(
             vendorId, req.cartOwner, userId, req.companyMasterData, req.websiteMasterData, req.companySettingsData,
-            req.cookies?.Country || req.user?.country || null
+            resolvePricingCountryId(req)
         );
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);

@@ -11,6 +11,7 @@ import Modal from '../../../../components/common/Modal';
 import EmptyState from '../../../../components/common/EmptyState';
 import { useAbandonedCarts } from '../hooks/useAbandonedCarts';
 import LiveIndicator from '../../../realtime/LiveIndicator';
+import { formatCurrencyAmount } from '../../../../utils/money';
 import theme from '../theme/theme';
 
 const formatDateTime = (value) => {
@@ -58,6 +59,9 @@ const ADDRESS_MODE_OPTIONS = [
 const MIN_ADDRESS_LENGTH = 5;
 const MAX_ADDRESS_LENGTH = 1000;
 
+// Whether anything in the row can still be bought (and so has a price).
+const hasAvailableItems = (row) => (row.items || []).some((item) => item.isAvailable);
+
 // Same wording as the Place Order page's saved-address list.
 const describeAddress = (address) =>
   `${address.address_name} - ${[address.room_no, address.building, address.address_in_words].filter(Boolean).join(', ')} (${address.pincode})`;
@@ -93,13 +97,14 @@ const AbandonedCartsPage = ({ canPlaceOrder = false, onOpenPlaceOrder }) => {
         key: 'userName',
         label: 'Customer',
         render: (row) => (
-          <div>
-            <span className={`block font-medium ${theme.text.heading}`}>{row.userName || 'Unknown'}</span>
-            <span className={`block text-xs ${theme.text.muted}`}>{row.userEmail || '—'}</span>
+          // Phone sits under the email rather than in a column of its own, so the table fits narrower screens.
+          <div className="min-w-0">
+            <span className={`block font-medium wrap-break-word ${theme.text.heading}`}>{row.userName || 'Unknown'}</span>
+            <span className={`block text-xs break-all ${theme.text.muted}`}>{row.userEmail || '—'}</span>
+            {row.userPhone && <span className={`block text-xs ${theme.text.muted}`}>{row.userPhone}</span>}
           </div>
         ),
       },
-      { key: 'userPhone', label: 'Phone', render: (row) => row.userPhone || '—' },
       {
         key: 'source',
         label: 'Cart type',
@@ -126,15 +131,63 @@ const AbandonedCartsPage = ({ canPlaceOrder = false, onOpenPlaceOrder }) => {
           </Button>
         ),
       },
-      { key: 'lastProductAddedAt', label: 'Last Activity', sortable: true, render: (row) => formatDateTime(row.lastProductAddedAt) },
+      {
+        key: 'cartValue',
+        label: 'Cart Value',
+        align: 'right',
+        headerClassName: 'whitespace-nowrap',
+        className: 'whitespace-nowrap',
+        // Today's prices in the customer's own currency - what Place Order would charge for the items.
+        render: (row) => {
+          if (!row.currency) return '—';
+          // Nothing left to price: a 0.00 total would read as a real amount.
+          if (!hasAvailableItems(row)) {
+            return (
+              <div>
+                <span className={`block font-semibold ${theme.text.muted}`}>—</span>
+                <span className={`block text-xs ${theme.text.warning}`}>All items unavailable</span>
+              </div>
+            );
+          }
+          const formatted = formatCurrencyAmount(row.cartValue, row.currency);
+          const warnings = [
+            row.hasUnavailableItems && 'Some items unavailable',
+            row.hasOutOfStockItems && 'Some items out of stock',
+          ].filter(Boolean);
+          // Without warnings: the code under the amount, unless the symbol already is the code (e.g. "2.00 AED").
+          const codeNote = warnings.length === 0 && !formatted.includes(row.currency.code) ? row.currency.code : '';
+          return (
+            <div title="Today's prices in the customer's currency, before tax, shipping and discounts">
+              <span className={`block font-semibold ${theme.text.heading}`}>{formatted}</span>
+              {warnings.map((warning) => (
+                <span key={warning} className={`block text-xs ${theme.text.warning}`}>{warning}</span>
+              ))}
+              {codeNote && <span className={`block text-xs ${theme.text.muted}`}>{codeNote}</span>}
+            </div>
+          );
+        },
+      },
+      // Its own column only on wide screens; below that it shows under "Abandoned".
+      {
+        key: 'lastProductAddedAt',
+        label: 'Last Activity',
+        sortable: true,
+        className: 'hidden 2xl:table-cell',
+        headerClassName: 'hidden 2xl:table-cell',
+        render: (row) => formatDateTime(row.lastProductAddedAt),
+      },
       {
         key: 'abandonedAt',
         label: 'Abandoned',
         sortable: true,
+        headerClassName: 'whitespace-nowrap',
         render: (row) => (
-          <span title={formatDateTime(row.abandonedAt)} className={theme.text.body}>
-            {formatTimeAgo(row.abandonedAt)}
-          </span>
+          <div>
+            <span title={formatDateTime(row.abandonedAt)} className={`block whitespace-nowrap ${theme.text.body}`}>
+              {formatTimeAgo(row.abandonedAt)}
+            </span>
+            <span className={`block text-xs 2xl:hidden ${theme.text.muted}`}>Last activity {formatDateTime(row.lastProductAddedAt)}</span>
+          </div>
         ),
       },
       ...(canPlaceOrder
@@ -143,6 +196,8 @@ const AbandonedCartsPage = ({ canPlaceOrder = false, onOpenPlaceOrder }) => {
               key: 'placeOrder',
               label: 'Place Order',
               align: 'center',
+              headerClassName: 'whitespace-nowrap',
+              className: 'whitespace-nowrap',
               render: (row) => (
                 <Button
                   variant="primary"
@@ -282,19 +337,60 @@ const AbandonedCartsPage = ({ canPlaceOrder = false, onOpenPlaceOrder }) => {
         }
       >
         {productsCart && (
-          <ul className="divide-y divide-gray-100">
-            {(productsCart.items || []).map((item) => (
-              <li key={`${item.productId}:${item.variantId}:${item.sizeId}`} className="flex items-start justify-between gap-3 py-2 text-sm">
-                <div className="min-w-0">
-                  <p className={`font-medium wrap-break-word ${theme.text.heading}`}>{item.productName}</p>
-                  <p className={`text-xs ${theme.text.muted}`}>
-                    {item.variantName} / {item.sizeName}
-                  </p>
+          <>
+            <ul className="divide-y divide-gray-100">
+              {(productsCart.items || []).map((item) => (
+                <li key={`${item.productId}:${item.variantId}:${item.sizeId}`} className="flex items-start justify-between gap-3 py-2 text-sm">
+                  <div className="min-w-0">
+                    <p className={`font-medium wrap-break-word ${theme.text.heading}`}>{item.productName}</p>
+                    <p className={`text-xs ${theme.text.muted}`}>
+                      {item.variantName} / {item.sizeName}
+                    </p>
+                  </div>
+                  {!productsCart.currency ? (
+                    <span className={`shrink-0 ${theme.text.body}`}>× {item.quantity}</span>
+                  ) : item.isAvailable ? (
+                    <div className="shrink-0 text-right">
+                      <p className={`font-medium ${theme.text.heading}`}>{formatCurrencyAmount(item.amount, productsCart.currency)}</p>
+                      <p className={`text-xs ${theme.text.muted}`}>
+                        {item.quantity} × {formatCurrencyAmount(item.unitPrice, productsCart.currency)}
+                      </p>
+                      {item.isOutOfStock && (
+                        <p className={`text-xs font-medium ${theme.text.warning}`}>
+                          {item.stock > 0 ? `Only ${item.stock} in stock` : 'Out of stock'}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="shrink-0 text-right">
+                      <p className={`font-medium ${theme.text.warning}`}>Unavailable</p>
+                      <p className={`text-xs ${theme.text.muted}`}>× {item.quantity}</p>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {productsCart.currency && (
+              <div className={`mt-2 pt-3 border-t ${theme.summary.border}`}>
+                <div className={`flex justify-between text-sm font-semibold ${theme.text.heading}`}>
+                  <span>Cart value</span>
+                  <span>{hasAvailableItems(productsCart) ? formatCurrencyAmount(productsCart.cartValue, productsCart.currency) : '—'}</span>
                 </div>
-                <span className={`shrink-0 ${theme.text.body}`}>× {item.quantity}</span>
-              </li>
-            ))}
-          </ul>
+                <p className={`mt-1 text-xs ${theme.text.muted}`}>
+                  Today&apos;s prices in the customer&apos;s currency ({productsCart.currency.code}), before tax, shipping and discounts.
+                  {productsCart.hasUnavailableItems && ' Unavailable products are not included.'}
+                </p>
+                {/* Whether Place Order can still order them (Company Settings: allow out-of-stock products for admin). */}
+                {productsCart.hasOutOfStockItems && (
+                  <p className={`mt-2 text-xs ${theme.text.warning}`}>
+                    {productsCart.isOutOfStockOrderAllowed
+                      ? 'Some products have less stock than the customer wants. Your store lets admins order them anyway.'
+                      : 'Some products have less stock than the customer wants. Restock them, or lower the quantity or remove them on the Place Order page, before placing this order.'}
+                  </p>
+                )}
+              </div>
+            )}
+          </>
         )}
       </Modal>
 

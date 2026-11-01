@@ -16,6 +16,14 @@ const bulkPricingSchema = new mongoose.Schema(
             type: Number,
             required: true,
             min: 0
+        },
+        // Tier price for customers outside the store country, in
+        // CompanyMaster.internationalCurrency. null = the local tier price,
+        // converted (see utils/internationalPrice.js).
+        internationalPrice: {
+            type: Number,
+            min: 0,
+            default: null
         }
     },
     { _id: false }
@@ -171,6 +179,19 @@ const sizeSchema = new mongoose.Schema(
             }],
             default: []
         },
+        // Product videos of this size, in gallery order. Uploaded beforehand
+        // through /products/upload-product-video (VideoAsset module
+        // 'productVideo') and referenced here by id. The count limit
+        // (CompanyMaster.numberOfVideoUploadAllowedInProduct) is per PRODUCT,
+        // across all sizes. See productVideoService.js.
+        videos: {
+            type: [{
+                _id: false,
+                url: { type: String, required: true },
+                videoAssetId: { type: mongoose.Types.ObjectId, ref: 'VideoAsset', required: true }
+            }],
+            default: []
+        },
         sizeAdditionalDisclaimer: {
             type: String,
             default: null
@@ -273,6 +294,19 @@ const sizeSchema = new mongoose.Schema(
             required: true
         },
         cancelledPrice: {
+            type: Number,
+            min: 0,
+            default: null
+        },
+        // price / cancelledPrice for customers outside the store country, in
+        // CompanyMaster.internationalCurrency. Optional: null = the local price
+        // converted at the exchange rate (see utils/internationalPrice.js).
+        internationalPrice: {
+            type: Number,
+            min: 0,
+            default: null
+        },
+        internationalCancelledPrice: {
             type: Number,
             min: 0,
             default: null
@@ -430,6 +464,20 @@ const productSchema = new mongoose.Schema(
             type: [variantSchema],
             default: []
         },
+        // Rating summary of the product's live reviews - kept up to date by
+        // reviewService (recalcProductRatingAggregate), never set by the
+        // product form. averageRating is rounded to one decimal; 0 = no reviews.
+        averageRating: {
+            type: Number,
+            min: 0,
+            max: 5,
+            default: 0
+        },
+        totalReviews: {
+            type: Number,
+            min: 0,
+            default: 0
+        },
         ...commonFields
     },
     {
@@ -509,6 +557,9 @@ productSchema.index({ vendorId: 1, status: 1, "variants.sizes.brandId": 1 });
 // productService.js.
 productSchema.index({ "variants.sizes.image.imageAssetId": 1 });
 productSchema.index({ "variants.sizes.additionalImages.imageAssetId": 1 });
+// Same reference lookup for product videos (isVideoAssetStillReferenced in
+// productVideoService.js, and the unused-upload cleanup job).
+productSchema.index({ "variants.sizes.videos.videoAssetId": 1 });
 
 productSchema.index({
     name: "text",

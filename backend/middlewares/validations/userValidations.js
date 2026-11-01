@@ -1,4 +1,13 @@
 const Joi = require('joi');
+const {
+    VALID_CUSTOMER_LIST_SORTS,
+    DEFAULT_CUSTOMER_LIST_SORT,
+    CUSTOMER_LIST_PAGE_SIZES,
+    DEFAULT_CUSTOMER_LIST_PAGE_SIZE,
+    VALID_CUSTOMER_ACTIVITY_FILTERS,
+    VALID_CUSTOMER_LOGIN_FILTERS,
+    CUSTOMER_LIST_SEARCH_MAX_LENGTH
+} = require('../../constants/customerListConstants');
 
 // User ids are common.encodeId-encoded (see formatUserForResponse in
 // userController), never a raw hex ObjectId - so this is a loose
@@ -102,6 +111,43 @@ const listUsersAdminQuerySchema = Joi.object({
     role: Joi.string().valid('user', 'deliveryAgent').default('user').label('Role')
 });
 
+// Customers page (paginated): search, filters and sort all run on the server.
+// joinedFrom / joinedTo are full ISO date-times - the page sends the start and
+// end of the picked days in the admin's own timezone, so the server never has
+// to guess one.
+const listCustomersAdminQuerySchema = Joi.object({
+    page: Joi.number().integer().min(1).max(100000).default(1).label('Page'),
+    limit: Joi.number().integer().valid(...CUSTOMER_LIST_PAGE_SIZES)
+        .default(DEFAULT_CUSTOMER_LIST_PAGE_SIZE)
+        .messages({ 'any.only': `{{#label}} must be one of ${CUSTOMER_LIST_PAGE_SIZES.join(', ')}.` })
+        .label('Per page'),
+    q: Joi.string().trim().allow('').max(CUSTOMER_LIST_SEARCH_MAX_LENGTH).label('Search'),
+    sort: Joi.string().trim().valid(...VALID_CUSTOMER_LIST_SORTS).default(DEFAULT_CUSTOMER_LIST_SORT)
+        .messages({ 'any.only': `{{#label}} must be one of: ${VALID_CUSTOMER_LIST_SORTS.join(', ')}.` })
+        .label('Sort'),
+    status: Joi.string().trim().valid('A', 'I')
+        .messages({ 'any.only': '{{#label}} must be Active (A) or Inactive (I).' })
+        .label('Status'),
+    orders: Joi.string().trim().valid(...VALID_CUSTOMER_ACTIVITY_FILTERS)
+        .messages({ 'any.only': `{{#label}} must be one of: ${VALID_CUSTOMER_ACTIVITY_FILTERS.join(', ')}.` })
+        .label('Orders filter'),
+    reviews: Joi.string().trim().valid(...VALID_CUSTOMER_ACTIVITY_FILTERS)
+        .messages({ 'any.only': `{{#label}} must be one of: ${VALID_CUSTOMER_ACTIVITY_FILTERS.join(', ')}.` })
+        .label('Reviews filter'),
+    login: Joi.string().trim().valid(...VALID_CUSTOMER_LOGIN_FILTERS)
+        .messages({ 'any.only': `{{#label}} must be one of: ${VALID_CUSTOMER_LOGIN_FILTERS.join(', ')}.` })
+        .label('Login filter'),
+    joinedFrom: Joi.date().iso().label('Joined from')
+        .messages({ 'date.format': '{{#label}} must be a valid date.', 'date.base': '{{#label}} must be a valid date.' }),
+    joinedTo: Joi.date().iso().label('Joined to')
+        .when('joinedFrom', { is: Joi.exist(), then: Joi.date().min(Joi.ref('joinedFrom')) })
+        .messages({
+            'date.format': '{{#label}} must be a valid date.',
+            'date.base': '{{#label}} must be a valid date.',
+            'date.min': 'Joined to cannot be before Joined from.'
+        })
+});
+
 // --- Bulk status / delete (multi-select checkbox actions) --------------------
 const bulkUserStatusSchema = Joi.object({
     userIds: Joi.array().items(objectId()).min(1).max(50).unique().required().label('Customer IDs'),
@@ -114,6 +160,7 @@ const bulkDeleteUserSchema = Joi.object({
 
 module.exports = {
     listUsersAdminQuerySchema,
+    listCustomersAdminQuerySchema,
     userIdParamSchema,
     createUserAdminSchema,
     updateUserAdminSchema,

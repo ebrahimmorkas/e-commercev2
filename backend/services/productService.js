@@ -13,6 +13,7 @@ const CountryMaster = require('../models/CountryMaster');
 const StateMaster = require('../models/StateMaster');
 const CityMaster = require('../models/CityMaster');
 const imageUploadService = require('./imageUploadService');
+const productVideoService = require('./productVideoService');
 const counterService = require('./counterService');
 const { extractZipEntries, createZipBuffer } = require('../utils/zipExtractor');
 const { safeParseExcelSheet } = require('../utils/excelParser');
@@ -22,8 +23,12 @@ const { createProductSchema, updateProductSchema } = require('../middlewares/val
 const slugify = require('../utils/slugify');
 const crypto = require('crypto');
 const path = require('path');
+const os = require('os');
+const fs = require('fs');
+const { openZipFileReader } = require('../utils/zipFileReader');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
+const internationalPrice = require('../utils/internationalPrice');
 const inventoryService = require('./inventoryService');
 const lowStockAlertService = require('./lowStockAlertService');
 const { ADMIN_PRODUCT_PAGE_SIZES, DEFAULT_ADMIN_PRODUCTS_PER_PAGE } = require('../constants/productListConstants');
@@ -770,12 +775,43 @@ const resolveSize = async ({
 // the base the next level down must continue from and undercut.
 // ---------------------------------------------------------------------------
 
+const hasPrice = (value) => value !== null && value !== undefined;
+
+// International tier prices are optional, so their bounds only cover the
+// tiers that have one (null when none do - nothing to chain against).
+const internationalTierPrices = (bulkPricingArray) => (bulkPricingArray || [])
+    .map(b => b.internationalPrice)
+    .filter(hasPrice);
+
 const getBulkPricingBounds = (bulkPricingArray) => {
     if (!bulkPricingArray || bulkPricingArray.length === 0) return null;
+    const internationalPrices = internationalTierPrices(bulkPricingArray);
     return {
         maxQuantity: Math.max(...bulkPricingArray.map(b => b.maximumQuantity)),
-        minPrice: Math.min(...bulkPricingArray.map(b => b.price))
+        minPrice: Math.min(...bulkPricingArray.map(b => b.price)),
+        minInternationalPrice: internationalPrices.length > 0 ? Math.min(...internationalPrices) : null
     };
+};
+
+// A single unit should never cost less than (or equal to) the cheapest bulk
+// tier already offered at the product level - locally, and internationally
+// when both the size and a product tier have an international price.
+const validateSizePriceAgainstProductBulkPricing = (size, productBulkPricing) => {
+    if (!productBulkPricing || productBulkPricing.length === 0) {
+        return common.returnResult(true, 200, 'All Good');
+    }
+    const productMaxBulkPrice = Math.max(...productBulkPricing.map(b => b.price));
+    if (size.price <= productMaxBulkPrice) {
+        return common.returnResult(false, 400, `Size price (${size.price}) must be greater than the product's bulk pricing price (${productMaxBulkPrice}).`);
+    }
+    const internationalPrices = internationalTierPrices(productBulkPricing);
+    if (hasPrice(size.internationalPrice) && internationalPrices.length > 0) {
+        const productMaxInternationalBulkPrice = Math.max(...internationalPrices);
+        if (size.internationalPrice <= productMaxInternationalBulkPrice) {
+            return common.returnResult(false, 400, `Size international price (${size.internationalPrice}) must be greater than the product's international bulk pricing price (${productMaxInternationalBulkPrice}).`);
+        }
+    }
+    return common.returnResult(true, 200, 'All Good');
 };
 
 const validateAdditionalBulkPricingChain = (additionalArray, parentBounds, levelLabel) => {
@@ -795,6 +831,10 @@ const validateAdditionalBulkPricingChain = (additionalArray, parentBounds, level
         }
         if (tier.price >= parentBounds.minPrice) {
             return common.returnResult(false, 400, `${levelLabel} bulk pricing price (${tier.price}) must be less than ${parentBounds.minPrice}.`);
+        }
+        if (hasPrice(tier.internationalPrice) && hasPrice(parentBounds.minInternationalPrice)
+            && tier.internationalPrice >= parentBounds.minInternationalPrice) {
+            return common.returnResult(false, 400, `${levelLabel} bulk pricing international price (${tier.internationalPrice}) must be less than ${parentBounds.minInternationalPrice}.`);
         }
         expectedNextMin = tier.maximumQuantity + 1;
     }
@@ -1051,9 +1091,6 @@ const createProduct = async (vendorId, userId, companyMasterData, websiteMasterD
 
         // --- bulk pricing chain setup (point 6) --------------------------------
         const productBulkBounds = getBulkPricingBounds(body.bulkPricing);
-        const productMaxBulkPrice = (body.bulkPricing && body.bulkPricing.length > 0)
-            ? Math.max(...body.bulkPricing.map(b => b.price))
-            : null;
 
         for (const variant of (body.variants || [])) {
             const variantCodeResult = await resolveVariantCode({
@@ -1112,9 +1149,10 @@ const createProduct = async (vendorId, userId, companyMasterData, websiteMasterD
                 // --- size's own selling price vs product's bulk pricing ceiling ----
                 // A single unit should never cost less than (or equal to) the
                 // cheapest bulk tier already offered at the product level.
-                if (variant.isBulkPricingSameFromProductBasicDetails && productMaxBulkPrice !== null) {
-                    if (size.price <= productMaxBulkPrice) {
-                        return common.returnResult(false, 400, `Size price (${size.price}) must be greater than the product's bulk pricing price (${productMaxBulkPrice}).`);
+                if (variant.isBulkPricingSameFromProductBasicDetails) {
+                    const sizePriceResult = validateSizePriceAgainstProductBulkPricing(size, body.bulkPricing);
+                    if (!sizePriceResult.isSuccess) {
+                        return common.returnResult(false, sizePriceResult.statusCode, sizePriceResult.message);
                     }
                 }
 
@@ -1138,6 +1176,14 @@ const createProduct = async (vendorId, userId, companyMasterData, websiteMasterD
                 remarks: 'MANUAL',
                 sizes: resolvedSizes
             });
+        }
+
+        // --- product videos (already uploaded; listed per size by id) ---------
+        const videosResult = await productVideoService.resolveProductSizeVideos({
+            vendorId, variants, existingProduct: null, companyMasterData, websiteMasterData
+        });
+        if (!videosResult.isSuccess) {
+            return common.returnResult(false, videosResult.statusCode, videosResult.message);
         }
 
         // Everything from here on uploads images BEFORE the product exists, so
@@ -1298,7 +1344,10 @@ const resolveSizeVisibility = (size, locationContext, shouldHide) => {
     return { hide: false, excludeText: `This size is not present in ${match.label}.` };
 };
 
-const shapeSizeForResponse = (size, variantCombined, isAdmin, locationContext, shouldHide, brandMap, useShortNameForBrand) => {
+// priceZone (utils/internationalPrice.js): a customer gets the price, cancelled
+// price and bulk tiers for their zone (local or international); admin always
+// gets the raw local AND international prices to edit.
+const shapeSizeForResponse = (size, variantCombined, isAdmin, locationContext, shouldHide, brandMap, useShortNameForBrand, priceZone = null) => {
     const description = combineArrays(variantCombined.description, size.sizeAdditionalDescription, size.isDescriptionSameFromVariantsDetails);
     const disclaimer = combineDisclaimerArray(variantCombined.disclaimer, size.sizeAdditionalDisclaimer, size.isDisclaimerSameFromVariantsDetails);
     const bulkPricing = combineArrays(variantCombined.bulkPricing, size.sizeAdditionalBulkPricing, size.isBulkPricingSameFromVariantsDetails);
@@ -1316,9 +1365,10 @@ const shapeSizeForResponse = (size, variantCombined, isAdmin, locationContext, s
         sizeName: size.sizeName,
         image: size.image,
         additionalImages: size.additionalImages,
+        videos: (size.videos || []).map((video) => ({ url: video.url, videoAssetId: video.videoAssetId })),
         description,
         disclaimer,
-        bulkPricing,
+        bulkPricing: isAdmin ? bulkPricing : internationalPrice.resolveTierPrices(bulkPricing, priceZone),
         warranty: size.warranty,
         return: size.return,
         exchange: size.exchange,
@@ -1336,8 +1386,15 @@ const shapeSizeForResponse = (size, variantCombined, isAdmin, locationContext, s
         sizeId: size.sizeId,
         values: size.values,
         labelValue: size.labelValue,
-        price: size.price,
-        cancelledPrice: size.cancelledPrice,
+        ...(isAdmin
+            ? {
+                price: size.price,
+                cancelledPrice: size.cancelledPrice,
+                internationalPrice: size.internationalPrice ?? null,
+                internationalCancelledPrice: size.internationalCancelledPrice ?? null
+            }
+            : internationalPrice.resolveSizePrices(size, priceZone)
+        ),
         stock: size.stock,
         weight: size.weight,
         sku: size.sku,
@@ -1357,7 +1414,7 @@ const shapeSizeForResponse = (size, variantCombined, isAdmin, locationContext, s
     };
 };
 
-const shapeVariantForResponse = (variant, productCombined, isAdmin, locationContext, shouldHide, brandMap, useShortNameForBrand) => {
+const shapeVariantForResponse = (variant, productCombined, isAdmin, locationContext, shouldHide, brandMap, useShortNameForBrand, priceZone = null) => {
     const description = combineArrays(productCombined.description, variant.variantAdditionalDescription, variant.isDescriptionSameFromProductBasicDetails);
     const disclaimer = combineDisclaimerArray(productCombined.disclaimer, variant.variantAdditionalDisclaimer, variant.isDisclaimerSameFromProductBasicDetails);
     const bulkPricing = combineArrays(productCombined.bulkPricing, variant.variantAdditionalBulkPricing, variant.isBulkPricingSameFromProductBasicDetails);
@@ -1365,7 +1422,7 @@ const shapeVariantForResponse = (variant, productCombined, isAdmin, locationCont
     const variantCombined = { description, disclaimer, bulkPricing };
 
     const shapedSizes = (variant.sizes || [])
-        .map(size => shapeSizeForResponse(size, variantCombined, isAdmin, locationContext, shouldHide, brandMap, useShortNameForBrand))
+        .map(size => shapeSizeForResponse(size, variantCombined, isAdmin, locationContext, shouldHide, brandMap, useShortNameForBrand, priceZone))
         .filter(Boolean);
 
     // A variant with zero visible sizes has nothing purchasable left under
@@ -1383,13 +1440,13 @@ const shapeVariantForResponse = (variant, productCombined, isAdmin, locationCont
         variantCode: variant.variantCode,
         description,
         disclaimer,
-        bulkPricing,
+        bulkPricing: isAdmin ? bulkPricing : internationalPrice.resolveTierPrices(bulkPricing, priceZone),
         sizes: shapedSizes,
         status: variant.status
     };
 };
 
-const shapeProductForResponse = (product, isAdmin, locationContext, shouldHide, brandMap = null, useShortNameForBrand = false) => {
+const shapeProductForResponse = (product, isAdmin, locationContext, shouldHide, brandMap = null, useShortNameForBrand = false, priceZone = null) => {
     const productCombined = {
         description: product.description || [],
         disclaimer: product.disclaimer ? [product.disclaimer] : [],
@@ -1397,7 +1454,7 @@ const shapeProductForResponse = (product, isAdmin, locationContext, shouldHide, 
     };
 
     const shapedVariants = (product.variants || [])
-        .map(variant => shapeVariantForResponse(variant, productCombined, isAdmin, locationContext, shouldHide, brandMap, useShortNameForBrand))
+        .map(variant => shapeVariantForResponse(variant, productCombined, isAdmin, locationContext, shouldHide, brandMap, useShortNameForBrand, priceZone))
         .filter(Boolean);
 
     // Whole product has nothing purchasable left after exclusions - hide it
@@ -1422,8 +1479,12 @@ const shapeProductForResponse = (product, isAdmin, locationContext, shouldHide, 
         precedence: product.precedence,
         slug: product.slug,
         productCode: product.productCode,
-        bulkPricing: productCombined.bulkPricing,
+        bulkPricing: isAdmin ? productCombined.bulkPricing : internationalPrice.resolveTierPrices(productCombined.bulkPricing, priceZone),
         status: product.status,
+        // Rating summary (see reviewService.recalcProductRatingAggregate). The
+        // storefront only shows it while reviews are visible for the store.
+        averageRating: product.averageRating || 0,
+        totalReviews: product.totalReviews || 0,
         createdAt: product.createdAt,
         updatedAt: product.updatedAt,
         variants: shapedVariants
@@ -1527,6 +1588,32 @@ const COMPUTED_SORT_KEYS = {
 };
 const DESCENDING_SORTS = ['price_desc', 'stock_desc'];
 
+// An international visitor (priceZone - utils/internationalPrice.js) sorts by the
+// prices they actually see: a size's international price where it has one
+// (in store-currency terms, like every other amount), else its local price.
+const buildSortKey = (sort, priceZone) => {
+    if (!internationalPrice.isInternationalZone(priceZone) || !['price_asc', 'price_desc'].includes(sort)) {
+        return COMPUTED_SORT_KEYS[sort];
+    }
+    const sizePrice = {
+        $cond: [
+            { $ne: [{ $ifNull: ['$$s.internationalPrice', null] }, null] },
+            { $divide: ['$$s.internationalPrice', Number(priceZone.exchangeRate)] },
+            '$$s.price'
+        ]
+    };
+    const pick = sort === 'price_desc' ? '$max' : '$min';
+    return {
+        [pick]: {
+            $map: {
+                input: '$variants',
+                as: 'v',
+                in: { [pick]: { $map: { input: '$$v.sizes', as: 's', in: sizePrice } } }
+            }
+        }
+    };
+};
+
 // "featured" = admin-set precedence first (1, 2, 3...), then products with
 // no precedence, newest first. Two index-backed range reads (see the
 // { vendorId, status, precedence, _id } index) rather than computing a sort
@@ -1553,7 +1640,7 @@ const findFeaturedPageIds = async (filter, skip, limit) => {
     return ids;
 };
 
-const findProductPageIds = async (filter, sort, skip, limit) => {
+const findProductPageIds = async (filter, sort, skip, limit, priceZone = null) => {
     if (sort === 'featured') {
         return findFeaturedPageIds(filter, skip, limit);
     }
@@ -1573,7 +1660,7 @@ const findProductPageIds = async (filter, sort, skip, limit) => {
     }
     const rows = await Product.aggregate([
         { $match: filter },
-        { $project: { sortKey: COMPUTED_SORT_KEYS[sort] } },
+        { $project: { sortKey: buildSortKey(sort, priceZone) } },
         { $sort: { sortKey: DESCENDING_SORTS.includes(sort) ? -1 : 1, _id: -1 } },
         { $skip: skip },
         { $limit: limit }
@@ -1589,14 +1676,18 @@ const loadProductsInOrder = async (ids, extraFilter = {}) => {
     return ids.map((id) => byId.get(id.toString())).filter(Boolean);
 };
 
+// locationCookies.priceZone: which prices (local / international) this visitor
+// gets - productController resolves it.
 const shapeProductsForClient = async (rawProducts, companySettingsData, locationCookies) => {
     const shouldHide = companySettingsData?.shouldProductsBeHiddenWhenLocationsAreExcluded;
     const locationContext = await buildLocationContext(locationCookies);
     const brandMap = await buildBrandMapForProducts(rawProducts);
     const useShortNameForBrand = !!companySettingsData?.useShortNameForBrand;
+    // Lists only ever show the main image, so videos are left out.
     return rawProducts
-        .map((p) => shapeProductForResponse(p, false, locationContext, shouldHide, brandMap, useShortNameForBrand))
-        .filter(Boolean);
+        .map((p) => shapeProductForResponse(p, false, locationContext, shouldHide, brandMap, useShortNameForBrand, locationCookies.priceZone || null))
+        .filter(Boolean)
+        .map((p) => productVideoService.stripProductVideos(p));
 };
 
 // One page of products. `extraFilter` narrows the list (a category, a brand).
@@ -1624,7 +1715,7 @@ const fetchProductPage = async ({ vendorId, audience, query, extraFilter = null,
 
     const [total, ids] = await Promise.all([
         Product.countDocuments(filter),
-        findProductPageIds(filter, sort, (page - 1) * limit, limit)
+        findProductPageIds(filter, sort, (page - 1) * limit, limit, audience === 'admin' ? null : locationCookies.priceZone || null)
     ]);
     const rawProducts = await loadProductsInOrder(ids);
 
@@ -1989,7 +2080,9 @@ const fetchProductByIdForAdmin = async (vendorId, productId) => {
     }
 };
 
-const fetchProductByIdForClient = async (vendorId, productId, companySettingsData, locationCookies) => {
+// vendorData = { websiteMasterData, companyMasterData } - decides whether the
+// product's videos are shown (see productVideoService.applyStorefrontVideoSettings).
+const fetchProductByIdForClient = async (vendorId, productId, companySettingsData, locationCookies, vendorData = {}) => {
     try {
         const result = await common.getByID(Product, productId);
         if (!result.success) {
@@ -2008,10 +2101,15 @@ const fetchProductByIdForClient = async (vendorId, productId, companySettingsDat
         const brandMap = await buildBrandMapForProducts([rawProduct]);
         const useShortNameForBrand = !!companySettingsData?.useShortNameForBrand;
 
-        const shaped = shapeProductForResponse(rawProduct, false, locationContext, shouldHide, brandMap, useShortNameForBrand);
+        const shaped = shapeProductForResponse(rawProduct, false, locationContext, shouldHide, brandMap, useShortNameForBrand, locationCookies.priceZone || null);
         if (!shaped) {
             return common.returnResult(false, 404, 'Product not found.');
         }
+        productVideoService.applyStorefrontVideoSettings(shaped, {
+            websiteMasterData: vendorData.websiteMasterData,
+            companyMasterData: vendorData.companyMasterData,
+            companySettingsData
+        });
 
         return common.returnResult(true, 200, 'Product fetched successfully', { product: shaped });
     } catch (err) {
@@ -2079,6 +2177,8 @@ const SIZE_SHEET_COLUMNS = [
     { key: 'brand', header: 'Brand', required: false, note: 'Optional. Name of one of your active brands.' },
     { key: 'price', header: 'Price*', required: true, note: 'Selling price, 0 or more. Must be less than CancelledPrice when that is filled.' },
     { key: 'cancelledPrice', header: 'CancelledPrice', required: false, note: 'Optional struck-through price; must be more than Price.' },
+    { key: 'internationalPrice', header: 'InternationalPrice', required: false, note: 'Optional price for customers outside your store country, in your international currency. Blank = the Price converted at the exchange rate.' },
+    { key: 'internationalCancelledPrice', header: 'InternationalCancelledPrice', required: false, note: 'Optional struck-through international price; needs InternationalPrice and must be more than it.' },
     { key: 'stock', header: 'Stock', required: false, note: 'Optional whole number, 0 or more. Blank = 0.' },
     { key: 'weightValue', header: 'WeightValue', required: false, note: 'Optional number, 0 or more.' },
     { key: 'weightUnitName', header: 'WeightUnitName', required: false, note: 'Required when WeightValue is filled: name of a weight unit available on your plan.' },
@@ -2108,7 +2208,9 @@ const SIZE_SHEET_COLUMNS = [
     { key: 'mainImageFileName', header: 'MainImageFileName', required: false, note: 'Optional. File name (with its folder, if any) of this size\'s main image inside the main images zip.', updateNote: 'Leave blank to keep the current image.' },
     { key: 'additionalImageFileNames', header: 'AdditionalImageFileNames', required: false, note: 'Optional comma-separated file names inside the additional images zip.', updateNote: 'Leave blank to keep the current images; when filled, they replace the current ones.' },
     { key: 'removeMainImage', header: 'RemoveMainImage', required: false, updateOnly: true, note: `${TRUE_FALSE_NOTE} TRUE removes the size's current main image. Ignored when MainImageFileName is filled.` },
-    { key: 'removeAdditionalImages', header: 'RemoveAdditionalImages', required: false, updateOnly: true, note: `${TRUE_FALSE_NOTE} TRUE removes all of the size's current additional images. Ignored when AdditionalImageFileNames is filled.` }
+    { key: 'removeAdditionalImages', header: 'RemoveAdditionalImages', required: false, updateOnly: true, note: `${TRUE_FALSE_NOTE} TRUE removes all of the size's current additional images. Ignored when AdditionalImageFileNames is filled.` },
+    { key: 'videoFileNames', header: 'VideoFileNames', required: false, note: 'Optional comma-separated file names inside the videos zip, in the order they are shown. Needs product videos on your plan; the videos-per-product, size and format limits of the Add Product form apply.', updateNote: 'Leave blank to keep the current videos; when filled, they replace the current ones.' },
+    { key: 'removeVideos', header: 'RemoveVideos', required: false, updateOnly: true, note: `${TRUE_FALSE_NOTE} TRUE removes all of the size's current videos. Ignored when VideoFileNames is filled.` }
 ];
 
 const MEASUREMENT_VALUE_SHEET_COLUMNS = [
@@ -2130,7 +2232,8 @@ const BULK_PRICING_SHEET_COLUMNS = [
     { key: 'refTempCode', header: 'RefTempCode*', required: true, note: 'The ProductTempCode / VariantTempCode / SizeTempCode this tier belongs to.', updateNote: 'A product with no "product" rows here keeps its current bulk pricing; when it has any, they replace the current tiers.' },
     { key: 'minimumQuantity', header: 'MinimumQuantity*', required: true, note: 'A number, 1 or more.' },
     { key: 'maximumQuantity', header: 'MaximumQuantity*', required: true, note: 'A number greater than MinimumQuantity.' },
-    { key: 'price', header: 'Price*', required: true, note: 'Price per unit for this quantity range.' }
+    { key: 'price', header: 'Price*', required: true, note: 'Price per unit for this quantity range.' },
+    { key: 'internationalPrice', header: 'InternationalPrice', required: false, note: 'Optional price per unit for customers outside your store country, in your international currency. Blank = the Price converted.' }
 ];
 
 const escapeRegex = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -2194,14 +2297,16 @@ const BULK_SAMPLE_GENERAL_NOTES = {
         'Every row of the Products sheet adds one new product. A product needs at least one row on the Variants sheet, and every variant at least one row on the Sizes sheet.',
         'Rows are linked through the TempCode columns: a Variants row names its product\'s ProductTempCode, a Sizes row names its variant\'s VariantTempCode.',
         'If anything is wrong with a product, one of its variants or one of its sizes, that whole product is skipped and reported; the other products are still added.',
-        'Images: put the image files in a zip and write each file name in MainImageFileName / AdditionalImageFileNames on the Sizes sheet.'
+        'Images: put the image files in a zip and write each file name in MainImageFileName / AdditionalImageFileNames on the Sizes sheet.',
+        'Videos: put the video files in one videos zip and write each file name in VideoFileNames on the Sizes sheet.'
     ],
     update: [
         'Every row of the Products sheet updates one EXISTING product, found by its Name. A name that matches no product is skipped and reported.',
         `Products sheet: a blank cell keeps the product's current value. Type ${CLEAR_KEYWORD} to empty a field (not possible for Colors and Precedence).`,
         'Variants and Sizes sheets describe the COMPLETE list for the product: list every variant and size you want to keep, with all of its columns filled. One that is not listed is removed.',
         'A variant / size is matched to the existing one by VariantCode / SizeCode. Leave the code blank to add a new variant / size.',
-        'If anything is wrong with a product, one of its variants or one of its sizes, that whole product is left unchanged and reported; the other products are still updated.'
+        'If anything is wrong with a product, one of its variants or one of its sizes, that whole product is left unchanged and reported; the other products are still updated.',
+        'Videos: put the video files in one videos zip and write each file name in VideoFileNames on the Sizes sheet. A blank VideoFileNames keeps the size\'s current videos.'
     ]
 };
 
@@ -2289,7 +2394,7 @@ const groupRowsBy = (rows, getKey) => {
 // Parses the workbook + image zips once per request and indexes the child
 // sheets by the temp code that links them to their parent. A problem with the
 // files themselves comes back as a 400 result; meta = { productRows, ctx }.
-const prepareBulkProductRun = async ({ vendorId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, companyMasterData }) => {
+const prepareBulkProductRun = async ({ vendorId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, videosZipPath = null, companyMasterData }) => {
     try {
         const workbook = await parseProductWorkbook(excelBuffer);
         if (!workbook.ok) {
@@ -2307,6 +2412,17 @@ const prepareBulkProductRun = async ({ vendorId, excelBuffer, mainImagesZipBuffe
             return common.returnResult(false, 400, `Could not read image zip file(s): ${err.message}`);
         }
 
+        // The videos zip stays on disk and is read one video at a time (see
+        // utils/zipFileReader.js). The caller closes it (closeBulkProductRun).
+        let videoZip = null;
+        if (videosZipPath) {
+            const [opened] = await Promise.allSettled([openZipFileReader(videosZipPath)]);
+            if (opened.status === 'rejected') {
+                return common.returnResult(false, 400, `Could not read the videos zip file: ${opened.reason?.message || 'it is not a valid zip.'}`);
+            }
+            videoZip = opened.value;
+        }
+
         const levelRefKey = (row) => `${cellText(row.level).toLowerCase()}::${cellText(row.refTempCode)}`;
 
         const ctx = {
@@ -2314,6 +2430,7 @@ const prepareBulkProductRun = async ({ vendorId, excelBuffer, mainImagesZipBuffe
             companyMasterData,
             mainImageEntries,
             additionalImageEntries,
+            videoZip,
             variantsByProduct: groupRowsBy(workbook.variantRows, (row) => cellText(row.productTempCode)),
             sizesByVariant: groupRowsBy(workbook.sizeRows, (row) => cellText(row.variantTempCode)),
             measurementValuesBySize: groupRowsBy(workbook.measurementValueRows, (row) => cellText(row.sizeTempCode)),
@@ -2365,7 +2482,8 @@ const bulkDescriptionsFor = (ctx, level, tempCode) =>
 
 const bulkPricingFor = (ctx, level, tempCode) =>
     (ctx.bulkPricingByRef.get(`${level}::${tempCode}`) || []).map(bp => ({
-        minimumQuantity: Number(bp.minimumQuantity), maximumQuantity: Number(bp.maximumQuantity), price: Number(bp.price)
+        minimumQuantity: Number(bp.minimumQuantity), maximumQuantity: Number(bp.maximumQuantity), price: Number(bp.price),
+        internationalPrice: numberOrUndefined(bp.internationalPrice) ?? null
     }));
 
 // prefix: 'warranty' | 'return' | 'exchange' (the three <prefix>Available /
@@ -2497,6 +2615,8 @@ const assembleBulkSize = async (ctx, sizeRow, variantTempCode) => {
             labelValue: sizeType === 'LABEL' ? textOrUndefined(sizeRow.labelValue) : undefined,
             price: Number(sizeRow.price),
             cancelledPrice: numberOrUndefined(sizeRow.cancelledPrice),
+            internationalPrice: numberOrUndefined(sizeRow.internationalPrice),
+            internationalCancelledPrice: numberOrUndefined(sizeRow.internationalCancelledPrice),
             stock: numberOrUndefined(sizeRow.stock),
             weight,
             sku: textOrUndefined(sizeRow.sku),
@@ -2509,7 +2629,9 @@ const assembleBulkSize = async (ctx, sizeRow, variantTempCode) => {
             mainImagePath: textOrUndefined(sizeRow.mainImageFileName) || null,
             additionalImagePaths,
             removeImage: parseBoolean(sizeRow.removeMainImage),
-            removeAdditionalImages: parseBoolean(sizeRow.removeAdditionalImages)
+            removeAdditionalImages: parseBoolean(sizeRow.removeAdditionalImages),
+            videoPaths: parseCsv(sizeRow.videoFileNames),
+            removeVideos: parseBoolean(sizeRow.removeVideos)
         };
 
         return { size, images };
@@ -2695,92 +2817,217 @@ const buildBulkImageFiles = (ctx, imagePlan) => {
 
 const joiErrorMessages = (error) => error.details.map(d => d.message.replace(/"/g, ''));
 
+// Where a bulk run extracts one video at a time before uploading it.
+const BULK_VIDEO_TEMP_DIR = path.join(os.tmpdir(), 'video-uploads');
+
+// Closes the videos zip a bulk run opened. Never throws - it runs in a finally.
+const closeBulkProductRun = (ctx) => {
+    try {
+        if (ctx && ctx.videoZip) ctx.videoZip.close();
+    } catch (err) {
+        logger.logWarning('productService - closeBulkProductRun: could not close the videos zip', { error: err });
+    }
+};
+
+// Deletes a temp file the bulk uploader wrote to disk (the videos zip). Never throws.
+const removeBulkTempFile = async (filePath) => {
+    try {
+        if (filePath) await fs.promises.unlink(filePath);
+    } catch (err) {
+        if (err.code !== 'ENOENT') logger.logWarning('productService - removeBulkTempFile: could not delete a temp file', { filePath, error: err });
+    }
+};
+
+// Uploads the videos one product's Sizes rows name (VideoFileNames) from the
+// videos zip and writes their ids into the validated payload, per size:
+//  - names filled -> those videos, in that order (replacing the size's own on update);
+//  - blank + RemoveVideos TRUE (update) -> [] (removes them);
+//  - blank otherwise -> left out = a new size gets none, an existing one keeps its own.
+// Returns { videoIds } (every video uploaded, so a failed save can discard
+// them again) or { error }. Each video goes through the same rules as the
+// form's upload (feature switch, size, format, real content).
+const attachBulkSizeVideos = async (ctx, imagePlan, payload, { vendorId, userId, companyMasterData, websiteMasterData, isUpdate }) => {
+    const uploadedIds = [];
+    try {
+        const plansWithVideos = imagePlan.filter((plan) => plan.videoPaths.length > 0);
+
+        if (plansWithVideos.length > 0) {
+            if (!ctx.videoZip) {
+                return { error: 'VideoFileNames is filled in, but no videos zip was uploaded.' };
+            }
+
+            const featureCheck = await productVideoService.checkProductVideoFeature(vendorId, websiteMasterData, companyMasterData);
+            if (!featureCheck.isSuccess) {
+                return { error: `${featureCheck.message} Therefore you can't add videos to the product.` };
+            }
+
+            // Fail fast, before uploading anything, on what can be seen from the file
+            // alone: missing names, the per-product count and the size limit.
+            const totalVideos = plansWithVideos.reduce((sum, plan) => sum + plan.videoPaths.length, 0);
+            const maxCount = productVideoService.resolveProductVideoMaxCount(companyMasterData);
+            if (maxCount !== null && totalVideos > maxCount) {
+                return { error: `This product lists ${totalVideos} video(s), but a product can have at most ${maxCount}.` };
+            }
+            const maxSizeMB = productVideoService.resolveProductVideoMaxSizeMB(companyMasterData, websiteMasterData);
+            for (const plan of plansWithVideos) {
+                for (const videoPath of plan.videoPaths) {
+                    if (!ctx.videoZip.has(videoPath)) {
+                        return { error: `Video "${videoPath}" not found in the videos zip (SizeTempCode "${plan.sizeTempCode}")` };
+                    }
+                    const entrySize = ctx.videoZip.sizeOf(videoPath);
+                    if (maxSizeMB !== null && entrySize > maxSizeMB * 1024 * 1024) {
+                        return { error: `Video "${videoPath}" exceeds the allowed limit of ${maxSizeMB}MB (SizeTempCode "${plan.sizeTempCode}")` };
+                    }
+                }
+            }
+        }
+
+        for (const plan of imagePlan) {
+            const size = payload.variants[plan.v].sizes[plan.s];
+
+            if (plan.videoPaths.length === 0) {
+                if (isUpdate && plan.removeVideos) size.videos = [];
+                continue;
+            }
+
+            const sizeVideoIds = [];
+            for (const videoPath of plan.videoPaths) {
+                const originalname = path.basename(videoPath);
+                const tempPath = path.join(BULK_VIDEO_TEMP_DIR, `${crypto.randomUUID()}-${originalname}`);
+                let extractedSize;
+                try {
+                    extractedSize = await ctx.videoZip.extractToFile(videoPath, tempPath);
+                } catch (extractErr) {
+                    await removeBulkTempFile(tempPath);
+                    return { error: `Video "${videoPath}" could not be read from the videos zip (SizeTempCode "${plan.sizeTempCode}")`, videoIds: uploadedIds };
+                }
+
+                // uploadProductVideo always deletes the temp file.
+                const uploadResult = await productVideoService.uploadProductVideo({
+                    vendorId,
+                    userId,
+                    file: { path: tempPath, originalname, size: extractedSize },
+                    companyMasterData,
+                    websiteMasterData
+                });
+                if (!uploadResult.isSuccess) {
+                    return { error: `Video "${videoPath}" (SizeTempCode "${plan.sizeTempCode}"): ${uploadResult.message}`, videoIds: uploadedIds };
+                }
+
+                const videoAssetId = uploadResult.meta.video.videoAssetId.toString();
+                uploadedIds.push(videoAssetId);
+                sizeVideoIds.push(videoAssetId);
+            }
+            size.videos = sizeVideoIds;
+        }
+
+        return { videoIds: uploadedIds };
+    } catch (err) {
+        await productVideoService.discardUploadedVideos(uploadedIds, userId);
+        throw err;
+    }
+};
+
 // Bulk ADD: each Products-sheet row becomes the Add Product form's payload
 // and goes through createProduct() unchanged.
-const bulkUploadProducts = async (vendorId, userId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, companyMasterData, websiteMasterData, companySettingsData) => {
+// videosZipPath: the videos zip on disk (or null) - the controller deletes it.
+const bulkUploadProducts = async (vendorId, userId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, companyMasterData, websiteMasterData, companySettingsData, videosZipPath = null) => {
     try {
-        const prepared = await prepareBulkProductRun({ vendorId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, companyMasterData });
+        const prepared = await prepareBulkProductRun({ vendorId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, videosZipPath, companyMasterData });
         if (!prepared.isSuccess) {
             return common.returnResult(false, prepared.statusCode, prepared.message);
         }
         const { productRows, ctx } = prepared.meta;
 
-        const result = await processExcelRows(
-            productRows,
-            async (productRow) => {
-                const productTempCode = cellText(productRow.productTempCode);
-                if (!productTempCode) {
-                    return { success: false, errors: ['ProductTempCode is required'] };
-                }
-
-                const assembled = await assembleBulkVariants(ctx, productTempCode);
-                if (assembled.error) {
-                    return { success: false, errors: [assembled.error] };
-                }
-
-                // Optional, exactly as on the form: no category at all, or a
-                // main category with no sub category, are both fine.
-                let category = { mainCategory: null, subCategory: null };
-                if (!isBlankCell(productRow.categoryPath)) {
-                    category = await resolveBulkCategoryPath(ctx, productRow.categoryPath);
-                    if (category.error) {
-                        return { success: false, errors: [category.error] };
+        try {
+            const result = await processExcelRows(
+                productRows,
+                async (productRow) => {
+                    const productTempCode = cellText(productRow.productTempCode);
+                    if (!productTempCode) {
+                        return { success: false, errors: ['ProductTempCode is required'] };
                     }
-                }
 
-                const recommended = await resolveBulkRecommendedProducts(ctx, productRow.recommendedProductCodes);
-                if (recommended.error) {
-                    return { success: false, errors: [recommended.error] };
-                }
+                    const assembled = await assembleBulkVariants(ctx, productTempCode);
+                    if (assembled.error) {
+                        return { success: false, errors: [assembled.error] };
+                    }
 
-                const taxes = await resolveBulkTaxCodes(productRow.taxCodes);
-                if (taxes.error) {
-                    return { success: false, errors: [taxes.error] };
-                }
+                    // Optional, exactly as on the form: no category at all, or a
+                    // main category with no sub category, are both fine.
+                    let category = { mainCategory: null, subCategory: null };
+                    if (!isBlankCell(productRow.categoryPath)) {
+                        category = await resolveBulkCategoryPath(ctx, productRow.categoryPath);
+                        if (category.error) {
+                            return { success: false, errors: [category.error] };
+                        }
+                    }
 
-                const assembledBody = {
-                    name: textOrUndefined(productRow.name),
-                    description: bulkDescriptionsFor(ctx, 'product', productTempCode),
-                    disclaimer: textOrUndefined(productRow.disclaimer),
-                    colors: parseCsv(productRow.colors),
-                    mainCategory: category.mainCategory,
-                    subCategory: category.subCategory,
-                    searchKeywords: parseCsv(productRow.searchKeywords),
-                    recommendedProducts: recommended.ids,
-                    taxIds: taxes.ids,
-                    precedence: numberOrUndefined(productRow.precedence),
-                    productCode: textOrUndefined(productRow.productCode),
-                    bulkPricing: bulkPricingFor(ctx, 'product', productTempCode),
-                    variants: assembled.variants
-                };
+                    const recommended = await resolveBulkRecommendedProducts(ctx, productRow.recommendedProductCodes);
+                    if (recommended.error) {
+                        return { success: false, errors: [recommended.error] };
+                    }
 
-                const { error, value } = createProductSchema.validate(assembledBody, { abortEarly: false });
-                if (error) {
-                    return { success: false, errors: joiErrorMessages(error) };
-                }
+                    const taxes = await resolveBulkTaxCodes(productRow.taxCodes);
+                    if (taxes.error) {
+                        return { success: false, errors: [taxes.error] };
+                    }
 
-                const images = buildBulkImageFiles(ctx, assembled.imagePlan);
-                if (images.error) {
-                    return { success: false, errors: [images.error] };
-                }
+                    const assembledBody = {
+                        name: textOrUndefined(productRow.name),
+                        description: bulkDescriptionsFor(ctx, 'product', productTempCode),
+                        disclaimer: textOrUndefined(productRow.disclaimer),
+                        colors: parseCsv(productRow.colors),
+                        mainCategory: category.mainCategory,
+                        subCategory: category.subCategory,
+                        searchKeywords: parseCsv(productRow.searchKeywords),
+                        recommendedProducts: recommended.ids,
+                        taxIds: taxes.ids,
+                        precedence: numberOrUndefined(productRow.precedence),
+                        productCode: textOrUndefined(productRow.productCode),
+                        bulkPricing: bulkPricingFor(ctx, 'product', productTempCode),
+                        variants: assembled.variants
+                    };
 
-                const createResult = await createProduct(
-                    vendorId, userId, companyMasterData, websiteMasterData, companySettingsData, value, images.files
-                );
-                if (!createResult.isSuccess) {
-                    return { success: false, errors: [createResult.message] };
-                }
+                    const { error, value } = createProductSchema.validate(assembledBody, { abortEarly: false });
+                    if (error) {
+                        return { success: false, errors: joiErrorMessages(error) };
+                    }
 
-                return { success: true };
-            },
-            { allowPartialSuccess: true, useTransaction: false }
-        );
+                    const images = buildBulkImageFiles(ctx, assembled.imagePlan);
+                    if (images.error) {
+                        return { success: false, errors: [images.error] };
+                    }
 
-        logger.logInfo(1, 0, 'Bulk product upload processed', {
-            vendorId, total: result.totalRows, success: result.successCount, failed: result.failedCount
-        });
+                    const videos = await attachBulkSizeVideos(ctx, assembled.imagePlan, value, {
+                        vendorId, userId, companyMasterData, websiteMasterData, isUpdate: false
+                    });
+                    if (videos.error) {
+                        await productVideoService.discardUploadedVideos(videos.videoIds, userId);
+                        return { success: false, errors: [videos.error] };
+                    }
 
-        return common.returnResult(true, 200, 'Bulk product upload processed', result);
+                    const createResult = await createProduct(
+                        vendorId, userId, companyMasterData, websiteMasterData, companySettingsData, value, images.files
+                    );
+                    if (!createResult.isSuccess) {
+                        await productVideoService.discardUploadedVideos(videos.videoIds, userId);
+                        return { success: false, errors: [createResult.message] };
+                    }
+
+                    return { success: true };
+                },
+                { allowPartialSuccess: true, useTransaction: false }
+            );
+
+            logger.logInfo(1, 0, 'Bulk product upload processed', {
+                vendorId, total: result.totalRows, success: result.successCount, failed: result.failedCount
+            });
+
+            return common.returnResult(true, 200, 'Bulk product upload processed', result);
+        } finally {
+            closeBulkProductRun(ctx);
+        }
     } catch (err) {
         throw err;
     }
@@ -2945,86 +3192,100 @@ const assembleBulkUpdateProductFields = async (ctx, productRow, existingProduct,
 //    blank (or unknown) code is a brand-new variant/size; any existing
 //    variant/size NOT referenced by any row for that product is removed,
 //    images included - see linkBulkVariantsToExisting / mergeVariantsIntoProduct.
-const bulkUpdateProducts = async (vendorId, userId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, companyMasterData, websiteMasterData, companySettingsData) => {
+// videosZipPath: the videos zip on disk (or null) - the controller deletes it.
+const bulkUpdateProducts = async (vendorId, userId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, companyMasterData, websiteMasterData, companySettingsData, videosZipPath = null) => {
     try {
-        const prepared = await prepareBulkProductRun({ vendorId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, companyMasterData });
+        const prepared = await prepareBulkProductRun({ vendorId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, videosZipPath, companyMasterData });
         if (!prepared.isSuccess) {
             return common.returnResult(false, prepared.statusCode, prepared.message);
         }
         const { productRows, ctx } = prepared.meta;
 
-        const result = await processExcelRows(
-            productRows,
-            async (productRow) => {
-                const productTempCode = cellText(productRow.productTempCode);
-                if (!productTempCode) {
-                    return { success: false, errors: ['ProductTempCode is required'] };
-                }
+        try {
+            const result = await processExcelRows(
+                productRows,
+                async (productRow) => {
+                    const productTempCode = cellText(productRow.productTempCode);
+                    if (!productTempCode) {
+                        return { success: false, errors: ['ProductTempCode is required'] };
+                    }
 
-                const name = cellText(productRow.name);
-                if (!name) {
-                    return { success: false, errors: ['Name is required'] };
-                }
+                    const name = cellText(productRow.name);
+                    if (!name) {
+                        return { success: false, errors: ['Name is required'] };
+                    }
 
-                const existingProduct = await Product.findOne({
-                    vendorId, status: { $ne: 'D' },
-                    name: { $regex: `^${escapeRegex(name)}$`, $options: 'i' }
-                });
-                if (!existingProduct) {
-                    return { success: false, errors: [`No existing product found with name "${name}" - skipped.`] };
-                }
+                    const existingProduct = await Product.findOne({
+                        vendorId, status: { $ne: 'D' },
+                        name: { $regex: `^${escapeRegex(name)}$`, $options: 'i' }
+                    });
+                    if (!existingProduct) {
+                        return { success: false, errors: [`No existing product found with name "${name}" - skipped.`] };
+                    }
 
-                const assembled = await assembleBulkVariants(ctx, productTempCode);
-                if (assembled.error) {
-                    return { success: false, errors: [assembled.error] };
-                }
+                    const assembled = await assembleBulkVariants(ctx, productTempCode);
+                    if (assembled.error) {
+                        return { success: false, errors: [assembled.error] };
+                    }
 
-                const linked = linkBulkVariantsToExisting(existingProduct, assembled.variants, assembled.imagePlan);
-                if (linked.error) {
-                    return { success: false, errors: [linked.error] };
-                }
+                    const linked = linkBulkVariantsToExisting(existingProduct, assembled.variants, assembled.imagePlan);
+                    if (linked.error) {
+                        return { success: false, errors: [linked.error] };
+                    }
 
-                const productFields = await assembleBulkUpdateProductFields(ctx, productRow, existingProduct, productTempCode);
-                if (productFields.error) {
-                    return { success: false, errors: [productFields.error] };
-                }
+                    const productFields = await assembleBulkUpdateProductFields(ctx, productRow, existingProduct, productTempCode);
+                    if (productFields.error) {
+                        return { success: false, errors: [productFields.error] };
+                    }
 
-                const assembledBody = {
-                    productId: existingProduct._id.toString(),
-                    // The stored name, not the cell's: the cell only has to
-                    // match case-insensitively and must never rename the product.
-                    name: existingProduct.name,
-                    ...productFields.fields,
-                    variants: linked.variants
-                };
+                    const assembledBody = {
+                        productId: existingProduct._id.toString(),
+                        // The stored name, not the cell's: the cell only has to
+                        // match case-insensitively and must never rename the product.
+                        name: existingProduct.name,
+                        ...productFields.fields,
+                        variants: linked.variants
+                    };
 
-                const { error, value } = updateProductSchema.validate(assembledBody, { abortEarly: false });
-                if (error) {
-                    return { success: false, errors: joiErrorMessages(error) };
-                }
+                    const { error, value } = updateProductSchema.validate(assembledBody, { abortEarly: false });
+                    if (error) {
+                        return { success: false, errors: joiErrorMessages(error) };
+                    }
 
-                const images = buildBulkImageFiles(ctx, assembled.imagePlan);
-                if (images.error) {
-                    return { success: false, errors: [images.error] };
-                }
+                    const images = buildBulkImageFiles(ctx, assembled.imagePlan);
+                    if (images.error) {
+                        return { success: false, errors: [images.error] };
+                    }
 
-                const updateResult = await updateProduct(
-                    vendorId, userId, companyMasterData, websiteMasterData, companySettingsData, value, images.files
-                );
-                if (!updateResult.isSuccess) {
-                    return { success: false, errors: [updateResult.message] };
-                }
+                    const videos = await attachBulkSizeVideos(ctx, assembled.imagePlan, value, {
+                        vendorId, userId, companyMasterData, websiteMasterData, isUpdate: true
+                    });
+                    if (videos.error) {
+                        await productVideoService.discardUploadedVideos(videos.videoIds, userId);
+                        return { success: false, errors: [videos.error] };
+                    }
 
-                return { success: true };
-            },
-            { allowPartialSuccess: true, useTransaction: false }
-        );
+                    const updateResult = await updateProduct(
+                        vendorId, userId, companyMasterData, websiteMasterData, companySettingsData, value, images.files
+                    );
+                    if (!updateResult.isSuccess) {
+                        await productVideoService.discardUploadedVideos(videos.videoIds, userId);
+                        return { success: false, errors: [updateResult.message] };
+                    }
 
-        logger.logInfo(1, 0, 'Bulk product update processed', {
-            vendorId, total: result.totalRows, success: result.successCount, failed: result.failedCount
-        });
+                    return { success: true };
+                },
+                { allowPartialSuccess: true, useTransaction: false }
+            );
 
-        return common.returnResult(true, 200, 'Bulk product update processed', result);
+            logger.logInfo(1, 0, 'Bulk product update processed', {
+                vendorId, total: result.totalRows, success: result.successCount, failed: result.failedCount
+            });
+
+            return common.returnResult(true, 200, 'Bulk product update processed', result);
+        } finally {
+            closeBulkProductRun(ctx);
+        }
     } catch (err) {
         throw err;
     }
@@ -3083,9 +3344,6 @@ const mergeVariantsIntoProduct = async ({
         const matchedExistingVariantKeys = new Set();
 
         const productBulkBounds = getBulkPricingBounds(productBulkPricing);
-        const productMaxBulkPrice = (productBulkPricing && productBulkPricing.length > 0)
-            ? Math.max(...productBulkPricing.map(b => b.price))
-            : null;
 
         const usedManualVariantCodesInPayload = new Set();
         const usedManualSizeCodesInPayload = new Set();
@@ -3167,9 +3425,10 @@ const mergeVariantsIntoProduct = async ({
                     }
                 }
 
-                if (variant.isBulkPricingSameFromProductBasicDetails && productMaxBulkPrice !== null) {
-                    if (size.price <= productMaxBulkPrice) {
-                        return common.returnResult(false, 400, `Size price (${size.price}) must be greater than the product's bulk pricing price (${productMaxBulkPrice}).`);
+                if (variant.isBulkPricingSameFromProductBasicDetails) {
+                    const sizePriceResult = validateSizePriceAgainstProductBulkPricing(size, productBulkPricing);
+                    if (!sizePriceResult.isSuccess) {
+                        return common.returnResult(false, sizePriceResult.statusCode, sizePriceResult.message);
                     }
                 }
 
@@ -3185,6 +3444,10 @@ const mergeVariantsIntoProduct = async ({
                     // files were actually uploaded for this position.
                     image: existingSizeDoc ? toPlainImage(existingSizeDoc.image) : undefined,
                     additionalImages: existingSizeDoc ? existingSizeDoc.additionalImages : [],
+                    // Ids from the payload (resolved below); left out = keep the size's own.
+                    videos: size.videos !== undefined
+                        ? size.videos
+                        : (existingSizeDoc ? (existingSizeDoc.videos || []).map((video) => ({ url: video.url, videoAssetId: video.videoAssetId })) : []),
                     createdBy: existingSizeDoc ? existingSizeDoc.createdBy : userId,
                     updatedBy: userId,
                     status: 'A',
@@ -3209,6 +3472,16 @@ const mergeVariantsIntoProduct = async ({
                 remarks: existingVariantDoc ? existingVariantDoc.remarks : 'MANUAL',
                 sizes: resolvedSizes
             });
+        }
+
+        // --- product videos: ids -> stored entries, plus the limit/feature rules ---
+        // Videos the product stops listing are removed after the save (see
+        // updateProduct), so nothing is lost if this request fails.
+        const videosResult = await productVideoService.resolveProductSizeVideos({
+            vendorId, variants, existingProduct, companyMasterData, websiteMasterData
+        });
+        if (!videosResult.isSuccess) {
+            return common.returnResult(false, videosResult.statusCode, videosResult.message);
         }
 
         // --- variants removed entirely: clean up every size's images ------------------
@@ -3323,6 +3596,8 @@ const updateProduct = async (vendorId, userId, companyMasterData, websiteMasterD
             slug = await generateUniqueSlug(vendorId, rest.name, productId);
         }
 
+        const previousVideoIds = productVideoService.collectProductVideoAssetIds(existingProduct);
+
         // --- variants/sizes: matched to existing subdocuments by _id --------------
         const mergeResult = await mergeVariantsIntoProduct({
             vendorId, userId, productId, existingProduct, submittedVariants,
@@ -3349,6 +3624,10 @@ const updateProduct = async (vendorId, userId, companyMasterData, websiteMasterD
         existingProduct.variants = variants;
 
         await existingProduct.save();
+
+        // Videos this product no longer lists (removed, or their size/variant
+        // was) - deleted unless another product, e.g. a clone, still uses them.
+        await productVideoService.cleanUpRemovedProductVideos({ previousVideoIds, product: existingProduct, userId });
 
         logger.logInfo(1, 0, 'Product updated successfully', { vendorId, productId });
 
@@ -3382,6 +3661,15 @@ const toggleProductStatus = async (vendorId, userId, productId, status) => {
                 await reactivateImage({ imageAssetId, userId });
             } else {
                 await deactivateImageIfUnreferenced({ imageAssetId, userId, excludeProductId: productId });
+            }
+        }
+        // Same cascade for the product's videos.
+        const videoAssetIds = productVideoService.collectProductVideoAssetIds(result.document);
+        for (const videoAssetId of videoAssetIds) {
+            if (status === 'A') {
+                await productVideoService.reactivateVideo({ videoAssetId, userId });
+            } else {
+                await productVideoService.deactivateVideoIfUnreferenced({ videoAssetId, userId, excludeProductId: productId });
             }
         }
 
@@ -3451,6 +3739,11 @@ const deleteProduct = async (vendorId, userId, productId) => {
         const imageAssetIds = collectProductImageAssetIds(result.document);
         for (const imageAssetId of imageAssetIds) {
             await deleteImageIfUnreferenced({ imageAssetId, userId, excludeProductId: productId });
+        }
+        // Same for its videos.
+        const videoAssetIds = productVideoService.collectProductVideoAssetIds(result.document);
+        for (const videoAssetId of videoAssetIds) {
+            await productVideoService.deleteVideoIfUnreferenced({ videoAssetId, userId, excludeProductId: productId });
         }
 
         logger.logInfo(1, 0, 'Product deleted', { vendorId, productId });
@@ -3545,7 +3838,8 @@ const generateNextCloneName = async (vendorId, sourceName) => {
 // Everything not called out below is copied as-is from the source
 // (description, colors, mainCategory/subCategory, disclaimer,
 // searchKeywords, recommendedProducts, taxIds, precedence, bulkPricing,
-// price/cancelledPrice/weight/policies/geo-exclusions/measurement values,
+// price/cancelledPrice (and their international versions)/weight/policies/
+// geo-exclusions/measurement values,
 // image/additionalImages). Fields regenerated because of a uniqueness
 // constraint (productCode, variantCode, sizeCode, sku, slug) or explicitly
 // decided in conversation (barcode dropped, stock, status, audit fields)
@@ -3634,6 +3928,9 @@ const cloneOneProduct = async (vendorId, userId, sourceProduct, companySettingsD
             activeMarkedBy: undefined,
             activeMarkedDate: null,
             inactiveMarkedDate: null,
+            // A clone starts with no reviews of its own.
+            averageRating: 0,
+            totalReviews: 0,
             remarks: 'CLONED'
         });
 
@@ -3757,6 +4054,7 @@ module.exports = {
     fetchAllProductsForClient,
     fetchProductByIdForAdmin,
     fetchProductByIdForClient,
+    removeBulkTempFile,
     fetchProductsByBrandForClient,
     fetchProductsByCategoryForClient,
     fetchProductsByCategoryForAdmin,

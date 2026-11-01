@@ -162,7 +162,15 @@ const createOrderFromCart = async (vendorId, userId, userCountryId, companyMaste
         // --- Currency: the customer's own country's, converted from the store
         // currency at the current rate (else the store currency) - the same one
         // the storefront showed them (currencyService.resolveCustomerCurrency).
-        const currencyResult = await currencyService.resolveCustomerCurrency({ countryId: userCountryId, companyMasterData, companySettingsData });
+        // With international pricing the shipping address country decides
+        // instead (local vs international prices) - the same country checkout
+        // prices the cart for below.
+        const currencyResult = await currencyService.resolveCustomerCurrency({
+            countryId: userCountryId,
+            deliveryCountryId: shippingAddress.country_id ? shippingAddress.country_id.toString() : null,
+            companyMasterData,
+            companySettingsData
+        });
         if (!currencyResult.isSuccess) {
             return common.returnResult(false, currencyResult.statusCode, currencyResult.message);
         }

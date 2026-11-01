@@ -91,6 +91,10 @@ const COMPANY_MASTER_VALUES = {
     fileService: 'cloudinary',
     maxVideoSize: 50,
     allowedVideoFormat: ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi'],
+    // Product videos - off unless isVideoUploadingFeatureOn is turned on too.
+    isProductVideoFeatureOn: true,
+    numberOfVideoUploadAllowedInProduct: 5,
+    sizeOfVideoUploadAllowedInProduct: 50,
 
     // Announcements / Banners
     numberOfAnnouncementsAllowed: 10,
@@ -114,7 +118,13 @@ const COMPANY_MASTER_VALUES = {
     allowedProductImageMB: 5,
     allowedProductImagesFormat: IMAGE_FORMATS,
     numberOfBrandsAllowed: 100,
-    numberOfReviewsAllowedOnProduct: 1000,
+    isProductReviewFeatureOn: true,
+    isIncludingImageInReviewsAllowed: true,
+    maxImagesPerReview: 5,
+    allowedReviewImageMB: 5,
+    allowedReviewImagesFormat: IMAGE_FORMATS,
+    isReviewEditingFeatureOn: true,
+    isReviewApproveRejectFeatureOn: true,
 
     // Discounts
     numberOfDiscountsPerMonth: 100,

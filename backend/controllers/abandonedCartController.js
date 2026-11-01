@@ -57,7 +57,7 @@ const getAllAbandonedCartsAdmin = async (req, res) => {
       return common.sendError(res, blockReason.statusCode, blockReason.message);
     }
 
-    const result = await abandonedCartService.fetchAbandonedCartsForAdmin(vendorId, req.companySettingsData);
+    const result = await abandonedCartService.fetchAbandonedCartsForAdmin(vendorId, req.websiteMasterData, req.companyMasterData, req.companySettingsData);
 
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message);

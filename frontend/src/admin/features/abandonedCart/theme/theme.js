@@ -8,6 +8,10 @@ const theme = {
     subheading: 'text-gray-500',
     body: 'text-gray-600',
     muted: 'text-gray-400',
+    warning: 'text-amber-600',
+  },
+  summary: {
+    border: 'border-gray-200',
   },
   alert: {
     error: {

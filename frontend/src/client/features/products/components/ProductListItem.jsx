@@ -3,6 +3,7 @@ import theme from '../../Home/theme/theme';
 import QuantityStepper from './QuantityStepper';
 import { useCurrency } from '../../../currency/useCurrency';
 import { resolveBulkPrice } from '../utils/bulkTier';
+import ProductRatingBadge from '../../reviews/components/ProductRatingBadge';
 
 // Prices arrive in the store currency; formatMoney converts to the shopper's.
 const formatPrice = (product, formatMoney) => {
@@ -91,6 +92,7 @@ const ProductListItem = ({ product, quantity = 0, onAddToCart, onIncrement, onDe
       <div className={theme.listCard.bodyLayout}>
         <p className={`${theme.card.categoryLayout} ${theme.card.category}`}>{product.category}</p>
         <h3 className={`${theme.card.nameLayout} ${theme.card.name} truncate`}>{product.name}</h3>
+        <ProductRatingBadge averageRating={product.averageRating} totalReviews={product.totalReviews} className="mt-1" />
         <p className={`${theme.card.priceLayout} ${theme.card.price}`}>
           {bulk.isApplied ? formatMoney(bulk.unitPrice) : formatPrice(product, formatMoney)}
           {product.unit && <span className={theme.card.unit}> / {product.unit}</span>}

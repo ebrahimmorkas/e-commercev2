@@ -1,4 +1,4 @@
-import { apiRequest, apiDownload } from '../../../../utils/apiClient';
+import { apiRequest, apiDownload, apiUpload } from '../../../../utils/apiClient';
 
 const BASE = '/products';
 
@@ -68,6 +68,31 @@ export const updateProduct = (payload, mainImages, additionalImageUploads) =>
     body: buildProductFormData(payload, mainImages, additionalImageUploads),
   });
 
+// --- Product videos ------------------------------------------------------------
+// A video is uploaded on its own as soon as it is picked; the product save then
+// lists the returned videoAssetId per size (payload.variants[].sizes[].videos).
+
+/**
+ * The switch + limits for the form: { isEnabled, disabledMessage,
+ * maxVideosPerProduct (null = no limit), maxVideoSizeMB (null = no limit), allowedFormats }.
+ */
+export const getProductVideoSettings = () => apiRequest(`${BASE}/product-video-settings`);
+
+/**
+ * Uploads one product video. Resolves to { video: { videoAssetId, url, originalName, mimeType, size } }.
+ * @param {File} file
+ * @param {{ onProgress?: (fraction: number) => void, signal?: AbortSignal }} [options]
+ */
+export const uploadProductVideo = (file, { onProgress, signal } = {}) => {
+  const formData = new FormData();
+  formData.append('video', file);
+  return apiUpload(`${BASE}/upload-product-video`, { body: formData, onProgress, signal });
+};
+
+/** Removes an uploaded video that was never saved into a product. */
+export const discardProductVideo = (videoAssetId) =>
+  apiRequest(`${BASE}/product-video/${encodeURIComponent(videoAssetId)}`, { method: 'DELETE' });
+
 export const toggleProductStatus = (productId, status) =>
   apiRequest(`${BASE}/toggle-product-status`, { method: 'PATCH', body: { productId, status } });
 
@@ -97,12 +122,14 @@ export const bulkCloneProducts = (productIds) =>
  * @param {File} excelFile - .xlsx with Products/Variants/Sizes/MeasurementValues/Descriptions/BulkPricing sheets
  * @param {File} [mainImagesZip] - zip of size main images referenced by MainImageFileName
  * @param {File} [additionalImagesZip] - zip of size additional images referenced by AdditionalImageFileNames
+ * @param {File} [videosZip] - zip of size videos referenced by VideoFileNames
  */
-export const bulkUploadProducts = (excelFile, mainImagesZip, additionalImagesZip) => {
+export const bulkUploadProducts = (excelFile, mainImagesZip, additionalImagesZip, videosZip) => {
   const formData = new FormData();
   formData.append('excelFile', excelFile);
   if (mainImagesZip) formData.append('mainImagesZip', mainImagesZip);
   if (additionalImagesZip) formData.append('additionalImagesZip', additionalImagesZip);
+  if (videosZip) formData.append('videosZip', videosZip);
 
   return apiRequest(`${BASE}/bulk-upload-products`, { method: 'POST', body: formData });
 };
@@ -115,10 +142,10 @@ export const downloadBulkUploadSampleFile = () => apiDownload(`${BASE}/bulk-uplo
 
 /**
  * Products page > Download: a zip of products.xlsx (Bulk Update format) plus
- * main-images.zip / additional-images.zip. Takes the list's own params (q,
+ * main-images.zip / additional-images.zip / videos.zip. Takes the list's own params (q,
  * sort, categoryId, minPrice, maxPrice, stockStatus, minStock, maxStock) - or
  * `ids` (ticked products), which wins over them.
- * @returns {Promise<{ blob: Blob, filename: string|null, productCount: number, failedImageCount: number }>}
+ * @returns {Promise<{ blob: Blob, filename: string|null, productCount: number, failedImageCount: number, failedVideoCount: number }>}
  */
 export const exportProducts = async ({ ids, ...params } = {}) => {
   const { blob, filename, headers } = await apiDownload(
@@ -129,6 +156,7 @@ export const exportProducts = async ({ ids, ...params } = {}) => {
     filename,
     productCount: Number(headers?.get('X-Product-Count')) || 0,
     failedImageCount: Number(headers?.get('X-Failed-Image-Count')) || 0,
+    failedVideoCount: Number(headers?.get('X-Failed-Video-Count')) || 0,
   };
 };
 
@@ -138,6 +166,9 @@ export default {
   getProductByIdAdmin,
   createProduct,
   updateProduct,
+  getProductVideoSettings,
+  uploadProductVideo,
+  discardProductVideo,
   toggleProductStatus,
   deleteProduct,
   cloneProduct,

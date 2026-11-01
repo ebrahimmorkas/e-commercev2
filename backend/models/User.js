@@ -100,6 +100,14 @@ const userSchema = mongoose.Schema({
         trim: true,
         maxlength: 15
     },
+    // When the customer last signed in, signed up, or came back with a still
+    // logged-in session (authService.refreshAccessToken, at most once per
+    // LAST_LOGIN_TOUCH_INTERVAL_MS). null = never logged in (an account the
+    // admin created, or one that hasn't logged in since this field was added).
+    lastLoginAt: {
+        type: Date,
+        default: null
+    },
     updated_by: {
         type: mongoose.Types.ObjectId,
         index: true

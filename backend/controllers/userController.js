@@ -57,6 +57,66 @@ const getAllUsersAdmin = async (req, res) => {
     }
 };
 
+// Customers page (paginated). req.query is already validated and converted
+// (numbers, dates, defaults) by listCustomersAdminQuerySchema.
+const listCustomersAdmin = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        const result = await userService.fetchCustomersAdminList(vendorId, req.query);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, {
+            ...result.meta,
+            users: result.meta.users.map(formatUserForResponse)
+        });
+    } catch (error) {
+        logger.logException('userController: listCustomersAdmin - Exception while fetching customers', { vendorId, error });
+    }
+};
+
+const getCustomerOrdersAdmin = async (req, res) => {
+    const vendorId = req.vendorId;
+    let id;
+    try {
+        id = common.tryDecodeId(req.params.id);
+        if (!id) {
+            return common.sendError(res, 400, 'Validation failed', [{ field: 'id', message: 'Customer ID is invalid.' }]);
+        }
+        const result = await userService.fetchCustomerOrdersAdmin(vendorId, id);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, {
+            customer: formatUserForResponse(result.meta.customer),
+            orders: result.meta.orders
+        });
+    } catch (error) {
+        logger.logException('userController: getCustomerOrdersAdmin - Exception while fetching customer orders', { vendorId, id, error });
+    }
+};
+
+const getCustomerReviewsAdmin = async (req, res) => {
+    const vendorId = req.vendorId;
+    let id;
+    try {
+        id = common.tryDecodeId(req.params.id);
+        if (!id) {
+            return common.sendError(res, 400, 'Validation failed', [{ field: 'id', message: 'Customer ID is invalid.' }]);
+        }
+        const result = await userService.fetchCustomerReviewsAdmin(vendorId, id);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, {
+            customer: formatUserForResponse(result.meta.customer),
+            reviews: result.meta.reviews
+        });
+    } catch (error) {
+        logger.logException('userController: getCustomerReviewsAdmin - Exception while fetching customer reviews', { vendorId, id, error });
+    }
+};
+
 const createUserByAdmin = async (req, res) => {
     const vendorId = req.vendorId;
     try {
@@ -170,6 +230,9 @@ const bulkDeleteUsers = async (req, res) => {
 module.exports = {
     createUserByAdmin,
     getAllUsersAdmin,
+    listCustomersAdmin,
+    getCustomerOrdersAdmin,
+    getCustomerReviewsAdmin,
     getUserByIdAdmin,
     updateUserByAdmin,
     changePasswordByAdmin,

@@ -351,6 +351,7 @@ const ClientApp = () => {
             onSetItemQuantity={handleSetItemQuantity}
             onProductClick={handleProductClick}
             onRecommendedAddToCart={handleAddToCart}
+            onSignIn={handleLoginClick}
           />
         )}
         <div hidden={route.type === 'product'}>

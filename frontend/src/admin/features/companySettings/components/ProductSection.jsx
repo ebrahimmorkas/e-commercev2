@@ -10,10 +10,12 @@ import theme from '../theme/theme';
  * @param {Object} props.errors - Field errors from the page's validation
  * @param {boolean} props.isLowStockAlertOn - Low stock alert is on for the account
  *   (WebsiteMaster AND CompanyMaster); its settings are hidden otherwise.
+ * @param {boolean} props.isProductVideoOn - Product videos are on for the account;
+ *   the gallery video settings are hidden otherwise.
  */
 const pageSizeOptions = ADMIN_PRODUCT_PAGE_SIZES.map((size) => ({ value: String(size), label: `${size} products` }));
 
-const ProductSection = ({ draft, onChange, errors = {}, isLowStockAlertOn = false }) => {
+const ProductSection = ({ draft, onChange, errors = {}, isLowStockAlertOn = false, isProductVideoOn = false }) => {
   const set = (patch) => onChange(patch);
 
   return (
@@ -60,6 +62,38 @@ const ProductSection = ({ draft, onChange, errors = {}, isLowStockAlertOn = fals
           helperText="How many products the admin Products list shows when it opens. You can still switch it on that page for a visit."
         />
       </div>
+
+      {isProductVideoOn && (
+        <div className="border border-gray-200 rounded-lg p-4 space-y-4">
+          <div className="max-w-sm">
+            <InputField
+              type="number"
+              label="Video Position in Product Gallery"
+              name="productVideoPositionInGallery"
+              min={1}
+              max={100}
+              step={1}
+              required
+              placeholder="e.g. 1"
+              value={draft.productVideoPositionInGallery}
+              onChange={(e) => set({ productVideoPositionInGallery: e.target.value })}
+              error={errors.productVideoPositionInGallery}
+            />
+            <p className={`mt-1 text-xs ${theme.text.muted}`}>
+              Where a size&apos;s videos appear among its images. 1 = the videos come first. With 2, the main image
+              comes first, then every video of the size in its saved order, then the other images. If the size has
+              fewer images than this, its videos come last.
+            </p>
+          </div>
+          <Switch
+            label="Autoplay Product Videos"
+            description="A video starts playing on its own (muted) when it is shown in the product gallery. Off: the customer clicks play."
+            checked={draft.isProductVideoAutoplayOn}
+            onChange={(e) => set({ isProductVideoAutoplayOn: e.target.checked })}
+            color={theme.switch.color}
+          />
+        </div>
+      )}
 
       {isLowStockAlertOn && (
         <div className="border border-gray-200 rounded-lg p-4 space-y-4">

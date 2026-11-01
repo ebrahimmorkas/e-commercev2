@@ -7,7 +7,7 @@ import Checkbox from '../../../../components/common/Checkbox';
 import Spinner from '../../../../components/common/Spinner';
 import { useEditOrderProducts } from '../hooks/useEditOrderProducts';
 import { formatOrderMoney } from '../utils/formatOrder';
-import { bulkUnitPrice } from '../../../../utils/bulkPricing';
+import { bulkUnitPrice, zonePrice, zoneTiers } from '../../../../utils/bulkPricing';
 import { convertAmount } from '../../../../utils/money';
 import { previewAddProductsTax, searchEditProducts } from '../api/orderAdminApi';
 import { useTaxPreview } from '../../adminPlaceOrder/hooks/useTaxPreview';
@@ -43,6 +43,9 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
   const orderDecimals = order.currencyDecimalPlaces ?? 2;
   const toOrder = (storeAmount) => convertAmount(storeAmount, order.exchangeRate || 1, orderDecimals);
   const toOrderLine = (storeUnitPrice, quantity) => Math.round(toOrder(storeUnitPrice) * quantity * 10 ** orderDecimals) / 10 ** orderDecimals;
+  // An order placed with international prices keeps using them for added products.
+  const priceZone = order.isInternationalPrice ? { isInternational: true, exchangeRate: order.exchangeRate || 1 } : null;
+  const sizePrice = (size) => zonePrice(size.price, size.internationalPrice, priceZone);
   const picker = useEditOrderProducts();
   const [mainCategory, setMainCategory] = useState('');
   const [subCategory, setSubCategory] = useState('');
@@ -71,7 +74,7 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
   const productOptionsList = picker.products.map((p) => ({ value: p._id, label: p.productCode ? `${p.name} (${p.productCode})` : p.name }));
   const sizeOptions = (selectedVariant?.sizes || []).map((size) => ({
     value: size.sizeId,
-    label: `${size.sizeName} - ${formatOrderMoney(order, toOrder(size.price))}${size.isOutOfStock ? ' (out of stock)' : ` (${size.stock} in stock)`}`,
+    label: `${size.sizeName} - ${formatOrderMoney(order, toOrder(sizePrice(size)))}${size.isOutOfStock ? ' (out of stock)' : ` (${size.stock} in stock)`}`,
     disabled: !size.isSelectable,
   }));
 
@@ -142,6 +145,7 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
         variantName: selectedVariant.variantName,
         sizeName: selectedSize.sizeName,
         unitPrice: selectedSize.price,
+        internationalPrice: selectedSize.internationalPrice ?? null,
         bulkPricing: selectedSize.bulkPricing || [],
         stock: selectedSize.stock,
         allowOutOfStock,
@@ -173,7 +177,10 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
 
   // Preview of what "Apply Bulk Pricing" charges - the backend re-prices on submit.
   const bulkPricingOn = picker.isBulkPricingFeatureOn && applyBulkPricing;
-  const lineUnitPrice = (line) => (bulkPricingOn ? bulkUnitPrice(line.unitPrice, line.bulkPricing, lineQuantity(line)) : line.unitPrice);
+  const lineBasePrice = (line) => zonePrice(line.unitPrice, line.internationalPrice, priceZone);
+  const lineUnitPrice = (line) => (bulkPricingOn
+    ? bulkUnitPrice(lineBasePrice(line), zoneTiers(line.bulkPricing, priceZone), lineQuantity(line))
+    : lineBasePrice(line));
 
   const addedSubtotal = items.reduce((sum, line) => sum + (lineQuantityError(line) ? 0 : toOrderLine(lineUnitPrice(line), lineQuantity(line))), 0);
 
@@ -290,7 +297,7 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
         <div className="text-sm text-gray-600 pb-2 min-w-0 wrap-break-word">
           {selectedSize ? (
             <>
-              Unit price: <span className="font-semibold">{formatOrderMoney(order, toOrder(selectedSize.price))}</span>
+              Unit price: <span className="font-semibold">{formatOrderMoney(order, toOrder(sizePrice(selectedSize)))}</span>
             </>
           ) : null}
         </div>
@@ -328,10 +335,10 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
                   <p className="font-medium text-gray-900 wrap-break-word">{line.productName}</p>
                   <p className="text-xs text-gray-500 wrap-break-word">
                     {line.variantName} / {line.sizeName} · {formatOrderMoney(order, toOrder(unitPrice))} each
-                    {unitPrice !== line.unitPrice && (
+                    {unitPrice !== lineBasePrice(line) && (
                       <>
                         {' '}
-                        <span className="line-through text-gray-400">{formatOrderMoney(order, toOrder(line.unitPrice))}</span>{' '}
+                        <span className="line-through text-gray-400">{formatOrderMoney(order, toOrder(lineBasePrice(line)))}</span>{' '}
                         <span className="text-emerald-600">Bulk price</span>
                       </>
                     )}

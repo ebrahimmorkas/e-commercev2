@@ -17,11 +17,13 @@ const realtimeService = require('./services/realtimeService');
 const abandonedCartService = require('./services/abandonedCartService');
 const expiryReminderService = require('./services/expiryReminderService');
 const sentEmailCleanupService = require('./services/sentEmailCleanupService');
+const productVideoService = require('./services/productVideoService');
 const keepAliveService = require('./services/keepAliveService');
 // Middlewares
 const { requestContext } = require('./middlewares/requestContext');
 const vendorDetection = require('./middlewares/vendorDetection');
 const ensureVendorDataCached = require('./middlewares/ensureVendorDataCached');
+const ipCountryDetection = require('./middlewares/ipCountryDetection');
 const checkStoreAvailability = require('./middlewares/checkStoreAvailability');
 // Routes
 const storeAvailabilityRoutes = require('./routes/storeAvailabilityRoutes');
@@ -118,6 +120,10 @@ if (process.env.IS_REDIS_SERVER_ON == 1) {
 
 app.use(ensureVendorDataCached);
 
+// req.ipCountryId (visitor country from IP) while IP detection is on. After
+// ensureVendorDataCached - it reads the vendor's feature switches.
+app.use(ipCountryDetection);
+
 // Maintenance / plan expired: refuses every API call below except the few
 // exempt ones. Must stay after ensureVendorDataCached and before the routers.
 app.use(checkStoreAvailability);
@@ -148,7 +154,7 @@ app.use('/api/address', addressRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/inventory', require('./routes/inventoryRoutes'));
-app.use('/api/reviewRoutes', reviewRoutes);
+app.use('/api/reviews', reviewRoutes);
 app.use('/api/discount', discountRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/orders', orderRoutes);
@@ -184,6 +190,8 @@ abandonedCartService.startAbandonedCartScanner();
 expiryReminderService.startExpiryReminderScanner();
 // Deletes files uploaded for one Send Email email after the retention period.
 sentEmailCleanupService.startSendEmailCleanup();
+// Removes product videos uploaded from the admin form but never saved into a product.
+productVideoService.startUnusedProductVideoCleanup();
 // Stops Render's free plan from putting the server to sleep (no-op elsewhere).
 keepAliveService.startKeepAlive();
 

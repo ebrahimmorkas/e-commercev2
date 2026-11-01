@@ -1,4 +1,5 @@
 import Switch from '../../../../components/common/Switch';
+import InputField from '../../../../components/common/InputField';
 import theme from '../theme/theme';
 import CatalogueCard from './CatalogueCard';
 
@@ -75,8 +76,8 @@ const StorefrontSection = ({ draft, onChange, companyMaster, catalogue, settings
         </div>
       )}
 
-      {flagOn('isReviewFeatureOn') && (
-      <div className="border border-gray-200 rounded-lg p-3">
+      {flagOn('isProductReviewFeatureOn') && (
+      <div className="border border-gray-200 rounded-lg p-3 space-y-3">
         <Switch
           label="Show Reviews to Customers"
           description="Display product reviews/ratings on the storefront."
@@ -84,6 +85,21 @@ const StorefrontSection = ({ draft, onChange, companyMaster, catalogue, settings
           onChange={(e) => set({ showReviewsToCustomers: e.target.checked })}
           color={theme.switch.color}
         />
+        <div>
+          <InputField
+            type="number"
+            label="Reviews Allowed per Customer per Product"
+            min={1}
+            max={100}
+            step={1}
+            placeholder="No limit"
+            value={draft.maxReviewsPerCustomerPerProduct}
+            onChange={(e) => set({ maxReviewsPerCustomerPerProduct: e.target.value })}
+          />
+          <p className={`mt-1 text-xs ${theme.text.muted}`}>
+            Each review needs its own delivered order. 1 = one review per product, which the customer can edit later. Leave blank for no limit.
+          </p>
+        </div>
       </div>
       )}
     </div>

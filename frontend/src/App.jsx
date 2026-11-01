@@ -19,6 +19,7 @@ import CompanySettingsPage from './admin/features/companySettings/pages/CompanyS
 import DeliveryAgentsPage from './admin/features/deliveryAgents/pages/DeliveryAgentsPage';
 import CouriersPage from './admin/masters/courier/pages/CouriersPage';
 import InventoryPage from './admin/features/inventory/pages/InventoryPage';
+import ReviewsPage from './admin/features/reviews/pages/ReviewsPage';
 import FreeCashUsagePage from './admin/features/freeCashUsage/pages/FreeCashUsagePage';
 import SendEmailPage from './admin/features/sendEmail/pages/SendEmailPage';
 import MyDeliveriesPage from './admin/features/myDeliveries/pages/MyDeliveriesPage';
@@ -143,6 +144,8 @@ function App() {
           <CouriersPage />
         ) : effectiveActivePage === 'inventory' ? (
           <InventoryPage />
+        ) : effectiveActivePage === 'reviews' ? (
+          <ReviewsPage />
         ) : effectiveActivePage === 'freeCashUsage' ? (
           <FreeCashUsagePage />
         ) : effectiveActivePage === 'sendEmail' ? (

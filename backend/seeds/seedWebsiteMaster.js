@@ -59,6 +59,10 @@ const WEBSITE_MASTER = {
     isVideoUploadingFeatureOn: true,
     mainVideoService: 'cloudinary',
     enforceMainVideoService: false,
+    // Product videos (also needs CompanyMaster.isProductVideoFeatureOn).
+    isProductVideoFeatureOn: true,
+    // Bulk product upload/update: the videos zip (kept on disk, not in memory).
+    bulkUploadVideoZipMaxSizeMB: 1024,
 
     // Products
     isBrandFeatureOn: true,
@@ -66,6 +70,9 @@ const WEBSITE_MASTER = {
     // Virtual Try-On - off by default (see scripts/enableFaceDetectionForVendor.js).
     isFaceDetectionFeatureOn: false,
     isProductReviewFeatureOn: true,
+    isIncludingImageInReviewsAllowed: true,
+    isReviewEditingFeatureOn: true,
+    isReviewApproveRejectFeatureOn: true,
     isBulkPricingFeatureOn: true,
     isCloningProductAllowed: true,
     isBulkUploadForProductsFeatureOn: true,
@@ -110,6 +117,9 @@ const WEBSITE_MASTER = {
     // Payment
     isPaymentGatewayFeatureOn: true,
     isCODFeatureOn: true,
+    isCurrencyConversionFeatureOn: true,
+    isIPDetectionFeatureOn: false,
+    isInternationalPriceFeatureOn: false,
     mainPaymentGateway: null,            // null = each vendor uses its own CompanyMaster.paymentGateway
     isShowingPaymentQRCodeAndBankDetailsFeatureOn: true,
     isShowingGpayNumberFeatureOn: true,

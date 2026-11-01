@@ -326,6 +326,7 @@ module.exports = {
     resolveMaxVideoSizeMB,
     resolveAllowedVideoFormats,
     getFileExtension,
+    cleanupTempFile,
     uploadVideo,
     getVideos,
     getVideoById,

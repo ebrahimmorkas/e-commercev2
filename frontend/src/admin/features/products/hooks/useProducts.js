@@ -261,8 +261,12 @@ export const useProducts = () => {
         ...toProductFilterParams(params.filters),
       });
       saveBlob(data.blob, data.filename || 'products.zip');
-      if (data.failedImageCount > 0) {
-        toast.warning(`${data.productCount} product(s) downloaded, but ${data.failedImageCount} image(s) could not be included - see the Instructions sheet.`);
+      if (data.failedImageCount > 0 || data.failedVideoCount > 0) {
+        const missing = [
+          data.failedImageCount > 0 ? `${data.failedImageCount} image(s)` : null,
+          data.failedVideoCount > 0 ? `${data.failedVideoCount} video(s)` : null,
+        ].filter(Boolean).join(' and ');
+        toast.warning(`${data.productCount} product(s) downloaded, but ${missing} could not be included - see the Instructions sheet.`);
       } else {
         toast.success(`${data.productCount} product(s) downloaded`);
       }
@@ -277,10 +281,10 @@ export const useProducts = () => {
 
   // Excel bulk upload. Resolves to { success, result } - result is the per-row
   // outcome (totalRows/successCount/failedCount/failedRecords) for the caller to render.
-  const runBulkUpload = async (excelFile, mainImagesZip, additionalImagesZip) => {
+  const runBulkUpload = async (excelFile, mainImagesZip, additionalImagesZip, videosZip) => {
     setMutating(true);
     try {
-      const data = await productApi.bulkUploadProducts(excelFile, mainImagesZip, additionalImagesZip);
+      const data = await productApi.bulkUploadProducts(excelFile, mainImagesZip, additionalImagesZip, videosZip);
       if (data?.successCount > 0) fetchProducts();
       return { success: true, result: data };
     } catch (err) {

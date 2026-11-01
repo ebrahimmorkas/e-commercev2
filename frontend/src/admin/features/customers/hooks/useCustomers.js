@@ -1,38 +1,101 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as customerApi from '../api/customerApi';
 import { useToast } from '../../../../components/common/Toast';
+import {
+  DEFAULT_CUSTOMER_SORT,
+  DEFAULT_CUSTOMER_PAGE_SIZE,
+  EMPTY_CUSTOMER_FILTERS,
+  countActiveFilters,
+  toCustomerFilterParams,
+} from '../utils/customerListFilters';
+
+const SEARCH_DEBOUNCE_MS = 350;
 
 /**
  * Owns the customers list state for the admin page: fetching, and the
  * update/change-password/delete/toggle mutations, each surfacing errors via
  * toast rather than throwing, so callers can just check the boolean result.
- * Mirrors admin/masters/brand/hooks/useBrands.js. There is no create here -
- * that's the separate Add User module (admin/features/addUser).
+ * There is no create here - that's the separate Add User module
+ * (admin/features/addUser).
+ *
+ * The list is paginated, searched, filtered and sorted on the server (GET
+ * /users/list-customers-admin), same as admin/features/products/hooks/useProducts.js,
+ * so only one page of customers is ever in memory. While another page or
+ * search loads, the previous rows stay on screen (`loading` is true).
  */
 export const useCustomers = () => {
-  const [customers, setCustomers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  // What the admin typed (instant) vs. what the server is asked for (debounced).
+  const [searchText, setSearchTextState] = useState('');
+  const [params, setParams] = useState({
+    page: 1,
+    q: '',
+    sort: DEFAULT_CUSTOMER_SORT,
+    filters: EMPTY_CUSTOMER_FILTERS,
+    limit: DEFAULT_CUSTOMER_PAGE_SIZE,
+  });
+  const [reloadToken, setReloadToken] = useState(0);
+  const requestKey = `${JSON.stringify(params)}|${reloadToken}`;
+  const [result, setResult] = useState({ key: null, customers: [], pagination: null, totalCustomers: 0, error: '' });
   const [mutating, setMutating] = useState(false);
+  const searchTimerRef = useRef(null);
   const toast = useToast();
 
-  const fetchCustomers = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const data = await customerApi.getAllUsersAdmin();
-      setCustomers(Array.isArray(data) ? data : []);
-    } catch (err) {
-      setError(err.message || 'Failed to load customers');
-      setCustomers([]);
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    let cancelled = false;
+    customerApi
+      .listCustomersAdmin({
+        page: params.page,
+        limit: params.limit,
+        q: params.q,
+        sort: params.sort,
+        ...toCustomerFilterParams(params.filters),
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setResult({
+          key: requestKey,
+          customers: Array.isArray(data?.users) ? data.users : [],
+          pagination: data?.pagination || null,
+          totalCustomers: data?.totalCustomers ?? 0,
+          error: '',
+        });
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setResult((prev) => ({ ...prev, key: requestKey, customers: [], pagination: null, error: err.message || 'Failed to load customers' }));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+    // requestKey covers params and reloadToken.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestKey]);
+
+  useEffect(() => () => clearTimeout(searchTimerRef.current), []);
+
+  const loading = result.key !== requestKey;
+
+  const setSearchText = useCallback((text) => {
+    setSearchTextState(text);
+    clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => setParams((prev) => ({ ...prev, page: 1, q: text.trim() })), text ? SEARCH_DEBOUNCE_MS : 0);
   }, []);
 
-  useEffect(() => {
-    fetchCustomers();
-  }, [fetchCustomers]);
+  // A new sort, filter or page size always starts again from page 1.
+  const setSort = useCallback((sort) => setParams((prev) => ({ ...prev, page: 1, sort: sort || DEFAULT_CUSTOMER_SORT })), []);
+  const setFilters = useCallback((filters) => setParams((prev) => ({ ...prev, page: 1, filters: { ...EMPTY_CUSTOMER_FILTERS, ...filters } })), []);
+  const clearFilters = useCallback(() => setParams((prev) => ({ ...prev, page: 1, filters: EMPTY_CUSTOMER_FILTERS })), []);
+  const setPage = useCallback((page) => setParams((prev) => ({ ...prev, page })), []);
+  const setPageSize = useCallback((limit) => setParams((prev) => ({ ...prev, page: 1, limit: Number(limit) || DEFAULT_CUSTOMER_PAGE_SIZE })), []);
+
+  // Reloads the current page. A page emptied by a delete steps back one page.
+  const fetchCustomers = useCallback(() => setReloadToken((token) => token + 1), []);
+  const refetchAfterRemoving = (removedCount) => {
+    const remaining = result.customers.length - removedCount;
+    if (remaining <= 0 && params.page > 1) setPage(params.page - 1);
+    else fetchCustomers();
+  };
 
   const fetchCustomerById = async (userId) => {
     try {
@@ -48,7 +111,7 @@ export const useCustomers = () => {
     try {
       await customerApi.updateUser(userId, payload);
       toast.success('Customer updated successfully');
-      await fetchCustomers();
+      fetchCustomers();
       return true;
     } catch (err) {
       toast.error(err.message || 'Failed to update customer');
@@ -77,7 +140,7 @@ export const useCustomers = () => {
     try {
       await customerApi.deleteUser(userId);
       toast.success('Customer deleted successfully');
-      await fetchCustomers();
+      refetchAfterRemoving(1);
       return true;
     } catch (err) {
       toast.error(err.message || 'Failed to delete customer');
@@ -97,7 +160,7 @@ export const useCustomers = () => {
     try {
       await customerApi.bulkSetUserStatus([customer._id], nextStatus);
       toast.success(`Customer ${nextStatus === 'A' ? 'activated' : 'deactivated'} successfully`);
-      await fetchCustomers();
+      fetchCustomers();
       return true;
     } catch (err) {
       toast.error(err.message || 'Failed to update customer status');
@@ -128,7 +191,7 @@ export const useCustomers = () => {
     try {
       const data = await customerApi.bulkSetUserStatus(userIds, status);
       describeBulkOutcome(data, status === 'A' ? 'activated' : 'deactivated');
-      await fetchCustomers();
+      fetchCustomers();
       return data;
     } catch (err) {
       toast.error(err.message || 'Failed to update customer status');
@@ -144,7 +207,7 @@ export const useCustomers = () => {
     try {
       const data = await customerApi.bulkDeleteUsers(userIds);
       describeBulkOutcome(data, 'deleted');
-      await fetchCustomers();
+      refetchAfterRemoving(data?.successCount ?? 0);
       return data;
     } catch (err) {
       toast.error(err.message || 'Failed to delete customers');
@@ -155,9 +218,25 @@ export const useCustomers = () => {
   };
 
   return {
-    customers,
+    customers: result.customers,
+    pagination: result.pagination,
+    // Every customer of the store, ignoring search and filters.
+    totalCustomers: result.totalCustomers,
+    page: params.page,
+    setPage,
+    pageSize: params.limit,
+    setPageSize,
+    searchText,
+    setSearchText,
+    sort: params.sort,
+    setSort,
+    filters: params.filters,
+    setFilters,
+    clearFilters,
+    activeFilterCount: countActiveFilters(params.filters),
     loading,
-    error,
+    initialLoading: loading && result.key === null,
+    error: result.error,
     mutating,
     refetch: fetchCustomers,
     fetchCustomerById,

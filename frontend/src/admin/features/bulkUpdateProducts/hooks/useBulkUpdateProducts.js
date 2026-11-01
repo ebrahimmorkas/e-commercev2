@@ -12,10 +12,10 @@ export const useBulkUpdateProducts = () => {
   const [submitting, setSubmitting] = useState(false);
   const toast = useToast();
 
-  const runBulkUpdate = async (excelFile, mainImagesZip, additionalImagesZip) => {
+  const runBulkUpdate = async (excelFile, mainImagesZip, additionalImagesZip, videosZip) => {
     setSubmitting(true);
     try {
-      const result = await bulkUpdateProductsApi.bulkUpdateProducts(excelFile, mainImagesZip, additionalImagesZip);
+      const result = await bulkUpdateProductsApi.bulkUpdateProducts(excelFile, mainImagesZip, additionalImagesZip, videosZip);
       return { success: true, result };
     } catch (err) {
       toast.error(err.message || 'Bulk update failed');

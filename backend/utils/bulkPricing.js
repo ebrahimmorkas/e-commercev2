@@ -1,4 +1,5 @@
 const common = require('./common');
+const internationalPrice = require('./internationalPrice');
 
 // Bulk pricing is two-level gated like every other feature: the global
 // WebsiteMaster switch AND the vendor's CompanyMaster switch. Missing data
@@ -55,15 +56,19 @@ const findApplicableTier = (tiers, quantity) => {
 
 // Price of one unit of this size at this quantity. originalUnitPrice is the
 // size's normal price, returned so the cart can show it struck through when
-// a bulk tier brought the unit price down.
-const resolveUnitPrice = (product, variant, size, quantity, isBulkPricingOn) => {
+// a bulk tier brought the unit price down. priceZone (utils/internationalPrice.js)
+// swaps in the international size/tier prices for an international customer.
+const resolveUnitPrice = (product, variant, size, quantity, isBulkPricingOn, priceZone = null) => {
     try {
-        const originalUnitPrice = size.price;
+        const originalUnitPrice = internationalPrice.resolveSizePrices(size, priceZone).price;
         if (!isBulkPricingOn) {
             return { unitPrice: originalUnitPrice, originalUnitPrice, isBulkPriceApplied: false };
         }
 
-        const tier = findApplicableTier(resolveEffectiveBulkPricing(product, variant, size), quantity);
+        const tier = findApplicableTier(
+            internationalPrice.resolveTierPrices(resolveEffectiveBulkPricing(product, variant, size), priceZone),
+            quantity
+        );
         if (!tier || tier.price >= originalUnitPrice) {
             return { unitPrice: originalUnitPrice, originalUnitPrice, isBulkPriceApplied: false };
         }

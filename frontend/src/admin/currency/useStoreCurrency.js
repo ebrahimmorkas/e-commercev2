@@ -8,7 +8,7 @@ let storeCurrencyPromise = null;
 const loadStoreCurrency = () => {
   if (!storeCurrencyPromise) {
     storeCurrencyPromise = apiRequest('/currency/store')
-      .then((result) => result?.currency || null)
+      .then((result) => ({ currency: result?.currency || null, internationalCurrency: result?.internationalCurrency || null }))
       .catch((err) => {
         storeCurrencyPromise = null;
         throw err;
@@ -25,16 +25,21 @@ const loadStoreCurrency = () => {
  *   formatMoney(499)            // "₹499.00"
  *   `Amount (${symbol})`        // field labels
  *
- * @returns {{ currency: Object|null, symbol: string, formatMoney: (amount: number) => string }}
+ * internationalCurrency is set only while international pricing is on for the
+ * vendor (CompanyMaster.internationalCurrency) - the international price
+ * fields are shown only then.
+ *
+ * @returns {{ currency: Object|null, symbol: string, formatMoney: (amount: number) => string,
+ *   internationalCurrency: Object|null }}
  */
 export const useStoreCurrency = () => {
-  const [currency, setCurrency] = useState(null);
+  const [state, setState] = useState({ currency: null, internationalCurrency: null });
 
   useEffect(() => {
     let cancelled = false;
     loadStoreCurrency()
       .then((result) => {
-        if (!cancelled) setCurrency(result);
+        if (!cancelled) setState(result);
       })
       .catch(() => {});
     return () => {
@@ -42,10 +47,11 @@ export const useStoreCurrency = () => {
     };
   }, []);
 
+  const { currency, internationalCurrency } = state;
   // Stable until the currency loads, so memoized tables can list it as a dependency.
   const formatMoney = useCallback((amount) => formatCurrencyAmount(amount, currency), [currency]);
 
-  return { currency, symbol: currency?.symbol || '', formatMoney };
+  return { currency, symbol: currency?.symbol || '', formatMoney, internationalCurrency };
 };
 
 export default useStoreCurrency;

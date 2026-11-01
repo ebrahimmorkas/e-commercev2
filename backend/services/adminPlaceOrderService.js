@@ -261,10 +261,16 @@ const loadProductOptions = async (vendorId, companySettingsData, productId) => {
                         sizeName: size.sizeName,
                         sku: size.sku,
                         price: size.price,
+                        // Used instead of price for an international customer (the
+                        // page knows from /currency's isInternationalPrice). null =
+                        // the local price, converted.
+                        internationalPrice: size.internationalPrice ?? null,
                         // Combined product -> variant -> size tiers, so Place
                         // Order can preview the price "Apply Bulk Pricing" gives.
                         bulkPricing: bulkPricing.resolveEffectiveBulkPricing(product, variant, size)
-                            .map(({ minimumQuantity, maximumQuantity, price }) => ({ minimumQuantity, maximumQuantity, price }))
+                            .map(({ minimumQuantity, maximumQuantity, price, internationalPrice }) => ({
+                                minimumQuantity, maximumQuantity, price, internationalPrice: internationalPrice ?? null
+                            }))
                             .sort((a, b) => a.minimumQuantity - b.minimumQuantity),
                         stock: size.stock,
                         isOutOfStock: size.stock <= 0,
@@ -412,7 +418,9 @@ const resolveApplyBulkPricing = async (vendorId, applyBulkPricing, websiteMaster
 
 // isBulkPricingOn comes from resolveApplyBulkPricing - true only when the
 // admin ticked "Apply Bulk Pricing" and the feature is on.
-const resolveOrderLines = async (vendorId, items, allowOutOfStock, isBulkPricingOn = false) => {
+// priceZone (utils/internationalPrice.js): an international customer's lines
+// use the products' international prices.
+const resolveOrderLines = async (vendorId, items, allowOutOfStock, isBulkPricingOn = false, priceZone = null) => {
     try {
         const seen = new Set();
         const lines = [];
@@ -443,7 +451,7 @@ const resolveOrderLines = async (vendorId, items, allowOutOfStock, isBulkPricing
             }
 
             // Same quantity-based bulk pricing the customer gets in the cart.
-            const { unitPrice } = bulkPricing.resolveUnitPrice(product, variant, size, item.quantity, isBulkPricingOn);
+            const { unitPrice } = bulkPricing.resolveUnitPrice(product, variant, size, item.quantity, isBulkPricingOn, priceZone);
 
             lines.push({
                 productId: product._id,
@@ -500,7 +508,9 @@ const applyAdminOrderTax = async ({ lines, taxLocation, isTaxOff, isTaxManual, m
 };
 
 // Currency of an admin order: the customer's own country's (converted from the
-// store currency, like a storefront order); walk-ins always the store's.
+// store currency, like a storefront order); walk-ins always the store's. With
+// international pricing on, a customer from outside the store country gets the
+// international currency and prices (meta.isInternationalPrice).
 const resolveAdminOrderCurrency = async ({ isWalkIn, user, companyMasterData, companySettingsData }) => {
     try {
         const countryId = isWalkIn ? null : userLocationService.extractUserLocation(user).countryId;
@@ -573,12 +583,13 @@ const fetchOrderCurrency = async (vendorId, websiteMasterData, companyMasterData
         if (!currencyResult.isSuccess) {
             return common.returnResult(false, currencyResult.statusCode, currencyResult.message);
         }
-        const { currency, storeCurrency, exchangeRate, isConverted } = currencyResult.meta;
+        const { currency, storeCurrency, exchangeRate, isConverted, isInternationalPrice } = currencyResult.meta;
         return common.returnResult(true, 200, 'Currency fetched successfully', {
             currency: currencyService.shapeCurrency(currency),
             storeCurrency: currencyService.shapeCurrency(storeCurrency),
             exchangeRate,
-            isConverted
+            isConverted,
+            isInternationalPrice
         });
     } catch (err) {
         throw err;
@@ -616,15 +627,17 @@ const previewPlaceOrderTax = async (vendorId, websiteMasterData, companyMasterDa
             return common.returnResult(false, bulkPricingResult.statusCode, bulkPricingResult.message);
         }
 
-        // Preview only - stock is re-checked (and reserved) when the order is placed.
-        const lineResult = await resolveOrderLines(vendorId, items, true, bulkPricingResult.meta.isBulkPricingOn);
-        if (lineResult.error) {
-            return common.returnResult(false, 400, lineResult.error);
-        }
-
         const currencyResult = await resolveAdminOrderCurrency({ isWalkIn, user, companyMasterData, companySettingsData });
         if (!currencyResult.isSuccess) {
             return common.returnResult(false, currencyResult.statusCode, currencyResult.message);
+        }
+
+        // Preview only - stock is re-checked (and reserved) when the order is placed.
+        const lineResult = await resolveOrderLines(
+            vendorId, items, true, bulkPricingResult.meta.isBulkPricingOn, currencyService.toPriceZone(currencyResult.meta)
+        );
+        if (lineResult.error) {
+            return common.returnResult(false, 400, lineResult.error);
         }
         const currencyShape = currencyService.shapeCurrency(currencyResult.meta.currency);
 
@@ -738,7 +751,9 @@ const placeOrderOnBehalfOfUser = async (vendorId, adminUserId, websiteMasterData
             return common.returnResult(false, bulkPricingResult.statusCode, bulkPricingResult.message);
         }
 
-        const lineResult = await resolveOrderLines(vendorId, items, allowOutOfStock, bulkPricingResult.meta.isBulkPricingOn);
+        const lineResult = await resolveOrderLines(
+            vendorId, items, allowOutOfStock, bulkPricingResult.meta.isBulkPricingOn, currencyService.toPriceZone(currencyResult.meta)
+        );
         if (lineResult.error) {
             return common.returnResult(false, 400, lineResult.error);
         }

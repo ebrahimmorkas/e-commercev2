@@ -1,6 +1,14 @@
 const favoriteService = require('../services/favoriteService');
 const logger = require('../utils/logger.js');
 const common = require('../utils/common.js');
+const currencyService = require('../services/currencyService');
+
+// Local or international prices - same country the storefront prices by.
+const resolveFavoritesPriceZone = (req) => currencyService.resolvePriceZone({
+  countryId: req.cookies?.Country || req.user.country || req.ipCountryId || null,
+  companyMasterData: req.companyMasterData,
+  companySettingsData: req.companySettingsData
+});
 
 // favoriteService.buildFavoriteResponse returns a flattened join object
 // (favoriteId/productId/variantId/sizeId - not the raw Favorite doc, no
@@ -77,7 +85,8 @@ const addToFavorites = async (req, res) => {
       req.companyMasterData,
       productId,
       variantId,
-      sizeId
+      sizeId,
+      await resolveFavoritesPriceZone(req)
     );
 
     if (!result.isSuccess) {
@@ -118,7 +127,7 @@ const getFavorites = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
 
-    const result = await favoriteService.getFavorites(vendorId, userId, page, limit);
+    const result = await favoriteService.getFavorites(vendorId, userId, page, limit, await resolveFavoritesPriceZone(req));
 
     if (!result.isSuccess) {
       return common.sendError(res, result.statusCode, result.message);
@@ -157,7 +166,7 @@ const createOrderFromFavorites = async (req, res) => {
       vendorId,
       userId,
       // Same country the storefront showed prices for (currencyController).
-      req.cookies?.Country || req.user.country || null,
+      req.cookies?.Country || req.user.country || req.ipCountryId || null,
       locationContext,
       req.companyMasterData,
       req.websiteMasterData,

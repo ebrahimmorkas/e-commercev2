@@ -285,6 +285,28 @@ const companyMasterSchema = mongoose.Schema({
         enum: ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi'],
         default: []
     },
+    // Product videos - per-vendor entitlement, off by default (same as
+    // isVideoUploadingFeatureOn, which must be on too). Formats come from
+    // allowedVideoFormat above.
+    isProductVideoFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    // Most videos one product may hold, counted across ALL its variants/sizes.
+    // null = no limit.
+    numberOfVideoUploadAllowedInProduct: {
+        type: Number,
+        min: 0,
+        default: null
+    },
+    // Most one product video may weigh, in MB. null = no product limit - only
+    // WebsiteMaster.maxVideoSize (the site-wide cap) applies when that is set.
+    // Never falls back to maxVideoSize above. See productVideoService.js.
+    sizeOfVideoUploadAllowedInProduct: {
+        type: Number,
+        min: 0,
+        default: null
+    },
 
     // The vendor's own storage accounts, per area (image / video / file) and
     // per provider. Entered by the platform owner with seeds/seedCompanyMaster.js
@@ -629,14 +651,48 @@ const companyMasterSchema = mongoose.Schema({
         default: false
     },
 
-    // Review
-    isReviewFeatureOn: {
+    // Review - same name as the WebsiteMaster switch it pairs with. How many
+    // reviews one customer may leave on one product is the vendor's own choice
+    // (CompanySettings.maxReviewsPerCustomerPerProduct).
+    isProductReviewFeatureOn: {
         type: Boolean,
         default: false
     },
-    numberOfReviewsAllowedOnProduct: {
+    // Paired with WebsiteMaster.isIncludingImageInReviewsAllowed.
+    isIncludingImageInReviewsAllowed: {
+        type: Boolean,
+        default: false
+    },
+    // Admin Reviews module (paired with the same names on WebsiteMaster).
+    // Editing: the admin may edit any customer review (every change is kept
+    // in Review.history). Approve/Reject: a customer's review or edit only
+    // goes live once the admin approves it. Both off: the admin can only
+    // delete reviews.
+    isReviewEditingFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    isReviewApproveRejectFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    // Photos per review, and the size/format rules each one is checked
+    // against (same conventions as allowedProductImageMB/-ImagesFormat:
+    // empty format list = any image format).
+    maxImagesPerReview: {
         type: Number,
-        default: null
+        min: 1,
+        max: 10,
+        default: 5
+    },
+    allowedReviewImageMB: {
+        type: Number,
+        default: 2
+    },
+    allowedReviewImagesFormat: {
+        type: [String],
+        enum: ['jpg', 'png', 'jpeg'],
+        default: []
     },
 
     // Cart
@@ -757,7 +813,7 @@ const companyMasterSchema = mongoose.Schema({
     },
     // Total ACTIVE favorites this vendor's users may each hold at once.
     // null = no cap, 0 = feature effectively unusable even though the flag
-    // above is on. Same convention as numberOfReviewsAllowedOnProduct.
+    // above is on.
     numberOfItemsAllowedInFavorites: {
         type: Number,
         default: null
@@ -790,6 +846,39 @@ const companyMasterSchema = mongoose.Schema({
         default: false
     },
     // End of Shipping Price
+
+    // Currency Conversion
+    // Whether this vendor's customers see prices converted to their own
+    // country's currency. Paired with WebsiteMaster.isCurrencyConversionFeatureOn
+    // and CompanySettings.isCurrencyConversionFeatureOn - all three must be on,
+    // otherwise everyone sees the store currency (currencyService.resolveCustomerCurrency).
+    isCurrencyConversionFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    // Detects a visitor's country from their IP address, so conversion /
+    // international pricing work without the customer logging in first.
+    // Paired with WebsiteMaster.isIPDetectionFeatureOn.
+    isIPDetectionFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    // Lets the vendor enter a separate international price per product, shown
+    // (in internationalCurrency) to every customer outside the store country.
+    // Paired with WebsiteMaster.isInternationalPriceFeatureOn, and only takes
+    // effect while isIPDetectionFeatureOn is on too. Wins over currency
+    // conversion when both are on.
+    isInternationalPriceFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    // The currency international prices are entered and charged in. Set by
+    // the platform admin per vendor.
+    internationalCurrency: {
+        type: mongoose.Types.ObjectId,
+        ref: 'CurrencyMaster',
+        default: null
+    },
 
     // Payment
     isPaymentGatewayFeatureOn: {

@@ -152,6 +152,14 @@ const websiteMasterSchema = mongoose.Schema({
         enum: ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi'],
         default: []
     },
+    // Product videos (per size, shown in the product gallery). Global kill
+    // switch, on by default like isVideoUploadingFeatureOn - the vendor also
+    // needs CompanyMaster.isProductVideoFeatureOn AND the general video switch
+    // (isVideoUploadingFeatureOn) in both masters. See productVideoService.js.
+    isProductVideoFeatureOn: {
+        type: Boolean,
+        default: true
+    },
     isDiscountFeatureOn: {
         type: Boolean,
         default: true,
@@ -160,6 +168,26 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
     },
     isProductReviewFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    // Global half of the "customers may attach photos to a review" switch -
+    // paired with CompanyMaster.isIncludingImageInReviewsAllowed (see
+    // reviewService.js). Only matters while isProductReviewFeatureOn is on.
+    isIncludingImageInReviewsAllowed: {
+        type: Boolean,
+        default: true
+    },
+    // Global halves of the admin Reviews module's two switches (paired with
+    // the same names on CompanyMaster):
+    //   isReviewEditingFeatureOn      - admin may edit customers' reviews
+    //   isReviewApproveRejectFeatureOn - customers' reviews (and edits) wait
+    //                                    for the admin's approval before going live
+    isReviewEditingFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    isReviewApproveRejectFeatureOn: {
         type: Boolean,
         default: true
     },
@@ -229,6 +257,14 @@ const websiteMasterSchema = mongoose.Schema({
     bulkUploadZipMaxSizeMB: {
         type: Number,
         default: 50
+    },
+    // Bulk product upload/update: the most the product videos zip (videosZip)
+    // may weigh. Kept apart from bulkUploadZipMaxSizeMB because videos are far
+    // bigger than images; the zip is written to disk, never held in memory.
+    bulkUploadVideoZipMaxSizeMB: {
+        type: Number,
+        min: 1,
+        default: 1024
     },
     // Cart
     isCartFeatureOn: {
@@ -415,6 +451,27 @@ const websiteMasterSchema = mongoose.Schema({
         default: true
     },
     // End of Shipping Price
+
+    // Currency Conversion
+    // Global switch for converting prices to the customer's own currency.
+    // Paired with CompanyMaster.isCurrencyConversionFeatureOn and
+    // CompanySettings.isCurrencyConversionFeatureOn (see currencyService.resolveCustomerCurrency).
+    isCurrencyConversionFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    // Global switch for detecting the visitor's country from their IP.
+    // Paired with CompanyMaster.isIPDetectionFeatureOn.
+    isIPDetectionFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    // Global switch for separate international product prices. Paired with
+    // CompanyMaster.isInternationalPriceFeatureOn; also needs isIPDetectionFeatureOn.
+    isInternationalPriceFeatureOn: {
+        type: Boolean,
+        default: false
+    },
 
     // Payment
     isPaymentGatewayFeatureOn: {
