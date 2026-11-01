@@ -136,9 +136,7 @@ const companySettingsFieldsSchema = {
     freeCashExpiryReminderDays: Joi.number().integer().min(1).max(60).label('Free Cash reminder days before expiry'),
     isPaymentGatewayFeatureOn: Joi.boolean().label('Online payment enabled'),
     isCODFeatureOn: Joi.boolean().label('Cash on Delivery enabled'),
-    gpayNumber: Joi.string().trim().pattern(/^\+?[0-9 ]{7,15}$/).allow('', null)
-        .messages({ 'string.pattern.base': '{{#label}} must be a valid phone number.' })
-        .label('GPay number'),
+    gpayNumber: Joi.string().trim().max(200).allow('', null).label('GPay number'),
     isFreeCashFeatureOn: Joi.boolean().label('Show Free Cash'),
     isFreeCashStackingAllowed: Joi.boolean().label('Allow Free Cash stacking'),
     isMultipleFreeCashUsageAllowed: Joi.boolean().label('Allow multiple Free Cash usage per order'),
@@ -164,22 +162,14 @@ const companySettingsFieldsSchema = {
     // enforced in companySettingsService.js, not here. Each field is
     // independently optional - a vendor may save partial bank info and fill
     // in the rest later, same convention as adminAddress/instagramId etc.
-    bankAccountHolderName: Joi.string().trim().min(2).max(150).allow('', null).label('Bank account holder name'),
-    bankName: Joi.string().trim().min(2).max(150).allow('', null).label('Bank name'),
-    // Alphanumeric to also accommodate IBAN-style account numbers, not just
-    // numeric domestic account numbers.
-    bankAccountNumber: Joi.string().trim().pattern(/^[A-Za-z0-9]{4,34}$/).allow('', null)
-        .messages({ 'string.pattern.base': '{{#label}} must be 4-34 alphanumeric characters.' })
-        .label('Bank account number'),
-    // Indian IFSC format: 4 letters, a literal 0, then 6 alphanumeric chars.
-    ifscCode: Joi.string().trim().uppercase().pattern(/^[A-Z]{4}0[A-Z0-9]{6}$/).allow('', null)
-        .messages({ 'string.pattern.base': '{{#label}} must be a valid IFSC code (e.g. ABCD0123456).' })
-        .label('IFSC code'),
-    branchName: Joi.string().trim().max(150).allow('', null).label('Branch name'),
-    // SWIFT/BIC format: 8 chars, optionally 11 with a branch code suffix.
-    swiftCode: Joi.string().trim().uppercase().pattern(/^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/).allow('', null)
-        .messages({ 'string.pattern.base': '{{#label}} must be a valid SWIFT/BIC code (8 or 11 characters).' })
-        .label('SWIFT code'),
+    // Free text on purpose - banks/IBAN/IFSC/SWIFT formats differ per country,
+    // so only a length cap is applied.
+    bankAccountHolderName: Joi.string().trim().max(200).allow('', null).label('Bank account holder name'),
+    bankName: Joi.string().trim().max(200).allow('', null).label('Bank name'),
+    bankAccountNumber: Joi.string().trim().max(200).allow('', null).label('Bank account number'),
+    ifscCode: Joi.string().trim().uppercase().max(200).allow('', null).label('IFSC code'),
+    branchName: Joi.string().trim().max(200).allow('', null).label('Branch name'),
+    swiftCode: Joi.string().trim().uppercase().max(200).allow('', null).label('SWIFT code'),
     bankAccountType: Joi.alternatives().try(
         Joi.string().valid('SAVINGS', 'CURRENT'),
         Joi.string().valid('', 'null')
