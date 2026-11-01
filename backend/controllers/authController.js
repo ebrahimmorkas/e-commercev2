@@ -75,14 +75,19 @@ const isCityOptional = (req) => {
     }
 };
 
+// WhatsApp number is compulsory on signup unless the vendor's CompanyMaster
+// switches it to optional (a missing field on an older cached doc = compulsory).
+const isWhatsappOptional = (req) => req.companyMasterData?.isWhatsappNumberOptionalOnSignup === true;
+
 // Public - the storefront register form asks this to decide whether to show the
-// "I am tax registered" checkbox and whether City is mandatory. Only these
+// "I am tax registered" checkbox and whether City and WhatsApp number are mandatory. Only these
 // booleans are exposed, never the rest of the vendor's settings.
 const getRegistrationConfig = async (req, res) => {
     try {
         return sendSuccess(res, 200, 'Registration config fetched successfully', {
             taxRegistrationEnabled: await isTaxRegistrationEnabled(req),
-            cityOptional: isCityOptional(req)
+            cityOptional: isCityOptional(req),
+            whatsappOptional: isWhatsappOptional(req)
         });
     } catch (err) {
         logException('Error while fetching registration config', err);
@@ -101,6 +106,10 @@ const register = async (req, res) => {
         if (!name || !username || !email || !phone_no || !password || !country || !state || (!city && !cityOptional)) {
             logInfo(0, 1, 'Register failed - missing required fields', { username, email });
             return sendError(res, 400, `name, username, email, phone_no, password, country${cityOptional ? ' and state' : ', state and city'} are required`);
+        }
+        if (!whatsapp_no && !isWhatsappOptional(req)) {
+            logInfo(0, 1, 'Register failed - missing WhatsApp number', { username, email });
+            return sendError(res, 400, 'WhatsApp number is required');
         }
         if (city !== undefined && city !== null && typeof city !== 'string') {
             return sendError(res, 400, 'Please select a valid city.');

@@ -153,6 +153,7 @@ const COMPANY_MASTER = {
     isPDFDownloadableFeatureOn: true,
     isCatalogueDownloadFeatureOn: true,
     isFooterAboutSectionOn: true,
+    isWhatsappNumberOptionalOnSignup: false,
 
     // Storage - Cloudinary for images, files and videos
     imageService: 'cloudinary',
