@@ -152,6 +152,8 @@ const COMPANY_MASTER = {
     fileUploadSize: MAX_IMAGE_MB,
     isPDFDownloadableFeatureOn: true,
     isCatalogueDownloadFeatureOn: true,
+    isFooterAboutSectionOn: true,
+    isWhatsappNumberOptionalOnSignup: false,
 
     // Storage - Cloudinary for images, files and videos
     imageService: 'cloudinary',

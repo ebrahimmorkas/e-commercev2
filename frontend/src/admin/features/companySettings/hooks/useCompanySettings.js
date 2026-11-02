@@ -93,7 +93,11 @@ export const useCompanySettings = () => {
       toast.success(usedUpdate ? 'Company settings updated successfully' : 'Company settings created successfully');
       return true;
     } catch (err) {
-      toast.error(err.message || 'Failed to save company settings');
+      // Validation failures carry the exact per-field reasons in err.errors.
+      const details = Array.isArray(err.errors)
+        ? err.errors.map((e) => e?.message).filter(Boolean).join('. ')
+        : '';
+      toast.error(details || err.message || 'Failed to save company settings');
       return false;
     } finally {
       setSaving(false);

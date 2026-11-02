@@ -4,7 +4,8 @@ import { ChevronDownIcon, MenuIcon, CloseIcon } from './icons';
 import { useStorefrontCategories } from '../../../features/categories/hooks/useStorefrontCategories';
 import { useStorefrontBrands } from '../../../features/brands/hooks/useStorefrontBrands';
 import { useStorefrontCompanySettings } from '../../../features/companySettings/hooks/useStorefrontCompanySettings';
-import { CATALOGUE_DOWNLOAD_URL } from '../../../features/companySettings/api/companySettingsApi';
+import { CATALOGUE_DOWNLOAD_URL, downloadCatalogue } from '../../../features/companySettings/api/companySettingsApi';
+import { useToast } from '../../../../components/common/Toast';
 
 const NAV_ITEMS = [
   { key: 'home', label: 'Home' },
@@ -166,6 +167,16 @@ const Navbar = ({ suspended = false }) => {
   // The server only sets this when the feature is on for the vendor AND a PDF is uploaded.
   const { companySettings } = useStorefrontCompanySettings();
   const hasCatalogue = companySettings?.catalogueAvailable === true;
+  const toast = useToast();
+
+  const handleCatalogueClick = async (event) => {
+    event.preventDefault();
+    try {
+      if (!(await downloadCatalogue())) toast.error('The catalogue is not available right now. Please try again later.');
+    } catch {
+      toast.error('Could not download the catalogue. Please try again.');
+    }
+  };
 
   const [openKey, setOpenKey] = useState(null);
   const closeTimer = useRef(null);
@@ -285,7 +296,7 @@ const Navbar = ({ suspended = false }) => {
             <li onMouseEnter={scheduleClose}>
               <a
                 href={CATALOGUE_DOWNLOAD_URL}
-                download
+                onClick={handleCatalogueClick}
                 title="Download catalogue"
                 aria-label="Download catalogue"
                 className={`flex items-center gap-1.5 h-11 px-4 text-sm font-medium transition-colors duration-150 cursor-pointer ${theme.bar.text} ${theme.bar.hover}`}
@@ -374,8 +385,7 @@ const Navbar = ({ suspended = false }) => {
             {hasCatalogue && (
               <a
                 href={CATALOGUE_DOWNLOAD_URL}
-                download
-                onClick={closeMobile}
+                onClick={(event) => { closeMobile(); handleCatalogueClick(event); }}
                 className={`flex items-center gap-2 px-3 py-3 mt-1 border-t rounded-lg text-sm font-medium transition-colors duration-150 ${theme.drawer.divider} ${theme.drawer.link}`}
               >
                 Download Catalogue

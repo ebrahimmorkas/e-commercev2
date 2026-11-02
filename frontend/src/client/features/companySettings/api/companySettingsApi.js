@@ -12,8 +12,29 @@ import { apiRequest } from '../../../../utils/apiClient';
 export const getStorefrontCompanySettings = () =>
   apiRequest('/company-settings/get-company-settings', { auth: false });
 
-// Public link to the vendor's catalogue PDF; the server answers with a
-// download (Content-Disposition: attachment), so a plain link is enough.
+// Public link to the vendor's catalogue PDF.
 export const CATALOGUE_DOWNLOAD_URL = `${import.meta.env.VITE_API_BASE_URL || '/api'}/company-settings/catalogue/download`;
 
-export default { getStorefrontCompanySettings, CATALOGUE_DOWNLOAD_URL };
+/**
+ * Fetches the catalogue and saves it. A plain `<a download>` would save the
+ * server's JSON error (e.g. 404 when the file is gone) as "download.json", so
+ * the response is checked first. Returns true when a PDF was saved.
+ */
+export const downloadCatalogue = async () => {
+  const response = await fetch(CATALOGUE_DOWNLOAD_URL);
+  if (!response.ok || !(response.headers.get('content-type') || '').includes('application/pdf')) {
+    return false;
+  }
+  const match = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') || '');
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = match ? match[1] : 'catalogue.pdf';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  return true;
+};
+
+export default { getStorefrontCompanySettings, CATALOGUE_DOWNLOAD_URL, downloadCatalogue };

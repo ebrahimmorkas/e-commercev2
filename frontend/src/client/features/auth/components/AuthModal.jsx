@@ -49,6 +49,7 @@ const EMPTY_REGISTER_FORM = {
   email: '',
   phone_no: '',
   whatsapp_no: '',
+  whatsappSameAsPhone: false,
   password: '',
   country: '',
   state: '',
@@ -103,6 +104,9 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
   // Whether this vendor lets customers sign up without a city ("Make City Optional" in
   // Company Settings). Required until the API says otherwise - the server enforces it anyway.
   const [cityOptional, setCityOptional] = useState(false);
+  // Whether this vendor lets customers sign up without a WhatsApp number (CompanyMaster).
+  // Compulsory until the API says otherwise - the server enforces it anyway.
+  const [whatsappOptional, setWhatsappOptional] = useState(false);
   const locations = useSignupLocations(isOpen && mode === 'register', registerForm.country, registerForm.state);
   // Whether this store offers "Forgot password?". Null until the API says it does, and
   // stays null if the call fails, so the link is simply not shown.
@@ -141,11 +145,13 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
         if (cancelled) return;
         setTaxRegistrationEnabled(config?.taxRegistrationEnabled === true);
         setCityOptional(config?.cityOptional === true);
+        setWhatsappOptional(config?.whatsappOptional === true);
       })
       .catch(() => {
         if (cancelled) return;
         setTaxRegistrationEnabled(false);
         setCityOptional(false);
+        setWhatsappOptional(false);
       });
     return () => {
       cancelled = true;
@@ -260,6 +266,10 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
     // Mongoose still runs minlength on an empty string, unlike an omitted
     // field - so drop it from the payload entirely when left blank.
     const registerPayload = { ...registerForm };
+    if (registerPayload.whatsappSameAsPhone) {
+      registerPayload.whatsapp_no = registerPayload.phone_no.trim();
+    }
+    delete registerPayload.whatsappSameAsPhone;
     if (!registerPayload.whatsapp_no.trim()) {
       delete registerPayload.whatsapp_no;
     }
@@ -514,16 +524,31 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
             title="10 to 14 digits, with an optional leading +"
             disabled={loading}
           />
-          <input
-            type="tel"
-            placeholder="WhatsApp number (optional)"
-            value={registerForm.whatsapp_no}
-            onChange={(e) => setRegisterForm((f) => ({ ...f, whatsapp_no: e.target.value }))}
-            className={inputClass}
-            minLength={10}
-            maxLength={14}
-            disabled={loading}
-          />
+          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={registerForm.whatsappSameAsPhone}
+              onChange={(e) => setRegisterForm((f) => ({ ...f, whatsappSameAsPhone: e.target.checked, whatsapp_no: '' }))}
+              className="h-4 w-4 rounded border-slate-300 accent-amber-600 cursor-pointer"
+              disabled={loading}
+            />
+            WhatsApp number is the same as my phone number
+          </label>
+          {!registerForm.whatsappSameAsPhone && (
+            <input
+              type="tel"
+              placeholder={whatsappOptional ? 'WhatsApp number (optional)' : 'WhatsApp number'}
+              value={registerForm.whatsapp_no}
+              onChange={(e) => setRegisterForm((f) => ({ ...f, whatsapp_no: e.target.value }))}
+              className={inputClass}
+              required={!whatsappOptional}
+              minLength={10}
+              maxLength={14}
+              pattern="\+?[0-9]{10,14}"
+              title="10 to 14 digits, with an optional leading +"
+              disabled={loading}
+            />
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <select
               aria-label="Country"

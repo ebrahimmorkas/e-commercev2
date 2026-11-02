@@ -1149,7 +1149,17 @@ const getCatalogueFile = async (vendorId, companyMasterData, websiteMasterData) 
         if (!asset) {
             return common.returnResult(false, 404, 'Catalogue not available.');
         }
-        const buffer = await readStoredAsset(asset);
+        let buffer;
+        try {
+            buffer = await readStoredAsset(asset);
+        } catch (readErr) {
+            // A record whose bytes are gone (e.g. a local file deleted) is "nothing to download", not a server error.
+            if (readErr.code === 'ENOENT') {
+                logger.logInfo(1, 0, 'Catalogue file missing from storage', { vendorId, fileAssetId: asset._id });
+                return common.returnResult(false, 404, 'Catalogue not available.');
+            }
+            throw readErr;
+        }
         return common.returnResult(true, 200, 'OK', { buffer, fileName: asset.originalName || 'catalogue.pdf' });
     } catch (err) {
         throw err;

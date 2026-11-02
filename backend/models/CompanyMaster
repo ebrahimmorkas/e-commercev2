@@ -149,6 +149,18 @@ const companyMasterSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // Storefront footer's logo + "About Us" blurb. On by default (existing
+    // behaviour); a vendor-level switch only, no WebsiteMaster counterpart.
+    isFooterAboutSectionOn: {
+        type: Boolean,
+        default: true
+    },
+    // Storefront signup: WhatsApp number is compulsory unless this is on.
+    // Vendor-level switch only, no WebsiteMaster counterpart.
+    isWhatsappNumberOptionalOnSignup: {
+        type: Boolean,
+        default: false
+    },
     isAnnouncementFeatureOn: {
         type: Boolean,
         default: true
