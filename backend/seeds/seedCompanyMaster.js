@@ -111,6 +111,9 @@ const COMPANY_MASTER = {
     isAnnouncementFeatureOn: true,
     numberOfAnnouncementsAllowed: UNLIMITED,
 
+    // Blog
+    isBlogFeatureOn: true,
+
     // Banners - image or video
     isBannerFeatureOn: true,
     numberOfBannersAllowed: UNLIMITED,

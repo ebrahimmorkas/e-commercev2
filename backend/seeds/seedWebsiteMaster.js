@@ -44,6 +44,7 @@ const WEBSITE_MASTER = {
 
     // Content
     isAnnouncementFeatureOn: true,
+    isBlogFeatureOn: true,
     isBannerFeatureOn: true,
     isWebsiteBuilderFeatureOn: false,
     isPDFDownloadableFeatureOn: true,

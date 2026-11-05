@@ -165,6 +165,12 @@ const companyMasterSchema = mongoose.Schema({
         type: Boolean,
         default: true
     },
+    // Storefront blog (admin Blogs page + navbar link). Per-vendor entitlement,
+    // off until switched on; also needs WebsiteMaster.isBlogFeatureOn.
+    isBlogFeatureOn: {
+        type: Boolean,
+        default: false
+    },
     numberOfAnnouncementsAllowed: {
         type: Number,
         default: 2,

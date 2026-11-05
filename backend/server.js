@@ -32,6 +32,7 @@ const companyMasterRoutes = require('./routes/companyMasterRoutes');
 const moduleMasterRoutes = require('./routes/moduleMasterRoutes');
 const shippingPriceSettingsRoutes = require('./routes/shippingPriceSettingsRoutes');
 const announcementRoutes = require('./routes/announcementRoutes');
+const blogRoutes = require('./routes/blogRoutes');
 const bannerRoutes = require('./routes/bannerRoutes');
 const categoryRoutes = require('./routes/categoryRoutes.js');
 const addressRoutes = require('./routes/addressRoutes.js');
@@ -149,6 +150,7 @@ app.use('/api/cart', cartRoutes);
 
 // Private Routes
 app.use('/api/announcements', announcementRoutes);
+app.use('/api/blogs', blogRoutes);
 app.use('/api/banners', bannerRoutes);
 app.use('/api/address', addressRoutes);
 app.use('/api/auth', authRoutes);
