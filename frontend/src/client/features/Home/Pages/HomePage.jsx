@@ -9,6 +9,7 @@ import InfiniteProductGrid from '../../products/components/InfiniteProductGrid';
 import { useStorefrontBanner } from '../../banners/hooks/useStorefrontBanner';
 import { ProductGridSkeleton } from '../../products/components/ProductSkeletons';
 import EmptyState from '../../../../components/common/EmptyState/EmptyState';
+import CertificateSection from '../components/CertificateSection';
 
 const PartnerBadge = () => (
   <div
@@ -112,6 +113,8 @@ const HomePage = ({ onAddToCart, onProductClick, cartItems = {}, onIncrementItem
           </div>
         </section>
       )}
+
+      <CertificateSection />
 
       <section id="all-products" className={`${theme.section.wrapper} scroll-mt-20`}>
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">

@@ -2,7 +2,6 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { useSearchSuggestions } from '../../../features/products/hooks/useSearchSuggestions';
 import theme from './theme/theme';
 import { SearchIcon, CartIcon, UserIcon, LogoutIcon, ChevronDownIcon, OrdersIcon, LocationIcon } from './icons';
-import CertificateBadge from './CertificateBadge';
 import { useStorefrontCompanySettings } from '../../../features/companySettings/hooks/useStorefrontCompanySettings';
 import { useCurrency } from '../../../currency/useCurrency';
 
@@ -299,8 +298,6 @@ const Header = ({
   const { companySettings } = useStorefrontCompanySettings();
   const logoSrc = companySettings?.companyLogo?.url;
   const logoAlt = companySettings?.companyName ;
-  // Only sent by the server when the feature is on at every level and a certificate is uploaded.
-  const certificateUrl = companySettings?.partnerCertificate?.url;
 
   return (
     <header className={`sticky top-0 z-40 border-b ${theme.header.background} ${theme.header.border} ${theme.header.shadow}`}>
@@ -309,8 +306,6 @@ const Header = ({
           <a href={homeHref} className="shrink-0 flex items-center">
             <img src={logoSrc} alt={logoAlt} className={theme.logo.className} />
           </a>
-
-          {certificateUrl && <CertificateBadge imageUrl={certificateUrl} text={companySettings?.partnerCertificateText} />}
 
           <SearchBar onSearch={onSearch} onProductSelect={onProductSelect} onPanelOpenChange={onSearchPanelChange} className="hidden sm:block flex-1" />
 

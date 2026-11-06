@@ -164,7 +164,7 @@ const PaymentBankSection = ({ draft, onChange, companyMaster }) => {
               onChange={(e) => set({ partnerCertificateText: e.target.value })}
             />
             <p className={`mt-1 text-xs ${theme.text.muted}`}>
-              Shown under the certificate when a customer hovers over the certificate badge next to your logo on the storefront.
+              Shown beside the certificate on your storefront home page, just below the banner.
             </p>
           </div>
         </div>
