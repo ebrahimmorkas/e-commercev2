@@ -184,6 +184,14 @@ const companySettingsSchema = new mongoose.Schema({
       default: null
     }
   },
+  // Caption shown with the certificate in the storefront header's hover card.
+  // Same entitlement gate as partnerCertificate.
+  partnerCertificateText: {
+    type: String,
+    trim: true,
+    maxlength: 300,
+    default: ''
+  },
 
   // The vendor's downloadable catalogue (PDF), shown as a storefront navbar
   // icon. Gated by CompanyMaster.isCatalogueDownloadFeatureOn (vendor-level only;

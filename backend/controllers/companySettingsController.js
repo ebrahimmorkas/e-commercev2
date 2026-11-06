@@ -235,6 +235,13 @@ const getCompanySettings = async (req, res) => {
       && !!req.companyMasterData?.isBlogFeatureOn
       && await blogService.hasPublishedBlogs(vendorId);
     publicSettings.blogNavLabel = settings.blogNavLabel || 'Blog';
+    // Header certificate badge: needs the feature on in WebsiteMaster AND CompanyMaster, and an uploaded image.
+    const certificateOn = !!req.websiteMasterData?.isShowingPartnerCertificateFeatureOn
+      && !!req.companyMasterData?.isShowingPartnerCertificateFeatureOn;
+    publicSettings.partnerCertificate = certificateOn && settings.partnerCertificate?.url
+      ? { url: settings.partnerCertificate.url }
+      : null;
+    publicSettings.partnerCertificateText = publicSettings.partnerCertificate ? (settings.partnerCertificateText || '') : '';
     // Footer logo + About Us blurb; on unless the vendor's CompanyMaster says false
     // (the cached doc may predate the field).
     publicSettings.isFooterAboutSectionOn = req.companyMasterData?.isFooterAboutSectionOn !== false;

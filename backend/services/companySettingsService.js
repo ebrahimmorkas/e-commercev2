@@ -56,7 +56,7 @@ const SIMPLE_FIELDS = [
     'adminCity', 'adminState', 'adminPincode', 'adminEmail', 'companyName', 'instagramId',
     'facebookId', 'privacyPolicy', 'cancelPolicy', 'termsAndConditions', 'aboutUs', 'returnRefundPolicy', 'shippingPolicy', 'policyDisplayMode',
     'contactEmail', 'contactPhoneNumber', 'contactAddress',
-    'showAnnouncements', 'isAnnouncementRotationOn', 'showBanners', 'isBannerRotationOn', 'showBlog', 'blogNavLabel',
+    'showAnnouncements', 'isAnnouncementRotationOn', 'showBanners', 'isBannerRotationOn', 'showBlog', 'blogNavLabel', 'partnerCertificateText',
     'isTaxRegistrationOnSignupEnabled', 'isCityOptional',
     'taxRegistrationNumber', 'invoicePrefix', 'invoiceDeclaration',
     'invoicePrintDuplicateCopy', 'invoiceRoundOffToWhole', 'emailInvoiceOnOrderPlaced',
@@ -129,7 +129,11 @@ const checkPaymentDetailsEntitlements = async (vendorId, data, files, companyMas
             if (!check.isSuccess) return check;
         }
 
-        const certificateTouched = !!files?.partnerCertificate?.[0];
+        // The caption is part of the same feature, so changing it needs the same entitlement
+        // (diff-based like the groups above, so an unrelated save never trips it).
+        const certificateTextTouched = data.partnerCertificateText !== undefined
+            && normalizeEmpty(data.partnerCertificateText) !== normalizeEmpty(existingSettings ? existingSettings.partnerCertificateText : undefined);
+        const certificateTouched = !!files?.partnerCertificate?.[0] || certificateTextTouched;
         if (certificateTouched) {
             const check = await common.checkFeatureOnOrOff(
                 vendorId, websiteMasterData, companyMasterData,

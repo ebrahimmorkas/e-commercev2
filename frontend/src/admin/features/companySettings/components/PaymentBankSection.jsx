@@ -2,6 +2,7 @@ import Switch from '../../../../components/common/Switch';
 import InputField from '../../../../components/common/InputField';
 import Dropdown from '../../../../components/common/DropDown';
 import FileUpload from '../../../../components/common/FileUpload';
+import TextArea from '../../../../components/common/TextArea';
 import Avatar from '../../../../components/common/Avatar';
 import theme from '../theme/theme';
 
@@ -150,6 +151,21 @@ const PaymentBankSection = ({ draft, onChange, companyMaster }) => {
                 helperText="JPG, JPEG or PNG. Up to 5MB."
               />
             </div>
+          </div>
+          <div className="mt-4">
+            <TextArea
+              label="Certificate Text"
+              name="partnerCertificateText"
+              placeholder="e.g. Authorized partner since 2020"
+              rows={3}
+              maxLength={300}
+              showCharCount
+              value={draft.partnerCertificateText}
+              onChange={(e) => set({ partnerCertificateText: e.target.value })}
+            />
+            <p className={`mt-1 text-xs ${theme.text.muted}`}>
+              Shown under the certificate when a customer hovers over the certificate badge next to your logo on the storefront.
+            </p>
           </div>
         </div>
       )}
