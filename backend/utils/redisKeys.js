@@ -24,6 +24,7 @@ const redisKeys = {
   sendEmailResumeLock: () => `send-email-resume-lock`,
   moduleMaster: () => `module-master`,
   countryByIsoCode: (isoCode) => `country-by-iso:${isoCode}`,
+  fieldConfig: (vendorId) => `field-config:${vendorId}`,
 };
 
 module.exports = redisKeys;

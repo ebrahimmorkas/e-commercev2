@@ -13,6 +13,9 @@ import { previewAddProductsTax, searchEditProducts } from '../api/orderAdminApi'
 import { useTaxPreview } from '../../adminPlaceOrder/hooks/useTaxPreview';
 import TaxPreviewRow from '../../adminPlaceOrder/components/TaxPreviewRow';
 import ProductSearchBox from '../../adminPlaceOrder/components/ProductSearchBox';
+import { useFieldConfig } from '../../fieldConfig/hooks/useFieldConfig';
+import { FIELD_CONFIG_ENTITIES } from '../../fieldConfig/constants';
+import { productOptionLabel } from '../../fieldConfig/utils/fieldConfigView';
 import theme from '../theme/theme';
 
 const MAX_QUANTITY = 100000;
@@ -47,6 +50,8 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
   const priceZone = order.isInternationalPrice ? { isInternational: true, exchangeRate: order.exchangeRate || 1 } : null;
   const sizePrice = (size) => zonePrice(size.price, size.internationalPrice, priceZone);
   const picker = useEditOrderProducts();
+  // Product code, or the vendor's own codes instead (field config).
+  const productFields = useFieldConfig(FIELD_CONFIG_ENTITIES.PRODUCT);
   const [mainCategory, setMainCategory] = useState('');
   const [subCategory, setSubCategory] = useState('');
   const [productId, setProductId] = useState('');
@@ -71,7 +76,7 @@ const EditOrderForm = ({ order, onSubmit, onCancel, submitting }) => {
   const selectedSize = selectedVariant?.sizes.find((s) => s.sizeId === sizeId) || null;
   const allowOutOfStock = picker.productOptions?.allowOutOfStockProductsAdding === true;
 
-  const productOptionsList = picker.products.map((p) => ({ value: p._id, label: p.productCode ? `${p.name} (${p.productCode})` : p.name }));
+  const productOptionsList = picker.products.map((p) => ({ value: p._id, label: productOptionLabel(p, productFields) }));
   const sizeOptions = (selectedVariant?.sizes || []).map((size) => ({
     value: size.sizeId,
     label: `${size.sizeName} - ${formatOrderMoney(order, toOrder(sizePrice(size)))}${size.isOutOfStock ? ' (out of stock)' : ` (${size.stock} in stock)`}`,

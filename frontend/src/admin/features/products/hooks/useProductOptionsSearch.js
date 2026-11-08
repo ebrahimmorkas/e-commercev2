@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getProductOptionsAdmin } from '../api/productApi';
+import { useFieldConfig } from '../../fieldConfig/hooks/useFieldConfig';
+import { FIELD_CONFIG_ENTITIES } from '../../fieldConfig/constants';
+import { productOptionLabel } from '../../fieldConfig/utils/fieldConfigView';
 
 const SEARCH_DEBOUNCE_MS = 300;
 const SEARCH_LIMIT = 30;
 
-const labelOf = (row) => `${row.name}${row.productCode ? ` (${row.productCode})` : ''}`;
 
 /**
  * Options for a product picker (a searchable Dropdown), searched on the
@@ -21,6 +23,8 @@ const labelOf = (row) => `${row.name}${row.productCode ? ` (${row.productCode})`
  * @returns {{ options: Array<{ value, label, isActive }>, onSearchChange: (text: string) => void, loading: boolean }}
  */
 export const useProductOptionsSearch = ({ selectedIds = [], status, excludeId, enabled = true } = {}) => {
+  // Product code, or the vendor's own codes instead (field config).
+  const productFields = useFieldConfig(FIELD_CONFIG_ENTITIES.PRODUCT);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState({ query: null, rows: [] });
   const [knownRows, setKnownRows] = useState(() => new Map());
@@ -64,7 +68,7 @@ export const useProductOptionsSearch = ({ selectedIds = [], status, excludeId, e
   }, [missingKey, enabled]);
 
   const options = useMemo(() => {
-    const toOption = (row) => ({ value: String(row._id), label: labelOf(row), isActive: row.status === 'A' });
+    const toOption = (row) => ({ value: String(row._id), label: productOptionLabel(row, productFields), isActive: row.status === 'A' });
     const selectedSet = new Set(selectedIds.map(String));
     const searchRows = new Map(results.rows.map((row) => [String(row._id), row]));
 
@@ -77,7 +81,7 @@ export const useProductOptionsSearch = ({ selectedIds = [], status, excludeId, e
       .filter((row) => !selectedSet.has(String(row._id)) && String(row._id) !== String(excludeId))
       .map(toOption);
     return [...selected, ...matches];
-  }, [results.rows, knownRows, selectedIds, excludeId]);
+  }, [results.rows, knownRows, selectedIds, excludeId, productFields]);
 
   return { options, onSearchChange: setQuery, loading: enabled && results.query !== query };
 };

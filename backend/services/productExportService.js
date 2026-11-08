@@ -16,6 +16,8 @@ const CountryMaster = require('../models/CountryMaster');
 const StateMaster = require('../models/StateMaster');
 const CityMaster = require('../models/CityMaster');
 const productService = require('./productService');
+const fieldConfigService = require('./fieldConfigService');
+const { FIELD_CONFIG_ENTITIES } = require('../constants/fieldConfigConstants');
 const productVideoService = require('./productVideoService');
 const { buildExcelTemplate } = require('../utils/excelTemplateBuilder');
 const { createZipBuffer } = require('../utils/zipExtractor');
@@ -133,7 +135,7 @@ const loadExportLookups = async (vendorId, products) => {
             loadById(StateMaster, sizes.flatMap((s) => s.excludeStates || []), { state_name: 1 }),
             loadById(CityMaster, sizes.flatMap((s) => s.excludeCities || []), { city_name: 1 }),
             // Only active products can be recommended on upload, so only their codes are written.
-            loadById(Product, products.flatMap((p) => p.recommendedProducts || []), { productCode: 1 }, { vendorId, status: 'A' })
+            loadById(Product, products.flatMap((p) => p.recommendedProducts || []), { productCode: 1, name: 1 }, { vendorId, status: 'A' })
         ]);
 
         return {
@@ -386,8 +388,15 @@ const policyColumns = (size, prefix, policyField) => {
 
 // Products -> one row object (keyed by column key) per row of each sheet,
 // plus the image downloads the Sizes rows wait on.
-const buildSheetRows = (products, lookups, includeVideos = false) => {
+// fieldConfigData: the vendor's field config - with the product code hidden,
+// recommended products are written by name (the column the upload then reads),
+// and every custom field value goes into its own column.
+const buildSheetRows = (products, lookups, includeVideos = false, fieldConfigData = null) => {
     try {
+        const isProductCodeHidden = fieldConfigService.isFieldHidden(fieldConfigData, FIELD_CONFIG_ENTITIES.PRODUCT, 'productCode');
+        const customFieldColumnsOf = (product) => Object.fromEntries(
+            (product.customFieldValues || []).map((entry) => [`customField:${entry.key}`, entry.value])
+        );
         const rows = { productRows: [], variantRows: [], sizeRows: [], measurementValueRows: [], descriptionRows: [], bulkPricingRows: [] };
         const imageJobs = [];
         const videoJobs = [];
@@ -420,10 +429,11 @@ const buildSheetRows = (products, lookups, includeVideos = false) => {
                 categoryPath: categoryPathOf(product, lookups.categoriesById),
                 disclaimer: blankIfNull(product.disclaimer),
                 searchKeywords: (product.searchKeywords || []).join(', '),
-                recommendedProductCodes: namesOf(product.recommendedProducts, lookups.recommended, 'productCode'),
+                recommendedProductCodes: namesOf(product.recommendedProducts, lookups.recommended, isProductCodeHidden ? 'name' : 'productCode'),
                 taxCodes: namesOf(product.taxIds, lookups.taxes, 'code'),
                 precedence: blankIfNull(product.precedence),
-                productCode: product.productCode
+                productCode: product.productCode,
+                ...customFieldColumnsOf(product)
             });
             addDescriptions('product', productTempCode, product.description);
             addBulkPricing('product', productTempCode, product.bulkPricing);
@@ -564,7 +574,7 @@ const buildExportNotes = (productCount, failures, videoFailures = [], includeVid
 
 // query: the admin list's query (q, sort, categoryId (decoded), minPrice, maxPrice,
 // stockStatus, minStock, maxStock) or { ids } for ticked products.
-// vendorData: { websiteMasterData, companyMasterData, companySettingsData }
+// vendorData: { websiteMasterData, companyMasterData, companySettingsData, fieldConfigData }
 // meta = { filePath, size, fileName, productCount, failedImageCount, failedVideoCount }
 // - a zip on disk of products.xlsx + the image zips + videos.zip. The caller
 // streams it and then calls removeExportFile(filePath).
@@ -589,7 +599,7 @@ const buildProductExport = async (vendorId, query = {}, vendorData = {}) => {
         // Videos only when the store can use them - otherwise a re-upload of
         // the file would be refused for naming videos.
         const includeVideos = productVideoService.isProductVideoEnabled(vendorData.websiteMasterData, vendorData.companyMasterData);
-        const { rows, imageJobs, videoJobs, sizeImageLinks } = buildSheetRows(products, lookups, includeVideos);
+        const { rows, imageJobs, videoJobs, sizeImageLinks } = buildSheetRows(products, lookups, includeVideos, vendorData.fieldConfigData);
 
         await fs.promises.mkdir(EXPORT_TEMP_DIR, { recursive: true });
         const workDir = await fs.promises.mkdtemp(path.join(EXPORT_TEMP_DIR, 'export-'));
@@ -606,7 +616,7 @@ const buildProductExport = async (vendorId, query = {}, vendorData = {}) => {
                 sizeRow.videoFileNames = isEveryVideoDownloaded ? sizeVideoJobs.map((job) => job.fileName).join(', ') : '';
             });
 
-            const layout = productService.buildBulkWorkbookLayout('update');
+            const layout = productService.buildBulkWorkbookLayout('update', vendorData.fieldConfigData);
             const excelBuffer = await buildExcelTemplate({
                 sheets: [
                     ...layout.sheets.map((sheet) => ({

@@ -17,6 +17,9 @@ import { bulkUnitPrice, zonePrice, zoneTiers } from '../../../../utils/bulkPrici
 import { useTaxPreview } from '../hooks/useTaxPreview';
 import TaxPreviewRow from '../components/TaxPreviewRow';
 import ProductSearchBox from '../components/ProductSearchBox';
+import { useFieldConfig } from '../../fieldConfig/hooks/useFieldConfig';
+import { FIELD_CONFIG_ENTITIES } from '../../fieldConfig/constants';
+import { productOptionLabel } from '../../fieldConfig/utils/fieldConfigView';
 import { useOrderCurrency } from '../hooks/useOrderCurrency';
 
 // Mirror backend/middlewares/validations/adminPlaceOrderValidations.js so the
@@ -275,6 +278,8 @@ const OrderSummaryCard = ({ values, items, subtotal, discountValue, shippingValu
  *   table, and the customer's cart is emptied once the order is placed.
  */
 const AdminPlaceOrderPage = ({ prefill = null }) => {
+  // Product code, or the vendor's own codes instead (field config).
+  const productFields = useFieldConfig(FIELD_CONFIG_ENTITIES.PRODUCT);
   const toast = useToast();
 
   const [loading, setLoading] = useState(true);
@@ -685,7 +690,7 @@ const AdminPlaceOrderPage = ({ prefill = null }) => {
             }));
             const productDropdownOptions = products.map((product) => ({
               value: product._id,
-              label: product.productCode ? `${product.name} (${product.productCode})` : product.name,
+              label: productOptionLabel(product, productFields),
             }));
 
             const variants = productOptions?.variants || [];
