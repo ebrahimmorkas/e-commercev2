@@ -12,9 +12,13 @@ const ColorDot = ({ color }) => (
  * Step 3: read-only summary before submit. Validation itself happens in
  * ProductForm.validateDraft() - this is purely a final glance.
  */
-const ReviewStep = ({ draft }) => {
+const ReviewStep = ({ draft, fieldConfig }) => {
   // Prices are entered in the store currency (Company Settings).
   const { formatMoney } = useStoreCurrency();
+  // The vendor's own extra fields that have a value (e.g. Packet / SAP / Box Code).
+  const filledCustomFields = (fieldConfig?.customFields || [])
+    .map((definition) => ({ definition, value: draft.customFieldValues?.[definition.key] }))
+    .filter(({ value }) => value !== undefined && value !== null && String(value).trim() !== '');
   const totalSizes = draft.variants.reduce((sum, v) => sum + v.sizes.length, 0);
   const totalStock = draft.variants.reduce((sum, v) => sum + v.sizes.reduce((s, sz) => s + (Number(sz.stock) || 0), 0), 0);
 
@@ -29,6 +33,16 @@ const ReviewStep = ({ draft }) => {
             ))}
           </div>
         </div>
+        {filledCustomFields.length > 0 && (
+          <dl className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {filledCustomFields.map(({ definition, value }) => (
+              <div key={definition.key} className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2">
+                <dt className="text-[11px] uppercase tracking-wide text-gray-400">{definition.label}</dt>
+                <dd className={`text-sm font-medium ${theme.text.heading} break-words`}>{String(value)}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
         <div className="flex flex-wrap gap-2 pt-1">
           <div className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2 text-center min-w-[84px]">
             <p className={`text-lg font-semibold ${theme.text.heading}`}>{draft.variants.length}</p>

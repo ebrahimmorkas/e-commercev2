@@ -45,6 +45,24 @@ const descriptionEntrySchema = new mongoose.Schema(
     { _id: false }
 );
 
+// A vendor's own extra field (VendorFieldConfig.customFields, e.g. Box Code).
+// key = the custom field's key; value = text / number / select option. Only
+// fields with a value are stored - see fieldConfigService.normalizeCustomFieldValues.
+const customFieldValueSchema = new mongoose.Schema(
+    {
+        key: {
+            type: String,
+            required: true,
+            trim: true
+        },
+        value: {
+            type: mongoose.Schema.Types.Mixed,
+            required: true
+        }
+    },
+    { _id: false }
+);
+
 const commonFields = {
     status: {
         type: String,
@@ -455,6 +473,10 @@ const productSchema = new mongoose.Schema(
             uppercase: true,
             required: true,
             index: true
+        },
+        customFieldValues: {
+            type: [customFieldValueSchema],
+            default: []
         },
         bulkPricing: {
             type: [bulkPricingSchema],

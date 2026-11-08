@@ -278,7 +278,8 @@ const ProductDetailPage = ({
               </button>
             );
           })()}
-          <p className="mt-1 text-xs text-slate-400">{product.productCode}</p>
+          {/* Not sent when the vendor has hidden the product code. */}
+          {product.productCode && <p className="mt-1 text-xs text-slate-400">{product.productCode}</p>}
 
           {product.variants.length > 1 && (
             <div className="mt-5">

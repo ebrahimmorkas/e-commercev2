@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import SearchInput from '../../../../components/common/SearchInput';
+import { useFieldConfig } from '../../fieldConfig/hooks/useFieldConfig';
+import { FIELD_CONFIG_ENTITIES } from '../../fieldConfig/constants';
+import { productIdentifierText } from '../../fieldConfig/utils/fieldConfigView';
 
 const SEARCH_DEBOUNCE_MS = 300;
 const MAX_RESULTS = 10;
@@ -22,6 +25,8 @@ const MAX_RESULTS = 10;
  * @param {string} [props.placeholder]
  */
 const ProductSearchBox = ({ searchProducts, onSelect, placeholder = 'Search product, code, variant, size, SKU, barcode…' }) => {
+  // Product code, or the vendor's own codes instead (field config).
+  const productFields = useFieldConfig(FIELD_CONFIG_ENTITIES.PRODUCT);
   const [text, setText] = useState('');
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(-1);
@@ -126,7 +131,9 @@ const ProductSearchBox = ({ searchProducts, onSelect, placeholder = 'Search prod
                 }`}
               >
                 <span className="min-w-0 flex-1 truncate text-sm text-gray-900">{product.name}</span>
-                {product.productCode && <span className="shrink-0 text-xs text-gray-400">{product.productCode}</span>}
+                {productIdentifierText(product, productFields) && (
+                  <span className="shrink-0 max-w-[50%] truncate text-xs text-gray-400">{productIdentifierText(product, productFields)}</span>
+                )}
               </button>
             ))}
         </div>

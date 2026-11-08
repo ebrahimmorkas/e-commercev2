@@ -10,6 +10,7 @@ const authenticate = require('../middlewares/authenticate');
 const authorize = require('../middlewares/authorize');
 const vendorDetection = require('../middlewares/vendorDetection');
 const ensureVendorDataCached = require('../middlewares/ensureVendorDataCached');
+const loadVendorFieldConfig = require('../middlewares/loadVendorFieldConfig');
 const checkModuleAssigned = require('../middlewares/checkModuleAssigned');
 const imageUpload = require('../middlewares/imageUpload');
 const createBulkUploader = require('../middlewares/multer/bulkFileUpload');
@@ -34,7 +35,9 @@ const common = require('../utils/common');
 // by-brand, by-category) stay public. Kept before vendorDetection /
 // ensureVendorDataCached so unauthenticated requests are rejected before any
 // vendor data is loaded.
-const adminAccess = [authenticate, authorize('admin'), vendorDetection, ensureVendorDataCached];
+// loadVendorFieldConfig: the vendor's hidden/custom fields (req.fieldConfigData) -
+// a hidden code is then always auto-generated.
+const adminAccess = [authenticate, authorize('admin'), vendorDetection, ensureVendorDataCached, loadVendorFieldConfig];
 
 const parseProductData = (req, res, next) => {
     try {
@@ -66,13 +69,13 @@ router.get( '/get-product-options-admin', ...adminAccess, checkModuleAssigned('P
 
 router.get( '/get-product-admin/:id', ...adminAccess, checkModuleAssigned('PRODUCTS'), validate(idParamSchema, 'params'), productController.getProductByIdAdmin );
 
-router.get( '/get-products', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(productListQuerySchema, 'query'), productController.getAllProductsClient );
+router.get( '/get-products', vendorDetection, ensureVendorDataCached, loadVendorFieldConfig, checkModuleAssigned('PRODUCTS'), validate(productListQuerySchema, 'query'), productController.getAllProductsClient );
 
-router.get( '/get-product/:id', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(idParamSchema, 'params'), productController.getProductByIdClient );
+router.get( '/get-product/:id', vendorDetection, ensureVendorDataCached, loadVendorFieldConfig, checkModuleAssigned('PRODUCTS'), validate(idParamSchema, 'params'), productController.getProductByIdClient );
 
-router.get( '/get-products-by-brand/:brandId', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(brandIdParamSchema, 'params'), validate(productListQuerySchema, 'query'), productController.getProductsByBrand );
+router.get( '/get-products-by-brand/:brandId', vendorDetection, ensureVendorDataCached, loadVendorFieldConfig, checkModuleAssigned('PRODUCTS'), validate(brandIdParamSchema, 'params'), validate(productListQuerySchema, 'query'), productController.getProductsByBrand );
 
-router.get( '/get-products-by-category/:categoryId', vendorDetection, ensureVendorDataCached, checkModuleAssigned('PRODUCTS'), validate(categoryIdParamSchema, 'params'), validate(productListQuerySchema, 'query'), productController.getProductsByCategory );
+router.get( '/get-products-by-category/:categoryId', vendorDetection, ensureVendorDataCached, loadVendorFieldConfig, checkModuleAssigned('PRODUCTS'), validate(categoryIdParamSchema, 'params'), validate(productListQuerySchema, 'query'), productController.getProductsByCategory );
 
 router.get( '/get-products-by-category-admin/:categoryId', ...adminAccess, checkModuleAssigned('PRODUCTS'), validate(categoryIdParamSchema, 'params'), productController.getProductsByCategoryAdmin );
 

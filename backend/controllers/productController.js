@@ -1,5 +1,7 @@
 const productService = require('../services/productService');
 const productExportService = require('../services/productExportService');
+const fieldConfigService = require('../services/fieldConfigService');
+const { FIELD_CONFIG_ENTITIES } = require('../constants/fieldConfigConstants');
 const fs = require('fs');
 const currencyService = require('../services/currencyService');
 const logger = require('../utils/logger.js');
@@ -161,6 +163,18 @@ const formatProductForResponse = (productDoc) => {
     };
 };
 
+// Storefront copy of a product: the vendor's custom field values are admin-only,
+// and a field the vendor has hidden (e.g. the product code) is not sent either.
+const formatProductForClient = (productDoc, fieldConfigData) => {
+    const product = formatProductForResponse(productDoc);
+    if (!product) return product;
+    const { customFieldValues: _adminOnly, ...clientProduct } = product;
+    if (fieldConfigService.isFieldHidden(fieldConfigData, FIELD_CONFIG_ENTITIES.PRODUCT, 'productCode')) {
+        delete clientProduct.productCode;
+    }
+    return clientProduct;
+};
+
 // Every catch block below ends here. It used to only log, which left the HTTP
 // request open forever (the client just spun). Always answer, and turn a
 // MongoDB duplicate-key error that slipped past a service pre-check (two
@@ -187,7 +201,8 @@ const createProduct = async (req, res) => {
             req.websiteMasterData,
             req.companySettingsData,
             payload,
-            req.files
+            req.files,
+            req.fieldConfigData
         );
 
         if (!result.isSuccess) {
@@ -306,7 +321,7 @@ const getAllProductsClient = async (req, res) => {
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        const meta = { ...result.meta, products: result.meta.products.map(formatProductForResponse) };
+        const meta = { ...result.meta, products: result.meta.products.map((p) => formatProductForClient(p, req.fieldConfigData)) };
         return common.sendSuccess(res, result.statusCode, result.message, meta);
     } catch (error) {
         return handleError(res, 'Error fetching products for client', error, { vendorId });
@@ -326,7 +341,7 @@ const getProductByIdClient = async (req, res) => {
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        const meta = { ...result.meta, product: formatProductForResponse(result.meta.product) };
+        const meta = { ...result.meta, product: formatProductForClient(result.meta.product, req.fieldConfigData) };
         return common.sendSuccess(res, result.statusCode, result.message, meta);
     } catch (error) {
         return handleError(res, 'Error fetching product by id for client', error, { vendorId, id });
@@ -343,7 +358,7 @@ const getProductsByBrand = async (req, res) => {
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        const meta = { ...result.meta, products: result.meta.products.map(formatProductForResponse) };
+        const meta = { ...result.meta, products: result.meta.products.map((p) => formatProductForClient(p, req.fieldConfigData)) };
         return common.sendSuccess(res, result.statusCode, result.message, meta);
     } catch (error) {
         return handleError(res, 'Error fetching products by brand', error, { vendorId, brandId });
@@ -360,7 +375,7 @@ const getProductsByCategory = async (req, res) => {
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
-        const meta = { ...result.meta, products: result.meta.products.map(formatProductForResponse) };
+        const meta = { ...result.meta, products: result.meta.products.map((p) => formatProductForClient(p, req.fieldConfigData)) };
         return common.sendSuccess(res, result.statusCode, result.message, meta);
     } catch (error) {
         return handleError(res, 'Error fetching products by category', error, { vendorId, categoryId });
@@ -430,7 +445,8 @@ const bulkUploadProducts = async (req, res) => {
             mainImagesZipFile ? mainImagesZipFile.buffer : null,
             additionalImagesZipFile ? additionalImagesZipFile.buffer : null,
             companyMasterData, websiteMasterData, companySettingsData,
-            videosZipFile ? videosZipFile.path : null
+            videosZipFile ? videosZipFile.path : null,
+            req.fieldConfigData
         );
 
         if (!result.isSuccess) {
@@ -492,7 +508,8 @@ const bulkUpdateProducts = async (req, res) => {
             mainImagesZipFile ? mainImagesZipFile.buffer : null,
             additionalImagesZipFile ? additionalImagesZipFile.buffer : null,
             companyMasterData, websiteMasterData, companySettingsData,
-            videosZipFile ? videosZipFile.path : null
+            videosZipFile ? videosZipFile.path : null,
+            req.fieldConfigData
         );
 
         if (!result.isSuccess) {
@@ -519,7 +536,7 @@ const sendBulkProductSampleFile = async (req, res, mode) => {
             return common.sendError(res, bulkFeatureCheck.statusCode, mode === 'update' ? 'Bulk update is not enabled for your plan.' : 'Bulk upload is not enabled for your plan.');
         }
 
-        const result = await productService.buildBulkProductSampleFile(mode);
+        const result = await productService.buildBulkProductSampleFile(mode, req.fieldConfigData);
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
         }
@@ -569,7 +586,8 @@ const exportProducts = async (req, res) => {
         const vendorData = {
             websiteMasterData: req.websiteMasterData,
             companyMasterData: req.companyMasterData,
-            companySettingsData: req.companySettingsData
+            companySettingsData: req.companySettingsData,
+            fieldConfigData: req.fieldConfigData
         };
         const result = await productExportService.buildProductExport(vendorId, query, vendorData);
         if (!result.isSuccess) {
@@ -617,7 +635,8 @@ const updateProduct = async (req, res) => {
             req.websiteMasterData,
             req.companySettingsData,
             payload,
-            req.files
+            req.files,
+            req.fieldConfigData
         );
 
         if (!result.isSuccess) {

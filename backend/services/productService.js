@@ -31,6 +31,8 @@ const logger = require('../utils/logger');
 const internationalPrice = require('../utils/internationalPrice');
 const inventoryService = require('./inventoryService');
 const lowStockAlertService = require('./lowStockAlertService');
+const fieldConfigService = require('./fieldConfigService');
+const { FIELD_CONFIG_ENTITIES } = require('../constants/fieldConfigConstants');
 const { ADMIN_PRODUCT_PAGE_SIZES, DEFAULT_ADMIN_PRODUCTS_PER_PAGE } = require('../constants/productListConstants');
 
 // Normalizes a size's `image` for reuse in a freshly-built plain object
@@ -1006,7 +1008,11 @@ const saveNewProduct = async (product, name) => {
     }
 };
 
-const createProduct = async (vendorId, userId, companyMasterData, websiteMasterData, companySettingsData, body, files) => {
+// fieldConfigData: the vendor's field config (req.fieldConfigData) - checks the
+// vendor's custom field values. companySettingsData must already have the
+// hidden-field settings applied (loadVendorFieldConfig does that), so a hidden
+// code is auto-generated.
+const createProduct = async (vendorId, userId, companyMasterData, websiteMasterData, companySettingsData, body, files, fieldConfigData = null) => {
     try {
         // --- plan limit: total products allowed -------------------------------
         if (companyMasterData.numberOfProductsAllowed !== undefined && companyMasterData.numberOfProductsAllowed !== null) {
@@ -1064,6 +1070,12 @@ const createProduct = async (vendorId, userId, companyMasterData, websiteMasterD
             if ((body.variants || []).length > companyMasterData.numberOfProductsVaiantsAllowed) {
                 return common.returnResult(false, 403, `You can add a maximum of ${companyMasterData.numberOfProductsVaiantsAllowed} variant(s) per product.`);
             }
+        }
+
+        // --- the vendor's own extra fields (VendorFieldConfig) ------------------
+        const customFieldsResult = fieldConfigService.normalizeCustomFieldValues(fieldConfigData, FIELD_CONFIG_ENTITIES.PRODUCT, body.customFieldValues);
+        if (!customFieldsResult.isSuccess) {
+            return common.returnResult(false, customFieldsResult.statusCode, customFieldsResult.message);
         }
 
         // --- product code (auto-generated or vendor-entered) -----------------------
@@ -1221,6 +1233,7 @@ const createProduct = async (vendorId, userId, companyMasterData, websiteMasterD
                 mainCategory: categoryResult.meta.mainCategory,
                 subCategory: categoryResult.meta.subCategory,
                 productCode: productCodeResult.meta.productCode,
+                customFieldValues: customFieldsResult.meta.customFieldValues,
                 slug,
                 variants,
                 vendorId,
@@ -1569,6 +1582,8 @@ const buildProductSearchFilter = async (q, audience, vendorId, status) => {
     }
 
     if (audience === 'admin') {
+        // The vendor's own extra fields (Box Code, SAP Code...) are admin-only.
+        clauses.push({ 'customFieldValues.value': pattern });
         const codeMatchIds = await findProductIdsByCode(vendorId, status, q);
         if (codeMatchIds.length > 0) clauses.push({ _id: { $in: codeMatchIds } });
     }
@@ -1896,7 +1911,7 @@ const findAdminProductIdsForExport = async (vendorId, query = {}, vendorData = {
 const fetchProductOptionsForAdmin = async (vendorId, query = {}) => {
     try {
         const status = ['A', 'I'].includes(query.status) ? query.status : { $in: ['A', 'I'] };
-        const projection = { name: 1, productCode: 1, status: 1 };
+        const projection = { name: 1, productCode: 1, customFieldValues: 1, status: 1 };
         const ids = Array.isArray(query.ids) ? query.ids.slice(0, MAX_PRODUCT_IDS_PER_LOOKUP) : [];
 
         if (ids.length > 0) {
@@ -1909,7 +1924,7 @@ const fetchProductOptionsForAdmin = async (vendorId, query = {}) => {
         const filter = { vendorId, status };
         if (q) {
             const pattern = new RegExp(escapeRegex(q), 'i');
-            filter.$or = [{ name: pattern }, { productCode: pattern }];
+            filter.$or = [{ name: pattern }, { productCode: pattern }, { 'customFieldValues.value': pattern }];
         }
         const docs = await Product.find(filter, projection)
             .collation({ locale: 'en', strength: 2 })
@@ -2236,6 +2251,69 @@ const BULK_PRICING_SHEET_COLUMNS = [
     { key: 'internationalPrice', header: 'InternationalPrice', required: false, note: 'Optional price per unit for customers outside your store country, in your international currency. Blank = the Price converted.' }
 ];
 
+// A custom field's value is read from / written to this column key.
+const customFieldColumnKey = (key) => `customField:${key}`;
+
+const isProductFieldHidden = (fieldConfigData, field) => fieldConfigService.isFieldHidden(fieldConfigData, FIELD_CONFIG_ENTITIES.PRODUCT, field);
+
+const describeCustomFieldColumn = (definition) => {
+    try {
+        const kind = definition.type === 'number' ? 'A number.'
+            : definition.type === 'select' ? `One of: ${definition.options.join(', ')}.`
+                : 'Text.';
+        return `${definition.required ? 'Required.' : 'Optional.'} ${kind}`;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Products sheet. With the product code hidden the vendor never sees a code,
+// so ProductCode goes and recommended products are named by product NAME.
+// Each custom field adds a column headed with its label.
+const productSheetColumns = (fieldConfigData) => {
+    try {
+        const isCodeHidden = isProductFieldHidden(fieldConfigData, 'productCode');
+        const columns = PRODUCT_SHEET_COLUMNS
+            .filter((column) => !(isCodeHidden && column.key === 'productCode'))
+            .map((column) => (isCodeHidden && column.key === 'recommendedProductCodes'
+                ? { ...column, header: 'RecommendedProductNames', note: 'Optional comma-separated names of existing active products.' }
+                : column));
+
+        const { customFields } = fieldConfigService.getEntityConfig(fieldConfigData, FIELD_CONFIG_ENTITIES.PRODUCT);
+        const customColumns = customFields.map((definition) => ({
+            key: customFieldColumnKey(definition.key),
+            header: definition.label,
+            required: false,
+            keptWhenBlank: true,
+            note: describeCustomFieldColumn(definition),
+            updateNote: KEEP_OR_CLEAR_NOTE
+        }));
+        return [...columns, ...customColumns];
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Variants / Sizes sheet. A hidden variant/size code is always auto-generated,
+// so it is left out of the upload file - but bulk UPDATE still needs it to tell
+// which existing variant/size a row is, so the update file and the export keep
+// it as a reference the vendor leaves untouched.
+const hideCodeColumn = (columns, codeKey, levelName, fieldConfigData) => {
+    try {
+        if (!isProductFieldHidden(fieldConfigData, codeKey)) return columns;
+        return columns.map((column) => (column.key === codeKey
+            ? {
+                ...column,
+                updateOnly: true,
+                note: `Reference of an existing ${levelName}, filled in by the product download - do not change it. Leave it blank for a new ${levelName}. An existing ${levelName} that is not listed is removed.`,
+                updateNote: undefined
+            }
+            : column));
+    } catch (err) {
+        throw err;
+    }
+};
+
 const escapeRegex = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // Excel hands a cell back as whatever type it was typed as (a SKU of 1001 or
@@ -2260,20 +2338,23 @@ const parseCsv = (val) => cellText(val).split(',').map(s => s.trim()).filter(Boo
 // The six sheets of a bulk product upload/update workbook. A missing sheet or
 // column, or a file that isn't an .xlsx, comes back as { ok: false, message }
 // (a 400 for the admin to fix) instead of being thrown into the error page.
+// The vendor's field config shapes three of the sheets (see productSheetColumns
+// / hideCodeColumn): a hidden code column is dropped from the upload file, and
+// every custom field gets its own Products column.
 const PRODUCT_WORKBOOK_SHEETS = [
-    { key: 'productRows', sheetName: 'Products', columns: () => PRODUCT_SHEET_COLUMNS },
-    { key: 'variantRows', sheetName: 'Variants', columns: () => VARIANT_SHEET_COLUMNS },
-    { key: 'sizeRows', sheetName: 'Sizes', columns: () => SIZE_SHEET_COLUMNS },
+    { key: 'productRows', sheetName: 'Products', columns: (fieldConfigData) => productSheetColumns(fieldConfigData) },
+    { key: 'variantRows', sheetName: 'Variants', columns: (fieldConfigData) => hideCodeColumn(VARIANT_SHEET_COLUMNS, 'variantCode', 'variant', fieldConfigData) },
+    { key: 'sizeRows', sheetName: 'Sizes', columns: (fieldConfigData) => hideCodeColumn(SIZE_SHEET_COLUMNS, 'sizeCode', 'size', fieldConfigData) },
     { key: 'measurementValueRows', sheetName: 'MeasurementValues', columns: () => MEASUREMENT_VALUE_SHEET_COLUMNS },
     { key: 'descriptionRows', sheetName: 'Descriptions', columns: () => DESCRIPTION_SHEET_COLUMNS },
     { key: 'bulkPricingRows', sheetName: 'BulkPricing', columns: () => BULK_PRICING_SHEET_COLUMNS }
 ];
 
-const parseProductWorkbook = async (excelBuffer) => {
+const parseProductWorkbook = async (excelBuffer, fieldConfigData = null) => {
     try {
         const sheets = {};
         for (const sheet of PRODUCT_WORKBOOK_SHEETS) {
-            const parsed = await safeParseExcelSheet(excelBuffer, sheet.columns(), { sheetName: sheet.sheetName });
+            const parsed = await safeParseExcelSheet(excelBuffer, sheet.columns(fieldConfigData), { sheetName: sheet.sheetName });
             if (!parsed.ok) return { ok: false, message: parsed.message };
             sheets[sheet.key] = parsed.rows;
         }
@@ -2320,14 +2401,15 @@ const BULK_INSTRUCTION_COLUMNS = [
 // The six sheets (with each column's `key`) plus the Instructions rows for
 // mode 'upload' | 'update'. Shared by the sample files and the product export,
 // so an exported file always has exactly the columns the upload reads.
-const buildBulkWorkbookLayout = (mode) => {
+// fieldConfigData: the vendor's field config (hidden codes, custom field columns).
+const buildBulkWorkbookLayout = (mode, fieldConfigData = null) => {
     try {
         const isUpdate = mode === 'update';
 
         const sheets = PRODUCT_WORKBOOK_SHEETS.map((sheet) => ({
             key: sheet.key,
             name: sheet.sheetName,
-            columns: sheet.columns().filter((column) => isUpdate || !column.updateOnly)
+            columns: sheet.columns(fieldConfigData).filter((column) => isUpdate || !column.updateOnly)
         }));
 
         const instructionRows = BULK_SAMPLE_GENERAL_NOTES[isUpdate ? 'update' : 'upload'].map((note) => ['General', '', '', note]);
@@ -2345,10 +2427,10 @@ const buildBulkWorkbookLayout = (mode) => {
     }
 };
 
-const buildBulkProductSampleFile = async (mode) => {
+const buildBulkProductSampleFile = async (mode, fieldConfigData = null) => {
     try {
         const isUpdate = mode === 'update';
-        const { sheets, instructionRows, instructionColumns } = buildBulkWorkbookLayout(mode);
+        const { sheets, instructionRows, instructionColumns } = buildBulkWorkbookLayout(mode, fieldConfigData);
 
         const buffer = await buildExcelTemplate({
             sheets: [
@@ -2394,9 +2476,9 @@ const groupRowsBy = (rows, getKey) => {
 // Parses the workbook + image zips once per request and indexes the child
 // sheets by the temp code that links them to their parent. A problem with the
 // files themselves comes back as a 400 result; meta = { productRows, ctx }.
-const prepareBulkProductRun = async ({ vendorId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, videosZipPath = null, companyMasterData }) => {
+const prepareBulkProductRun = async ({ vendorId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, videosZipPath = null, companyMasterData, fieldConfigData = null }) => {
     try {
-        const workbook = await parseProductWorkbook(excelBuffer);
+        const workbook = await parseProductWorkbook(excelBuffer, fieldConfigData);
         if (!workbook.ok) {
             return common.returnResult(false, 400, workbook.message);
         }
@@ -2428,6 +2510,7 @@ const prepareBulkProductRun = async ({ vendorId, excelBuffer, mainImagesZipBuffe
         const ctx = {
             vendorId,
             companyMasterData,
+            fieldConfigData,
             mainImageEntries,
             additionalImageEntries,
             videoZip,
@@ -2736,6 +2819,22 @@ const resolveBulkCategoryPath = async (ctx, pathCell) => {
 
 const resolveBulkRecommendedProducts = async (ctx, codesCell) => {
     try {
+        // Product code hidden for this vendor: the column holds product names.
+        if (isProductFieldHidden(ctx.fieldConfigData, 'productCode')) {
+            const names = [...new Set(parseCsv(codesCell))];
+            if (names.length === 0) return { ids: [] };
+
+            const docs = await Product.find({ vendorId: ctx.vendorId, status: 'A', name: { $in: names } }, { _id: 1, name: 1 })
+                .collation({ locale: 'en', strength: 2 })
+                .lean();
+            const foundNames = new Set(docs.map(d => d.name.toLowerCase()));
+            const missing = names.filter(n => !foundNames.has(n.toLowerCase()));
+            if (missing.length > 0) {
+                return { error: `Recommended product(s) not found: ${missing.join(', ')}` };
+            }
+            return { ids: docs.map(d => d._id.toString()) };
+        }
+
         const codes = parseCsv(codesCell).map(c => c.toUpperCase());
         if (codes.length === 0) return { ids: [] };
 
@@ -2746,6 +2845,28 @@ const resolveBulkRecommendedProducts = async (ctx, codesCell) => {
             return { error: `Recommended product code(s) not found: ${missing.join(', ')}` };
         }
         return { ids: docs.map(d => d._id.toString()) };
+    } catch (err) {
+        throw err;
+    }
+};
+
+// A Products row's custom field cells -> [{ key, value }] for the form payload
+// (the value checks happen in createProduct/updateProduct). On bulk update
+// (existingProduct given) a blank cell keeps the product's value and CLEAR empties it.
+const bulkCustomFieldValuesFor = (ctx, productRow, existingProduct = null) => {
+    try {
+        const { customFields } = fieldConfigService.getEntityConfig(ctx.fieldConfigData, FIELD_CONFIG_ENTITIES.PRODUCT);
+        const existingValues = new Map((existingProduct?.customFieldValues || []).map((entry) => [entry.key, entry.value]));
+        const values = [];
+        for (const definition of customFields) {
+            const cell = productRow[customFieldColumnKey(definition.key)];
+            let value;
+            if (existingProduct && isClearCell(cell)) value = null;
+            else if (existingProduct && isBlankCell(cell)) value = existingValues.get(definition.key) ?? null;
+            else value = isBlankCell(cell) ? null : (typeof cell === 'number' ? cell : cellText(cell));
+            values.push({ key: definition.key, value });
+        }
+        return values;
     } catch (err) {
         throw err;
     }
@@ -2931,9 +3052,9 @@ const attachBulkSizeVideos = async (ctx, imagePlan, payload, { vendorId, userId,
 // Bulk ADD: each Products-sheet row becomes the Add Product form's payload
 // and goes through createProduct() unchanged.
 // videosZipPath: the videos zip on disk (or null) - the controller deletes it.
-const bulkUploadProducts = async (vendorId, userId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, companyMasterData, websiteMasterData, companySettingsData, videosZipPath = null) => {
+const bulkUploadProducts = async (vendorId, userId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, companyMasterData, websiteMasterData, companySettingsData, videosZipPath = null, fieldConfigData = null) => {
     try {
-        const prepared = await prepareBulkProductRun({ vendorId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, videosZipPath, companyMasterData });
+        const prepared = await prepareBulkProductRun({ vendorId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, videosZipPath, companyMasterData, fieldConfigData });
         if (!prepared.isSuccess) {
             return common.returnResult(false, prepared.statusCode, prepared.message);
         }
@@ -2985,6 +3106,7 @@ const bulkUploadProducts = async (vendorId, userId, excelBuffer, mainImagesZipBu
                         taxIds: taxes.ids,
                         precedence: numberOrUndefined(productRow.precedence),
                         productCode: textOrUndefined(productRow.productCode),
+                        customFieldValues: bulkCustomFieldValuesFor(ctx, productRow),
                         bulkPricing: bulkPricingFor(ctx, 'product', productTempCode),
                         variants: assembled.variants
                     };
@@ -3008,7 +3130,7 @@ const bulkUploadProducts = async (vendorId, userId, excelBuffer, mainImagesZipBu
                     }
 
                     const createResult = await createProduct(
-                        vendorId, userId, companyMasterData, websiteMasterData, companySettingsData, value, images.files
+                        vendorId, userId, companyMasterData, websiteMasterData, companySettingsData, value, images.files, ctx.fieldConfigData
                     );
                     if (!createResult.isSuccess) {
                         await productVideoService.discardUploadedVideos(videos.videoIds, userId);
@@ -3161,6 +3283,7 @@ const assembleBulkUpdateProductFields = async (ctx, productRow, existingProduct,
                 searchKeywords,
                 recommendedProducts,
                 taxIds,
+                customFieldValues: bulkCustomFieldValuesFor(ctx, productRow, existingProduct),
                 precedence: isBlankCell(productRow.precedence) ? (existingProduct.precedence ?? undefined) : Number(productRow.precedence),
                 bulkPricing: bulkPricingRows.length > 0
                     ? bulkPricingRows
@@ -3193,9 +3316,9 @@ const assembleBulkUpdateProductFields = async (ctx, productRow, existingProduct,
 //    variant/size NOT referenced by any row for that product is removed,
 //    images included - see linkBulkVariantsToExisting / mergeVariantsIntoProduct.
 // videosZipPath: the videos zip on disk (or null) - the controller deletes it.
-const bulkUpdateProducts = async (vendorId, userId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, companyMasterData, websiteMasterData, companySettingsData, videosZipPath = null) => {
+const bulkUpdateProducts = async (vendorId, userId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, companyMasterData, websiteMasterData, companySettingsData, videosZipPath = null, fieldConfigData = null) => {
     try {
-        const prepared = await prepareBulkProductRun({ vendorId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, videosZipPath, companyMasterData });
+        const prepared = await prepareBulkProductRun({ vendorId, excelBuffer, mainImagesZipBuffer, additionalImagesZipBuffer, videosZipPath, companyMasterData, fieldConfigData });
         if (!prepared.isSuccess) {
             return common.returnResult(false, prepared.statusCode, prepared.message);
         }
@@ -3266,7 +3389,7 @@ const bulkUpdateProducts = async (vendorId, userId, excelBuffer, mainImagesZipBu
                     }
 
                     const updateResult = await updateProduct(
-                        vendorId, userId, companyMasterData, websiteMasterData, companySettingsData, value, images.files
+                        vendorId, userId, companyMasterData, websiteMasterData, companySettingsData, value, images.files, ctx.fieldConfigData
                     );
                     if (!updateResult.isSuccess) {
                         await productVideoService.discardUploadedVideos(videos.videoIds, userId);
@@ -3548,12 +3671,14 @@ const mergeVariantsIntoProduct = async ({
 // productCode/variantCode/sizeCode are immutable and always carried
 // forward from the existing document for matched entities, regardless of
 // what the payload contains for them.
-const updateProduct = async (vendorId, userId, companyMasterData, websiteMasterData, companySettingsData, body, files) => {
+// fieldConfigData: see createProduct.
+const updateProduct = async (vendorId, userId, companyMasterData, websiteMasterData, companySettingsData, body, files, fieldConfigData = null) => {
     try {
         const {
             productId,
             productCode: _submittedProductCode, // immutable - intentionally discarded
             variants: submittedVariants,
+            customFieldValues: submittedCustomFieldValues,
             ...rest
         } = body;
 
@@ -3590,6 +3715,16 @@ const updateProduct = async (vendorId, userId, companyMasterData, websiteMasterD
             return common.returnResult(false, recommendedResult.statusCode, recommendedResult.message);
         }
 
+        // --- the vendor's own extra fields: only when sent (left out = unchanged) --
+        let customFieldValues;
+        if (submittedCustomFieldValues !== undefined) {
+            const customFieldsResult = fieldConfigService.normalizeCustomFieldValues(fieldConfigData, FIELD_CONFIG_ENTITIES.PRODUCT, submittedCustomFieldValues);
+            if (!customFieldsResult.isSuccess) {
+                return common.returnResult(false, customFieldsResult.statusCode, customFieldsResult.message);
+            }
+            customFieldValues = customFieldsResult.meta.customFieldValues;
+        }
+
         // --- slug: only regenerate if the name actually changed ---------------------
         let slug = existingProduct.slug;
         if (rest.name && rest.name !== existingProduct.name) {
@@ -3622,6 +3757,7 @@ const updateProduct = async (vendorId, userId, companyMasterData, websiteMasterD
             // vendorId, productCode, createdBy, remarks intentionally untouched
         });
         existingProduct.variants = variants;
+        if (customFieldValues !== undefined) existingProduct.customFieldValues = customFieldValues;
 
         await existingProduct.save();
 

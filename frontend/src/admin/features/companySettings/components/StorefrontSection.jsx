@@ -41,6 +41,34 @@ const StorefrontSection = ({ draft, onChange, companyMaster, catalogue, settings
       </div>
       )}
 
+      {/* Both CompanyMaster (this account) and WebsiteMaster (platform) must allow the blog; only the first is visible here. */}
+      {companyMaster?.isBlogFeatureOn === true && (
+      <div className="border border-gray-200 rounded-lg p-3 space-y-3">
+        <Switch
+          label="Show Blog"
+          description="Add a Blog link to the storefront menu, beside Download Catalogue. It appears once at least one post is published."
+          checked={draft.showBlog}
+          onChange={(e) => set({ showBlog: e.target.checked })}
+          color={theme.switch.color}
+        />
+        {draft.showBlog && (
+          <div>
+            <InputField
+              className="w-full"
+              label="Menu Label"
+              maxLength={20}
+              placeholder="Blog"
+              value={draft.blogNavLabel}
+              onChange={(e) => set({ blogNavLabel: e.target.value })}
+            />
+            <p className={`mt-1 text-xs ${theme.text.muted}`}>
+              The text shown in the storefront menu, for example "Blog", "News" or "Journal".
+            </p>
+          </div>
+        )}
+      </div>
+      )}
+
       {flagOn('isBannerFeatureOn') && (
       <div className="border border-gray-200 rounded-lg p-3 space-y-3">
         <Switch
