@@ -19,6 +19,8 @@ import { useToast } from '../components/common/Toast';
 import EmptyState from '../components/common/EmptyState/EmptyState';
 import NotFoundPage from './components/errors/NotFoundPage';
 import PolicyPage from './features/companySettings/pages/PolicyPage';
+import BlogListPage from './features/blog/pages/BlogListPage';
+import BlogPostPage from './features/blog/pages/BlogPostPage';
 import { getPolicyLinkByPath } from './features/companySettings/constants';
 import theme from './features/Home/theme/theme';
 import AllProductsPage from './features/products/pages/AllProductsPage';
@@ -35,7 +37,7 @@ const productsPath = (q = '', sort = DEFAULT_PRODUCTS_SORT) => {
 };
 
 // No routing library yet - path match against `/product/:id` (id = Mongo
-// ObjectId), `/category/:id`, `/cart`, `/checkout`, `/orders`, `/orders/:id`, `/addresses`,
+// ObjectId), `/category/:id`, `/cart`, `/checkout`, `/orders`, `/orders/:id`, `/addresses`, `/blog`, `/blog/:slug`,
 // or home. pushState/popstate keep the URL shareable and the browser back
 // button working. `/category/:id` is also opened directly as a real link
 // (new tab) from the Navbar's Shop mega-menu, so it has to work as a
@@ -57,6 +59,8 @@ const BRAND_PATH_RE = /^\/brand\/([A-Za-z0-9_-]{43})$/;
 // formatOrderForResponse) - same 43-char url-safe base64 shape as
 // CATEGORY_PATH_RE above, never raw hex.
 const ORDER_DETAIL_PATH_RE = /^\/orders\/([A-Za-z0-9_-]{43})$/;
+// Blog posts are addressed by their slug (lowercase words joined by hyphens).
+const BLOG_POST_PATH_RE = /^\/blog\/([a-z0-9]+(?:-[a-z0-9]+)*)$/;
 const LIST_ROUTE_TYPES = ['home', 'products', 'category', 'brand'];
 const currentPath = () => window.location.pathname + window.location.search;
 const parseRoute = () => {
@@ -71,6 +75,9 @@ const parseRoute = () => {
   if (path === '/checkout') return { type: 'checkout' };
   if (path === '/orders') return { type: 'orders' };
   if (path === '/addresses') return { type: 'addresses' };
+  if (path === '/blog' || path === '/blog/') return { type: 'blog' };
+  const blogSlug = path.match(BLOG_POST_PATH_RE)?.[1];
+  if (blogSlug) return { type: 'blog-post', slug: blogSlug };
   const orderId = path.match(ORDER_DETAIL_PATH_RE)?.[1];
   if (orderId) return { type: 'order-detail', id: orderId };
   const productId = path.match(PRODUCT_PATH_RE)?.[1];
@@ -207,6 +214,8 @@ const ClientApp = () => {
   const openAddresses = () => navigate('/addresses', { type: 'addresses' });
   const openOrderDetail = (id) => navigate(`/orders/${id}`, { type: 'order-detail', id });
   const openPolicyPage = (link) => navigate(link.path, { type: 'policy', link });
+  const openBlog = () => navigate('/blog', { type: 'blog' });
+  const openBlogPost = (slug) => navigate(`/blog/${slug}`, { type: 'blog-post', slug });
   const goHome = () => navigate('/', { type: 'home' });
   const openAllProducts = (q = '', sort = DEFAULT_PRODUCTS_SORT) => navigate(productsPath(q, sort), { type: 'products', q, sort });
 
@@ -336,7 +345,7 @@ const ClientApp = () => {
           onSearchPanelChange={setSearchPanelOpen}
           onCartClick={openCart}
         />
-        <Navbar suspended={searchPanelOpen} />
+        <Navbar suspended={searchPanelOpen} onOpenBlog={openBlog} />
       </div>
       <AnnouncementBar />
       <main className="flex-1">
@@ -460,6 +469,8 @@ const ClientApp = () => {
         )}
         </div>
         {route.type === 'policy' && <PolicyPage link={route.link} onBack={goHome} />}
+        {route.type === 'blog' && <BlogListPage onOpenPost={openBlogPost} />}
+        {route.type === 'blog-post' && <BlogPostPage slug={route.slug} onBack={openBlog} onOpenPost={openBlogPost} />}
         {route.type === 'not-found' && <NotFoundPage onGoHome={goHome} />}
       </main>
       <Footer onOpenPolicyPage={openPolicyPage} />

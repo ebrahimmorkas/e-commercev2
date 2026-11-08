@@ -12,6 +12,7 @@ import CustomersPage from './admin/features/customers/pages/CustomersPage';
 import AddUserPage from './admin/features/addUser/pages/AddUserPage';
 import AbandonedCartsPage from './admin/features/abandonedCart/pages/AbandonedCartsPage';
 import BannersPage from './admin/features/banners/pages/BannersPage';
+import BlogsPage from './admin/features/blogs/pages/BlogsPage';
 import FreeCashPage from './admin/features/freeCash/pages/FreeCashPage';
 import GroupsPage from './admin/masters/group/pages/GroupsPage';
 import EmailTemplatesPage from './admin/masters/emailTemplate/pages/EmailTemplatesPage';
@@ -119,6 +120,8 @@ function App() {
       <div className="flex-1 min-w-0">
         {effectiveActivePage === 'announcements' ? (
           <AnnouncementsPage />
+        ) : effectiveActivePage === 'blogs' ? (
+          <BlogsPage />
         ) : effectiveActivePage === 'categories' ? (
           <CategoriesPage />
         ) : effectiveActivePage === 'brands' ? (

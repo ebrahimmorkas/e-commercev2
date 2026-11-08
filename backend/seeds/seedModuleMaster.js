@@ -22,6 +22,7 @@ const modules = [
     { moduleName: "Discount", shortModuleName: "Discount", code: "DISCOUNT", precedence: 7, isSystemModule: false, description: "Discount campaigns." },
     { moduleName: "Banner", shortModuleName: "Banner", code: "BANNER", precedence: 8, isSystemModule: false, description: "Homepage banners." },
     { moduleName: "Announcement", shortModuleName: "Announcement", code: "ANNOUNCEMENT", precedence: 9, isSystemModule: false, description: "Site announcements." },
+    { moduleName: "Blog", shortModuleName: "Blog", code: "BLOG", precedence: 9.5, isSystemModule: false, description: "Storefront blog posts." },
     { moduleName: "Abandoned Cart", shortModuleName: "Abandoned Cart", code: "ABANDONED_CART", precedence: 10, isSystemModule: false, description: "Abandoned cart recovery." },
     { moduleName: "Free Cash", shortModuleName: "Free Cash", code: "FREE_CASH", precedence: 11, isSystemModule: false, description: "Free Cash campaigns." },
     { moduleName: "Free Cash Usage", shortModuleName: "Free Cash Usage", code: "FREE_CASH_USAGE", precedence: 11.1, isSystemModule: false, description: "How much Free Cash each customer can spend right now, and the full history of every Free Cash given, used, refunded, revoked or expired." },

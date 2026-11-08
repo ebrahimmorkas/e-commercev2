@@ -54,6 +54,12 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: true
     },
+    // Global switch for the storefront blog. Paired with
+    // CompanyMaster.isBlogFeatureOn and the vendor's own CompanySettings.showBlog.
+    isBlogFeatureOn: {
+        type: Boolean,
+        default: true
+    },
     numberOfAnnouncementsAllowed: {
         type: Number,
         default: 2,

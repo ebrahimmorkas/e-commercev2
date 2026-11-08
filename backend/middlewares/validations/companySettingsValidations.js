@@ -74,6 +74,8 @@ const companySettingsFieldsSchema = {
     contactPhoneNumber: Joi.string().trim().pattern(phonePattern).allow('', null).label('Contact phone number'),
     contactAddress: Joi.string().trim().max(300).allow('', null).label('Contact address'),
     showAnnouncements: Joi.boolean().label('Show announcements'),
+    showBlog: Joi.boolean().label('Show blog'),
+    blogNavLabel: Joi.string().trim().min(1).max(20).label('Blog menu label'),
     isAnnouncementRotationOn: Joi.boolean().label('Announcement rotation'),
     showBanners: Joi.boolean().label('Show banners'),
     isBannerRotationOn: Joi.boolean().label('Banner rotation'),

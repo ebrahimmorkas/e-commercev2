@@ -76,6 +76,7 @@ const MODULE_FEATURE_FLAG = {
     DISCOUNT: 'isDiscountFeatureOn',
     BANNER: 'isBannerFeatureOn',
     ANNOUNCEMENT: 'isAnnouncementFeatureOn',
+    BLOG: 'isBlogFeatureOn',
     ABANDONED_CART: 'isAbondonedCartFeatureOn',
     FREE_CASH: 'isFreeCashFeatureOn',
     FREE_CASH_USAGE: 'isFreeCashFeatureOn',

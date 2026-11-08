@@ -1,4 +1,5 @@
 const companySettingsService = require('../services/companySettingsService');
+const blogService = require('../services/blogService');
 const logger = require('../utils/logger.js');
 const common = require('../utils/common.js');
 
@@ -103,6 +104,7 @@ const PUBLIC_COMPANY_SETTINGS_FIELDS = [
     'privacyPolicy', 'cancelPolicy', 'termsAndConditions', 'returnRefundPolicy', 'shippingPolicy', 'aboutUs', 'policyDisplayMode',
     'showAnnouncements', 'isAnnouncementRotationOn', 'showBanners', 'isBannerRotationOn',
     'showReviewsToCustomers',
+    'blogNavLabel',
     // The storefront address form needs it to know whether City is mandatory.
     'isCityOptional',
 ];
@@ -226,6 +228,13 @@ const getCompanySettings = async (req, res) => {
     // Only whether a catalogue can be downloaded - never its storage details.
     publicSettings.catalogueAvailable = !!settings.catalogue?.fileAssetId
       && companySettingsService.isCatalogueOn(req.companyMasterData);
+    // Navbar Blog link: both feature switches, the vendor's own toggle, and at
+    // least one published post.
+    publicSettings.blogAvailable = settings.showBlog !== false
+      && !!req.websiteMasterData?.isBlogFeatureOn
+      && !!req.companyMasterData?.isBlogFeatureOn
+      && await blogService.hasPublishedBlogs(vendorId);
+    publicSettings.blogNavLabel = settings.blogNavLabel || 'Blog';
     // Footer logo + About Us blurb; on unless the vendor's CompanyMaster says false
     // (the cached doc may predate the field).
     publicSettings.isFooterAboutSectionOn = req.companyMasterData?.isFooterAboutSectionOn !== false;

@@ -157,7 +157,7 @@ const CLOSE_DELAY_MS = 150;
  * Mobile: a hamburger trigger opens an off-canvas drawer with the same
  * items as a tap-to-expand accordion.
  */
-const Navbar = ({ suspended = false }) => {
+const Navbar = ({ suspended = false, onOpenBlog }) => {
   const { categoryTree, loading: categoriesLoading } = useStorefrontCategories();
   const categoryPanelProps = { categoryTree, loading: categoriesLoading };
 
@@ -167,6 +167,15 @@ const Navbar = ({ suspended = false }) => {
   // The server only sets this when the feature is on for the vendor AND a PDF is uploaded.
   const { companySettings } = useStorefrontCompanySettings();
   const hasCatalogue = companySettings?.catalogueAvailable === true;
+  // The server only sets this when the blog is on at every level AND a post is published.
+  const hasBlog = companySettings?.blogAvailable === true;
+  const blogLabel = companySettings?.blogNavLabel || 'Blog';
+  // A real link (works in a new tab); a plain click opens it in-app.
+  const handleBlogClick = (event) => {
+    if (!onOpenBlog || event.metaKey || event.ctrlKey || event.shiftKey) return;
+    event.preventDefault();
+    onOpenBlog();
+  };
   const toast = useToast();
 
   const handleCatalogueClick = async (event) => {
@@ -305,6 +314,17 @@ const Navbar = ({ suspended = false }) => {
               </a>
             </li>
           )}
+          {hasBlog && (
+            <li onMouseEnter={scheduleClose}>
+              <a
+                href="/blog"
+                onClick={handleBlogClick}
+                className={`flex items-center gap-1.5 h-11 px-4 text-sm font-medium transition-colors duration-150 cursor-pointer ${theme.bar.text} ${theme.bar.hover}`}
+              >
+                {blogLabel}
+              </a>
+            </li>
+          )}
         </ul>
       </div>
 
@@ -389,6 +409,16 @@ const Navbar = ({ suspended = false }) => {
                 className={`flex items-center gap-2 px-3 py-3 mt-1 border-t rounded-lg text-sm font-medium transition-colors duration-150 ${theme.drawer.divider} ${theme.drawer.link}`}
               >
                 Download Catalogue
+              </a>
+            )}
+
+            {hasBlog && (
+              <a
+                href="/blog"
+                onClick={(event) => { closeMobile(); handleBlogClick(event); }}
+                className={`flex items-center gap-2 px-3 py-3 mt-1 border-t rounded-lg text-sm font-medium transition-colors duration-150 ${theme.drawer.divider} ${theme.drawer.link}`}
+              >
+                {blogLabel}
               </a>
             )}
           </div>

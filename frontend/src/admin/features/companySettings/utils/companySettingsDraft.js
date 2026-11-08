@@ -40,6 +40,8 @@ export const emptyDraft = () => ({
   isAnnouncementRotationOn: false,
   showBanners: false,
   isBannerRotationOn: false,
+  showBlog: true,
+  blogNavLabel: 'Blog',
   isTaxRegistrationOnSignupEnabled: false,
   isCityOptional: false,
   showReviewsToCustomers: true,
@@ -162,6 +164,8 @@ export const mapApiSettingsToDraft = (doc) => ({
   isAnnouncementRotationOn: !!doc.isAnnouncementRotationOn,
   showBanners: !!doc.showBanners,
   isBannerRotationOn: !!doc.isBannerRotationOn,
+  showBlog: doc.showBlog !== false,
+  blogNavLabel: doc.blogNavLabel || 'Blog',
   isTaxRegistrationOnSignupEnabled: !!doc.isTaxRegistrationOnSignupEnabled,
   isCityOptional: !!doc.isCityOptional,
   showReviewsToCustomers: !!doc.showReviewsToCustomers,
@@ -326,6 +330,8 @@ export const buildSavePayload = (draft, { bankTransferEnabled = false, gpayEnabl
     deliveryAgentToStep: deliveryAgentToStep || null,
     ccList: (ccList || []).filter(Boolean),
     bccList: (bccList || []).filter(Boolean),
+    // A cleared menu label falls back to "Blog".
+    blogNavLabel: (rest.blogNavLabel || '').trim() || 'Blog',
     // A cleared days box falls back to the default of 3.
     discountExpiryReminderDays: Number(discountExpiryReminderDays) || 3,
     freeCashExpiryReminderDays: Number(freeCashExpiryReminderDays) || 3,

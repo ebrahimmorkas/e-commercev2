@@ -243,6 +243,19 @@ const companySettingsSchema = new mongoose.Schema({
     default: 'PAGE'
   },
 
+  // Storefront blog: the vendor's own show/hide choice and navbar label. Only
+  // takes effect while isBlogFeatureOn is on in WebsiteMaster AND CompanyMaster.
+  showBlog: {
+    type: Boolean,
+    default: true
+  },
+  blogNavLabel: {
+    type: String,
+    trim: true,
+    maxlength: 20,
+    default: 'Blog'
+  },
+
   // Start of Storefront Contact Us
   // Deliberately separate from adminEmail/adminPhoneNumber/adminAddress
   // above - those are the admin's own contact details, used internally for
