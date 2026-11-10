@@ -12,7 +12,7 @@ import { getTaxEstimate } from '../api/cartApi';
  * @param {string|null} [options.addressId] - Saved address to price against (checkout).
  * @param {*} [options.refreshKey] - Any value that changes when the cart does.
  * @param {boolean} [options.skip] - Don't fetch (e.g. empty cart).
- * @returns {{ estimate: { totalTaxAmount: number, taxes: Array, isStoreLocation: boolean } | null }}
+ * @returns {{ estimate: { totalTaxAmount: number, taxes: Array, isStoreLocation: boolean, estimatedCountryName: string|null } | null }}
  */
 export const useTaxEstimate = ({ addressId = null, refreshKey = null, skip = false } = {}) => {
   const [estimate, setEstimate] = useState(null);

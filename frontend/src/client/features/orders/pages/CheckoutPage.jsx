@@ -217,6 +217,9 @@ const CheckoutPage = ({
           {shippingEstimate?.isShippingPending && (
             <p className="mt-1 text-xs text-slate-400">Shipping price will be manually calculated by admin.</p>
           )}
+          {shippingEstimate?.estimatedCountryName && !shippingEstimate.isShippingPending && (
+            <p className="mt-1 text-xs text-slate-400">Shipping is estimated for {shippingEstimate.estimatedCountryName}, based on your location.</p>
+          )}
           <TaxEstimateRows estimate={taxEstimate} formatMoney={formatMoney} />
           {discountDeduction > 0 && (
             <div className="mt-2 flex justify-between text-sm text-emerald-600">
