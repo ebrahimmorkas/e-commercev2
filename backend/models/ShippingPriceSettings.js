@@ -27,6 +27,21 @@ const countryRuleSchema = new mongoose.Schema({
     }
 }, { _id: false });
 
+// Free shipping above `threshold` for orders delivered to `countryId`. The
+// threshold is in THAT country's currency (CountryMaster.currency_id).
+const freeAboveRuleSchema = new mongoose.Schema({
+    countryId: {
+        type: mongoose.Types.ObjectId,
+        ref: 'CountryMaster',
+        required: true
+    },
+    threshold: {
+        type: Number,
+        required: true,
+        min: 0
+    }
+}, { _id: false });
+
 const stateRuleSchema = new mongoose.Schema({
     stateId: {
         type: mongoose.Types.ObjectId,
@@ -201,13 +216,13 @@ const shippingPriceSettingsSchema = new mongoose.Schema({
     },
 
     // Free-shipping-above: NOT a method - it applies on top of whichever
-    // method is chosen. An order whose subtotal is at or above this ships
-    // free; below it, the chosen method's price applies. null = no free-
-    // shipping threshold. (Only honoured while the shipping price feature is on.)
-    freeAboveThreshold: {
-        type: Number,
-        min: 0,
-        default: null
+    // method is chosen. One amount per delivery country (in that country's
+    // currency): an order at or above its country's amount ships free; below
+    // it, or for a country with no rule, the chosen method's price applies.
+    // (Only honoured while the shipping price feature is on.)
+    freeAboveRules: {
+        type: [freeAboveRuleSchema],
+        default: []
     },
 
     createdBy: {

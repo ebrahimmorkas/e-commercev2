@@ -17,6 +17,8 @@ export const useShippingSettings = (companyMaster) => {
   const [categories, setCategories] = useState([]);
   const [weights, setWeights] = useState([]);
   const [taxBundle, setTaxBundle] = useState({ countries: [], states: [], cities: [] });
+  const [currencies, setCurrencies] = useState([]);
+  const [priceCurrencies, setPriceCurrencies] = useState({ storeCurrencyCode: null, otherCountriesCurrencyCode: null });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -26,11 +28,13 @@ export const useShippingSettings = (companyMaster) => {
     setLoading(true);
     setError('');
     // Independent fetches so one failing lookup doesn't blank the others.
-    const [settingsRes, categoriesRes, weightsRes, bundleRes] = await Promise.allSettled([
+    const [settingsRes, categoriesRes, weightsRes, bundleRes, currenciesRes, priceCurrenciesRes] = await Promise.allSettled([
       shippingApi.getShippingPriceSettings(),
       lookupApi.getAdminCategories(),
       lookupApi.getWeights(),
       lookupApi.getLocationTaxBundle(),
+      lookupApi.getCurrencies(),
+      shippingApi.getShippingPriceCurrencies(),
     ]);
 
     if (settingsRes.status === 'fulfilled') {
@@ -46,6 +50,10 @@ export const useShippingSettings = (companyMaster) => {
     setCategories(categoriesRes.status === 'fulfilled' && Array.isArray(categoriesRes.value) ? categoriesRes.value : []);
     setWeights(weightsRes.status === 'fulfilled' && Array.isArray(weightsRes.value) ? weightsRes.value : []);
     setTaxBundle(bundleRes.status === 'fulfilled' && bundleRes.value ? bundleRes.value : { countries: [], states: [], cities: [] });
+    setCurrencies(currenciesRes.status === 'fulfilled' && Array.isArray(currenciesRes.value?.currencies) ? currenciesRes.value.currencies : []);
+    setPriceCurrencies(priceCurrenciesRes.status === 'fulfilled' && priceCurrenciesRes.value
+      ? priceCurrenciesRes.value
+      : { storeCurrencyCode: null, otherCountriesCurrencyCode: null });
     setLoading(false);
   }, []);
 
@@ -94,6 +102,43 @@ export const useShippingSettings = (companyMaster) => {
     [taxBundle]
   );
 
+  // Every country the vendor serves, with the currency its free-shipping
+  // amount is entered in (currencyCode null = no currency set up yet).
+  const freeAboveCountries = useMemo(() => {
+    const codeById = new Map(currencies.map((c) => [String(c._id), c.code]));
+    return (taxBundle.countries || []).map((c) => ({
+      value: String(c._id),
+      label: c.country_name,
+      currencyCode: c.currency_id ? codeById.get(String(c.currency_id)) || null : null,
+    }));
+  }, [taxBundle, currencies]);
+
+  // The currency a country/state/city shipping price is typed in: its
+  // country's currency, else the store currency (same rule as the backend).
+  const currencyByLocation = useMemo(() => {
+    const byCountry = new Map(freeAboveCountries.map((c) => [c.value, c.currencyCode]));
+    const byState = new Map();
+    (taxBundle.states || []).forEach((group) => {
+      (group.states || []).forEach((state) => byState.set(String(state._id), byCountry.get(String(group.countryId)) || null));
+    });
+    const byCity = new Map();
+    (taxBundle.cities || []).forEach((group) => {
+      (group.states || []).forEach((stateGroup) => {
+        (stateGroup.cities || []).forEach((city) => byCity.set(String(city._id), byCountry.get(String(group.countryId)) || null));
+      });
+    });
+    return { COUNTRY: byCountry, STATE: byState, CITY: byCity };
+  }, [freeAboveCountries, taxBundle]);
+
+  /** Currency code for a COUNTRY/STATE/CITY rule row's price (null until a place is picked). */
+  const ruleCurrencyCode = useCallback(
+    (method, placeId) => {
+      if (!placeId) return null;
+      return currencyByLocation[method]?.get(String(placeId)) || priceCurrencies.storeCurrencyCode;
+    },
+    [currencyByLocation, priceCurrencies]
+  );
+
   const stateOptions = useMemo(() => {
     const options = [];
     (taxBundle.states || []).forEach((countryGroup) => {
@@ -127,6 +172,10 @@ export const useShippingSettings = (companyMaster) => {
     categoryOptions,
     weightOptions,
     countryOptions,
+    freeAboveCountries,
+    ruleCurrencyCode,
+    storeCurrencyCode: priceCurrencies.storeCurrencyCode,
+    otherCountriesCurrencyCode: priceCurrencies.otherCountriesCurrencyCode,
     stateOptions,
     cityOptions,
   };

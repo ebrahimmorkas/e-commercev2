@@ -25,7 +25,9 @@ const TaxEstimateRows = ({ estimate, formatMoney }) => {
           <span>{formatMoney(estimate.totalTaxAmount)}</span>
         </div>
       )}
-      {estimate.isStoreLocation && (
+      {estimate.estimatedCountryName ? (
+        <p className="mt-1 text-xs text-slate-400">Tax is estimated for {estimate.estimatedCountryName}, based on your location. It may change if your delivery address is in another country.</p>
+      ) : estimate.isStoreLocation && (
         <p className="mt-1 text-xs text-slate-400">Tax estimated for the store&apos;s location until a delivery address is chosen.</p>
       )}
     </>
