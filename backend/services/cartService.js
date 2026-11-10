@@ -2148,21 +2148,27 @@ const checkoutCart = async (vendorId, cartOwner, userId, locationContext, compan
             companyMasterData, websiteMasterData, companySettingsData, checkoutFormatMoney
         );
 
-        cart.checkedOutDate = new Date();
-        cart.updatedBy = userId;
-
-        await cart.save();
-        await invalidateCartTotalCache(vendorId, cartOwner);
-
         const shippingResult = await shippingPriceCalculationService.calculateShippingPriceAmount({
             lineItems: eligibleLineItems,
             subtotal: eligibleSubtotal,
             shippingPriceSettings: shippingPriceSettingsData,
             locationContext,
             companyMasterData,
-            websiteMasterData
+            websiteMasterData,
+            companySettingsData
         });
+        // The shipping price is in another currency and no exchange rate is
+        // available right now - never guess a price for the order.
+        if (shippingResult.meta.breakdown?.isRateUnavailable) {
+            return common.returnResult(false, 503, "The shipping price can't be calculated right now. Please try again in a few minutes.");
+        }
         const shippingAmount = shippingResult.meta.shippingAmount;
+
+        cart.checkedOutDate = new Date();
+        cart.updatedBy = userId;
+
+        await cart.save();
+        await invalidateCartTotalCache(vendorId, cartOwner);
 
         // Discount + Free Cash together can never take the order below zero,
         // regardless of how each was individually capped at apply-time.

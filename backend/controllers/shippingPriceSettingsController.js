@@ -25,6 +25,9 @@ const decodeShippingPricePayload = (body) => {
     if (payload.weightUnit) {
         payload.weightUnit = common.decodeId(payload.weightUnit);
     }
+    if (Array.isArray(payload.freeAboveRules)) {
+        payload.freeAboveRules = payload.freeAboveRules.map((r) => ({ ...r, countryId: common.decodeId(r.countryId) }));
+    }
     return payload;
 };
 
@@ -43,6 +46,7 @@ const formatShippingPriceSettingsForResponse = (settingsDoc) => {
         stateRules: (settings.stateRules || []).map((r) => ({ ...r, stateId: common.encodeId(r.stateId) })),
         cityRules: (settings.cityRules || []).map((r) => ({ ...r, cityId: common.encodeId(r.cityId) })),
         weightUnit: settings.weightUnit ? common.encodeId(settings.weightUnit) : settings.weightUnit,
+        freeAboveRules: (settings.freeAboveRules || []).map((r) => ({ ...r, countryId: common.encodeId(r.countryId) })),
         createdBy: settings.createdBy ? {
             userID: settings.createdBy.userID ? common.encodeId(settings.createdBy.userID) : settings.createdBy.userID,
             vendorID: settings.createdBy.vendorID ? common.encodeId(settings.createdBy.vendorID) : settings.createdBy.vendorID,
@@ -109,7 +113,21 @@ const getShippingPriceSettings = async (req, res) => {
     }
 };
 
+const getShippingPriceCurrencies = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        const result = await shippingPriceSettingsService.fetchShippingPriceCurrencies(req.companyMasterData, req.companySettingsData);
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message, result.meta);
+    } catch (error) {
+        logger.logException('shippingPriceSettingsController: getShippingPriceCurrencies - Exception while fetching shipping price currencies', { vendorId, error });
+    }
+};
+
 module.exports = {
+    getShippingPriceCurrencies,
     createShippingPriceSettings,
     updateShippingPriceSettings,
     getShippingPriceSettings
