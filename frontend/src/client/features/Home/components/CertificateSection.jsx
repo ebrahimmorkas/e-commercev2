@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react';
 import { useStorefrontCompanySettings } from '../../companySettings/hooks/useStorefrontCompanySettings';
+
+const DEFAULT_TEXT = 'Authorized Partner of Preciosa';
 
 const AwardIcon = ({ className = '' }) => (
   <svg className={className} fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24" aria-hidden="true">
@@ -8,57 +11,76 @@ const AwardIcon = ({ className = '' }) => (
   </svg>
 );
 
+const CertificateModal = ({ imageUrl, onClose }) => {
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && onClose();
+    document.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Certificate"
+    >
+      <div
+        className="relative max-h-full w-full max-w-3xl overflow-auto rounded-2xl bg-white p-3 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-slate-900/80 text-white hover:bg-slate-900"
+        >
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
+        <img src={imageUrl} alt="Certificate" className="mx-auto max-h-[85vh] w-auto rounded-lg object-contain" />
+      </div>
+    </div>
+  );
+};
+
 /**
- * The vendor's certificate, shown on the home page just below the banner: the
- * text they wrote on one side and the certificate image on the other. Renders
- * nothing unless the server sends a certificate (it only does when the feature
- * is on in WebsiteMaster and CompanyMaster and an image has been uploaded).
+ * A slim "authorized partner" strip under the home banner. The vendor's
+ * certificate opens in a modal from the link. The text comes from Company
+ * Settings (falls back to a default). Renders nothing unless the server sends a
+ * certificate (feature on in WebsiteMaster + CompanyMaster and an image uploaded).
  */
 const CertificateSection = () => {
   const { companySettings } = useStorefrontCompanySettings();
+  const [open, setOpen] = useState(false);
   const imageUrl = companySettings?.partnerCertificate?.url;
-  const text = (companySettings?.partnerCertificateText || '').trim();
+  const text = (companySettings?.partnerCertificateText || '').trim() || DEFAULT_TEXT;
 
   if (!imageUrl) return null;
 
-  const certificate = (
-    <a
-      href={imageUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      title="Open full size"
-      className="group block rounded-2xl border border-slate-200 bg-white p-3 shadow-xl shadow-slate-900/10 transition-transform duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-amber-900/15"
-    >
-      <img
-        src={imageUrl}
-        alt="Certificate"
-        loading="lazy"
-        className="w-full max-h-[420px] rounded-lg bg-slate-50 object-contain"
-      />
-    </a>
-  );
-
   return (
-    <section className="bg-slate-50 border-y border-slate-200" aria-label="Certificate">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
-        {text ? (
-          <div className="grid items-center gap-8 md:grid-cols-2 md:gap-14">
-            <div>
-              <span className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
-                <AwardIcon className="h-4 w-4" />
-                Certified
-              </span>
-              <p className="mt-5 text-2xl font-semibold leading-snug text-slate-900 whitespace-pre-line sm:text-3xl">
-                {text}
-              </p>
-            </div>
-            <div className="md:justify-self-end w-full max-w-lg">{certificate}</div>
-          </div>
-        ) : (
-          // No text written: just the certificate, centred.
-          <div className="mx-auto max-w-lg">{certificate}</div>
-        )}
+    <section className="border-y border-amber-200 bg-gradient-to-r from-amber-50 via-white to-amber-50" aria-label="Certificate">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-4 gap-y-2 px-4 py-4 text-center sm:px-6">
+        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+          <AwardIcon className="h-5 w-5" />
+        </span>
+        <p className="text-sm font-semibold text-slate-900 whitespace-pre-line sm:text-base">{text}</p>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="text-sm font-semibold text-amber-700 underline decoration-amber-300 underline-offset-4 transition-colors hover:text-amber-900 hover:decoration-amber-600"
+        >
+          View certificate
+        </button>
       </div>
+      {open && <CertificateModal imageUrl={imageUrl} onClose={() => setOpen(false)} />}
     </section>
   );
 };
