@@ -69,6 +69,56 @@ const StorefrontSection = ({ draft, onChange, companyMaster, catalogue, settings
       </div>
       )}
 
+      {/* Floating social buttons: each needs its CompanyMaster flag here (WebsiteMaster is checked by the server). */}
+      {['isFloatingWhatsappFeatureOn', 'isFloatingInstagramFeatureOn', 'isFloatingFacebookFeatureOn'].some((f) => companyMaster?.[f] === true) && (
+      <div className="border border-gray-200 rounded-lg p-3 space-y-4">
+        <div>
+          <h3 className={`text-sm font-semibold ${theme.text.heading}`}>Floating Social Buttons</h3>
+          <p className={`mt-0.5 text-xs ${theme.text.muted}`}>
+            Small icons fixed at the bottom-right of every storefront page. They fade while the page scrolls.
+          </p>
+        </div>
+        {companyMaster?.isFloatingWhatsappFeatureOn === true && (
+          <div className="space-y-2">
+            <Switch
+              label="WhatsApp"
+              description="Opens a WhatsApp chat with the number below."
+              checked={draft.showFloatingWhatsapp}
+              onChange={(e) => set({ showFloatingWhatsapp: e.target.checked })}
+              color={theme.switch.color}
+            />
+            {draft.showFloatingWhatsapp && (
+              <InputField
+                className="w-full"
+                label="WhatsApp Number"
+                placeholder="e.g. 919876543210 (with country code)"
+                value={draft.whatsappNumber}
+                onChange={(e) => set({ whatsappNumber: e.target.value })}
+              />
+            )}
+          </div>
+        )}
+        {companyMaster?.isFloatingInstagramFeatureOn === true && (
+          <Switch
+            label="Instagram"
+            description="Links to the Instagram ID set in the General tab (Social Links)."
+            checked={draft.showFloatingInstagram}
+            onChange={(e) => set({ showFloatingInstagram: e.target.checked })}
+            color={theme.switch.color}
+          />
+        )}
+        {companyMaster?.isFloatingFacebookFeatureOn === true && (
+          <Switch
+            label="Facebook"
+            description="Links to the Facebook ID set in the General tab (Social Links)."
+            checked={draft.showFloatingFacebook}
+            onChange={(e) => set({ showFloatingFacebook: e.target.checked })}
+            color={theme.switch.color}
+          />
+        )}
+      </div>
+      )}
+
       {flagOn('isBannerFeatureOn') && (
       <div className="border border-gray-200 rounded-lg p-3 space-y-3">
         <Switch

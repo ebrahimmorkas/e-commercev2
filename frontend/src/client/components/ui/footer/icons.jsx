@@ -21,6 +21,13 @@ export const FacebookIcon = (props) => (
   </svg>
 );
 
+export const WhatsappIcon = (props) => (
+  <svg {...base} {...props}>
+    <path d="M3 21l1.65-4.8A8.5 8.5 0 1 1 8 19.4L3 21z" />
+    <path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1-1.5-2-1-.8.8c-.8-.3-1.7-1.2-2-2l.8-.8-1-2L9 9.5z" fill="currentColor" stroke="none" />
+  </svg>
+);
+
 export const MailIcon = (props) => (
   <svg {...base} {...props}>
     <rect x="2" y="4" width="20" height="16" rx="2" />

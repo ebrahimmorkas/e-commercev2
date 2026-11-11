@@ -45,6 +45,9 @@ const WEBSITE_MASTER = {
     // Content
     isAnnouncementFeatureOn: true,
     isBlogFeatureOn: true,
+    isFloatingWhatsappFeatureOn: true,
+    isFloatingInstagramFeatureOn: true,
+    isFloatingFacebookFeatureOn: true,
     isBannerFeatureOn: true,
     isWebsiteBuilderFeatureOn: false,
     isPDFDownloadableFeatureOn: true,

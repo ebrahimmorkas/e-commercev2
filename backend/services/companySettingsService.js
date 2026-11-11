@@ -56,7 +56,7 @@ const SIMPLE_FIELDS = [
     'adminCity', 'adminState', 'adminPincode', 'adminEmail', 'companyName', 'instagramId',
     'facebookId', 'privacyPolicy', 'cancelPolicy', 'termsAndConditions', 'aboutUs', 'returnRefundPolicy', 'shippingPolicy', 'policyDisplayMode',
     'contactEmail', 'contactPhoneNumber', 'contactAddress',
-    'showAnnouncements', 'isAnnouncementRotationOn', 'showBanners', 'isBannerRotationOn', 'showBlog', 'blogNavLabel', 'partnerCertificateText',
+    'showAnnouncements', 'isAnnouncementRotationOn', 'showBanners', 'isBannerRotationOn', 'showBlog', 'blogNavLabel', 'whatsappNumber', 'showFloatingWhatsapp', 'showFloatingInstagram', 'showFloatingFacebook', 'partnerCertificateText',
     'isTaxRegistrationOnSignupEnabled', 'isCityOptional',
     'taxRegistrationNumber', 'invoicePrefix', 'invoiceDeclaration',
     'invoicePrintDuplicateCopy', 'invoiceRoundOffToWhole', 'emailInvoiceOnOrderPlaced',

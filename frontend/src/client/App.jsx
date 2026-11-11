@@ -3,6 +3,7 @@ import Header from './components/ui/header';
 import Navbar from './components/ui/navbar';
 import AnnouncementBar from './components/ui/announcementBar';
 import Footer from './components/ui/footer';
+import FloatingSocial from './components/ui/FloatingSocial';
 import HomePage from './features/Home/Pages/HomePage';
 import ProductDetailPage from './features/products/pages/ProductDetailPage';
 import CategoryProductsPage from './features/products/pages/CategoryProductsPage';
@@ -474,6 +475,7 @@ const ClientApp = () => {
         {route.type === 'not-found' && <NotFoundPage onGoHome={goHome} />}
       </main>
       <Footer onOpenPolicyPage={openPolicyPage} />
+      <FloatingSocial />
 
       <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
     </div>

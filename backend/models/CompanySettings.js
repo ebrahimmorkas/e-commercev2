@@ -257,6 +257,14 @@ const companySettingsSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  // Floating social buttons (bottom-right of the storefront). Each only shows while its
+  // isFloating*FeatureOn flag is on in WebsiteMaster AND CompanyMaster. whatsappNumber is the
+  // public chat number (adminWhatsappNumber stays private); Instagram/Facebook reuse
+  // instagramId / facebookId.
+  whatsappNumber: { type: String, trim: true, maxlength: 20, default: '' },
+  showFloatingWhatsapp: { type: Boolean, default: true },
+  showFloatingInstagram: { type: Boolean, default: true },
+  showFloatingFacebook: { type: Boolean, default: true },
   blogNavLabel: {
     type: String,
     trim: true,
