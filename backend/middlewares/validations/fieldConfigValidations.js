@@ -19,6 +19,7 @@ const entityKeys = Object.keys(FIELD_REGISTRY);
 const registryFieldsOf = (entity) => Object.keys(FIELD_REGISTRY[entity]?.fields || {});
 const hideableFieldsOf = (entity) => registryFieldsOf(entity).filter((f) => FIELD_REGISTRY[entity].fields[f].hideable);
 const renameableFieldsOf = (entity) => registryFieldsOf(entity).filter((f) => FIELD_REGISTRY[entity].fields[f].renameable);
+const allowsCustomFields = (entity) => FIELD_REGISTRY[entity]?.allowsCustomFields !== false;
 
 const customFieldSchema = (entity) => Joi.object({
     key: Joi.string().trim().pattern(CUSTOM_FIELD_KEY_PATTERN)
@@ -57,17 +58,26 @@ const customFieldSchema = (entity) => Joi.object({
     precedence: Joi.number().integer().min(0).default(0).label('Custom field precedence')
 });
 
+// Joi's valid() with no values allows anything - an entity with nothing
+// hideable / renameable must accept no entry at all.
+const oneOf = (values) => (values.length > 0 ? Joi.string().valid(...values) : Joi.any().forbidden());
+
 const entityFieldConfigSchema = (entity) => Joi.object({
-    hiddenFields: Joi.array().items(Joi.string().valid(...hideableFieldsOf(entity))).unique().default([])
+    hiddenFields: Joi.array().items(oneOf(hideableFieldsOf(entity))).unique().default([])
         .label('hiddenFields'),
     labelOverrides: Joi.array().items(Joi.object({
-        field: Joi.string().valid(...renameableFieldsOf(entity)).required(),
+        field: oneOf(renameableFieldsOf(entity)).required(),
         label: Joi.string().trim().min(1).max(CUSTOM_FIELD_LABEL_MAX_LENGTH).required()
     })).unique('field').default([]).label('labelOverrides'),
-    customFields: Joi.array().items(customFieldSchema(entity)).max(MAX_CUSTOM_FIELDS_PER_ENTITY)
+    customFields: Joi.array().items(customFieldSchema(entity)).max(allowsCustomFields(entity) ? MAX_CUSTOM_FIELDS_PER_ENTITY : 0)
         .unique((a, b) => a.key.toLowerCase() === b.key.toLowerCase())
         .default([])
-        .messages({ 'array.unique': 'Two custom fields have the same key.' })
+        .messages({
+            'array.unique': 'Two custom fields have the same key.',
+            'array.max': allowsCustomFields(entity)
+                ? '{{#label}} must contain at most {{#limit}} items.'
+                : `${FIELD_REGISTRY[entity]?.label || entity} does not support custom fields - only renaming.`
+        })
         .label('customFields')
 }).custom((config, helpers) => {
     // A field cannot be replaced unless it is hidden - otherwise both would show in the same spot.
