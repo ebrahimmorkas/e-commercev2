@@ -1,15 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useStorefrontCompanySettings } from '../../companySettings/hooks/useStorefrontCompanySettings';
 
-const DEFAULT_TEXT = 'Authorized Partner of Preciosa';
-
-const AwardIcon = ({ className = '' }) => (
-  <svg className={className} fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24" aria-hidden="true">
-    <circle cx="12" cy="9" r="5.5" strokeLinecap="round" strokeLinejoin="round" />
-    <path strokeLinecap="round" strokeLinejoin="round" d="M8.5 13.5L7 21l5-2.5 5 2.5-1.5-7.5" />
-    <path strokeLinecap="round" strokeLinejoin="round" d="M10 9l1.4 1.4L14.2 7.6" />
-  </svg>
-);
+const DEFAULT_TEXT = 'Preciosa';
 
 const CertificateModal = ({ imageUrl, onClose }) => {
   useEffect(() => {
@@ -52,7 +44,7 @@ const CertificateModal = ({ imageUrl, onClose }) => {
 };
 
 /**
- * A slim "authorized partner" strip under the home banner. The vendor's
+ * A slim "Authorized Partner" strip under the home banner. The vendor's
  * certificate opens in a modal from the link. The text comes from Company
  * Settings (falls back to a default). Renders nothing unless the server sends a
  * certificate (feature on in WebsiteMaster + CompanyMaster and an image uploaded).
@@ -68,8 +60,8 @@ const CertificateSection = () => {
   return (
     <section className="border-y border-amber-200 bg-gradient-to-r from-amber-50 via-white to-amber-50" aria-label="Certificate">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-4 gap-y-2 px-4 py-4 text-center sm:px-6">
-        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-100 text-amber-700">
-          <AwardIcon className="h-5 w-5" />
+        <span className="rounded-full border border-amber-300 bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
+          Authorized Partner
         </span>
         <p className="text-sm font-semibold text-slate-900 whitespace-pre-line sm:text-base">{text}</p>
         <button
