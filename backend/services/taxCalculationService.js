@@ -46,7 +46,7 @@ const resolveTaxLocationContext = (locationContext, companySettingsData) => {
 |--------------------------------------------------------------------------
 | lines: [{ taxIds, amount, ... }] - each line gets its own taxBreakdown
 | (replaced, not appended). A tax applies when its country is the location's
-| country and, for a state-specific tax, the state matches too.
+| country and, for a state-specific tax, the state is known and matches too.
 */
 const applyTaxesToLines = async (lines, locationContext) => {
     try {
@@ -68,7 +68,10 @@ const applyTaxesToLines = async (lines, locationContext) => {
                 const taxDoc = taxDocMap.get(taxId.toString());
                 if (!taxDoc) continue;
                 if (taxDoc.countryId.toString() !== locationContext.countryId.toString()) continue;
-                if (taxDoc.stateId && locationContext.stateId && taxDoc.stateId.toString() !== locationContext.stateId.toString()) continue;
+                // A state-specific tax needs the state known AND matching - with
+                // only the country known (e.g. an IP-detected visitor) every
+                // state's tax would otherwise stack.
+                if (taxDoc.stateId && (!locationContext.stateId || taxDoc.stateId.toString() !== locationContext.stateId.toString())) continue;
 
                 const taxAmount = taxDoc.taxType === 'percentage'
                     ? line.amount * (taxDoc.totalRate / 100)

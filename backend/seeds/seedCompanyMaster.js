@@ -113,6 +113,9 @@ const COMPANY_MASTER = {
 
     // Blog
     isBlogFeatureOn: true,
+    isFloatingWhatsappFeatureOn: true,
+    isFloatingInstagramFeatureOn: true,
+    isFloatingFacebookFeatureOn: true,
 
     // Banners - image or video
     isBannerFeatureOn: true,

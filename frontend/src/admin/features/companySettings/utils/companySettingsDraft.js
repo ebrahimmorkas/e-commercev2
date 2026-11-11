@@ -41,6 +41,10 @@ export const emptyDraft = () => ({
   showBanners: false,
   isBannerRotationOn: false,
   showBlog: true,
+  whatsappNumber: '',
+  showFloatingWhatsapp: true,
+  showFloatingInstagram: true,
+  showFloatingFacebook: true,
   blogNavLabel: 'Blog',
   isTaxRegistrationOnSignupEnabled: false,
   isCityOptional: false,
@@ -121,6 +125,7 @@ export const emptyDraft = () => ({
   companyLogo: null,
   paymentScanner: null,
   partnerCertificate: null,
+  partnerCertificateText: '',
 });
 
 /**
@@ -165,6 +170,10 @@ export const mapApiSettingsToDraft = (doc) => ({
   showBanners: !!doc.showBanners,
   isBannerRotationOn: !!doc.isBannerRotationOn,
   showBlog: doc.showBlog !== false,
+  whatsappNumber: doc.whatsappNumber || '',
+  showFloatingWhatsapp: doc.showFloatingWhatsapp !== false,
+  showFloatingInstagram: doc.showFloatingInstagram !== false,
+  showFloatingFacebook: doc.showFloatingFacebook !== false,
   blogNavLabel: doc.blogNavLabel || 'Blog',
   isTaxRegistrationOnSignupEnabled: !!doc.isTaxRegistrationOnSignupEnabled,
   isCityOptional: !!doc.isCityOptional,
@@ -241,6 +250,7 @@ export const mapApiSettingsToDraft = (doc) => ({
   companyLogo: doc.companyLogo || null,
   paymentScanner: doc.paymentScanner || null,
   partnerCertificate: doc.partnerCertificate || null,
+  partnerCertificateText: doc.partnerCertificateText || '',
 });
 
 // Mirrors BANK_TRANSFER_FIELDS in backend/services/companySettingsService.js.

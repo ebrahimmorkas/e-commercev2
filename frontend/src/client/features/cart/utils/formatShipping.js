@@ -5,7 +5,8 @@
 export const formatShippingEstimate = (estimate, formatMoney) => {
   if (!estimate) return '';
   if (estimate.isShippingPending) return 'To be confirmed';
-  if (estimate.needsLocation) return 'Calculated at checkout';
+  // No location yet, or priced in another currency with no exchange rate right now.
+  if (estimate.needsLocation || estimate.isRateUnavailable) return 'Calculated at checkout';
   if (estimate.isFree) return 'Free';
   return formatMoney(estimate.shippingAmount);
 };

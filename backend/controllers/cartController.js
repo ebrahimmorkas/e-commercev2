@@ -1,5 +1,6 @@
 const cartService = require('../services/cartService');
 const shippingEstimateService = require('../services/shippingEstimateService');
+const userLocationService = require('../services/userLocationService');
 const logger = require('../utils/logger.js');
 const common = require('../utils/common');
 
@@ -69,7 +70,7 @@ const buildLocationContext = (req) => {
 };
 
 // The shopper's country for amounts in messages - same fallbacks as above.
-const resolvePricingCountryId = (req) => req.cookies?.Country || req.user?.country || req.ipCountryId || null;
+const resolvePricingCountryId = (req) => req.cookies?.Country || userLocationService.extractUserLocation(req.user).countryId || req.ipCountryId || null;
 
 const addToCart = async (req, res) => {
     const vendorId = req.vendorId;
@@ -288,8 +289,12 @@ const getShippingEstimate = async (req, res) => {
             userId: req.user ? req.user._id : null,
             addressId: req.query.addressId ? common.decodeId(req.query.addressId) : null,
             cookieLocation,
+            // The visitor's country (as for currency) - used when no delivery
+            // location is known.
+            visitorCountryId: resolvePricingCountryId(req),
             companyMasterData: req.companyMasterData,
             websiteMasterData: req.websiteMasterData,
+            companySettingsData: req.companySettingsData,
             shippingPriceSettingsData: req.shippingPriceSettingsData
         });
         if (!result.isSuccess) {
@@ -341,6 +346,9 @@ const getTaxEstimate = async (req, res) => {
             userId: req.user ? req.user._id : null,
             addressId: req.query.addressId ? common.decodeId(req.query.addressId) : null,
             cookieLocation,
+            // The country the visitor's currency follows - used for the tax
+            // estimate when no delivery location is known.
+            visitorCountryId: resolvePricingCountryId(req),
             companySettingsData: req.companySettingsData
         });
         if (!result.isSuccess) {

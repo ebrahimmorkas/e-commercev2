@@ -1,5 +1,8 @@
 import Switch from '../../../../components/common/Switch';
 import InputField from '../../../../components/common/InputField';
+import FileUpload from '../../../../components/common/FileUpload';
+import TextArea from '../../../../components/common/TextArea';
+import Avatar from '../../../../components/common/Avatar';
 import theme from '../theme/theme';
 import CatalogueCard from './CatalogueCard';
 
@@ -65,6 +68,91 @@ const StorefrontSection = ({ draft, onChange, companyMaster, catalogue, settings
               The text shown in the storefront menu, for example "Blog", "News" or "Journal".
             </p>
           </div>
+        )}
+      </div>
+      )}
+
+      {companyMaster?.isShowingPartnerCertificateFeatureOn === true && (
+        <div className="border border-gray-200 rounded-lg p-3">
+          <h3 className={`text-sm font-semibold ${theme.text.heading} mb-3`}>Partner Certificate</h3>
+          <div className="flex items-start gap-4">
+            {draft.partnerCertificate?.url && !(draft.partnerCertificate instanceof File) && (
+              <Avatar src={draft.partnerCertificate.url} name="Partner Certificate" shape="square" size="xl" />
+            )}
+            <div className="flex-1">
+              <FileUpload
+                label={draft.partnerCertificate?.url ? 'Replace Certificate' : 'Certificate Image'}
+                accept="image/*"
+                maxSize={5 * 1024 * 1024}
+                onFilesSelected={(files) => set({ partnerCertificate: files[0] || (draft.partnerCertificate?.url ? draft.partnerCertificate : null) })}
+                helperText="JPG, JPEG or PNG. Up to 5MB."
+              />
+            </div>
+          </div>
+          <div className="mt-4">
+            <TextArea
+              label="Certificate Text"
+              name="partnerCertificateText"
+              placeholder="e.g. Authorized partner since 2020"
+              rows={3}
+              maxLength={300}
+              showCharCount
+              value={draft.partnerCertificateText}
+              onChange={(e) => set({ partnerCertificateText: e.target.value })}
+            />
+            <p className={`mt-1 text-xs ${theme.text.muted}`}>
+              Shown on the storefront home page, just below the banner: beside the certificate on desktop, and under an "Authorized Partner" label with a "View certificate" link on mobile.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Floating social buttons: each needs its CompanyMaster flag here (WebsiteMaster is checked by the server). */}
+      {['isFloatingWhatsappFeatureOn', 'isFloatingInstagramFeatureOn', 'isFloatingFacebookFeatureOn'].some((f) => companyMaster?.[f] === true) && (
+      <div className="border border-gray-200 rounded-lg p-3 space-y-4">
+        <div>
+          <h3 className={`text-sm font-semibold ${theme.text.heading}`}>Floating Social Buttons</h3>
+          <p className={`mt-0.5 text-xs ${theme.text.muted}`}>
+            Small icons fixed at the bottom-right of every storefront page. They fade while the page scrolls.
+          </p>
+        </div>
+        {companyMaster?.isFloatingWhatsappFeatureOn === true && (
+          <div className="space-y-2">
+            <Switch
+              label="WhatsApp"
+              description="Opens a WhatsApp chat with the number below."
+              checked={draft.showFloatingWhatsapp}
+              onChange={(e) => set({ showFloatingWhatsapp: e.target.checked })}
+              color={theme.switch.color}
+            />
+            {draft.showFloatingWhatsapp && (
+              <InputField
+                className="w-full"
+                label="WhatsApp Number"
+                placeholder="e.g. 919876543210 (with country code)"
+                value={draft.whatsappNumber}
+                onChange={(e) => set({ whatsappNumber: e.target.value })}
+              />
+            )}
+          </div>
+        )}
+        {companyMaster?.isFloatingInstagramFeatureOn === true && (
+          <Switch
+            label="Instagram"
+            description="Links to the Instagram ID set in the General tab (Social Links)."
+            checked={draft.showFloatingInstagram}
+            onChange={(e) => set({ showFloatingInstagram: e.target.checked })}
+            color={theme.switch.color}
+          />
+        )}
+        {companyMaster?.isFloatingFacebookFeatureOn === true && (
+          <Switch
+            label="Facebook"
+            description="Links to the Facebook ID set in the General tab (Social Links)."
+            checked={draft.showFloatingFacebook}
+            onChange={(e) => set({ showFloatingFacebook: e.target.checked })}
+            color={theme.switch.color}
+          />
         )}
       </div>
       )}

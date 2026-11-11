@@ -95,9 +95,15 @@ const shippingPriceSettingsFields = {
     weightBrackets: onlyFor(SHIPPING_PRICE_METHODS.WEIGHT, Joi.array().items(weightBracketSchema).min(1).max(50)).label('Weight brackets'),
     weightRestPrice: restPriceFor(SHIPPING_PRICE_METHODS.WEIGHT, 'Weight rest price'),
 
-    // Free shipping above this order amount - optional, works with every
-    // method (null / omitted = no free-shipping threshold).
-    freeAboveThreshold: Joi.number().greater(0).precision(2).max(100000000).allow(null).label('Free shipping threshold')
+    // Free shipping above an order amount, per delivery country (amount in
+    // that country's currency) - optional, works with every method
+    // (empty / omitted = no free shipping anywhere).
+    freeAboveRules: Joi.array().items(
+        Joi.object({
+            countryId: objectId().required().label('Country'),
+            threshold: Joi.number().greater(0).precision(2).max(100000000).required().label('Free shipping amount')
+        })
+    ).max(500).default([]).label('Free shipping amounts')
 };
 
 const createShippingPriceSettingsSchema = Joi.object(shippingPriceSettingsFields);

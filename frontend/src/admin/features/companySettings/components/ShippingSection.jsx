@@ -21,7 +21,9 @@ import theme from '../theme/theme';
  * Editable list of "<picker> -> price" rows (category/country/state/city
  * rules use a Dropdown, zip code rules a text field), with add/remove.
  */
-const RuleRows = ({ rows, idField, options, idLabel, idPlaceholder, onChange }) => {
+const withCurrency = (label, code) => (code ? `${label} (${code})` : label);
+
+const RuleRows = ({ rows, idField, options, idLabel, idPlaceholder, onChange, currencyFor }) => {
   const update = (index, patch) => onChange(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   const remove = (index) => onChange(rows.filter((_, i) => i !== index));
   const add = () => onChange([...rows, { [idField]: '', price: '' }]);
@@ -50,7 +52,7 @@ const RuleRows = ({ rows, idField, options, idLabel, idPlaceholder, onChange }) 
           )}
           <InputField
             type="number"
-            label="Shipping price"
+            label={withCurrency('Shipping price', currencyFor(row[idField]))}
             min={0}
             placeholder="0"
             value={row.price}
@@ -68,7 +70,34 @@ const RuleRows = ({ rows, idField, options, idLabel, idPlaceholder, onChange }) 
   );
 };
 
-const WeightRows = ({ rows, onChange }) => {
+/**
+ * One "free shipping above" amount per country the vendor serves, each typed
+ * in that country's own currency. A country with no currency set up can't
+ * take an amount (the backend rejects it), so its box is disabled.
+ */
+const FreeAboveRows = ({ countries, values, onChange }) => {
+  if (countries.length === 0) {
+    return <p className={`text-sm ${theme.text.body}`}>No countries are set up for your store yet.</p>;
+  }
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {countries.map((country) => (
+        <InputField
+          key={country.value}
+          type="number"
+          label={country.currencyCode ? `${country.label} (${country.currencyCode})` : country.label}
+          placeholder={country.currencyCode ? 'No free shipping' : 'No currency set up'}
+          disabled={!country.currencyCode}
+          min={0}
+          value={values[country.value] ?? ''}
+          onChange={(e) => onChange(country.value, e.target.value)}
+        />
+      ))}
+    </div>
+  );
+};
+
+const WeightRows = ({ rows, onChange, currencyCode }) => {
   const update = (index, patch) => onChange(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   const remove = (index) => onChange(rows.filter((_, i) => i !== index));
   const add = () => onChange([...rows, { minWeight: '', maxWeight: '', price: '' }]);
@@ -93,7 +122,7 @@ const WeightRows = ({ rows, onChange }) => {
           />
           <InputField
             type="number"
-            label="Shipping price"
+            label={withCurrency('Shipping price', currencyCode)}
             min={0}
             value={row.price}
             onChange={(e) => update(index, { price: e.target.value })}
@@ -152,7 +181,7 @@ const ShippingSection = ({ companyMaster }) => {
   };
 
   const handleSave = async () => {
-    const found = validateShippingDraft(draft);
+    const found = validateShippingDraft(draft, shipping.freeAboveCountries);
     setProblems(found);
     if (found.length > 0) return;
     await shipping.save(buildShippingPayload(draft));
@@ -166,7 +195,7 @@ const ShippingSection = ({ companyMaster }) => {
         return (
           <InputField
             type="number"
-            label="Fixed shipping price"
+            label={withCurrency('Fixed shipping price', shipping.storeCurrencyCode)}
             placeholder="e.g. 49"
             min={0}
             value={draft.fixedPrice}
@@ -190,10 +219,10 @@ const ShippingSection = ({ companyMaster }) => {
               placeholder={shipping.weightOptions.length === 0 ? 'No weight units assigned to your account' : 'Select a unit'}
               helperText="The total weight of the order is matched to the ranges below, in this unit."
             />
-            <WeightRows rows={draft.weightBrackets} onChange={(rows) => patch({ weightBrackets: rows })} />
+            <WeightRows rows={draft.weightBrackets} currencyCode={shipping.storeCurrencyCode} onChange={(rows) => patch({ weightBrackets: rows })} />
             <InputField
               type="number"
-              label="Price for any other weight"
+              label={withCurrency('Price for any other weight', shipping.storeCurrencyCode)}
               placeholder="0"
               min={0}
               value={draft.weightRestPrice}
@@ -224,11 +253,12 @@ const ShippingSection = ({ companyMaster }) => {
               idLabel="Category"
               idPlaceholder="Select a category"
               options={shipping.categoryOptions}
+              currencyFor={() => shipping.storeCurrencyCode}
               onChange={(rows) => patch({ categoryRules: rows })}
             />
             <InputField
               type="number"
-              label={RULE_CONFIG.CATEGORY.restLabel}
+              label={withCurrency(RULE_CONFIG.CATEGORY.restLabel, shipping.storeCurrencyCode)}
               placeholder="0"
               min={0}
               value={draft.categoryRestPrice}
@@ -251,11 +281,12 @@ const ShippingSection = ({ companyMaster }) => {
               idLabel={noun}
               idPlaceholder={method === 'ZIP' ? 'e.g. 400001' : `Select a ${config.noun}`}
               options={optionsByMethod[method]}
+              currencyFor={(placeId) => (method === 'ZIP' ? shipping.storeCurrencyCode : shipping.ruleCurrencyCode(method, placeId))}
               onChange={(rows) => patch({ [config.rulesKey]: rows })}
             />
             <InputField
               type="number"
-              label={config.restLabel}
+              label={withCurrency(config.restLabel, method === 'COUNTRY' ? shipping.otherCountriesCurrencyCode : shipping.storeCurrencyCode)}
               placeholder="0"
               min={0}
               value={draft[config.restKey]}
@@ -300,7 +331,7 @@ const ShippingSection = ({ companyMaster }) => {
       <div className="border border-gray-200 rounded-lg p-3 space-y-3">
         <Switch
           label="Is free shipping above an order amount?"
-          description="Orders at or above the amount ship free, whichever option is chosen below. Orders under it pay the shipping price set below."
+          description="Set an amount for each country you deliver to, in that country's currency. Orders delivered there at or above the amount ship free, whichever option is chosen below. Leave a country blank for no free shipping there."
           checked={draft.isFreeAboveEnabled}
           onChange={(e) => {
             setProblems([]);
@@ -309,13 +340,10 @@ const ShippingSection = ({ companyMaster }) => {
           color={theme.switch.color}
         />
         {draft.isFreeAboveEnabled && (
-          <InputField
-            type="number"
-            label="Free shipping above order amount"
-            placeholder="e.g. 1000"
-            min={0}
-            value={draft.freeAboveThreshold}
-            onChange={(e) => patch({ freeAboveThreshold: e.target.value })}
+          <FreeAboveRows
+            countries={shipping.freeAboveCountries}
+            values={draft.freeAboveByCountry}
+            onChange={(countryId, amount) => patch({ freeAboveByCountry: { ...draft.freeAboveByCountry, [countryId]: amount } })}
           />
         )}
       </div>
