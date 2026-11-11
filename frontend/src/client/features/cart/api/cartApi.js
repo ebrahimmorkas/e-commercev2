@@ -49,7 +49,7 @@ export const getShippingEstimate = (addressId) =>
 /**
  * Tax estimate for the current cart - same addressId/location rules as
  * getShippingEstimate, falling back to the store's own location.
- * @returns {Promise<{ totalTaxAmount: number, taxes: Array, isStoreLocation: boolean, deliveringTo: Object|null }>}
+ * @returns {Promise<{ totalTaxAmount: number, taxes: Array, isStoreLocation: boolean, estimatedCountryName: string|null, deliveringTo: Object|null }>}
  */
 export const getTaxEstimate = (addressId) =>
   apiRequest(`/cart/tax-estimate${addressId ? `?addressId=${encodeURIComponent(addressId)}` : ''}`);

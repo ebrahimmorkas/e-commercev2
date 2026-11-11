@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
 const Address = require('../models/Address');
@@ -8,6 +9,7 @@ const common = require('../utils/common');
 const addressService = require('./addressService');
 const shippingPriceCalculationService = require('./shippingPriceCalculationService');
 const taxCalculationService = require('./taxCalculationService');
+const ipCountryService = require('./ipCountryService');
 const { SHIPPING_PRICE_METHODS } = require('../constants/shippingPriceConstants');
 
 // Which part of the delivery location each location-based method prices off.
@@ -91,6 +93,22 @@ const resolveDeliveryLocation = async ({ vendorId, userId, addressId, cookieLoca
     }
 };
 
+// A visitor country's display name: a CountryMaster _id, or an unlisted-country
+// key from IP detection (named from its ISO code).
+const resolveCountryName = async (countryKey) => {
+    try {
+        const unlistedIsoCode = ipCountryService.parseUnlistedCountryKey(countryKey);
+        if (unlistedIsoCode) {
+            return new Intl.DisplayNames(['en'], { type: 'region' }).of(unlistedIsoCode) || unlistedIsoCode;
+        }
+        if (!mongoose.Types.ObjectId.isValid(countryKey)) return null;
+        const country = await CountryMaster.findById(countryKey).select('country_name').lean();
+        return country?.country_name || null;
+    } catch (err) {
+        throw err;
+    }
+};
+
 const buildEstimateLineItems = async (cart) => {
     try {
         const liveProducts = await Product.find({ _id: { $in: cart.products.map((p) => p.productId) } });
@@ -130,10 +148,14 @@ const buildEstimateLineItems = async (cart) => {
 
 /*
 | Shipping ESTIMATE for the cart/checkout pages (no side effects on the cart,
-| unlike checkoutCart). The final amount is always recomputed against the real
-| shipping address when the order is placed (orderService.createOrderFromCart).
+| unlike checkoutCart). With no delivery location known, the visitor's country
+| (cookie, saved country, else IP - visitorCountryId) is used: enough for
+| country-priced shipping and the country's free-shipping amount; state/city/
+| zip pricing still needs an address. The final amount is always recomputed
+| against the real shipping address when the order is placed
+| (orderService.createOrderFromCart).
 */
-const getShippingEstimate = async ({ vendorId, cartOwner, userId, addressId, cookieLocation, companyMasterData, websiteMasterData, shippingPriceSettingsData }) => {
+const getShippingEstimate = async ({ vendorId, cartOwner, userId, addressId, cookieLocation, visitorCountryId = null, companyMasterData, websiteMasterData, companySettingsData, shippingPriceSettingsData }) => {
     try {
         const featureOn = !!(websiteMasterData?.isShippingPriceFeatureOn && companyMasterData?.isShippingPriceFeatureOn);
         if (!featureOn || !shippingPriceSettingsData) {
@@ -149,7 +171,15 @@ const getShippingEstimate = async ({ vendorId, cartOwner, userId, addressId, coo
         if (!locationResult.isSuccess) {
             return locationResult;
         }
-        const { locationContext, deliveringTo } = locationResult.meta;
+        const { deliveringTo } = locationResult.meta;
+        let { locationContext } = locationResult.meta;
+
+        // No delivery location: estimate for the visitor's own country.
+        let estimatedCountryName = null;
+        if (!locationContext.countryId && visitorCountryId) {
+            locationContext = { countryId: visitorCountryId, stateId: null, cityId: null, zipCode: null };
+            estimatedCountryName = await resolveCountryName(visitorCountryId);
+        }
 
         const lineItems = await buildEstimateLineItems(cart);
         const subtotal = lineItems.reduce((sum, i) => sum + i.amount, 0);
@@ -160,7 +190,8 @@ const getShippingEstimate = async ({ vendorId, cartOwner, userId, addressId, coo
             shippingPriceSettings: shippingPriceSettingsData,
             locationContext,
             companyMasterData,
-            websiteMasterData
+            websiteMasterData,
+            companySettingsData
         });
         const { shippingAmount, breakdown } = shippingResult.meta;
 
@@ -168,15 +199,20 @@ const getShippingEstimate = async ({ vendorId, cartOwner, userId, addressId, coo
         // report "unknown" (null) rather than misleadingly quoting the rest price.
         const requiredField = LOCATION_FIELD_BY_METHOD[breakdown.method];
         const needsLocation = !!requiredField && !locationContext[requiredField];
+        // Priced in another currency with no exchange rate right now.
+        const isRateUnavailable = breakdown.isRateUnavailable === true;
 
         return common.returnResult(true, 200, 'Shipping estimate calculated successfully', {
             enabled: true,
             method: breakdown.method,
-            shippingAmount: needsLocation ? null : shippingAmount,
-            isFree: !needsLocation && !breakdown.isShippingPending && shippingAmount === 0,
+            shippingAmount: needsLocation || isRateUnavailable ? null : shippingAmount,
+            isFree: !needsLocation && !isRateUnavailable && !breakdown.isShippingPending && shippingAmount === 0,
             isShippingPending: breakdown.isShippingPending === true,
             needsLocation,
+            isRateUnavailable,
             breakdown,
+            // Set = estimated for the visitor's country (no delivery address yet).
+            estimatedCountryName: needsLocation || isRateUnavailable ? null : estimatedCountryName,
             deliveringTo
         });
     } catch (err) {
@@ -185,17 +221,54 @@ const getShippingEstimate = async ({ vendorId, cartOwner, userId, addressId, coo
 };
 
 /*
+| The visitor's country (the one their currency follows - cookie, saved
+| country, else IP) as a tax location, when it is known and is NOT the store
+| country: a customer abroad must not be shown the store country's taxes (e.g.
+| GST to a US visitor). Country only - a state-specific tax can't match. null =
+| use the store's location (visitor in the store country, or country unknown).
+| An unlisted-country key from IP detection matches no tax, so it estimates 0.
+*/
+const resolveVisitorTaxLocation = async (visitorCountryId, companySettingsData) => {
+    try {
+        if (!visitorCountryId) return null;
+        const storeCountryId = companySettingsData?.storeCountryId || null;
+        const unlistedIsoCode = ipCountryService.parseUnlistedCountryKey(visitorCountryId);
+
+        if (unlistedIsoCode) {
+            const storeCountry = storeCountryId ? await CountryMaster.findById(storeCountryId).select('short_country_name').lean() : null;
+            if (storeCountry && storeCountry.short_country_name === unlistedIsoCode) return null;
+        } else {
+            if (!mongoose.Types.ObjectId.isValid(visitorCountryId)) return null;
+            if (storeCountryId && visitorCountryId.toString() === storeCountryId.toString()) return null;
+        }
+        const countryName = await resolveCountryName(visitorCountryId);
+
+        return {
+            countryId: visitorCountryId,
+            stateId: null,
+            cityId: null,
+            zipCode: null,
+            isStoreLocation: false,
+            countryName
+        };
+    } catch (err) {
+        throw err;
+    }
+};
+
+/*
 | Tax ESTIMATE for the cart/checkout pages, against the same delivery location
 | the shipping estimate uses (chosen address, default address, browsing
-| location), falling back to the store's location when none is known. The
+| location). When none is known: the visitor's country if it is outside the
+| store country (resolveVisitorTaxLocation), else the store's location. The
 | final tax is recomputed against the real shipping address when the order is
 | placed (cartService.checkoutCart via orderService.createOrderFromCart).
 */
-const getTaxEstimate = async ({ vendorId, cartOwner, userId, addressId, cookieLocation, companySettingsData }) => {
+const getTaxEstimate = async ({ vendorId, cartOwner, userId, addressId, cookieLocation, visitorCountryId = null, companySettingsData }) => {
     try {
         const cart = await Cart.findOne({ vendorId, status: 'A', ...ownerFilter(cartOwner) });
         if (!cart || cart.products.length === 0) {
-            return common.returnResult(true, 200, 'Cart is empty', { totalTaxAmount: 0, taxes: [], isStoreLocation: false, deliveringTo: null });
+            return common.returnResult(true, 200, 'Cart is empty', { totalTaxAmount: 0, taxes: [], isStoreLocation: false, estimatedCountryName: null, deliveringTo: null });
         }
 
         const locationResult = await resolveDeliveryLocation({ vendorId, userId, addressId, cookieLocation });
@@ -205,7 +278,8 @@ const getTaxEstimate = async ({ vendorId, cartOwner, userId, addressId, cookieLo
         const { locationContext, deliveringTo } = locationResult.meta;
 
         const lineItems = await buildEstimateLineItems(cart);
-        const taxLocation = taxCalculationService.resolveTaxLocationContext(locationContext, companySettingsData);
+        const visitorTaxLocation = locationContext.countryId ? null : await resolveVisitorTaxLocation(visitorCountryId, companySettingsData);
+        const taxLocation = visitorTaxLocation || taxCalculationService.resolveTaxLocationContext(locationContext, companySettingsData);
         await taxCalculationService.applyTaxesToLines(lineItems, taxLocation);
         const { taxes, totalTaxAmount } = taxCalculationService.summarizeTaxes(lineItems);
 
@@ -214,6 +288,9 @@ const getTaxEstimate = async ({ vendorId, cartOwner, userId, addressId, cookieLo
             taxes,
             // true = priced at the store's location because the customer's is unknown.
             isStoreLocation: taxLocation.isStoreLocation && !!taxLocation.countryId,
+            // Set = estimated for the visitor's country (outside the store
+            // country) until a delivery address is chosen.
+            estimatedCountryName: visitorTaxLocation ? (visitorTaxLocation.countryName || 'your country') : null,
             deliveringTo
         });
     } catch (err) {

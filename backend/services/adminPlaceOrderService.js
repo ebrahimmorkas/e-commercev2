@@ -193,6 +193,8 @@ const loadActiveProducts = async (vendorId, query) => {
                 $or: [
                     { name: pattern },
                     { productCode: pattern },
+                    // The vendor's own extra fields (VendorFieldConfig), e.g. Box Code.
+                    { 'customFieldValues.value': pattern },
                     { 'variants.displayName': pattern },
                     { 'variants.color': pattern },
                     { 'variants.sizes.sizeName': pattern },
@@ -203,7 +205,7 @@ const loadActiveProducts = async (vendorId, query) => {
         }
 
         const products = await Product.find(filter)
-            .select('name productCode mainCategory subCategory')
+            .select('name productCode customFieldValues mainCategory subCategory')
             .sort({ name: 1 })
             .limit(200)
             .lean();
@@ -280,7 +282,7 @@ const loadProductOptions = async (vendorId, companySettingsData, productId) => {
             .filter((variant) => variant.sizes.length > 0);
 
         return common.returnResult(true, 200, 'Product options fetched successfully', {
-            product: { productId: product._id, name: product.name, productCode: product.productCode },
+            product: { productId: product._id, name: product.name, productCode: product.productCode, customFieldValues: product.customFieldValues || [] },
             allowOutOfStockProductsAdding: allowOutOfStock,
             variants
         });

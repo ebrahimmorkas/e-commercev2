@@ -16,6 +16,9 @@ import StockAdjustForm from '../components/StockAdjustForm';
 import StockHistory from '../components/StockHistory';
 import { STOCK_OPERATIONS, STOCK_LEVEL_LABELS, SORT_OPTIONS, MAX_BULK_ADJUST_ITEMS } from '../constants';
 import theme from '../theme/theme';
+import { useFieldConfig } from '../../fieldConfig/hooks/useFieldConfig';
+import { FIELD_CONFIG_ENTITIES } from '../../fieldConfig/constants';
+import { productIdentifierText } from '../../fieldConfig/utils/fieldConfigView';
 
 const PlusIcon = () => (
   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -42,6 +45,8 @@ const CLOSED_ADJUST = { open: false, operation: STOCK_OPERATIONS.INCREASE, items
  * marked "Low stock"; sizes at 0 "Out of stock".
  */
 const InventoryPage = () => {
+  // Product code, or the vendor's own codes instead (field config).
+  const productFields = useFieldConfig(FIELD_CONFIG_ENTITIES.PRODUCT);
   const {
     items,
     pagination,
@@ -145,7 +150,7 @@ const InventoryPage = () => {
             <div className="min-w-0">
               <p className={`font-medium ${theme.text.heading}`}>{row.productName}</p>
               <p className={`text-xs ${theme.text.muted}`}>
-                {row.productCode}
+                {productIdentifierText(row, productFields)}
                 {row.productStatus === 'I' || row.variantStatus === 'I' || row.sizeStatus === 'I' ? ' · Inactive' : ''}
               </p>
             </div>
@@ -176,7 +181,7 @@ const InventoryPage = () => {
         ),
       },
     ],
-    []
+    [productFields]
   );
 
   const actions = [

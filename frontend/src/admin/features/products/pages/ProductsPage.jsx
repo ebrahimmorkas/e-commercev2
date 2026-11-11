@@ -13,6 +13,9 @@ import Pagination from '../../../../components/common/Pagination';
 import Dropdown from '../../../../components/common/DropDown';
 import { useProducts } from '../hooks/useProducts';
 import { useProductLookups } from '../hooks/useProductLookups';
+import { useFieldConfig } from '../../fieldConfig/hooks/useFieldConfig';
+import { FIELD_CONFIG_ENTITIES } from '../../fieldConfig/constants';
+import { productIdentifierText } from '../../fieldConfig/utils/fieldConfigView';
 import ProductForm from '../components/ProductForm';
 import BulkUploadProductsModal from '../components/BulkUploadProductsModal';
 import ProductFilterModal from '../components/ProductFilterModal';
@@ -109,6 +112,8 @@ const ProductsPage = () => {
     bulkToggleStatus, bulkRemoveProducts, bulkCloneProducts, runBulkUpload, exportProducts, exporting,
   } = useProducts();
   const lookups = useProductLookups();
+  // Product code, or the vendor's own codes instead (field config).
+  const productFields = useFieldConfig(FIELD_CONFIG_ENTITIES.PRODUCT);
 
   const [view, setView] = useState('list');
   const [editingDraft, setEditingDraft] = useState(null);
@@ -343,7 +348,7 @@ const ProductsPage = () => {
             <Thumbnail product={row} />
             <div className="min-w-0">
               <p className={`font-medium truncate ${theme.text.heading}`}>{row.name}</p>
-              <p className={`text-xs truncate ${theme.text.muted}`}>{row.productCode}</p>
+              <p className={`text-xs truncate ${theme.text.muted}`}>{productIdentifierText(row, productFields)}</p>
             </div>
           </div>
         ),
@@ -381,7 +386,7 @@ const ProductsPage = () => {
         ),
       },
     ],
-    [categoryNameById, mutating, toggleStatus, formatMoney]
+    [categoryNameById, mutating, toggleStatus, formatMoney, productFields]
   );
 
   const isSearching = searchText.trim() !== '';
@@ -594,7 +599,7 @@ const ProductsPage = () => {
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className={`font-medium truncate ${theme.text.heading}`}>{product.name}</p>
-                          <p className={`text-xs truncate ${theme.text.muted}`}>{product.productCode}</p>
+                          <p className={`text-xs truncate ${theme.text.muted}`}>{productIdentifierText(product, productFields)}</p>
                         </div>
                         <Switch
                           checked={product.status === 'A'}

@@ -8,8 +8,9 @@
  * (CompanyMaster.allowedShippingPriceMethods; empty = all allowed).
  *
  * "Free shipping above an order amount" is NOT one of those methods: it is a
- * separate toggle (draft.isFreeAboveEnabled) + amount (draft.freeAboveThreshold)
- * that applies on top of whichever method is chosen.
+ * separate toggle (draft.isFreeAboveEnabled) + one amount per allowed country
+ * (draft.freeAboveByCountry: { [countryId]: amount }, each in that country's
+ * currency; blank = no free shipping there) on top of whichever method is chosen.
  */
 export const SHIPPING_STEPS = [
   { method: 'FREE', question: 'Is shipping price free?' },
@@ -47,7 +48,7 @@ export const emptyShippingDraft = (method = 'FREE') => ({
   method,
   fixedPrice: '',
   isFreeAboveEnabled: false,
-  freeAboveThreshold: '',
+  freeAboveByCountry: {},
   weightUnit: '',
   weightBrackets: [{ minWeight: '', maxWeight: '', price: '' }],
   weightRestPrice: '',
@@ -77,9 +78,9 @@ export const mapApiShippingToDraft = (settings) => {
   return {
     ...base,
     fixedPrice: str(settings.fixedPrice),
-    // A saved threshold means the toggle was on.
-    isFreeAboveEnabled: settings.freeAboveThreshold !== null && settings.freeAboveThreshold !== undefined,
-    freeAboveThreshold: str(settings.freeAboveThreshold),
+    // Any saved country amount means the toggle was on.
+    isFreeAboveEnabled: Array.isArray(settings.freeAboveRules) && settings.freeAboveRules.length > 0,
+    freeAboveByCountry: Object.fromEntries((settings.freeAboveRules || []).map((r) => [String(r.countryId), str(r.threshold)])),
     weightUnit: str(settings.weightUnit),
     weightBrackets:
       Array.isArray(settings.weightBrackets) && settings.weightBrackets.length > 0
@@ -109,8 +110,14 @@ const restNumber = (value) => (isBlank(value) ? 0 : Number(value));
 /** Builds the API body: only the active method's fields are sent (the backend forbids the rest). */
 export const buildShippingPayload = (draft) => {
   const { method } = draft;
-  // Toggle off = no free-shipping threshold (sent as null so a previously saved one is cleared).
-  const payload = { method, freeAboveThreshold: draft.isFreeAboveEnabled ? Number(draft.freeAboveThreshold) : null };
+  // Toggle off = no free shipping anywhere (sent as [] so saved amounts are cleared);
+  // a country left blank gets no free shipping.
+  const freeAboveRules = draft.isFreeAboveEnabled
+    ? Object.entries(draft.freeAboveByCountry)
+      .filter(([, amount]) => !isBlank(amount))
+      .map(([countryId, amount]) => ({ countryId, threshold: Number(amount) }))
+    : [];
+  const payload = { method, freeAboveRules };
 
   if (method === 'FIXED') payload.fixedPrice = Number(draft.fixedPrice);
 
@@ -140,15 +147,25 @@ export const buildShippingPayload = (draft) => {
   return payload;
 };
 
-/** Returns a list of human-readable problems ([] when the draft is valid). */
-export const validateShippingDraft = (draft) => {
+/**
+ * Returns a list of human-readable problems ([] when the draft is valid).
+ * @param {Array<{value: string, label: string}>} [freeAboveCountries] - names for free-shipping messages.
+ */
+export const validateShippingDraft = (draft, freeAboveCountries = []) => {
   const errors = [];
   const { method } = draft;
 
   if (method === 'FIXED' && !isValidPrice(draft.fixedPrice)) errors.push('Enter a fixed shipping price (0 or more).');
 
-  if (draft.isFreeAboveEnabled && (!isValidPrice(draft.freeAboveThreshold) || Number(draft.freeAboveThreshold) <= 0)) {
-    errors.push('Enter the order amount above which shipping is free (greater than 0).');
+  if (draft.isFreeAboveEnabled) {
+    const filled = Object.entries(draft.freeAboveByCountry).filter(([, amount]) => !isBlank(amount));
+    if (filled.length === 0) errors.push('Enter a free shipping amount for at least one country, or turn free shipping off.');
+    filled.forEach(([countryId, amount]) => {
+      if (!isValidPrice(amount) || Number(amount) <= 0) {
+        const name = freeAboveCountries.find((c) => c.value === countryId)?.label || 'A country';
+        errors.push(`${name}: the free shipping amount must be greater than 0.`);
+      }
+    });
   }
 
   if (method === 'WEIGHT') {

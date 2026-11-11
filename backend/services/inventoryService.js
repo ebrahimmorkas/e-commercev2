@@ -123,6 +123,8 @@ const fetchInventory = async (vendorId, query, websiteMasterData, companyMasterD
                     $or: [
                         { name: pattern },
                         { productCode: pattern },
+                        // The vendor's own extra fields (VendorFieldConfig), e.g. Box Code.
+                        { 'customFieldValues.value': pattern },
                         { 'variants.displayName': pattern },
                         { 'variants.color': pattern },
                         { 'variants.sizes.sizeName': pattern },
@@ -135,6 +137,7 @@ const fetchInventory = async (vendorId, query, websiteMasterData, companyMasterD
                 $or: [
                     { productName: pattern },
                     { productCode: pattern },
+                    { 'customFieldValues.value': pattern },
                     { variantDisplayName: pattern },
                     { variantColor: pattern },
                     { sizeName: pattern },
@@ -145,7 +148,7 @@ const fetchInventory = async (vendorId, query, websiteMasterData, companyMasterD
         }
 
         pipeline.push(
-            { $project: { name: 1, productCode: 1, status: 1, variants: 1 } },
+            { $project: { name: 1, productCode: 1, customFieldValues: 1, status: 1, variants: 1 } },
             { $unwind: '$variants' },
             { $match: { 'variants.status': { $ne: 'D' } } },
             { $unwind: '$variants.sizes' },
@@ -158,6 +161,7 @@ const fetchInventory = async (vendorId, query, websiteMasterData, companyMasterD
                     sizeId: '$variants.sizes._id',
                     productName: '$name',
                     productCode: '$productCode',
+                    customFieldValues: { $ifNull: ['$customFieldValues', []] },
                     productStatus: '$status',
                     variantDisplayName: '$variants.displayName',
                     variantColor: '$variants.color',

@@ -418,6 +418,7 @@ const fetchCurrencyContext = async ({ countryId, deliveryCountryId = null, compa
 module.exports = {
     shapeCurrency,
     getStoreCurrency,
+    getCountryCurrency,
     resolveCustomerCurrency,
     resolvePriceZone,
     toPriceZone,

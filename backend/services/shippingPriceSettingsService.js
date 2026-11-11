@@ -8,6 +8,7 @@ const redisService = require('./redisService');
 const redisKeys = require('../utils/redisKeys');
 const logger = require('../utils/logger');
 const common = require('../utils/common');
+const currencyService = require('./currencyService');
 const { SHIPPING_PRICE_METHODS } = require('../constants/shippingPriceConstants');
 
 // Every field that belongs to SOME method's configuration. On every
@@ -80,6 +81,39 @@ const checkBracketsForOverlap = (brackets) => {
         }
     }
     return null;
+};
+
+// Free-shipping amounts: one per country, only for countries this vendor
+// serves (CompanyMaster.allowedCountries), and each country must have a
+// currency - the amount is entered in it.
+const validateFreeAboveRules = async (rules, companyMasterData) => {
+    try {
+        if (rules.length === 0) {
+            return common.returnResult(true, 200, 'All good');
+        }
+        if (rules.some((r) => !r.countryId)) {
+            return common.returnResult(false, 400, 'One or more countries were not found.');
+        }
+        const duplicateCountryId = findDuplicateKey(rules, 'countryId');
+        if (duplicateCountryId) {
+            return common.returnResult(false, 400, 'A country has more than one free shipping amount.');
+        }
+        const allowedCountryIds = (companyMasterData?.allowedCountries || []).map((id) => id.toString());
+        if (rules.some((r) => !allowedCountryIds.includes(r.countryId.toString()))) {
+            return common.returnResult(false, 400, 'Free shipping amounts can only be set for countries your store serves.');
+        }
+        const countries = await CountryMaster.find({ _id: { $in: rules.map((r) => r.countryId) }, status: 'A' }).select('country_name currency_id').lean();
+        if (countries.length !== rules.length) {
+            return common.returnResult(false, 400, 'One or more countries were not found.');
+        }
+        const withoutCurrency = countries.find((c) => !c.currency_id);
+        if (withoutCurrency) {
+            return common.returnResult(false, 400, `${withoutCurrency.country_name} has no currency set up, so a free shipping amount can't be entered for it.`);
+        }
+        return common.returnResult(true, 200, 'All good');
+    } catch (err) {
+        throw err;
+    }
 };
 
 // Cross-referential + business-rule validation that Joi's shape-only checks
@@ -170,6 +204,11 @@ const validateMethodConfig = async (vendorId, data, companyMasterData) => {
             }
         }
 
+        const freeAboveCheck = await validateFreeAboveRules(data.freeAboveRules || [], companyMasterData);
+        if (!freeAboveCheck.isSuccess) {
+            return freeAboveCheck;
+        }
+
         return common.returnResult(true, 200, 'All good');
     } catch (err) {
         throw err;
@@ -193,7 +232,7 @@ const createShippingPriceSettings = async (vendorId, userId, data, companyMaster
             settingsData[field] = data[field] !== undefined ? data[field] : METHOD_FIELD_EMPTY_VALUE[field];
         }
         // Not method-specific: applies on top of whichever method is chosen.
-        settingsData.freeAboveThreshold = data.freeAboveThreshold ?? null;
+        settingsData.freeAboveRules = data.freeAboveRules || [];
         settingsData.createdBy = { userID: userId, vendorID: vendorId };
         settingsData.updatedBy = { userID: userId, vendorID: vendorId };
 
@@ -228,7 +267,7 @@ const updateShippingPriceSettings = async (vendorId, userId, data, companyMaster
         for (const field of METHOD_FIELDS) {
             settings[field] = data[field] !== undefined ? data[field] : METHOD_FIELD_EMPTY_VALUE[field];
         }
-        settings.freeAboveThreshold = data.freeAboveThreshold ?? null;
+        settings.freeAboveRules = data.freeAboveRules || [];
         settings.updatedBy = { userID: userId, vendorID: vendorId };
 
         const updated = await settings.save();
@@ -236,6 +275,31 @@ const updateShippingPriceSettings = async (vendorId, userId, data, companyMaster
         await invalidateShippingPriceSettingsCache(vendorId);
 
         return common.returnResult(true, 200, 'Shipping price settings updated successfully', { settings: updated });
+    } catch (err) {
+        throw err;
+    }
+};
+
+/*
+| Which currency the admin types each shipping price in (see
+| shippingPriceCalculationService LOCATION PRICE CURRENCIES): country/state/city
+| rules use their own country's currency (the admin page maps those from the
+| countries list); this returns the two that aren't tied to a country -
+| storeCurrencyCode (fixed/weight/category/zip prices, "all other states /
+| cities") and otherCountriesCurrencyCode ("all other countries": the
+| international currency, store currency while international pricing is off).
+*/
+const fetchShippingPriceCurrencies = async (companyMasterData, companySettingsData) => {
+    try {
+        const [storeCurrency, internationalCurrency] = await Promise.all([
+            currencyService.getStoreCurrency(companySettingsData),
+            currencyService.fetchActiveInternationalCurrency({ companyMasterData, companySettingsData })
+        ]);
+        const storeCurrencyCode = storeCurrency ? storeCurrency.short_name : null;
+        return common.returnResult(true, 200, 'Shipping price currencies fetched successfully', {
+            storeCurrencyCode,
+            otherCountriesCurrencyCode: internationalCurrency ? internationalCurrency.code : storeCurrencyCode
+        });
     } catch (err) {
         throw err;
     }
@@ -257,6 +321,7 @@ const fetchShippingPriceSettingsByVendorId = async (vendorId) => {
 };
 
 module.exports = {
+    fetchShippingPriceCurrencies,
     createShippingPriceSettings,
     updateShippingPriceSettings,
     fetchShippingPriceSettingsByVendorId

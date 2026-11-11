@@ -1,6 +1,7 @@
 const Joi = require('joi');
 const { ADMIN_PRODUCT_PAGE_SIZES } = require('../../constants/productListConstants');
 const { MAX_VIDEOS_PER_SIZE } = require('../../constants/productVideoConstants');
+const { CUSTOM_FIELD_KEY_PATTERN, MAX_CUSTOM_FIELDS_PER_ENTITY, CUSTOM_FIELD_TEXT_MAX_LENGTH } = require('../../constants/fieldConfigConstants');
 
 // Ids are common.encodeId-encoded (see productController.js's
 // decodeProductPayloadIds/formatProductForResponse), never raw hex
@@ -25,6 +26,22 @@ const descriptionArraySchema = Joi.array()
     .label('Description');
 // Description itself stays fully optional (no .required()/.min(1) here) -
 // a product/variant/size can have zero description entries.
+
+// --- Custom field values (the vendor's own extra fields - VendorFieldConfig) --
+// Only the shape is checked here; productService checks each value against the
+// vendor's field definitions (type, options, required) and drops unknown keys.
+const customFieldValuesSchema = Joi.array()
+    .items(Joi.object({
+        key: Joi.string().trim().pattern(CUSTOM_FIELD_KEY_PATTERN).required().label('Custom field key'),
+        value: Joi.alternatives(
+            Joi.string().trim().allow('').max(CUSTOM_FIELD_TEXT_MAX_LENGTH),
+            Joi.number()
+        ).allow(null).label('Custom field value')
+    }))
+    .max(MAX_CUSTOM_FIELDS_PER_ENTITY)
+    .unique('key')
+    .messages({ 'array.unique': 'A custom field is sent more than once.' })
+    .label('Custom fields');
 
 // --- Bulk pricing (matches bulkPricingSchema in Product.js) -----------------
 const bulkPricingItemSchema = Joi.object({
@@ -279,6 +296,7 @@ const createProductSchema = Joi.object({
     taxIds: Joi.array().items(objectId()).label('Taxes'),
     precedence: Joi.number().min(1).label('Precedence'),
     productCode: Joi.string().trim().label('Product code'),
+    customFieldValues: customFieldValuesSchema,
     bulkPricing: Joi.array().items(bulkPricingItemSchema).label('Bulk pricing'),
     variants: Joi.array().items(variantSchema).min(1).required().custom(validateVariantsArray)
         .messages({

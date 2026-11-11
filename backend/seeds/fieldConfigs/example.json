@@ -1,0 +1,35 @@
+{
+    "product": {
+        "hiddenFields": ["productCode", "variantCode", "sizeCode"],
+        "labelOverrides": [],
+        "customFields": [
+            {
+                "key": "packetCode",
+                "label": "Packet Code",
+                "type": "text",
+                "required": false,
+                "placement": { "mode": "replace", "field": "productCode" },
+                "showInAdminLists": true,
+                "precedence": 1
+            },
+            {
+                "key": "sapCode",
+                "label": "SAP Code",
+                "type": "text",
+                "required": false,
+                "placement": { "mode": "replace", "field": "productCode" },
+                "showInAdminLists": true,
+                "precedence": 2
+            },
+            {
+                "key": "boxCode",
+                "label": "Box Code",
+                "type": "text",
+                "required": false,
+                "placement": { "mode": "replace", "field": "productCode" },
+                "showInAdminLists": true,
+                "precedence": 3
+            }
+        ]
+    }
+}

@@ -155,6 +155,7 @@ app.use('/api/banners', bannerRoutes);
 app.use('/api/address', addressRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/field-config', require('./routes/fieldConfigRoutes'));
 app.use('/api/inventory', require('./routes/inventoryRoutes'));
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/discount', discountRoutes);
