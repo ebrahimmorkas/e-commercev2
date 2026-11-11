@@ -60,6 +60,19 @@ const websiteMasterSchema = mongoose.Schema({
         type: Boolean,
         default: true
     },
+    // Global switches for the floating WhatsApp / Instagram / Facebook buttons.
+    isFloatingWhatsappFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    isFloatingInstagramFeatureOn: {
+        type: Boolean,
+        default: true
+    },
+    isFloatingFacebookFeatureOn: {
+        type: Boolean,
+        default: true
+    },
     numberOfAnnouncementsAllowed: {
         type: Number,
         default: 2,

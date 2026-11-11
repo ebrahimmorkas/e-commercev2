@@ -102,7 +102,7 @@ const BlogForm = ({ mode = 'add', initialValues = {}, onSubmit, onCancel, submit
                 className="w-full"
                 label="Title"
                 name="title"
-                placeholder="e.g. How to choose the right fabric for a suit"
+                placeholder="Enter the post title"
                 value={values.title}
                 onChange={handleChange('title')}
                 onBlur={handleBlur('title')}
@@ -195,7 +195,7 @@ const BlogForm = ({ mode = 'add', initialValues = {}, onSubmit, onCancel, submit
                 className="w-full"
                 label="Author"
                 name="authorName"
-                placeholder="e.g. Hutaib Team"
+                placeholder="Author name"
                 value={values.authorName}
                 onChange={handleChange('authorName')}
                 maxLength={60}
@@ -207,7 +207,7 @@ const BlogForm = ({ mode = 'add', initialValues = {}, onSubmit, onCancel, submit
                 className="w-full"
                 label="Tags"
                 name="tags"
-                placeholder="fabric, suits, tailoring"
+                placeholder="e.g. tips, guide, news"
                 value={values.tags}
                 onChange={handleChange('tags')}
                 maxLength={400}

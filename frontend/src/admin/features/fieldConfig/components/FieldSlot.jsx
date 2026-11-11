@@ -14,9 +14,17 @@ import { CUSTOM_FIELD_PLACEMENTS } from '../constants';
  * @param {(key: string) => string} [props.errorFor]
  * @param {React.ReactNode} props.children - the built-in field (may be null, e.g. an auto-generated code)
  */
+// Two or three custom fields in the same spot share one row (from 440px wide;
+// stacked on the narrowest phones). More than three wrap onto further rows.
+const ROW_CLASSES = {
+  2: 'grid grid-cols-1 min-[440px]:grid-cols-2 gap-4',
+  3: 'grid grid-cols-1 min-[440px]:grid-cols-3 gap-4',
+};
+
 const FieldSlot = ({ config, field, values, onValueChange, errorFor = () => '', children }) => {
-  const renderFields = (definitions) =>
-    definitions.map((definition) => (
+  const renderFields = (definitions) => {
+    if (definitions.length === 0) return null;
+    const inputs = definitions.map((definition) => (
       <CustomFieldInput
         key={definition.key}
         definition={definition}
@@ -25,6 +33,9 @@ const FieldSlot = ({ config, field, values, onValueChange, errorFor = () => '', 
         error={errorFor(definition.key)}
       />
     ));
+    if (definitions.length === 1) return inputs;
+    return <div className={ROW_CLASSES[Math.min(definitions.length, 3)]}>{inputs}</div>;
+  };
 
   return (
     <>

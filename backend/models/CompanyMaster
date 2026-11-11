@@ -171,6 +171,21 @@ const companyMasterSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // Floating WhatsApp / Instagram / Facebook buttons (bottom-right of the storefront).
+    // Per-vendor entitlement; each also needs its WebsiteMaster flag and the vendor's own
+    // CompanySettings toggle.
+    isFloatingWhatsappFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    isFloatingInstagramFeatureOn: {
+        type: Boolean,
+        default: false
+    },
+    isFloatingFacebookFeatureOn: {
+        type: Boolean,
+        default: false
+    },
     numberOfAnnouncementsAllowed: {
         type: Number,
         default: 2,

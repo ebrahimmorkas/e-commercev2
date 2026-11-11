@@ -235,6 +235,28 @@ const getCompanySettings = async (req, res) => {
       && !!req.companyMasterData?.isBlogFeatureOn
       && await blogService.hasPublishedBlogs(vendorId);
     publicSettings.blogNavLabel = settings.blogNavLabel || 'Blog';
+    // Header certificate badge: needs the feature on in WebsiteMaster AND CompanyMaster, and an uploaded image.
+    const certificateOn = !!req.websiteMasterData?.isShowingPartnerCertificateFeatureOn
+      && !!req.companyMasterData?.isShowingPartnerCertificateFeatureOn;
+    publicSettings.partnerCertificate = certificateOn && settings.partnerCertificate?.url
+      ? { url: settings.partnerCertificate.url }
+      : null;
+    publicSettings.partnerCertificateText = publicSettings.partnerCertificate ? (settings.partnerCertificateText || '') : '';
+    // Floating social buttons: per icon, both feature switches + the vendor's own toggle + a value to link to.
+    const floatOn = (flag) => !!req.websiteMasterData?.[flag] && !!req.companyMasterData?.[flag];
+    const waDigits = String(settings.whatsappNumber || '').replace(/\D/g, '');
+    const handle = (v) => String(v || '').trim().replace(/^@/, '');
+    const floatingSocial = [];
+    if (settings.showFloatingWhatsapp !== false && floatOn('isFloatingWhatsappFeatureOn') && waDigits) {
+      floatingSocial.push({ type: 'whatsapp', url: `https://wa.me/${waDigits}` });
+    }
+    if (settings.showFloatingInstagram !== false && floatOn('isFloatingInstagramFeatureOn') && handle(settings.instagramId)) {
+      floatingSocial.push({ type: 'instagram', url: `https://instagram.com/${handle(settings.instagramId)}` });
+    }
+    if (settings.showFloatingFacebook !== false && floatOn('isFloatingFacebookFeatureOn') && handle(settings.facebookId)) {
+      floatingSocial.push({ type: 'facebook', url: `https://facebook.com/${handle(settings.facebookId)}` });
+    }
+    publicSettings.floatingSocial = floatingSocial;
     // Footer logo + About Us blurb; on unless the vendor's CompanyMaster says false
     // (the cached doc may predate the field).
     publicSettings.isFooterAboutSectionOn = req.companyMasterData?.isFooterAboutSectionOn !== false;
