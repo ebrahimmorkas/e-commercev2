@@ -83,10 +83,13 @@ export const useProductLookups = () => {
 
   const unitOptions = useMemo(() => units.map((u) => ({ value: String(u._id), label: u.name })), [units]);
 
-  const weightOptions = useMemo(
-    () => weights.map((w) => ({ value: String(w._id), label: `${w.weightName} (${w.symbol})` })),
-    [weights]
-  );
+  // Only weight units assigned to this vendor (CompanyMaster.allowedWeights) - the backend rejects any other.
+  const weightOptions = useMemo(() => {
+    const allowed = new Set((companyMaster?.allowedWeights || []).map(String));
+    return weights
+      .filter((w) => allowed.has(String(w._id)))
+      .map((w) => ({ value: String(w._id), label: `${w.weightName} (${w.symbol})` }));
+  }, [weights, companyMaster]);
 
   const brandOptions = useMemo(
     () => brands.filter((b) => b.status === 'A').map((b) => ({ value: String(b._id), label: b.brandName })),
