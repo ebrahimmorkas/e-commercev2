@@ -105,7 +105,8 @@ const BankTransferModal = ({ isOpen, online, order, customerName = '', doneLabel
               <BankRow label="Account holder" value={bank.accountHolderName} />
               <BankRow label="Bank" value={bank.bankName} />
               <BankRow label="Account number" value={bank.accountNumber} />
-              <BankRow label="IFSC" value={bank.ifscCode} />
+              {/* ifscLabel: the store's own name for it, e.g. "IBAN Number" */}
+              <BankRow label={bank.ifscLabel || 'IFSC'} value={bank.ifscCode} />
               <BankRow label="Branch" value={bank.branchName} />
               <BankRow label="SWIFT" value={bank.swiftCode} />
               <BankRow label="Account type" value={ACCOUNT_TYPES[bank.accountType] || bank.accountType} />

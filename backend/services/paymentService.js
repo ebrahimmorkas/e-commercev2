@@ -6,6 +6,8 @@ const vendorPaymentGatewayCredentialsService = require('./vendorPaymentGatewayCr
 const { PAYMENT_METHODS, PAYMENT_TRANSACTION_STATUSES } = require('../constants/paymentGatewayConstants');
 const { ORDER_NOTIFICATION_TYPES } = require('../constants/orderRealtimeConstants');
 const { notifyOrderChanged } = require('./orderRealtimeService');
+const fieldConfigService = require('./fieldConfigService');
+const { FIELD_CONFIG_ENTITIES } = require('../constants/fieldConfigConstants');
 const logger = require('../utils/logger');
 const common = require('../utils/common');
 
@@ -152,7 +154,7 @@ const selectCashOnDelivery = async (vendorId, userId, orderId, companySettingsDa
 // filled in Company Settings (gated by the same two-level flag that gates
 // editing them). Customer-only - the bank details are never in the public
 // storefront settings.
-const getCheckoutPaymentOptions = async (vendorId, websiteMasterData, companyMasterData, companySettingsData) => {
+const getCheckoutPaymentOptions = async (vendorId, websiteMasterData, companyMasterData, companySettingsData, fieldConfigData = null) => {
     try {
         const codCheck = await common.checkFeatureOnOrOff(vendorId, websiteMasterData, companyMasterData, 'isCODFeatureOn', 'isCODFeatureOn');
         const detailsCheck = await common.checkFeatureOnOrOff(
@@ -173,6 +175,8 @@ const getCheckoutPaymentOptions = async (vendorId, websiteMasterData, companyMas
             bankName: settings.bankName || null,
             accountNumber: settings.bankAccountNumber || null,
             ifscCode: settings.ifscCode || null,
+            // The vendor's own name for the field (e.g. "IBAN Number") - see FIELD_REGISTRY.
+            ifscLabel: fieldConfigService.labelOf(fieldConfigData, FIELD_CONFIG_ENTITIES.COMPANY_SETTINGS, 'ifscCode'),
             branchName: settings.branchName || null,
             swiftCode: settings.swiftCode || null,
             accountType: settings.bankAccountType || null

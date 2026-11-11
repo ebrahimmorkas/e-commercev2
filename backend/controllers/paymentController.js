@@ -124,7 +124,7 @@ const getCheckoutPaymentOptions = async (req, res) => {
     const vendorId = req.vendorId;
     try {
         const result = await paymentService.getCheckoutPaymentOptions(
-            vendorId, req.websiteMasterData, req.companyMasterData, req.companySettingsData
+            vendorId, req.websiteMasterData, req.companyMasterData, req.companySettingsData, req.fieldConfigData
         );
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);

@@ -3,7 +3,11 @@ import InputField from '../../../../components/common/InputField';
 import Dropdown from '../../../../components/common/DropDown';
 import FileUpload from '../../../../components/common/FileUpload';
 import Avatar from '../../../../components/common/Avatar';
+import { useFieldConfig } from '../../fieldConfig/hooks/useFieldConfig';
+import { FIELD_CONFIG_ENTITIES } from '../../fieldConfig/constants';
 import theme from '../theme/theme';
+
+const IFSC_DEFAULT_LABEL = 'IFSC Code';
 
 const BANK_ACCOUNT_TYPE_OPTIONS = [
   { value: 'SAVINGS', label: 'Savings' },
@@ -27,6 +31,11 @@ const PaymentBankSection = ({ draft, onChange, companyMaster }) => {
 
   const bankTransferEnabled = !!companyMaster?.showPaymentQRCodeAndBankDetails;
   const gpayEnabled = !!companyMaster?.showGpayNumber;
+
+  // The vendor's own name for the IFSC field (e.g. "IBAN Number") - the IFSC example would mislead then.
+  const companySettingsFields = useFieldConfig(FIELD_CONFIG_ENTITIES.COMPANY_SETTINGS);
+  const ifscLabel = companySettingsFields.labelOf('ifscCode', IFSC_DEFAULT_LABEL);
+  const isIfscRenamed = ifscLabel !== IFSC_DEFAULT_LABEL;
 
   return (
     <div className="space-y-6">
@@ -89,8 +98,8 @@ const PaymentBankSection = ({ draft, onChange, companyMaster }) => {
               onChange={(e) => set({ bankAccountNumber: e.target.value })}
             />
             <InputField
-              label="IFSC Code"
-              placeholder="e.g. ABCD0123456"
+              label={ifscLabel}
+              placeholder={isIfscRenamed ? undefined : 'e.g. ABCD0123456'}
               value={draft.ifscCode}
               onChange={(e) => set({ ifscCode: e.target.value.toUpperCase() })}
             />
