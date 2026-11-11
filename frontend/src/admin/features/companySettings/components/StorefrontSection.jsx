@@ -1,5 +1,8 @@
 import Switch from '../../../../components/common/Switch';
 import InputField from '../../../../components/common/InputField';
+import FileUpload from '../../../../components/common/FileUpload';
+import TextArea from '../../../../components/common/TextArea';
+import Avatar from '../../../../components/common/Avatar';
 import theme from '../theme/theme';
 import CatalogueCard from './CatalogueCard';
 
@@ -67,6 +70,41 @@ const StorefrontSection = ({ draft, onChange, companyMaster, catalogue, settings
           </div>
         )}
       </div>
+      )}
+
+      {companyMaster?.isShowingPartnerCertificateFeatureOn === true && (
+        <div className="border border-gray-200 rounded-lg p-3">
+          <h3 className={`text-sm font-semibold ${theme.text.heading} mb-3`}>Partner Certificate</h3>
+          <div className="flex items-start gap-4">
+            {draft.partnerCertificate?.url && !(draft.partnerCertificate instanceof File) && (
+              <Avatar src={draft.partnerCertificate.url} name="Partner Certificate" shape="square" size="xl" />
+            )}
+            <div className="flex-1">
+              <FileUpload
+                label={draft.partnerCertificate?.url ? 'Replace Certificate' : 'Certificate Image'}
+                accept="image/*"
+                maxSize={5 * 1024 * 1024}
+                onFilesSelected={(files) => set({ partnerCertificate: files[0] || (draft.partnerCertificate?.url ? draft.partnerCertificate : null) })}
+                helperText="JPG, JPEG or PNG. Up to 5MB."
+              />
+            </div>
+          </div>
+          <div className="mt-4">
+            <TextArea
+              label="Certificate Text"
+              name="partnerCertificateText"
+              placeholder="e.g. Authorized partner since 2020"
+              rows={3}
+              maxLength={300}
+              showCharCount
+              value={draft.partnerCertificateText}
+              onChange={(e) => set({ partnerCertificateText: e.target.value })}
+            />
+            <p className={`mt-1 text-xs ${theme.text.muted}`}>
+              Shown on the storefront home page, just below the banner: beside the certificate on desktop, and under an "Authorized Partner" label with a "View certificate" link on mobile.
+            </p>
+          </div>
+        </div>
       )}
 
       {/* Floating social buttons: each needs its CompanyMaster flag here (WebsiteMaster is checked by the server). */}

@@ -2,7 +2,6 @@ import Switch from '../../../../components/common/Switch';
 import InputField from '../../../../components/common/InputField';
 import Dropdown from '../../../../components/common/DropDown';
 import FileUpload from '../../../../components/common/FileUpload';
-import TextArea from '../../../../components/common/TextArea';
 import Avatar from '../../../../components/common/Avatar';
 import theme from '../theme/theme';
 
@@ -12,12 +11,12 @@ const BANK_ACCOUNT_TYPE_OPTIONS = [
 ];
 
 /**
- * Online payment toggle, plus the Bank Transfer QR/details group and Partner
- * Certificate upload - both of the latter are entitlement-gated features
- * (CompanyMaster.showPaymentQRCodeAndBankDetails /
- * isShowingPartnerCertificateFeatureOn), so their sections are hidden
- * entirely when the vendor isn't entitled, matching the server-side gate in
- * companySettingsService.checkPaymentDetailsEntitlements.
+ * Online payment toggle, plus the Bank Transfer QR/details group and GPay number -
+ * entitlement-gated features (CompanyMaster.showPaymentQRCodeAndBankDetails /
+ * showGpayNumber), so their sections are hidden entirely when the vendor isn't
+ * entitled, matching the server-side gate in
+ * companySettingsService.checkPaymentDetailsEntitlements. (The partner
+ * certificate lives on the Storefront tab.)
  *
  * @param {Object} props.draft
  * @param {(patch: Object) => void} props.onChange
@@ -28,7 +27,6 @@ const PaymentBankSection = ({ draft, onChange, companyMaster }) => {
 
   const bankTransferEnabled = !!companyMaster?.showPaymentQRCodeAndBankDetails;
   const gpayEnabled = !!companyMaster?.showGpayNumber;
-  const partnerCertificateEnabled = !!companyMaster?.isShowingPartnerCertificateFeatureOn;
 
   return (
     <div className="space-y-6">
@@ -131,41 +129,6 @@ const PaymentBankSection = ({ draft, onChange, companyMaster }) => {
               value={draft.gpayNumber}
               onChange={(e) => set({ gpayNumber: e.target.value })}
             />
-          </div>
-        </div>
-      )}
-
-      {partnerCertificateEnabled && (
-        <div className="pt-4 border-t border-gray-100">
-          <h3 className={`text-sm font-semibold ${theme.text.heading} mb-3`}>Partner Certificate</h3>
-          <div className="flex items-start gap-4">
-            {draft.partnerCertificate?.url && !(draft.partnerCertificate instanceof File) && (
-              <Avatar src={draft.partnerCertificate.url} name="Partner Certificate" shape="square" size="xl" />
-            )}
-            <div className="flex-1">
-              <FileUpload
-                label={draft.partnerCertificate?.url ? 'Replace Certificate' : 'Certificate Image'}
-                accept="image/*"
-                maxSize={5 * 1024 * 1024}
-                onFilesSelected={(files) => set({ partnerCertificate: files[0] || (draft.partnerCertificate?.url ? draft.partnerCertificate : null) })}
-                helperText="JPG, JPEG or PNG. Up to 5MB."
-              />
-            </div>
-          </div>
-          <div className="mt-4">
-            <TextArea
-              label="Certificate Text"
-              name="partnerCertificateText"
-              placeholder="e.g. Authorized partner since 2020"
-              rows={3}
-              maxLength={300}
-              showCharCount
-              value={draft.partnerCertificateText}
-              onChange={(e) => set({ partnerCertificateText: e.target.value })}
-            />
-            <p className={`mt-1 text-xs ${theme.text.muted}`}>
-              Shown on the storefront home page, just below the banner: beside the certificate on desktop, and under an "Authorized Partner" label with a "View certificate" link on mobile.
-            </p>
           </div>
         </div>
       )}
