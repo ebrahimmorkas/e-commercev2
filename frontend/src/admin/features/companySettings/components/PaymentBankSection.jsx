@@ -164,7 +164,7 @@ const PaymentBankSection = ({ draft, onChange, companyMaster }) => {
               onChange={(e) => set({ partnerCertificateText: e.target.value })}
             />
             <p className={`mt-1 text-xs ${theme.text.muted}`}>
-              Shown on the storefront home page, just below the banner, after an "Authorized Partner" label, with a "View certificate" link. Enter the brand name (e.g. Preciosa); empty shows "Preciosa".
+              Shown on the storefront home page, just below the banner: beside the certificate on desktop, and under an "Authorized Partner" label with a "View certificate" link on mobile.
             </p>
           </div>
         </div>
