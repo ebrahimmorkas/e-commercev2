@@ -1492,6 +1492,8 @@ const shapeProductForResponse = (product, isAdmin, locationContext, shouldHide, 
         precedence: product.precedence,
         slug: product.slug,
         productCode: product.productCode,
+        // The vendor's own extra fields (field config) are admin-only.
+        ...(isAdmin ? { customFieldValues: product.customFieldValues || [] } : {}),
         bulkPricing: isAdmin ? productCombined.bulkPricing : internationalPrice.resolveTierPrices(productCombined.bulkPricing, priceZone),
         status: product.status,
         // Rating summary (see reviewService.recalcProductRatingAggregate). The

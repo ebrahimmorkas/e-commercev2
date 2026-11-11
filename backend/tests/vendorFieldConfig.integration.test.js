@@ -195,6 +195,12 @@ test('form path: hidden codes are auto-generated, custom values are checked, unk
     assert.equal(updated.isSuccess, true, updated.message);
     tee = await findProduct('Form Tee');
     assert.deepEqual(valuesOf(tee), { sapCode: '4455', boxCode: 'BX-1' });
+
+    // The Edit form and the admin list read them back (storefront reads never get them).
+    const forEdit = await productService.fetchProductByIdForAdmin(vendorId, tee._id);
+    assert.deepEqual(valuesOf(forEdit.meta.product), { sapCode: '4455', boxCode: 'BX-1' });
+    const adminList = await productService.fetchAllProductsForAdmin(vendorId, { q: 'Form Tee' }, { companySettingsData });
+    assert.deepEqual(valuesOf(adminList.meta.products.find((p) => p.name === 'Form Tee')), { sapCode: '4455', boxCode: 'BX-1' });
     assert.equal(tee.variants[0].sizes[0].sizeCode !== undefined, true);
 
     // Required / select checks.
