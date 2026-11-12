@@ -1,31 +1,23 @@
 import theme from '../theme/theme';
-import { GemIcon } from '../icons';
-import { useCallback, useState } from 'react';
-import { getStorefrontProducts } from '../../products/api/productApi';
-import { usePagedProducts } from '../../products/hooks/usePagedProducts';
-import { DEFAULT_SORT } from '../../products/constants/sortOptions';
-import SortSelect from '../../products/components/SortSelect';
-import InfiniteProductGrid from '../../products/components/InfiniteProductGrid';
-import { useStorefrontBanner } from '../../banners/hooks/useStorefrontBanner';
-import { ProductGridSkeleton } from '../../products/components/ProductSkeletons';
-import EmptyState from '../../../../components/common/EmptyState/EmptyState';
+import { useStorefrontTheme } from '../../../theme-engine/useStorefrontTheme';
+import HeroSection from '../sections/HeroSection';
+import CategoriesSection from '../sections/CategoriesSection';
+import AllProductsSection from '../sections/AllProductsSection';
 import CertificateSection from '../components/CertificateSection';
-import { useStorefrontCompanySettings } from '../../companySettings/hooks/useStorefrontCompanySettings';
+
+// Section registry: the `type` stored in the vendor's storefront config -> component.
+// The vendor chooses which sections show and in what order (see StorefrontSettings);
+// a type missing from here is skipped rather than breaking the page.
+const SECTIONS = {
+  hero: HeroSection,
+  categories: CategoriesSection,
+  certificate: CertificateSection,
+  allProducts: AllProductsSection,
+};
 
 /**
- * Decorative, non-interactive gem shapes floating in 3D behind the hero copy.
- * Purely visual - aria-hidden, and inert under prefers-reduced-motion via CSS.
- */
-const FloatingGems = () => (
-  <div className={theme.floatingGems.wrapper} aria-hidden="true">
-    {theme.floatingGems.items.map((className, index) => (
-      <GemIcon key={index} className={className} />
-    ))}
-  </div>
-);
-
-/**
- * Client-facing storefront landing page: hero banner + every product in one infinite-scroll grid.
+ * Client-facing storefront landing page, assembled from the vendor's ordered list of
+ * home sections.
  *
  * @param {Object} props
  * @param {Function} [props.onAddToCart] - Called with the selected product when "Add to Cart" is clicked.
@@ -34,130 +26,18 @@ const FloatingGems = () => (
  * @param {Function} [props.onIncrementItem] - Called with a cart-item id to increase its quantity.
  * @param {Function} [props.onDecrementItem] - Called with a cart-item id to decrease (or remove) its quantity.
  * @param {Function} [props.onSetItemQuantity] - Called with a cart-item id and a typed quantity.
- *  */
-const HomePage = ({ onAddToCart, onProductClick, cartItems = {}, onIncrementItem, onDecrementItem, onSetItemQuantity }) => {
-  const [sort, setSort] = useState(DEFAULT_SORT);
-  const fetchPage = useCallback((page) => getStorefrontProducts({ page, sort }), [sort]);
-  // One page at a time as the user scrolls (see InfiniteProductGrid) - never the whole catalogue at once.
-  const { products, total, hasMore, loading, loadingMore, error, loadMoreError, loadMore, reload } = usePagedProducts({
-    fetchPage,
-    resetKey: `home|${sort}`,
-  });
-
-  const scrollToProducts = () => document.getElementById('all-products')?.scrollIntoView({ behavior: 'smooth' });
-  const { banner, loading: bannerLoading, isRotating, next: nextBanner } = useStorefrontBanner();
-  const { companySettings } = useStorefrontCompanySettings();
-  const companyName = (companySettings?.companyName || '').trim();
+ */
+const HomePage = (props) => {
+  const { config } = useStorefrontTheme();
 
   return (
     <div className={theme.page.background}>
-      {bannerLoading ? (
-        // Hold a blank placeholder the same size as the eventual hero until
-        // we know what to show - otherwise the static fallback hero (or the
-        // wrong banner) paints for a frame first and gets swapped out once
-        // the fetch resolves, flashing on every load.
-        <section className="relative w-full aspect-video sm:aspect-auto sm:h-screen overflow-hidden bg-slate-900" />
-      ) : banner?.video ? (
-        // Full-bleed h-screen + object-cover works on wide screens, but forces
-        // a landscape video into a tall narrow box on mobile - object-cover
-        // then crops away most of the width to fill that height. Below sm,
-        // size the section by the video's own aspect ratio instead and use
-        // object-contain so the whole frame stays visible (letterboxed by the
-        // section background rather than cropped).
-        <section className="relative w-full sm:h-screen overflow-hidden sm:bg-slate-900">
-          <video
-            key={banner._id || banner.video}
-            className="block w-full h-auto sm:absolute sm:inset-0 sm:h-full sm:object-cover"
-            src={banner.video}
-            autoPlay
-            muted
-            loop={!isRotating}
-            onEnded={isRotating ? nextBanner : undefined}
-            playsInline
-          />
-        </section>
-      ) : banner?.image ? (
-        <section className="relative w-full sm:h-screen overflow-hidden sm:bg-slate-900">
-          <img
-            key={banner._id || banner.image}
-            className="block w-full h-auto sm:absolute sm:inset-0 sm:h-full sm:object-cover"
-            src={banner.image}
-            alt={banner.name || 'Banner'}
-          />
-        </section>
-      ) : (
-        // No banner (none uploaded, or the banner/settings request failed): a navy hero with the
-        // company name in 3D. Every failure path lands here, so shoppers never see an empty or
-        // broken banner - and the heading has a hardcoded fallback if the name itself is missing.
-        <section className={`${theme.hero.section} ${theme.hero.background} sm:py-32`}>
-          <FloatingGems />
-          <div className={theme.hero.container}>
-            <h1
-              className={`animate-sway3d [transform-style:preserve-3d] text-4xl sm:text-6xl font-extrabold tracking-tight text-white drop-shadow-[0_6px_0_rgba(180,120,10,0.55)] drop-shadow-[0_14px_24px_rgba(0,0,0,0.5)]`}
-            >
-              {companyName || 'Welcome to our store'}
-            </h1>
-            <button type="button" onClick={scrollToProducts} className={`${theme.hero.ctaLayout} ${theme.hero.cta}`}>
-              <span className={theme.hero.ctaShine} />
-              <span className={theme.hero.ctaLabel}>Shop Now</span>
-            </button>
-          </div>
-        </section>
-      )}
-
-      <CertificateSection />
-
-      <section id="all-products" className={`${theme.section.wrapper} scroll-mt-20`}>
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 className={`${theme.section.headingLayout} ${theme.section.heading}`}>All Products</h2>
-            {!loading && !error && total > 0 && (
-              <p className={`${theme.section.subheadingLayout} ${theme.section.subheading}`}>
-                {total.toLocaleString('en-IN')} product{total === 1 ? '' : 's'}
-              </p>
-            )}
-          </div>
-          <SortSelect value={sort} onChange={setSort} disabled={loading} />
-        </div>
-        {loading && <ProductGridSkeleton count={9} />}
-
-        {!loading && error && (
-          <EmptyState
-            title="Couldn't load products"
-            description={error}
-            action={
-              <button
-                type="button"
-                onClick={reload}
-                className={`${theme.hero.ctaSecondaryLayout} ${theme.hero.cta}`}
-              >
-                Try Again
-              </button>
-            }
-          />
-        )}
-
-        {!loading && !error && products.length === 0 && (
-          <EmptyState title="No products yet" description="Check back soon - new stock is added regularly." />
-        )}
-
-        {!loading && !error && products.length > 0 && (
-          <InfiniteProductGrid
-            products={products}
-            total={total}
-            hasMore={hasMore}
-            loadingMore={loadingMore}
-            loadMoreError={loadMoreError}
-            loadMore={loadMore}
-            cartItems={cartItems}
-            onAddToCart={onAddToCart}
-            onProductClick={onProductClick}
-            onIncrementItem={onIncrementItem}
-            onDecrementItem={onDecrementItem}
-            onSetItemQuantity={onSetItemQuantity}
-          />
-        )}
-      </section>
+      {config.sections
+        .filter((section) => section.enabled && SECTIONS[section.type])
+        .map((section) => {
+          const Section = SECTIONS[section.type];
+          return <Section key={section.type} {...props} />;
+        })}
     </div>
   );
 };

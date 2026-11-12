@@ -9,6 +9,7 @@ import ClientAuthProvider from './client/features/auth/context/AuthProvider'
 import RealtimeProvider from './admin/realtime/RealtimeProvider'
 import ClientRealtimeProvider from './client/realtime/ClientRealtimeProvider'
 import CurrencyProvider from './client/currency/CurrencyProvider'
+import StorefrontThemeProvider from './client/theme-engine/StorefrontThemeProvider'
 import ServerErrorScreen from './components/common/ServerErrorScreen'
 import DocumentBranding from './components/common/DocumentBranding/DocumentBranding'
 import StoreStatusGate from './components/common/StoreStatus'
@@ -30,7 +31,9 @@ const Root = () =>
     <ClientAuthProvider>
       <CurrencyProvider>
         <ClientRealtimeProvider>
-          <ClientApp />
+          <StorefrontThemeProvider>
+            <ClientApp />
+          </StorefrontThemeProvider>
         </ClientRealtimeProvider>
       </CurrencyProvider>
     </ClientAuthProvider>
