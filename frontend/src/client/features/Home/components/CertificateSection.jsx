@@ -68,15 +68,14 @@ const CertificateSection = () => {
   if (!imageUrl) return null;
 
   const certificate = (
-    <a
-      href={imageUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      title="Open full size"
-      className="group block rounded-2xl border border-slate-200 bg-white p-3 shadow-xl shadow-slate-900/10 transition-transform duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-amber-900/15"
+    <button
+      type="button"
+      onClick={() => setOpen(true)}
+      title="View full size"
+      className="group block w-full cursor-zoom-in rounded-2xl border border-slate-200 bg-white p-3 shadow-xl shadow-slate-900/10 transition-transform duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-amber-900/15"
     >
       <img src={imageUrl} alt="Certificate" loading="lazy" className="w-full max-h-[420px] rounded-lg bg-slate-50 object-contain" />
-    </a>
+    </button>
   );
 
   return (
@@ -96,8 +95,8 @@ const CertificateSection = () => {
             View certificate
           </button>
         </div>
-        {open && <CertificateModal imageUrl={imageUrl} onClose={() => setOpen(false)} />}
       </div>
+      {open && <CertificateModal imageUrl={imageUrl} onClose={() => setOpen(false)} />}
 
       {/* Desktop: text beside the certificate */}
       <div className="hidden border-y border-slate-200 bg-slate-50 md:block">
