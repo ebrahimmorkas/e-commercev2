@@ -22,6 +22,7 @@ const modules = [
     { moduleName: "Discount", shortModuleName: "Discount", code: "DISCOUNT", precedence: 7, isSystemModule: false, description: "Discount campaigns." },
     { moduleName: "Banner", shortModuleName: "Banner", code: "BANNER", precedence: 8, isSystemModule: false, description: "Homepage banners." },
     { moduleName: "Announcement", shortModuleName: "Announcement", code: "ANNOUNCEMENT", precedence: 9, isSystemModule: false, description: "Site announcements." },
+    { moduleName: "Storefront", shortModuleName: "Storefront", code: "STOREFRONT", precedence: 9.6, isSystemModule: true, description: "Storefront customization: theme, colours, fonts and home-page sections." },
     { moduleName: "Blog", shortModuleName: "Blog", code: "BLOG", precedence: 9.5, isSystemModule: false, description: "Storefront blog posts." },
     { moduleName: "Abandoned Cart", shortModuleName: "Abandoned Cart", code: "ABANDONED_CART", precedence: 10, isSystemModule: false, description: "Abandoned cart recovery." },
     { moduleName: "Free Cash", shortModuleName: "Free Cash", code: "FREE_CASH", precedence: 11, isSystemModule: false, description: "Free Cash campaigns." },

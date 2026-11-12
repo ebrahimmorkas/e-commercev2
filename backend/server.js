@@ -152,6 +152,7 @@ app.use('/api/cart', cartRoutes);
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/blogs', blogRoutes);
 app.use('/api/banners', bannerRoutes);
+app.use('/api/storefront', require('./routes/storefrontRoutes'));
 app.use('/api/address', addressRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
