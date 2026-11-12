@@ -200,7 +200,7 @@ const CheckoutPage = ({
         <div className={`h-fit rounded-xl border p-4 sm:p-5 ${theme.card.background} ${theme.card.border}`}>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Order Summary</h2>
           {isRepricedForAddress && (
-            <p className="mt-3 px-3 py-2 rounded-lg text-xs bg-amber-50 border border-amber-200 text-amber-800" role="status">
+            <p className="mt-3 px-3 py-2 rounded-lg text-xs bg-brand-50 border border-brand-200 text-brand-800" role="status">
               Prices updated for delivery to this address{deliveryPricing.currency?.code ? ` - shown in ${deliveryPricing.currency.code}` : ''}.
             </p>
           )}

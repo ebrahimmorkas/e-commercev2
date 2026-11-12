@@ -35,7 +35,7 @@ export const ReviewPhotos = ({ images, onOpenImage, size = 'w-20 h-20' }) => {
           key={image._id || image.url}
           type="button"
           onClick={() => onOpenImage?.(images, index)}
-          className={`${size} rounded-lg overflow-hidden border border-slate-200 bg-slate-50 cursor-pointer hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500`}
+          className={`${size} rounded-lg overflow-hidden border border-slate-200 bg-slate-50 cursor-pointer hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500`}
           aria-label={`View photo ${index + 1} of ${images.length}`}
         >
           <img src={image.url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
@@ -92,7 +92,7 @@ const ReviewCard = ({ review, onOpenImage }) => {
             <button
               type="button"
               onClick={() => setExpanded((open) => !open)}
-              className="ml-1 text-sm font-medium text-amber-700 hover:underline cursor-pointer"
+              className="ml-1 text-sm font-medium text-brand-700 hover:underline cursor-pointer"
             >
               {expanded ? 'Show less' : 'Read more'}
             </button>

@@ -15,7 +15,7 @@ const OrderStatusTimeline = ({ statusHistory = [] }) => {
           <li key={entry._id || `${entry.stepCode}-${index}`} className="flex gap-3">
             <div className="flex flex-col items-center">
               <span
-                className={`w-2.5 h-2.5 rounded-full shrink-0 ${isCurrent ? 'bg-amber-500' : 'bg-slate-300'}`}
+                className={`w-2.5 h-2.5 rounded-full shrink-0 ${isCurrent ? 'bg-brand-500' : 'bg-slate-300'}`}
               />
               {index < statusHistory.length - 1 && <span className="w-px flex-1 bg-slate-200 mt-1" />}
             </div>

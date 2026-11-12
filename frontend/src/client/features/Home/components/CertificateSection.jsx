@@ -71,7 +71,7 @@ const CertificateSection = () => {
       type="button"
       onClick={() => setOpen(true)}
       title="View full size"
-      className="group block w-full cursor-zoom-in rounded-2xl border border-slate-200 bg-white p-3 shadow-xl shadow-slate-900/10 transition-transform duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-amber-900/15"
+      className="group block w-full cursor-zoom-in rounded-2xl border border-slate-200 bg-white p-3 shadow-xl shadow-slate-900/10 transition-transform duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-brand-900/15"
     >
       <img src={imageUrl} alt="Certificate" loading="lazy" className="w-full max-h-[420px] rounded-lg bg-slate-50 object-contain" />
     </button>
@@ -80,16 +80,16 @@ const CertificateSection = () => {
   return (
     <section aria-label="Certificate">
       {/* Mobile: slim strip + modal */}
-      <div className="border-y border-amber-200 bg-gradient-to-r from-amber-50 via-white to-amber-50 md:hidden">
+      <div className="border-y border-brand-200 bg-gradient-to-r from-brand-50 via-white to-brand-50 md:hidden">
         <div className="mx-auto flex max-w-7xl flex-col items-center gap-2 px-4 py-4 text-center">
-          <span className="rounded-full border border-amber-300 bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
+          <span className="rounded-full border border-brand-300 bg-brand-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-brand-800">
             {badge || 'Authorized Partner'}
           </span>
           {text && text !== badge && <p className="text-sm font-semibold text-slate-900 whitespace-pre-line">{text}</p>}
           <button
             type="button"
             onClick={() => setOpen(true)}
-            className="text-sm font-semibold text-amber-700 underline decoration-amber-300 underline-offset-4 transition-colors hover:text-amber-900 hover:decoration-amber-600"
+            className="text-sm font-semibold text-brand-700 underline decoration-brand-300 underline-offset-4 transition-colors hover:text-brand-900 hover:decoration-brand-600"
           >
             View certificate
           </button>
@@ -103,7 +103,7 @@ const CertificateSection = () => {
           {written ? (
             <div className="grid items-center gap-14 md:grid-cols-2">
               <div>
-                <span className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
+                <span className="inline-flex items-center gap-2 rounded-full border border-brand-300 bg-brand-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-brand-800">
                   <AwardIcon className="h-4 w-4" />
                   Certified
                 </span>

@@ -277,7 +277,7 @@ const OrderDetailPage = ({ orderId, onBack, onGoHome }) => {
             placeholder="Tell us why you're cancelling"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm min-h-24 resize-none outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm min-h-24 resize-none outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
             required
             minLength={1}
             maxLength={500}

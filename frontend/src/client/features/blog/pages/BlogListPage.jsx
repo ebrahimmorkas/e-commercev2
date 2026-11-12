@@ -16,7 +16,7 @@ const pillClass = (active) =>
   `px-4 py-1.5 rounded-full text-sm font-medium border transition-colors cursor-pointer ${
     active
       ? 'bg-slate-900 border-slate-900 text-white'
-      : 'bg-white border-slate-200 text-slate-600 hover:border-amber-400 hover:text-amber-700'
+      : 'bg-white border-slate-200 text-slate-600 hover:border-brand-400 hover:text-brand-700'
   }`;
 
 /**
@@ -64,7 +64,7 @@ const BlogListPage = ({ onOpenPost }) => {
     <div className="bg-slate-50 min-h-[60vh]">
       <section className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-4 sm:px-6 py-14 sm:py-20">
         <div className="max-w-7xl mx-auto text-center">
-          <p className="text-sm font-semibold tracking-wide uppercase text-amber-400">Stories &amp; Updates</p>
+          <p className="text-sm font-semibold tracking-wide uppercase text-brand-400">Stories &amp; Updates</p>
           <h1 className="mt-3 text-3xl sm:text-5xl font-bold text-white">{title}</h1>
           <p className="mt-4 max-w-xl mx-auto text-slate-300">
             Guides, news and ideas from {companySettings?.companyName || 'our team'}.
@@ -77,7 +77,7 @@ const BlogListPage = ({ onOpenPost }) => {
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Search articles"
               aria-label="Search articles"
-              className="w-full rounded-full bg-white pl-11 pr-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 shadow-lg focus:outline-none focus:ring-2 focus:ring-amber-400"
+              className="w-full rounded-full bg-white pl-11 pr-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 shadow-lg focus:outline-none focus:ring-2 focus:ring-brand-400"
             />
           </div>
         </div>
@@ -120,7 +120,7 @@ const BlogListPage = ({ onOpenPost }) => {
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="px-4 py-2 rounded-full text-sm font-semibold bg-amber-500 hover:bg-amber-400 text-slate-900 cursor-pointer"
+                  className="px-4 py-2 rounded-full text-sm font-semibold bg-brand-500 hover:bg-brand-400 text-slate-900 cursor-pointer"
                 >
                   Clear filters
                 </button>

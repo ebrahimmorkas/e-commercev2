@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+/* Storefront accent scale. Defaults to the original amber look; a vendor's primary colour
+   overrides --sf-brand-* at runtime (see client/theme-engine/tokens.js). */
+@theme {
+  --color-brand-50: var(--sf-brand-50, #fffbeb);
+  --color-brand-100: var(--sf-brand-100, #fef3c7);
+  --color-brand-200: var(--sf-brand-200, #fde68a);
+  --color-brand-300: var(--sf-brand-300, #fcd34d);
+  --color-brand-400: var(--sf-brand-400, #fbbf24);
+  --color-brand-500: var(--sf-brand-500, #f59e0b);
+  --color-brand-600: var(--sf-brand-600, #d97706);
+  --color-brand-700: var(--sf-brand-700, #b45309);
+  --color-brand-800: var(--sf-brand-800, #92400e);
+  --color-brand-900: var(--sf-brand-900, #78350f);
+}
+
 @keyframes marquee {
   from {
     transform: translateX(0);
@@ -105,4 +120,9 @@
   .group:hover .shine-sweep::after {
     animation: none;
   }
+}
+
+/* Vendor font: only applies once a vendor picks one (--sf-font is unset otherwise). */
+body {
+  font-family: var(--sf-font, var(--default-font-family));
 }

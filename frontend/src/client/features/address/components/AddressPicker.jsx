@@ -91,7 +91,7 @@ const AddressPicker = ({ selectedId, onSelect }) => {
           <button
             type="button"
             onClick={reload}
-            className="px-4 py-2 rounded-full text-sm font-semibold cursor-pointer bg-amber-500 hover:bg-amber-400 text-slate-900"
+            className="px-4 py-2 rounded-full text-sm font-semibold cursor-pointer bg-brand-500 hover:bg-brand-400 text-slate-900"
           >
             Try Again
           </button>
@@ -110,7 +110,7 @@ const AddressPicker = ({ selectedId, onSelect }) => {
             <label
               key={address._id}
               className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors duration-150 ${
-                selectedId === address._id ? 'border-amber-500 bg-amber-50' : 'border-slate-200 hover:border-slate-300'
+                selectedId === address._id ? 'border-brand-500 bg-brand-50' : 'border-slate-200 hover:border-slate-300'
               }`}
             >
               <input
@@ -124,7 +124,7 @@ const AddressPicker = ({ selectedId, onSelect }) => {
                 <p className="text-sm font-semibold text-slate-900">
                   {address.address_name}
                   {address.isDefault && (
-                    <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-semibold uppercase align-middle">
+                    <span className="ml-2 px-1.5 py-0.5 rounded bg-brand-100 text-brand-800 text-[10px] font-semibold uppercase align-middle">
                       Default
                     </span>
                   )}
@@ -162,7 +162,7 @@ const AddressPicker = ({ selectedId, onSelect }) => {
       <button
         type="button"
         onClick={openAddForm}
-        className="mt-3 text-sm font-semibold text-amber-700 hover:text-amber-800 cursor-pointer"
+        className="mt-3 text-sm font-semibold text-brand-700 hover:text-brand-800 cursor-pointer"
       >
         + Add a new address
       </button>

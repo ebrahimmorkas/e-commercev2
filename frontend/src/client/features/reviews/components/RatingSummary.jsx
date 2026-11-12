@@ -38,14 +38,14 @@ const RatingSummary = ({ summary, activeRating, onSelectRating }) => {
                 onClick={() => onSelectRating?.(isActive ? null : star)}
                 aria-pressed={isActive}
                 className={`group w-full flex items-center gap-3 text-sm rounded-md px-1.5 py-1 transition-colors duration-150 ${
-                  isActive ? 'bg-amber-50' : 'hover:bg-slate-50'
+                  isActive ? 'bg-brand-50' : 'hover:bg-slate-50'
                 } disabled:cursor-default disabled:hover:bg-transparent cursor-pointer`}
               >
-                <span className={`w-12 shrink-0 text-left ${isActive ? 'font-semibold text-amber-700' : 'text-slate-600 group-hover:underline'}`}>
+                <span className={`w-12 shrink-0 text-left ${isActive ? 'font-semibold text-brand-700' : 'text-slate-600 group-hover:underline'}`}>
                   {star} star
                 </span>
                 <span className="flex-1 h-2.5 rounded-full bg-slate-100 overflow-hidden">
-                  <span className="block h-full rounded-full bg-amber-400" style={{ width: `${percent}%` }} />
+                  <span className="block h-full rounded-full bg-brand-400" style={{ width: `${percent}%` }} />
                 </span>
                 <span className="w-10 shrink-0 text-right text-slate-500">{percent}%</span>
               </button>

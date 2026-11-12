@@ -7,7 +7,7 @@ const SortSelect = ({ value, onChange, disabled = false }) => (
       value={value}
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}
-      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer"
     >
       {SORT_OPTIONS.map((option) => (
         <option key={option.value} value={option.value}>

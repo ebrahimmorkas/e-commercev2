@@ -98,7 +98,7 @@ const CategoryPanel = ({ categoryTree = [], loading }) => {
             href={`/category/${category._id}`}
             target="_blank"
             rel="noopener noreferrer"
-            className={`text-xs font-bold tracking-wide uppercase transition-colors duration-150 hover:text-amber-600 ${theme.panel.heading}`}
+            className={`text-xs font-bold tracking-wide uppercase transition-colors duration-150 hover:text-brand-600 ${theme.panel.heading}`}
           >
             {category.categoryName}
           </a>

@@ -110,7 +110,7 @@ const SearchBar = ({ onSearch, onProductSelect, onPanelOpenChange, className = '
         <div
           id={listId}
           role="listbox"
-          className="absolute left-0 right-0 top-full mt-2 z-50 overflow-hidden rounded-2xl border border-amber-100 bg-white shadow-lg"
+          className="absolute left-0 right-0 top-full mt-2 z-50 overflow-hidden rounded-2xl border border-brand-100 bg-white shadow-lg"
         >
           {loading && <p className="px-4 py-3 text-sm text-slate-500">Searching...</p>}
           {!loading && suggestions.length === 0 && (
@@ -126,7 +126,7 @@ const SearchBar = ({ onSearch, onProductSelect, onPanelOpenChange, className = '
                 aria-selected={index === highlight}
                 onMouseEnter={() => setHighlight(index)}
                 onClick={() => pickProduct(product)}
-                className={`flex w-full items-center gap-3 px-4 py-2 text-left cursor-pointer ${index === highlight ? 'bg-amber-50' : ''}`}
+                className={`flex w-full items-center gap-3 px-4 py-2 text-left cursor-pointer ${index === highlight ? 'bg-brand-50' : ''}`}
               >
                 <span className="h-10 w-10 shrink-0 overflow-hidden rounded-md bg-slate-100">
                   {product.image && <img src={product.image} alt="" loading="lazy" className="h-full w-full object-contain" />}
@@ -141,7 +141,7 @@ const SearchBar = ({ onSearch, onProductSelect, onPanelOpenChange, className = '
             <button
               type="button"
               onClick={runSearch}
-              className="w-full border-t border-amber-100 px-4 py-2.5 text-left text-sm font-medium text-amber-700 hover:bg-amber-50 cursor-pointer"
+              className="w-full border-t border-brand-100 px-4 py-2.5 text-left text-sm font-medium text-brand-700 hover:bg-brand-50 cursor-pointer"
             >
               See all results for &ldquo;{trimmed}&rdquo;
             </button>

@@ -41,7 +41,7 @@ const FreeCashPanel = ({ info, appliedFreeCash = [], saving, rejections = [], on
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Free Cash</h2>
         <p className="mt-2 text-sm text-slate-600">
           {onSignIn ? (
-            <button type="button" onClick={onSignIn} className="font-semibold text-amber-700 hover:text-amber-800 cursor-pointer">
+            <button type="button" onClick={onSignIn} className="font-semibold text-brand-700 hover:text-brand-800 cursor-pointer">
               Log in
             </button>
           ) : (
@@ -85,7 +85,7 @@ const FreeCashPanel = ({ info, appliedFreeCash = [], saving, rejections = [], on
           const expiry = formatExpiry(option.endDate);
           let labelClass = 'border-slate-200 hover:border-slate-300 cursor-pointer';
           if (isLocked) labelClass = 'border-slate-200 bg-slate-50 opacity-70 cursor-not-allowed';
-          else if (isSelected) labelClass = 'border-amber-400 bg-amber-50 cursor-pointer';
+          else if (isSelected) labelClass = 'border-brand-400 bg-brand-50 cursor-pointer';
           return (
             <li key={id}>
               <label className={`flex gap-3 rounded-lg border p-3 transition-colors duration-150 ${labelClass}`} aria-disabled={isLocked}>
@@ -95,7 +95,7 @@ const FreeCashPanel = ({ info, appliedFreeCash = [], saving, rejections = [], on
                   checked={isSelected}
                   onChange={() => toggle(id)}
                   disabled={saving || isLocked}
-                  className="mt-0.5 accent-amber-600 disabled:cursor-not-allowed"
+                  className="mt-0.5 accent-brand-600 disabled:cursor-not-allowed"
                 />
                 <span className="min-w-0 flex-1">
                   <span className="flex flex-wrap items-baseline justify-between gap-x-2">
@@ -111,7 +111,7 @@ const FreeCashPanel = ({ info, appliedFreeCash = [], saving, rejections = [], on
                     )}
                   </span>
                   {isLocked && option.lockedReason && (
-                    <span className="mt-0.5 block text-xs font-medium text-amber-700">{option.lockedReason}</span>
+                    <span className="mt-0.5 block text-xs font-medium text-brand-700">{option.lockedReason}</span>
                   )}
                   <span className="mt-0.5 block text-xs text-slate-500">
                     Balance {formatMoney(option.remainingAmount)}
@@ -155,7 +155,7 @@ const FreeCashPanel = ({ info, appliedFreeCash = [], saving, rejections = [], on
           type="button"
           onClick={() => onApply(usableSelectedIds)}
           disabled={!canApply}
-          className="flex-1 py-2 rounded-lg text-sm font-semibold cursor-pointer bg-slate-900 hover:bg-amber-600 text-white transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-900"
+          className="flex-1 py-2 rounded-lg text-sm font-semibold cursor-pointer bg-slate-900 hover:bg-brand-600 text-white transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-900"
         >
           {saving ? 'Saving...' : 'Apply'}
         </button>

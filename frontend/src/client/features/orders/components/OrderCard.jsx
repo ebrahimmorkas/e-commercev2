@@ -12,7 +12,7 @@ const OrderCard = ({ order, onClick }) => (
         <p className="text-sm font-bold text-slate-900">{order.orderNumber}</p>
         <p className="text-xs text-slate-400">Placed on {formatOrderDate(order.orderPlacedAt)}</p>
       </div>
-      <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+      <span className="px-3 py-1 rounded-full text-xs font-semibold bg-brand-50 text-brand-700 border border-brand-200">
         {order.currentStepName}
       </span>
     </div>

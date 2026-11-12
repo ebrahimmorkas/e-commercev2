@@ -91,7 +91,7 @@ const Footer = ({ onOpenPolicyPage }) => {
               {companySettings.contactPhoneNumber && (
                 <li className={`flex items-start gap-2 ${theme.contact.text}`}>
                   <PhoneIcon className={`w-4 h-4 mt-0.5 shrink-0 ${theme.contact.icon}`} />
-                  <a href={`tel:${companySettings.contactPhoneNumber}`} className="hover:text-amber-400 transition-colors">
+                  <a href={`tel:${companySettings.contactPhoneNumber}`} className="hover:text-brand-400 transition-colors">
                     {companySettings.contactPhoneNumber}
                   </a>
                 </li>
@@ -99,7 +99,7 @@ const Footer = ({ onOpenPolicyPage }) => {
               {companySettings.contactEmail && (
                 <li className={`flex items-start gap-2 ${theme.contact.text}`}>
                   <MailIcon className={`w-4 h-4 mt-0.5 shrink-0 ${theme.contact.icon}`} />
-                  <a href={`mailto:${companySettings.contactEmail}`} className="hover:text-amber-400 transition-colors break-all">
+                  <a href={`mailto:${companySettings.contactEmail}`} className="hover:text-brand-400 transition-colors break-all">
                     {companySettings.contactEmail}
                   </a>
                 </li>

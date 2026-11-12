@@ -132,7 +132,7 @@ const AddressesPage = ({ onBack }) => {
                 <p className="text-sm font-semibold text-slate-900">
                   {address.address_name}
                   {address.isDefault && (
-                    <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-semibold uppercase align-middle">
+                    <span className="ml-2 px-1.5 py-0.5 rounded bg-brand-100 text-brand-800 text-[10px] font-semibold uppercase align-middle">
                       Default
                     </span>
                   )}

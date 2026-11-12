@@ -40,7 +40,7 @@ const ItemThumb = ({ src, alt }) => {
 };
 
 const StatusPill = ({ label }) => (
-  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-amber-50 text-amber-700 border-amber-200">
+  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-brand-50 text-brand-700 border-brand-200">
     {label}
   </span>
 );
@@ -57,7 +57,7 @@ const ItemReviewAction = ({ item, reviewEntry, onWriteReview, onEditReview }) =>
         <button
           type="button"
           onClick={() => onEditReview?.(item, reviewEntry.review)}
-          className="text-xs font-semibold text-amber-700 hover:underline cursor-pointer"
+          className="text-xs font-semibold text-brand-700 hover:underline cursor-pointer"
         >
           Edit your review
         </button>
@@ -69,7 +69,7 @@ const ItemReviewAction = ({ item, reviewEntry, onWriteReview, onEditReview }) =>
     <button
       type="button"
       onClick={() => onWriteReview?.(item)}
-      className="mt-2 inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100 cursor-pointer"
+      className="mt-2 inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold border border-brand-300 text-brand-800 bg-brand-50 hover:bg-brand-100 cursor-pointer"
     >
       ★ Rate &amp; review
     </button>

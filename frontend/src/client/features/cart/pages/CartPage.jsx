@@ -188,7 +188,7 @@ const CartPage = ({
             <button
               type="button"
               onClick={() => setAddressModalOpen(true)}
-              className="ml-2 font-semibold text-amber-700 hover:text-amber-800 cursor-pointer"
+              className="ml-2 font-semibold text-brand-700 hover:text-brand-800 cursor-pointer"
             >
               {deliveringTo?.label ? 'Change' : 'Choose delivery address'}
             </button>
@@ -201,7 +201,7 @@ const CartPage = ({
         <button
           type="button"
           onClick={() => setAddressModalOpen(false)}
-          className="mt-4 w-full py-2.5 rounded-lg text-sm font-semibold cursor-pointer bg-slate-900 hover:bg-amber-600 text-white transition-colors duration-150"
+          className="mt-4 w-full py-2.5 rounded-lg text-sm font-semibold cursor-pointer bg-slate-900 hover:bg-brand-600 text-white transition-colors duration-150"
         >
           Done
         </button>

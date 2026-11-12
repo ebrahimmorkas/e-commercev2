@@ -5,7 +5,7 @@ import { getStatesForCountry, getCitiesForState } from '../utils/shapeLocations'
 import { useStorefrontCompanySettings } from '../../companySettings/hooks/useStorefrontCompanySettings';
 
 const inputClass =
-  'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500';
+  'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500';
 
 const EMPTY_FORM = {
   address_name: '',
@@ -206,7 +206,7 @@ const AddressForm = ({ isOpen, onClose, onSubmit, editingAddress = null, saving 
         <button
           type="submit"
           disabled={saving || locationsLoading}
-          className="w-full py-2.5 rounded-lg text-sm font-semibold cursor-pointer bg-slate-900 hover:bg-amber-600 text-white transition-colors duration-150 disabled:opacity-60"
+          className="w-full py-2.5 rounded-lg text-sm font-semibold cursor-pointer bg-slate-900 hover:bg-brand-600 text-white transition-colors duration-150 disabled:opacity-60"
         >
           {saving ? 'Saving...' : editingAddress ? 'Save changes' : 'Add address'}
         </button>

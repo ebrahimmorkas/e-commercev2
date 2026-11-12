@@ -8,7 +8,7 @@ import BlogContent from '../components/BlogContent';
 import { blogPath, formatBlogDate } from '../utils';
 
 const shareButtonClass =
-  'inline-flex items-center justify-center px-4 py-2 rounded-full border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:border-amber-400 hover:text-amber-700 transition-colors cursor-pointer';
+  'inline-flex items-center justify-center px-4 py-2 rounded-full border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:border-brand-400 hover:text-brand-700 transition-colors cursor-pointer';
 
 // Sets the tab title and meta description for the open post, restoring both on leave.
 const useDocumentSeo = (title, description) => {
@@ -73,7 +73,7 @@ const BlogPostPage = ({ slug, onBack, onOpenPost }) => {
     <button
       type="button"
       onClick={onBack}
-      className="text-sm font-medium text-amber-600 hover:text-amber-700 mb-6 cursor-pointer"
+      className="text-sm font-medium text-brand-600 hover:text-brand-700 mb-6 cursor-pointer"
     >
       &larr; Back to {listLabel}
     </button>
@@ -113,7 +113,7 @@ const BlogPostPage = ({ slug, onBack, onOpenPost }) => {
       <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-10">
         {backButton}
         {blog.category && (
-          <span className="block text-xs font-semibold tracking-wide uppercase text-amber-700">{blog.category}</span>
+          <span className="block text-xs font-semibold tracking-wide uppercase text-brand-700">{blog.category}</span>
         )}
         <h1 className="mt-2 text-3xl sm:text-4xl font-bold text-slate-900 leading-tight">{blog.title}</h1>
         <p className="mt-4 text-sm text-slate-500">

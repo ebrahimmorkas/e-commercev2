@@ -160,7 +160,7 @@ const ReviewForm = ({ productId, productName, orderOptions, orderId: fixedOrderI
             value={orderId}
             onChange={(e) => setOrderId(e.target.value)}
             disabled={saving}
-            className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+            className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
           >
             {orderOptions.map((order) => (
               <option key={order.orderId} value={order.orderId}>
@@ -190,7 +190,7 @@ const ReviewForm = ({ productId, productName, orderOptions, orderId: fixedOrderI
           maxLength={TITLE_MAX}
           disabled={saving}
           placeholder="What's most important to know?"
-          className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+          className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
         />
       </label>
 
@@ -202,7 +202,7 @@ const ReviewForm = ({ productId, productName, orderOptions, orderId: fixedOrderI
           maxLength={COMMENT_MAX}
           disabled={saving}
           placeholder="What did you like or dislike? How did you use this product?"
-          className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm min-h-32 resize-y outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+          className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm min-h-32 resize-y outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
         />
         <span className="mt-1 block text-right text-xs text-slate-400">
           {comment.length}/{COMMENT_MAX}
@@ -238,7 +238,7 @@ const ReviewForm = ({ productId, productName, orderOptions, orderId: fixedOrderI
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={saving}
-                className="w-20 h-20 rounded-lg border-2 border-dashed border-slate-300 text-slate-400 hover:border-amber-500 hover:text-amber-600 flex flex-col items-center justify-center text-xs cursor-pointer disabled:cursor-not-allowed"
+                className="w-20 h-20 rounded-lg border-2 border-dashed border-slate-300 text-slate-400 hover:border-brand-500 hover:text-brand-600 flex flex-col items-center justify-center text-xs cursor-pointer disabled:cursor-not-allowed"
               >
                 <span className="text-2xl leading-none">+</span>
                 Photo
@@ -293,7 +293,7 @@ const ReviewForm = ({ productId, productName, orderOptions, orderId: fixedOrderI
           <button
             type="submit"
             disabled={saving}
-            className="px-5 py-2 rounded-full text-sm font-semibold bg-amber-500 hover:bg-amber-400 text-slate-900 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            className="px-5 py-2 rounded-full text-sm font-semibold bg-brand-500 hover:bg-brand-400 text-slate-900 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {saving ? 'Saving...' : isEdit ? 'Save changes' : 'Submit review'}
           </button>

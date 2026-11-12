@@ -8,7 +8,7 @@ const theme = {
     text: 'text-slate-700',
   },
   separator: {
-    text: 'text-amber-500',
+    text: 'text-brand-500',
   },
 };
 

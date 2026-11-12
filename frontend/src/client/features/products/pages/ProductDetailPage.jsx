@@ -48,7 +48,7 @@ const BulkPricingTable = ({ bulkPricing, activeTier }) => {
         </thead>
         <tbody>
           {bulkPricing.map((tier, i) => (
-            <tr key={i} className={`border-t border-amber-200/60 ${tier === activeTier ? 'bg-amber-100' : ''}`}>
+            <tr key={i} className={`border-t border-brand-200/60 ${tier === activeTier ? 'bg-brand-100' : ''}`}>
               <td className={`px-4 py-2 ${theme.card.bulkText}`}>
                 {tier.minimumQuantity} - {tier.maximumQuantity}
                 {tier === activeTier && <span className="ml-2 text-xs font-semibold text-emerald-600">Applied</span>}
@@ -233,7 +233,7 @@ const ProductDetailPage = ({
                     setImageBroken(false);
                   }}
                   className={`relative w-16 h-16 rounded-lg overflow-hidden border-2 cursor-pointer ${
-                    activeImage === item.url ? 'border-amber-500' : 'border-transparent'
+                    activeImage === item.url ? 'border-brand-500' : 'border-transparent'
                   } ${theme.card.imageBackground}`}
                 >
                   {item.type === 'video' ? (
@@ -264,7 +264,7 @@ const ProductDetailPage = ({
               <button
                 type="button"
                 onClick={() => document.getElementById('reviews')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                className="mt-1.5 flex items-center gap-1.5 text-sm text-slate-600 hover:text-amber-700 cursor-pointer"
+                className="mt-1.5 flex items-center gap-1.5 text-sm text-slate-600 hover:text-brand-700 cursor-pointer"
               >
                 {count > 0 ? (
                   <>
@@ -349,7 +349,7 @@ const ProductDetailPage = ({
           </p>
 
           {selectedSize?.excludeText && (
-            <p className="mt-2 text-xs px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700">
+            <p className="mt-2 text-xs px-3 py-2 rounded-lg bg-brand-50 border border-brand-200 text-brand-700">
               {selectedSize.excludeText}
             </p>
           )}

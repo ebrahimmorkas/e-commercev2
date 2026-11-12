@@ -19,7 +19,7 @@ const Star = ({ fill, sizeClass }) => (
     </svg>
     {fill > 0 && (
       <span className="absolute inset-0 overflow-hidden" style={{ width: `${Math.min(1, fill) * 100}%` }}>
-        <svg viewBox="0 0 20 20" className={`${sizeClass} text-amber-400`} fill="currentColor">
+        <svg viewBox="0 0 20 20" className={`${sizeClass} text-brand-400`} fill="currentColor">
           <path d={STAR_PATH} />
         </svg>
       </span>
@@ -75,7 +75,7 @@ export const StarRatingInput = ({ value = 0, onChange, disabled = false, size = 
             onFocus={() => setHovered(star)}
             onBlur={() => setHovered(0)}
             onClick={() => onChange?.(star)}
-            className="cursor-pointer rounded transition-transform duration-100 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 disabled:cursor-not-allowed"
+            className="cursor-pointer rounded transition-transform duration-100 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-not-allowed"
           >
             <Star fill={star <= shown ? 1 : 0} sizeClass={sizeClass} />
           </button>

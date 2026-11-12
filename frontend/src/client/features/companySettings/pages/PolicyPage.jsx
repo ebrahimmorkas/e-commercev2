@@ -17,7 +17,7 @@ const PolicyPage = ({ link, onBack }) => {
       <button
         type="button"
         onClick={onBack}
-        className="text-sm font-medium text-amber-600 hover:text-amber-700 mb-6 cursor-pointer"
+        className="text-sm font-medium text-brand-600 hover:text-brand-700 mb-6 cursor-pointer"
       >
         &larr; Back to Home
       </button>

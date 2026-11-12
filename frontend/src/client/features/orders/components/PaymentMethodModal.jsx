@@ -31,7 +31,7 @@ const PaymentMethodModal = ({ isOpen, codEnabled, onlineEnabled, placing = false
     <label
       key={value}
       className={`flex items-start gap-3 rounded-xl border p-4 cursor-pointer transition-colors duration-150 ${
-        method === value ? 'border-amber-500 bg-amber-50' : 'border-slate-200 hover:border-slate-300'
+        method === value ? 'border-brand-500 bg-brand-50' : 'border-slate-200 hover:border-slate-300'
       }`}
     >
       <input
@@ -41,7 +41,7 @@ const PaymentMethodModal = ({ isOpen, codEnabled, onlineEnabled, placing = false
         checked={method === value}
         onChange={() => setPicked(value)}
         disabled={placing}
-        className="mt-1 accent-amber-600"
+        className="mt-1 accent-brand-600"
       />
       <span>
         <span className="block text-sm font-semibold text-slate-900">{title}</span>

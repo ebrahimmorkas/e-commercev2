@@ -20,10 +20,10 @@ const SORT_OPTIONS = [
 
 // The customer's own review, pinned above the list with an Edit button.
 const MyReviewCard = ({ review, onEdit, onOpenImage }) => (
-  <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+  <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-4">
     <div className="flex items-start justify-between gap-3">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Your review</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Your review</p>
         <div className="mt-1.5 flex flex-wrap items-center gap-2">
           <StarRating value={review.rating} size="sm" />
           {review.title && <span className="text-sm font-bold text-slate-900">{review.title}</span>}
@@ -111,7 +111,7 @@ const ProductReviewsSection = ({ productId, productName, settings, onSignIn, onR
           <button
             type="button"
             onClick={() => setFormState({ orderOptions: status.eligibleOrders })}
-            className="mt-3 w-full px-4 py-2 rounded-full text-sm font-semibold bg-amber-500 hover:bg-amber-400 text-slate-900 cursor-pointer"
+            className="mt-3 w-full px-4 py-2 rounded-full text-sm font-semibold bg-brand-500 hover:bg-brand-400 text-slate-900 cursor-pointer"
           >
             Write a review
           </button>
@@ -159,7 +159,7 @@ const ProductReviewsSection = ({ productId, productName, settings, onSignIn, onR
                 {reviews.rating ? (
                   <>
                     {total} {total === 1 ? 'review' : 'reviews'} with {reviews.rating} star{reviews.rating > 1 ? 's' : ''}{' '}
-                    <button type="button" onClick={() => reviews.setRating(null)} className="ml-1 font-medium text-amber-700 hover:underline cursor-pointer">
+                    <button type="button" onClick={() => reviews.setRating(null)} className="ml-1 font-medium text-brand-700 hover:underline cursor-pointer">
                       Clear filter
                     </button>
                   </>
@@ -174,7 +174,7 @@ const ProductReviewsSection = ({ productId, productName, settings, onSignIn, onR
                 <select
                   value={reviews.sort}
                   onChange={(e) => reviews.setSort(e.target.value)}
-                  className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 cursor-pointer"
+                  className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 cursor-pointer"
                 >
                   {SORT_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -193,7 +193,7 @@ const ProductReviewsSection = ({ productId, productName, settings, onSignIn, onR
           ) : reviews.error ? (
             <div className="py-8 text-sm text-slate-600">
               {reviews.error}{' '}
-              <button type="button" onClick={reviews.reload} className="font-medium text-amber-700 hover:underline cursor-pointer">
+              <button type="button" onClick={reviews.reload} className="font-medium text-brand-700 hover:underline cursor-pointer">
                 Try again
               </button>
             </div>

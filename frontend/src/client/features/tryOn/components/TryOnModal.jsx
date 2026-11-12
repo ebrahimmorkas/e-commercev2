@@ -280,7 +280,7 @@ const TryOnModal = ({ onClose }) => {
                 type="button"
                 onClick={() => handleSelectFrame(frame)}
                 className={`p-3 rounded-xl border-2 text-left transition-colors cursor-pointer ${
-                  frame.id === selectedFrame.id ? 'border-amber-500 bg-amber-50' : 'border-slate-200 hover:border-slate-300'
+                  frame.id === selectedFrame.id ? 'border-brand-500 bg-brand-50' : 'border-slate-200 hover:border-slate-300'
                 }`}
               >
                 <img src={frame.image} alt={frame.name} className="w-full h-12 object-contain" />

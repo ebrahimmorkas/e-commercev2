@@ -8,7 +8,7 @@ import { useStorefrontCompanySettings } from '../../companySettings/hooks/useSto
 import htmLogo from '../../../../assets/htm_logo.jpeg';
 
 const inputClass =
-  'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500';
+  'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500';
 
 const EyeIcon = (props) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -346,7 +346,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 rounded-lg text-sm font-semibold cursor-pointer bg-slate-900 hover:bg-amber-600 text-white transition-colors duration-150 disabled:opacity-60"
+            className="w-full py-2.5 rounded-lg text-sm font-semibold cursor-pointer bg-slate-900 hover:bg-brand-600 text-white transition-colors duration-150 disabled:opacity-60"
           >
             {loading ? 'Sending code...' : 'Send code'}
           </button>
@@ -354,7 +354,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
             <button
               type="button"
               onClick={() => switchMode('login')}
-              className="font-semibold text-amber-600 hover:text-amber-700 cursor-pointer"
+              className="font-semibold text-brand-600 hover:text-brand-700 cursor-pointer"
               disabled={loading}
             >
               Back to sign in
@@ -405,7 +405,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 rounded-lg text-sm font-semibold cursor-pointer bg-slate-900 hover:bg-amber-600 text-white transition-colors duration-150 disabled:opacity-60"
+            className="w-full py-2.5 rounded-lg text-sm font-semibold cursor-pointer bg-slate-900 hover:bg-brand-600 text-white transition-colors duration-150 disabled:opacity-60"
           >
             {loading ? 'Resetting...' : 'Reset password'}
           </button>
@@ -413,7 +413,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
             <button
               type="button"
               onClick={() => switchMode('login')}
-              className="font-semibold text-amber-600 hover:text-amber-700 cursor-pointer"
+              className="font-semibold text-brand-600 hover:text-brand-700 cursor-pointer"
               disabled={loading}
             >
               Back to sign in
@@ -421,7 +421,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
             <button
               type="button"
               onClick={sendResetCode}
-              className="font-semibold text-amber-600 hover:text-amber-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="font-semibold text-brand-600 hover:text-brand-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={loading || resendCooldown > 0}
             >
               {resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : 'Resend code'}
@@ -454,7 +454,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
               <button
                 type="button"
                 onClick={openForgotPassword}
-                className="text-sm font-semibold text-amber-600 hover:text-amber-700 cursor-pointer"
+                className="text-sm font-semibold text-brand-600 hover:text-brand-700 cursor-pointer"
                 disabled={loading}
               >
                 Forgot password?
@@ -464,7 +464,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 rounded-lg text-sm font-semibold cursor-pointer bg-slate-900 hover:bg-amber-600 text-white transition-colors duration-150 disabled:opacity-60"
+            className="w-full py-2.5 rounded-lg text-sm font-semibold cursor-pointer bg-slate-900 hover:bg-brand-600 text-white transition-colors duration-150 disabled:opacity-60"
           >
             {loading ? 'Signing in...' : 'Sign in'}
           </button>
@@ -473,7 +473,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
             <button
               type="button"
               onClick={() => switchMode('register')}
-              className="font-semibold text-amber-600 hover:text-amber-700 cursor-pointer"
+              className="font-semibold text-brand-600 hover:text-brand-700 cursor-pointer"
               disabled={loading}
             >
               Create account
@@ -529,7 +529,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
               type="checkbox"
               checked={registerForm.whatsappSameAsPhone}
               onChange={(e) => setRegisterForm((f) => ({ ...f, whatsappSameAsPhone: e.target.checked, whatsapp_no: '' }))}
-              className="h-4 w-4 rounded border-slate-300 accent-amber-600 cursor-pointer"
+              className="h-4 w-4 rounded border-slate-300 accent-brand-600 cursor-pointer"
               disabled={loading}
             />
             WhatsApp number is the same as my phone number
@@ -608,7 +608,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
                       ...(e.target.checked ? {} : { businessFullName: '', trn: '' }),
                     }))
                   }
-                  className="h-4 w-4 rounded border-slate-300 accent-amber-600 cursor-pointer"
+                  className="h-4 w-4 rounded border-slate-300 accent-brand-600 cursor-pointer"
                   disabled={loading}
                 />
                 I am tax registered
@@ -654,7 +654,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 rounded-lg text-sm font-semibold cursor-pointer bg-slate-900 hover:bg-amber-600 text-white transition-colors duration-150 disabled:opacity-60"
+            className="w-full py-2.5 rounded-lg text-sm font-semibold cursor-pointer bg-slate-900 hover:bg-brand-600 text-white transition-colors duration-150 disabled:opacity-60"
           >
             {loading ? 'Creating account...' : 'Create account'}
           </button>
@@ -663,7 +663,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
             <button
               type="button"
               onClick={() => switchMode('login')}
-              className="font-semibold text-amber-600 hover:text-amber-700 cursor-pointer"
+              className="font-semibold text-brand-600 hover:text-brand-700 cursor-pointer"
               disabled={loading}
             >
               Sign in
