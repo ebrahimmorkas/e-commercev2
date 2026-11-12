@@ -193,6 +193,15 @@ const companySettingsSchema = new mongoose.Schema({
     default: ''
   },
 
+  // Hero badge on the storefront home page (e.g. "Preciosa® Crystals Authorized Partner")
+  // and the label on the mobile certificate strip. Same entitlement gate as partnerCertificate.
+  partnerBadgeText: {
+    type: String,
+    trim: true,
+    maxlength: 100,
+    default: ''
+  },
+
   // The vendor's downloadable catalogue (PDF), shown as a storefront navbar
   // icon. Gated by CompanyMaster.isCatalogueDownloadFeatureOn (vendor-level only;
   // no WebsiteMaster switch). Stored via fileUploadService as a FileAsset.

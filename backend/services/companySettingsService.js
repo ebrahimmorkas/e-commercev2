@@ -56,7 +56,7 @@ const SIMPLE_FIELDS = [
     'adminCity', 'adminState', 'adminPincode', 'adminEmail', 'companyName', 'instagramId',
     'facebookId', 'privacyPolicy', 'cancelPolicy', 'termsAndConditions', 'aboutUs', 'returnRefundPolicy', 'shippingPolicy', 'policyDisplayMode',
     'contactEmail', 'contactPhoneNumber', 'contactAddress',
-    'showAnnouncements', 'isAnnouncementRotationOn', 'showBanners', 'isBannerRotationOn', 'showBlog', 'blogNavLabel', 'whatsappNumber', 'showFloatingWhatsapp', 'showFloatingInstagram', 'showFloatingFacebook', 'partnerCertificateText',
+    'showAnnouncements', 'isAnnouncementRotationOn', 'showBanners', 'isBannerRotationOn', 'showBlog', 'blogNavLabel', 'whatsappNumber', 'showFloatingWhatsapp', 'showFloatingInstagram', 'showFloatingFacebook', 'partnerCertificateText', 'partnerBadgeText',
     'isTaxRegistrationOnSignupEnabled', 'isCityOptional',
     'taxRegistrationNumber', 'invoicePrefix', 'invoiceDeclaration',
     'invoicePrintDuplicateCopy', 'invoiceRoundOffToWhole', 'emailInvoiceOnOrderPlaced',
@@ -133,7 +133,9 @@ const checkPaymentDetailsEntitlements = async (vendorId, data, files, companyMas
         // (diff-based like the groups above, so an unrelated save never trips it).
         const certificateTextTouched = data.partnerCertificateText !== undefined
             && normalizeEmpty(data.partnerCertificateText) !== normalizeEmpty(existingSettings ? existingSettings.partnerCertificateText : undefined);
-        const certificateTouched = !!files?.partnerCertificate?.[0] || certificateTextTouched;
+        const badgeTextTouched = data.partnerBadgeText !== undefined
+            && normalizeEmpty(data.partnerBadgeText) !== normalizeEmpty(existingSettings ? existingSettings.partnerBadgeText : undefined);
+        const certificateTouched = !!files?.partnerCertificate?.[0] || certificateTextTouched || badgeTextTouched;
         if (certificateTouched) {
             const check = await common.checkFeatureOnOrOff(
                 vendorId, websiteMasterData, companyMasterData,

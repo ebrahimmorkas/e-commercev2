@@ -80,6 +80,7 @@ const companySettingsFieldsSchema = {
     showFloatingInstagram: Joi.boolean().label('Show Instagram button'),
     showFloatingFacebook: Joi.boolean().label('Show Facebook button'),
     partnerCertificateText: Joi.string().trim().max(300).allow('', null).label('Certificate text'),
+    partnerBadgeText: Joi.string().trim().max(100).allow('', null).label('Partner badge text'),
     blogNavLabel: Joi.string().trim().min(1).max(20).label('Blog menu label'),
     isAnnouncementRotationOn: Joi.boolean().label('Announcement rotation'),
     showBanners: Joi.boolean().label('Show banners'),

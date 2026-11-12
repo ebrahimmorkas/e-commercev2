@@ -242,6 +242,8 @@ const getCompanySettings = async (req, res) => {
       ? { url: settings.partnerCertificate.url }
       : null;
     publicSettings.partnerCertificateText = publicSettings.partnerCertificate ? (settings.partnerCertificateText || '') : '';
+    // Hero badge text: same two feature switches as the certificate, but not dependent on an image.
+    publicSettings.partnerBadgeText = certificateOn ? (settings.partnerBadgeText || '') : '';
     // Floating social buttons: per icon, both feature switches + the vendor's own toggle + a value to link to.
     const floatOn = (flag) => !!req.websiteMasterData?.[flag] && !!req.companyMasterData?.[flag];
     const waDigits = String(settings.whatsappNumber || '').replace(/\D/g, '');

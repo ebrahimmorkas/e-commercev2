@@ -126,6 +126,7 @@ export const emptyDraft = () => ({
   paymentScanner: null,
   partnerCertificate: null,
   partnerCertificateText: '',
+  partnerBadgeText: '',
 });
 
 /**
@@ -251,6 +252,7 @@ export const mapApiSettingsToDraft = (doc) => ({
   paymentScanner: doc.paymentScanner || null,
   partnerCertificate: doc.partnerCertificate || null,
   partnerCertificateText: doc.partnerCertificateText || '',
+  partnerBadgeText: doc.partnerBadgeText || '',
 });
 
 // Mirrors BANK_TRANSFER_FIELDS in backend/services/companySettingsService.js.
