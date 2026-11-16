@@ -933,8 +933,8 @@ const companyMasterSchema = mongoose.Schema({
         default: null
     },
     // Vendor entitlement: whether this vendor may fill CompanySettings'
-    // paymentScanner + bank transfer fields (bankAccountHolderName, bankName,
-    // bankAccountNumber, ifscCode, branchName, swiftCode, bankAccountType).
+    // paymentScanner + bank details (bankDetails - per-country fields from
+    // BankFieldTemplate, e.g. IFSC Code in India, IBAN in the UAE).
     // Sits below WebsiteMaster.isShowingPaymentQRCodeAndBankDetailsFeatureOn -
     // see companySettingsService.js.
     showPaymentQRCodeAndBankDetails: {

@@ -124,7 +124,7 @@ const getCheckoutPaymentOptions = async (req, res) => {
     const vendorId = req.vendorId;
     try {
         const result = await paymentService.getCheckoutPaymentOptions(
-            vendorId, req.websiteMasterData, req.companyMasterData, req.companySettingsData, req.fieldConfigData
+            vendorId, req.websiteMasterData, req.companyMasterData, req.companySettingsData
         );
         if (!result.isSuccess) {
             return common.sendError(res, result.statusCode, result.message);
@@ -133,6 +133,26 @@ const getCheckoutPaymentOptions = async (req, res) => {
     } catch (error) {
         logger.logException('paymentController: getCheckoutPaymentOptions - Exception while fetching payment options', { vendorId, error });
         return common.sendError(res, 500, 'Could not load payment options.');
+    }
+};
+
+// Checkout couldn't offer any way to pay - the customer reports it to the
+// platform owner (emailed). The customer's details come from their account.
+const reportCheckoutIssue = async (req, res) => {
+    const vendorId = req.vendorId;
+    try {
+        const result = await paymentService.reportCheckoutPaymentIssue(
+            vendorId, req.user._id, req.vendorData,
+            req.websiteMasterData, req.companyMasterData, req.companySettingsData,
+            req.body
+        );
+        if (!result.isSuccess) {
+            return common.sendError(res, result.statusCode, result.message);
+        }
+        return common.sendSuccess(res, result.statusCode, result.message);
+    } catch (error) {
+        logger.logException('paymentController: reportCheckoutIssue - Exception while reporting a checkout problem', { vendorId, error });
+        return common.sendError(res, 500, 'Your report could not be sent right now.');
     }
 };
 
@@ -192,6 +212,7 @@ module.exports = {
     initiateOnlinePayment,
     selectCashOnDelivery,
     getCheckoutPaymentOptions,
+    reportCheckoutIssue,
     selectManualTransfer,
     getPaymentStatus,
     handleGatewayCallback

@@ -8,6 +8,8 @@ import { selectCashOnDelivery, selectManualTransfer } from '../api/paymentApi';
 import { usePaymentOptions } from '../hooks/usePaymentOptions';
 import PaymentMethodModal, { PAYMENT_METHOD_CHOICES } from '../components/PaymentMethodModal';
 import BankTransferModal from '../components/BankTransferModal';
+import PaymentUnavailableNotice from '../components/PaymentUnavailableNotice';
+import { CHECKOUT_ISSUE_REASONS } from '../checkoutIssueConstants';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { useShippingEstimate } from '../../cart/hooks/useShippingEstimate';
 import { formatShippingEstimate, shippingAmountForTotal } from '../../cart/utils/formatShipping';
@@ -66,7 +68,7 @@ const CheckoutPage = ({
   const [error, setError] = useState('');
   const { user } = useAuth();
   // What the store offers (COD / pay by QR or bank transfer), from Company Settings.
-  const { options: paymentOptions, loading: paymentOptionsLoading } = usePaymentOptions();
+  const { options: paymentOptions, loading: paymentOptionsLoading, error: paymentOptionsError, reload: reloadPaymentOptions } = usePaymentOptions();
   const [methodModalOpen, setMethodModalOpen] = useState(false);
   const [methodError, setMethodError] = useState('');
   // Set once an order placed with "Pay online" is waiting on the QR / bank details modal.
@@ -106,6 +108,16 @@ const CheckoutPage = ({
 
   const offersCod = paymentOptions?.cod === true;
   const offersOnline = !!paymentOptions?.online;
+  // No way to pay: the options could not be loaded (so it's unknown whether
+  // COD is allowed), or COD is off and there are no bank details to show.
+  // The order is blocked - never placed without a payment method.
+  const paymentIssueReason = paymentOptionsLoading
+    ? null
+    : !paymentOptions
+      ? CHECKOUT_ISSUE_REASONS.OPTIONS_FAILED
+      : !offersCod && !offersOnline
+        ? CHECKOUT_ISSUE_REASONS.NO_PAYMENT_OPTION
+        : null;
 
   const handlePlaceOrder = async () => {
     if (!selectedAddressId) {
@@ -114,16 +126,12 @@ const CheckoutPage = ({
     }
     setError('');
 
-    // The store offers a choice: ask how they want to pay before confirming.
-    if (offersCod || offersOnline) {
-      setMethodError('');
-      setMethodModalOpen(true);
-      return;
-    }
+    // No way to pay - the notice under the button explains it (the server refuses too).
+    if (paymentIssueReason) return;
 
-    // Nothing to choose (or the options could not be loaded): place it as before.
-    const order = await submitOrder(setError);
-    if (order) onPlaced(order._id);
+    // Ask how they want to pay before confirming.
+    setMethodError('');
+    setMethodModalOpen(true);
   };
 
   const handleConfirmMethod = async (method) => {
@@ -241,11 +249,21 @@ const CheckoutPage = ({
           <button
             type="button"
             onClick={handlePlaceOrder}
-            disabled={placing || paymentOptionsLoading}
+            disabled={placing || paymentOptionsLoading || !!paymentIssueReason}
             className={`mt-5 w-full py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition-colors duration-150 disabled:opacity-60 ${theme.card.button}`}
           >
             {placing ? 'Placing order...' : 'Place Order'}
           </button>
+          {paymentIssueReason && (
+            <PaymentUnavailableNotice
+              reason={paymentIssueReason}
+              errorMessage={paymentOptionsError}
+              cartTotal={formatMoney(subtotal - discountDeduction - freeCashDeduction + shippingAmountForTotal(shippingEstimate) + taxAmountForTotal(taxEstimate))}
+              itemCount={lineItems.reduce((sum, item) => sum + item.quantity, 0)}
+              retrying={paymentOptionsLoading}
+              onRetry={reloadPaymentOptions}
+            />
+          )}
         </div>
       </div>
 

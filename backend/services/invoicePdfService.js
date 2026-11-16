@@ -295,13 +295,17 @@ const buildTaxSummary = (invoice, money) => {
 };
 
 const buildBankBox = (bank) => {
-    const rows = [
-        ['A/c Holder\'s Name', bank.accountHolderName],
-        ['Bank Name', bank.bankName],
-        ['A/c No. / IBAN', bank.accountNumber],
-        ['Branch', bank.branch],
-        ['SWIFT Code', bank.swiftCode]
-    ].filter(([, value]) => value);
+    // bank.fields: the store country's bank fields (per-country templates).
+    // Invoices issued before those keep their fixed set of fields.
+    const rows = (Array.isArray(bank.fields) && bank.fields.length > 0
+        ? bank.fields.map((field) => [field.label, field.value])
+        : [
+            ['A/c Holder\'s Name', bank.accountHolderName],
+            ['Bank Name', bank.bankName],
+            ['A/c No. / IBAN', bank.accountNumber],
+            ['Branch', bank.branch],
+            ['SWIFT Code', bank.swiftCode]
+        ]).filter(([, value]) => value);
 
     return {
         table: {

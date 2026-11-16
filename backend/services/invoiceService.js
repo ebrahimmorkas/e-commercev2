@@ -8,6 +8,7 @@ const StateMaster = require('../models/StateMaster');
 const counterService = require('./counterService');
 const emailService = require('./emailService');
 const invoicePdfService = require('./invoicePdfService');
+const bankFieldTemplateService = require('./bankFieldTemplateService');
 const common = require('../utils/common');
 const logger = require('../utils/logger');
 const { amountInWords } = require('../utils/amountInWords');
@@ -63,17 +64,16 @@ const buildSeller = async (companySettingsData) => {
     }
 };
 
-const buildBank = (companySettingsData) => {
-    const settings = companySettingsData || {};
-    const hasAnyBankDetail = settings.bankName || settings.bankAccountNumber || settings.bankAccountHolderName;
-    if (!hasAnyBankDetail) return null;
-    return {
-        accountHolderName: settings.bankAccountHolderName || null,
-        bankName: settings.bankName || null,
-        accountNumber: settings.bankAccountNumber || null,
-        branch: settings.branchName || null,
-        swiftCode: settings.swiftCode || null
-    };
+// The store country's bank fields that are filled in, as printed on the
+// invoice - null when there is nothing to print.
+const buildBank = async (companySettingsData) => {
+    try {
+        const rows = await bankFieldTemplateService.resolveBankDetailsForDisplay(companySettingsData);
+        if (!rows) return null;
+        return { fields: rows.map((row) => ({ label: row.label, value: row.value })) };
+    } catch (err) {
+        throw err;
+    }
 };
 
 const buildBuyer = async (order) => {
@@ -260,7 +260,7 @@ const issueInvoiceForOrder = async (order, { companySettingsData, companyMasterD
                 isTaxInvoice: !!seller.trn,
                 taxLabel,
                 seller,
-                bank: buildBank(companySettingsData),
+                bank: await buildBank(companySettingsData),
                 declaration: companySettingsData?.invoiceDeclaration || null,
                 buyer,
                 placeOfSupply,

@@ -6,9 +6,8 @@ const authenticate = require('../middlewares/authenticate');
 const authorize = require('../middlewares/authorize');
 const vendorDetection = require('../middlewares/vendorDetection');
 const ensureVendorDataCached = require('../middlewares/ensureVendorDataCached');
-const loadVendorFieldConfig = require('../middlewares/loadVendorFieldConfig');
 const validate = require('../middlewares/validate');
-const { orderIdParamSchema, gatewayCallbackParamSchema } = require('../middlewares/validations/paymentValidations');
+const { orderIdParamSchema, gatewayCallbackParamSchema, reportCheckoutIssueSchema } = require('../middlewares/validations/paymentValidations');
 
 const vendorContext = [authenticate, vendorDetection, ensureVendorDataCached];
 
@@ -30,8 +29,11 @@ router.post(
 );
 
 // What checkout can offer (COD, QR / bank details, admin WhatsApp) - customers only.
-// loadVendorFieldConfig: the vendor's own names for bank fields (e.g. IFSC -> IBAN).
-router.get('/options', ...vendorContext, loadVendorFieldConfig, authorize('user'), paymentController.getCheckoutPaymentOptions);
+router.get('/options', ...vendorContext, authorize('user'), paymentController.getCheckoutPaymentOptions);
+
+// Checkout had no way to pay (COD off, bank details not loaded / not set up):
+// the customer reports it - emailed to the platform owner (PLATFORM_OWNER_EMAIL).
+router.post('/report-checkout-issue', ...vendorContext, authorize('user'), validate(reportCheckoutIssueSchema, 'body'), paymentController.reportCheckoutIssue);
 
 router.post(
     '/:orderId/manual-transfer',

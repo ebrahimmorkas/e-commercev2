@@ -2,8 +2,6 @@ import Modal from '../../../../components/common/Modal/Modal';
 import theme from '../../Home/theme/theme';
 import { useCurrency } from '../../../currency/useCurrency';
 
-const ACCOUNT_TYPES = { SAVINGS: 'Savings', CURRENT: 'Current' };
-
 // wa.me wants digits only, country code included ("+91 98765 43210" -> "919876543210").
 const whatsappDigits = (number) => String(number || '').replace(/\D/g, '');
 
@@ -24,6 +22,8 @@ const BankRow = ({ label, value }) =>
  * @param {Object} props
  * @param {boolean} props.isOpen
  * @param {Object} props.online - { scannerUrl, bank, whatsappNumber, companyName } from /payments/options.
+ *   bank is { fields: [{ key, label, value }] } - the store country's bank details
+ *   (e.g. IFSC Code in India, IBAN in the UAE), already in display order.
  * @param {Object} props.order - The placed order ({ orderNumber, grandTotal }).
  * @param {string} [props.customerName]
  * @param {string} [props.doneLabel] - Text of the close button.
@@ -102,14 +102,9 @@ const BankTransferModal = ({ isOpen, online, order, customerName = '', doneLabel
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Bank details</h3>
             <dl className="divide-y divide-slate-100">
-              <BankRow label="Account holder" value={bank.accountHolderName} />
-              <BankRow label="Bank" value={bank.bankName} />
-              <BankRow label="Account number" value={bank.accountNumber} />
-              {/* ifscLabel: the store's own name for it, e.g. "IBAN Number" */}
-              <BankRow label={bank.ifscLabel || 'IFSC'} value={bank.ifscCode} />
-              <BankRow label="Branch" value={bank.branchName} />
-              <BankRow label="SWIFT" value={bank.swiftCode} />
-              <BankRow label="Account type" value={ACCOUNT_TYPES[bank.accountType] || bank.accountType} />
+              {(bank.fields || []).map((field) => (
+                <BankRow key={field.key} label={field.label} value={field.value} />
+              ))}
             </dl>
           </div>
         )}

@@ -1,4 +1,5 @@
 import { ADMIN_PRODUCT_PAGE_SIZES, DEFAULT_ADMIN_PRODUCTS_PER_PAGE } from '../../products/utils/productListFilters';
+import { mapBankDetailsToDraft, bankValuesFor, buildBankDetailsField } from './bankDetails';
 
 /**
  * Every field on the CompanySettings form, keyed to its draft shape - mirrors
@@ -103,13 +104,9 @@ export const emptyDraft = () => ({
   isPaymentGatewayFeatureOn: true,
   isCODFeatureOn: true,
   gpayNumber: '',
-  bankAccountHolderName: '',
-  bankName: '',
-  bankAccountNumber: '',
-  ifscCode: '',
-  branchName: '',
-  swiftCode: '',
-  bankAccountType: '',
+  // Bank details per country: { [countryId]: { [fieldKey]: value } } - only
+  // the store country's are shown and saved (see utils/bankDetails.js).
+  bankDetailsByCountry: {},
 
   isFreeCashFeatureOn: false,
   isFreeCashStackingAllowed: false,
@@ -229,13 +226,7 @@ export const mapApiSettingsToDraft = (doc) => ({
   isPaymentGatewayFeatureOn: !!doc.isPaymentGatewayFeatureOn,
   isCODFeatureOn: doc.isCODFeatureOn !== false,
   gpayNumber: doc.gpayNumber || '',
-  bankAccountHolderName: doc.bankAccountHolderName || '',
-  bankName: doc.bankName || '',
-  bankAccountNumber: doc.bankAccountNumber || '',
-  ifscCode: doc.ifscCode || '',
-  branchName: doc.branchName || '',
-  swiftCode: doc.swiftCode || '',
-  bankAccountType: doc.bankAccountType || '',
+  bankDetailsByCountry: mapBankDetailsToDraft(doc.bankDetails),
 
   isFreeCashFeatureOn: !!doc.isFreeCashFeatureOn,
   isFreeCashStackingAllowed: !!doc.isFreeCashStackingAllowed,
@@ -255,20 +246,6 @@ export const mapApiSettingsToDraft = (doc) => ({
   partnerBadgeText: doc.partnerBadgeText || '',
 });
 
-// Mirrors BANK_TRANSFER_FIELDS in backend/services/companySettingsService.js.
-// companySettingsService.checkPaymentDetailsEntitlements treats ANY of these
-// being present in the request body (even as an empty string - it only
-// checks `!== undefined`) as "the admin is touching the Bank Transfer
-// group", and 403s the ENTIRE save if the vendor isn't entitled to it. Since
-// the draft always carries these keys (even '' when the section is hidden),
-// they must be left out of the payload entirely for a vendor who isn't
-// entitled - otherwise every save fails, not just ones that actually touch
-// bank details. Confirmed live: an unrelated "Show Announcements" toggle
-// 403'd with "This feature is temporarily unavailable" until this was fixed.
-const BANK_TRANSFER_FIELDS = [
-  'bankAccountHolderName', 'bankName', 'bankAccountNumber', 'ifscCode',
-  'branchName', 'swiftCode', 'bankAccountType',
-];
 
 /**
  * Builds the { fields, files } payload the API layer expects from a draft.
@@ -279,6 +256,8 @@ const BANK_TRANSFER_FIELDS = [
  * @param {Object} draft
  * @param {Object} [options]
  * @param {boolean} [options.bankTransferEnabled] - CompanyMaster.showPaymentQRCodeAndBankDetails
+ * @param {Array<Object>|null} [options.bankFields] - the store country's bank fields (useBankFields);
+ *   null while they are loading - bank details are then left out of the save.
  * @param {boolean} [options.gpayEnabled] - CompanyMaster.showGpayNumber
  */
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -305,7 +284,7 @@ export const isValidVideoPosition = (value) => {
 // A whole number, 0 or more - what the low stock alert threshold must be.
 export const isValidLowStockThreshold = (value) => /^\d{1,7}$/.test(String(value ?? '').trim());
 
-export const buildSavePayload = (draft, { bankTransferEnabled = false, gpayEnabled = false, lowStockAlertEnabled = false } = {}) => {
+export const buildSavePayload = (draft, { bankTransferEnabled = false, bankFields = null, gpayEnabled = false, lowStockAlertEnabled = false } = {}) => {
   const {
     companyLogo, paymentScanner, partnerCertificate,
     ccList, bccList,
@@ -318,12 +297,11 @@ export const buildSavePayload = (draft, { bankTransferEnabled = false, gpayEnabl
     deliveryAgentFromStep,
     deliveryAgentToStep,
     amountToRefund,
-    // Destructured out (not spread into `rest`/`fields` below) regardless of
-    // bankTransferEnabled - see BANK_TRANSFER_FIELDS comment above.
+    // Never spread into `fields` as they are - sent below only when the
+    // vendor is entitled to them. Sending a gated group the vendor isn't
+    // entitled to (even unchanged) used to 403 the whole save.
     // eslint-disable-next-line no-unused-vars
-    bankAccountHolderName, bankName, bankAccountNumber, ifscCode,
-    // eslint-disable-next-line no-unused-vars
-    branchName, swiftCode, bankAccountType, gpayNumber,
+    bankDetailsByCountry, gpayNumber,
     ...rest
   } = draft;
 
@@ -349,10 +327,10 @@ export const buildSavePayload = (draft, { bankTransferEnabled = false, gpayEnabl
     freeCashExpiryReminderDays: Number(freeCashExpiryReminderDays) || 3,
   };
 
-  if (bankTransferEnabled) {
-    BANK_TRANSFER_FIELDS.forEach((field) => {
-      fields[field] = field === 'bankAccountType' ? (draft[field] || null) : draft[field];
-    });
+  // Only the store country's values, and only once its fields are known
+  // (none set up for the country = nothing to save).
+  if (bankTransferEnabled && draft.storeCountryId && Array.isArray(bankFields) && bankFields.length > 0) {
+    fields.bankDetails = buildBankDetailsField(bankFields, bankValuesFor(draft, draft.storeCountryId), draft.storeCountryId);
   }
 
   // Own entitlement (CompanyMaster.showGpayNumber), separate from the bank group.

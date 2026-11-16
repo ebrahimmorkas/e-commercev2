@@ -104,6 +104,17 @@ const invoiceSchema = new mongoose.Schema(
         bank: {
             type: new mongoose.Schema(
                 {
+                    // The seller's bank details as printed: the store country's
+                    // bank fields (BankFieldTemplate) that were filled in when
+                    // the invoice was issued.
+                    fields: {
+                        type: [new mongoose.Schema({
+                            label: { type: String, trim: true, required: true },
+                            value: { type: String, trim: true, required: true }
+                        }, { _id: false })],
+                        default: undefined
+                    },
+                    // Invoices issued before per-country bank fields - kept as they were.
                     accountHolderName: { type: String, trim: true, default: null },
                     bankName: { type: String, trim: true, default: null },
                     accountNumber: { type: String, trim: true, default: null },

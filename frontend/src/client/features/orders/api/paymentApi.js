@@ -18,4 +18,12 @@ export const selectCashOnDelivery = (orderId) => apiRequest(`/payments/${orderId
 /** Records "pay online by QR / bank transfer" on a placed order. @param {string} orderId */
 export const selectManualTransfer = (orderId) => apiRequest(`/payments/${orderId}/manual-transfer`, { method: 'POST' });
 
-export default { getPaymentOptions, selectCashOnDelivery, selectManualTransfer };
+/**
+ * Checkout can't offer any way to pay (Cash on Delivery off and the bank
+ * details could not be loaded / aren't set up): emails the platform owner.
+ * The customer's own details are taken from their account on the server.
+ * @param {{ reason: 'OPTIONS_FAILED'|'NO_PAYMENT_OPTION', errorMessage?: string, cartTotal?: string, itemCount?: number, pageUrl?: string }} report
+ */
+export const reportCheckoutIssue = (report) => apiRequest('/payments/report-checkout-issue', { method: 'POST', body: report });
+
+export default { getPaymentOptions, selectCashOnDelivery, selectManualTransfer, reportCheckoutIssue };

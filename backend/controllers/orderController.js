@@ -1,4 +1,5 @@
 const orderService = require('../services/orderService');
+const paymentService = require('../services/paymentService');
 const orderEditService = require('../services/orderEditService');
 const invoiceService = require('../services/invoiceService');
 const orderStepService = require('../services/orderStepService');
@@ -200,6 +201,14 @@ const createOrder = async (req, res) => {
     const vendorId = req.vendorId;
     try {
         const userId = req.user._id;
+
+        // No way to pay (COD off and no QR / bank details / GPay) = no order.
+        const canPay = await paymentService.checkCustomerCanPay(
+            vendorId, req.websiteMasterData, req.companyMasterData, req.companySettingsData
+        );
+        if (!canPay.isSuccess) {
+            return common.sendError(res, canPay.statusCode, canPay.message);
+        }
 
         const payload = {
             ...req.body,
