@@ -1,4 +1,5 @@
 const companySettingsService = require('../services/companySettingsService');
+const bankFieldTemplateService = require('../services/bankFieldTemplateService');
 const blogService = require('../services/blogService');
 const logger = require('../utils/logger.js');
 const common = require('../utils/common.js');
@@ -59,6 +60,11 @@ const formatCompanySettingsForResponse = (doc) => {
             ...entry,
             templateId: entry.templateId ? common.encodeId(entry.templateId) : entry.templateId,
         })),
+        // [{ countryId (encoded like storeCountryId), values: { <fieldKey>: value } }]
+        bankDetails: (settings.bankDetails || []).map((entry) => ({
+            countryId: entry.countryId ? common.encodeId(entry.countryId) : entry.countryId,
+            values: Object.fromEntries((entry.values || []).map((item) => [item.key, item.value])),
+        })),
         ...formatEmailContentLists(settings),
     };
 };
@@ -86,6 +92,11 @@ const decodeCompanySettingsRefFields = (payload) => {
     if (decoded.storeCountryId) decoded.storeCountryId = common.decodeId(decoded.storeCountryId);
     if (decoded.storeStateId) decoded.storeStateId = common.decodeId(decoded.storeStateId);
     if (decoded.storeCityId) decoded.storeCityId = common.decodeId(decoded.storeCityId);
+    // An undecodable country is left as null - the service then rejects it
+    // as not matching the store country.
+    if (decoded.bankDetails) {
+        decoded.bankDetails = { ...decoded.bankDetails, countryId: common.tryDecodeId(decoded.bankDetails.countryId) };
+    }
     return decoded;
 };
 
@@ -242,6 +253,8 @@ const getCompanySettings = async (req, res) => {
       ? { url: settings.partnerCertificate.url }
       : null;
     publicSettings.partnerCertificateText = publicSettings.partnerCertificate ? (settings.partnerCertificateText || '') : '';
+    // Hero badge text: same two feature switches as the certificate, but not dependent on an image.
+    publicSettings.partnerBadgeText = certificateOn ? (settings.partnerBadgeText || '') : '';
     // Floating social buttons: per icon, both feature switches + the vendor's own toggle + a value to link to.
     const floatOn = (flag) => !!req.websiteMasterData?.[flag] && !!req.companyMasterData?.[flag];
     const waDigits = String(settings.whatsappNumber || '').replace(/\D/g, '');
@@ -297,6 +310,30 @@ const getAssignedOrderSteps = async (req, res) => {
     return common.sendSuccess(res, result.statusCode, result.message, result.meta);
   } catch (error) {
     logger.logException('companySettingsController: getAssignedOrderSteps - Exception while fetching order steps', { vendorId, error });
+  }
+};
+
+// The bank detail fields of a country (Company Settings > Payment & Bank
+// draws its form from them) - the store country, or one just picked on the
+// General tab before saving. countryId is encoded like storeCountryId.
+const getBankFields = async (req, res) => {
+  const vendorId = req.vendorId;
+  try {
+    const countryId = common.tryDecodeId(req.params.countryId);
+    if (!countryId) {
+      return common.sendError(res, 400, 'Invalid country.');
+    }
+    const result = await bankFieldTemplateService.getBankFieldsForCountry(countryId);
+    if (!result.isSuccess) {
+      return common.sendError(res, result.statusCode, result.message);
+    }
+    const { country, fields } = result.meta;
+    return common.sendSuccess(res, result.statusCode, result.message, {
+      country: country ? { _id: common.encodeId(country._id), name: country.name } : null,
+      fields,
+    });
+  } catch (error) {
+    logger.logException('companySettingsController: getBankFields - Exception while fetching bank fields', { vendorId, error });
   }
 };
 
@@ -472,6 +509,7 @@ module.exports = {
   getCompanySettings,
   getCompanySettingsAdmin,
   getAssignedOrderSteps,
+  getBankFields,
   assignEmailTemplate,
   unassignEmailTemplate
 };

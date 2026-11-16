@@ -90,6 +90,19 @@ const StorefrontSection = ({ draft, onChange, companyMaster, catalogue, settings
             </div>
           </div>
           <div className="mt-4">
+            <InputField
+              className="w-full"
+              label="Home Page Badge"
+              maxLength={100}
+              placeholder="e.g. Preciosa® Crystals Authorized Partner"
+              value={draft.partnerBadgeText}
+              onChange={(e) => set({ partnerBadgeText: e.target.value })}
+            />
+            <p className={`mt-1 text-xs ${theme.text.muted}`}>
+              The pill shown above the home page banner heading, and the label on the mobile certificate strip. Leave blank to hide the pill.
+            </p>
+          </div>
+          <div className="mt-4">
             <TextArea
               label="Certificate Text"
               name="partnerCertificateText"

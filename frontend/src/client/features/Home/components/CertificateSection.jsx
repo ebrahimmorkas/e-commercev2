@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useStorefrontCompanySettings } from '../../companySettings/hooks/useStorefrontCompanySettings';
 
-const DEFAULT_TEXT = 'Preciosa';
-
 const AwardIcon = ({ className = '' }) => (
   <svg className={className} fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24" aria-hidden="true">
     <circle cx="12" cy="9" r="5.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -63,20 +61,20 @@ const CertificateSection = () => {
   const [open, setOpen] = useState(false);
   const imageUrl = companySettings?.partnerCertificate?.url;
   const written = (companySettings?.partnerCertificateText || '').trim();
-  const text = written || DEFAULT_TEXT;
+  const badge = (companySettings?.partnerBadgeText || '').trim();
+  const text = written || badge;
 
   if (!imageUrl) return null;
 
   const certificate = (
-    <a
-      href={imageUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      title="Open full size"
-      className="group block rounded-2xl border border-slate-200 bg-white p-3 shadow-xl shadow-slate-900/10 transition-transform duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-amber-900/15"
+    <button
+      type="button"
+      onClick={() => setOpen(true)}
+      title="View full size"
+      className="group block w-full cursor-zoom-in rounded-2xl border border-slate-200 bg-white p-3 shadow-xl shadow-slate-900/10 transition-transform duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-amber-900/15"
     >
       <img src={imageUrl} alt="Certificate" loading="lazy" className="w-full max-h-[420px] rounded-lg bg-slate-50 object-contain" />
-    </a>
+    </button>
   );
 
   return (
@@ -85,9 +83,9 @@ const CertificateSection = () => {
       <div className="border-y border-amber-200 bg-gradient-to-r from-amber-50 via-white to-amber-50 md:hidden">
         <div className="mx-auto flex max-w-7xl flex-col items-center gap-2 px-4 py-4 text-center">
           <span className="rounded-full border border-amber-300 bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
-            Authorized Partner
+            {badge || 'Authorized Partner'}
           </span>
-          <p className="text-sm font-semibold text-slate-900 whitespace-pre-line">{text}</p>
+          {text && text !== badge && <p className="text-sm font-semibold text-slate-900 whitespace-pre-line">{text}</p>}
           <button
             type="button"
             onClick={() => setOpen(true)}
@@ -96,8 +94,8 @@ const CertificateSection = () => {
             View certificate
           </button>
         </div>
-        {open && <CertificateModal imageUrl={imageUrl} onClose={() => setOpen(false)} />}
       </div>
+      {open && <CertificateModal imageUrl={imageUrl} onClose={() => setOpen(false)} />}
 
       {/* Desktop: text beside the certificate */}
       <div className="hidden border-y border-slate-200 bg-slate-50 md:block">

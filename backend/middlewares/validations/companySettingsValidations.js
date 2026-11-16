@@ -14,6 +14,7 @@ const { MAX_LOW_STOCK_THRESHOLD } = require('../../constants/inventoryConstants'
 const { ADMIN_PRODUCT_PAGE_SIZES } = require('../../constants/productListConstants');
 const { MAX_REVIEWS_PER_CUSTOMER_PER_PRODUCT } = require('../../constants/reviewConstants');
 const { MAX_PRODUCT_VIDEO_POSITION_IN_GALLERY } = require('../../constants/productVideoConstants');
+const { bankDetailsRequestSchema } = require('./bankFieldTemplateValidations');
 
 // Loose opaque-string check rather than hex/length - templateId here refers
 // to EmailTemplateMaster, whose ids are now common.encodeId-encoded (not raw
@@ -80,6 +81,7 @@ const companySettingsFieldsSchema = {
     showFloatingInstagram: Joi.boolean().label('Show Instagram button'),
     showFloatingFacebook: Joi.boolean().label('Show Facebook button'),
     partnerCertificateText: Joi.string().trim().max(300).allow('', null).label('Certificate text'),
+    partnerBadgeText: Joi.string().trim().max(100).allow('', null).label('Partner badge text'),
     blogNavLabel: Joi.string().trim().min(1).max(20).label('Blog menu label'),
     isAnnouncementRotationOn: Joi.boolean().label('Announcement rotation'),
     showBanners: Joi.boolean().label('Show banners'),
@@ -188,23 +190,13 @@ const companySettingsFieldsSchema = {
     timeForAbondonedCartReflection: Joi.number().integer().min(1).max(10080).label('Abandoned cart reflection time (minutes)'),
     abondonedCartOnlyForLoggedInUsers: Joi.boolean().label('Show abandoned carts for logged-in users only'),
 
-    // Bank Transfer - gated by CompanyMaster.showPaymentQRCodeAndBankDetails
-    // (+ WebsiteMaster.isShowingPaymentQRCodeAndBankDetailsFeatureOn),
-    // enforced in companySettingsService.js, not here. Each field is
-    // independently optional - a vendor may save partial bank info and fill
-    // in the rest later, same convention as adminAddress/instagramId etc.
-    // Free text on purpose - banks/IBAN/IFSC/SWIFT formats differ per country,
-    // so only a length cap is applied.
-    bankAccountHolderName: Joi.string().trim().max(200).allow('', null).label('Bank account holder name'),
-    bankName: Joi.string().trim().max(200).allow('', null).label('Bank name'),
-    bankAccountNumber: Joi.string().trim().max(200).allow('', null).label('Bank account number'),
-    ifscCode: Joi.string().trim().uppercase().max(200).allow('', null).label('IFSC code'),
-    branchName: Joi.string().trim().max(200).allow('', null).label('Branch name'),
-    swiftCode: Joi.string().trim().uppercase().max(200).allow('', null).label('SWIFT code'),
-    bankAccountType: Joi.alternatives().try(
-        Joi.string().valid('SAVINGS', 'CURRENT'),
-        Joi.string().valid('', 'null')
-    ).custom((value) => (value === '' || value === 'null' ? null : value)).allow(null).label('Bank account type')
+    // Bank Transfer - { countryId, values } for the store country, sent as a
+    // JSON string (multipart). Only the shape is checked here: which fields
+    // exist and what each accepts (required, length, pattern, options) comes
+    // from that country's BankFieldTemplate and is checked in
+    // companySettingsService.prepareBankDetails, as is the
+    // CompanyMaster.showPaymentQRCodeAndBankDetails (+ WebsiteMaster) gate.
+    bankDetails: bankDetailsRequestSchema
 };
 
 const createCompanySettingsSchema = Joi.object({
@@ -261,7 +253,13 @@ const emailContentIdParamSchema = Joi.object({
     id: objectId().required().label('Id')
 });
 
+// GET /bank-fields/:countryId - the bank fields of a country (encoded id, like storeCountryId).
+const bankFieldsCountryParamSchema = Joi.object({
+    countryId: objectId().max(200).required().label('Country')
+});
+
 module.exports = {
+    bankFieldsCountryParamSchema,
     saveEmailAccountSchema,
     sendTestEmailSchema,
     addEmailAttachmentSchema,

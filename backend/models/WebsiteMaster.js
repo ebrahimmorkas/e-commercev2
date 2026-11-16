@@ -512,8 +512,8 @@ const websiteMasterSchema = mongoose.Schema({
         default: null
     },
     // Site-wide kill switch for CompanySettings.paymentScanner + the bank
-    // transfer fields (bankAccountHolderName, bankName, bankAccountNumber,
-    // ifscCode, branchName, swiftCode, bankAccountType) - paired with
+    // details (bankDetails - per-country fields from BankFieldTemplate,
+    // e.g. IFSC Code in India, IBAN in the UAE) - paired with
     // CompanyMaster.showPaymentQRCodeAndBankDetails via checkFeatureOnOrOff,
     // see companySettingsService.js.
     isShowingPaymentQRCodeAndBankDetailsFeatureOn: {

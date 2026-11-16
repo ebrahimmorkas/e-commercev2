@@ -27,6 +27,16 @@
   }
 }
 
+/* Slow back-and-forth tilt for the fallback hero's company name (a full spin would show it mirrored). */
+@keyframes sway3d {
+  0%, 100% {
+    transform: perspective(900px) rotateY(-16deg) rotateX(4deg);
+  }
+  50% {
+    transform: perspective(900px) rotateY(16deg) rotateX(-4deg);
+  }
+}
+
 @keyframes shine-sweep {
   0% {
     transform: translateX(-130%) skewX(-15deg);
@@ -56,6 +66,10 @@
     animation: spin-slow 14s linear infinite;
   }
 
+  .animate-sway3d {
+    animation: sway3d 8s ease-in-out infinite;
+  }
+
   .perspective-1000 {
     perspective: 1000px;
   }
@@ -83,7 +97,8 @@
   .animate-marquee,
   .animate-float,
   .animate-float-slow,
-  .animate-spin-slow {
+  .animate-spin-slow,
+  .animate-sway3d {
     animation: none;
   }
 

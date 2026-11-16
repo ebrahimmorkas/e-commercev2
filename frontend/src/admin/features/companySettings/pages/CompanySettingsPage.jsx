@@ -17,6 +17,8 @@ import EmailSection from '../components/EmailSection';
 import FreeCashSection from '../components/FreeCashSection';
 import DiscountFreeCashSection from '../components/DiscountFreeCashSection';
 import { useEmailContent } from '../hooks/useEmailContent';
+import { useBankFields } from '../hooks/useBankFields';
+import { validateBankValues, bankValuesFor } from '../utils/bankDetails';
 import InvoiceSection from '../components/InvoiceSection';
 import AbandonedCartSection from '../components/AbandonedCartSection';
 import ShippingSection from '../components/ShippingSection';
@@ -37,6 +39,9 @@ const CompanySettingsPage = () => {
   const [storedTab, setActiveTab] = useSessionStorageState('ecom.admin.companySettings.tab', 'general');
   const [formErrors, setFormErrors] = useState({});
   const toast = useToast();
+  // The store country's bank fields - the Payment & Bank form is drawn from them.
+  const bankTransferEnabled = !!companyMaster?.showPaymentQRCodeAndBankDetails;
+  const bankFields = useBankFields(draft.storeCountryId, bankTransferEnabled);
 
   // Load the form from the settings whenever they change (loaded / saved).
   const [draftFor, setDraftFor] = useState(null);
@@ -67,6 +72,10 @@ const CompanySettingsPage = () => {
     if (isProductVideoOn && !isValidVideoPosition(draft.productVideoPositionInGallery)) {
       nextErrors.productVideoPositionInGallery = `Enter a whole number from 1 to ${MAX_PRODUCT_VIDEO_POSITION}`;
     }
+    if (bankTransferEnabled && bankFields.fields.length > 0) {
+      const bankErrors = validateBankValues(bankFields.fields, bankValuesFor(draft, draft.storeCountryId));
+      if (Object.keys(bankErrors).length > 0) nextErrors.bank = bankErrors;
+    }
     setFormErrors(nextErrors);
     return nextErrors;
   };
@@ -85,6 +94,9 @@ const CompanySettingsPage = () => {
       } else if (errors.productVideoPositionInGallery) {
         setActiveTab('product');
         toast.error('Not saved - fix the video position on the Product tab.');
+      } else if (errors.bank) {
+        setActiveTab('payment');
+        toast.error('Not saved - please fix the bank details marked in red on the Payment & Bank tab.');
       } else {
         setActiveTab('email');
         toast.error(`Not saved - ${errors.emailLists}.`);
@@ -103,7 +115,9 @@ const CompanySettingsPage = () => {
       return;
     }
     const { fields, files } = buildSavePayload(draft, {
-      bankTransferEnabled: !!companyMaster?.showPaymentQRCodeAndBankDetails,
+      bankTransferEnabled,
+      // null while the store country's fields are loading - bank details are then left out.
+      bankFields: bankFields.loading ? null : bankFields.fields,
       gpayEnabled: !!companyMaster?.showGpayNumber,
       lowStockAlertEnabled: isLowStockAlertOn,
     });
@@ -138,7 +152,7 @@ const CompanySettingsPage = () => {
     { key: 'storefront', label: 'Storefront', content: <StorefrontSection {...sectionProps} companyMaster={companyMaster} catalogue={settings?.catalogue || null} settingsExist={exists} /> },
     { key: 'product', label: 'Product', content: <ProductSection {...sectionProps} errors={formErrors} isLowStockAlertOn={isLowStockAlertOn} isProductVideoOn={isProductVideoOn} /> },
     { key: 'cartOrder', label: 'Cart & Order', content: <CartOrderSection {...sectionProps} orderSteps={orderSteps} companyMaster={companyMaster} /> },
-    { key: 'payment', label: 'Payment & Bank', content: <PaymentBankSection {...sectionProps} companyMaster={companyMaster} /> },
+    { key: 'payment', label: 'Payment & Bank', content: <PaymentBankSection {...sectionProps} companyMaster={companyMaster} bankFields={bankFields} bankErrors={formErrors.bank} /> },
     // Email and its Discount/Free Cash email settings only while email is on
     // for the account (the master isSendingEmailFeatureOn switch).
     ...(isEmailOn

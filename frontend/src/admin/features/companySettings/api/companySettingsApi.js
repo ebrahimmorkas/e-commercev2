@@ -22,6 +22,16 @@ export const getCompanySettings = () => apiRequest(`${BASE}/get-company-settings
 export const getAssignedOrderSteps = () => apiRequest(`${BASE}/order-steps`);
 
 /**
+ * The bank detail fields of a country (set up per country by the platform,
+ * e.g. IFSC Code for India, IBAN for the UAE) - the Payment & Bank form is
+ * drawn from the store country's fields.
+ * @param {string} countryId - same (encoded) id as storeCountryId
+ * @returns {Promise<{ country: { _id: string, name: string }|null, fields: Array<Object> }>}
+ *   fields is empty when nothing is set up for the country.
+ */
+export const getBankFields = (countryId) => apiRequest(`${BASE}/bank-fields/${encodeURIComponent(countryId)}`);
+
+/**
  * create/update both always go through the multipart-form fields declared on
  * the route (companyLogo/paymentScanner/partnerCertificate), so every field -
  * including plain text/boolean/number ones - is sent as multipart/form-data,

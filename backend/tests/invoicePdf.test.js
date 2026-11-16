@@ -57,3 +57,11 @@ test('round-off and adjustment rows, and a non-tax invoice, render without error
     }));
     assert.equal(buffer.slice(0, 5).toString(), '%PDF-');
 });
+
+test('prints the per-country bank fields (e.g. IBAN) when the invoice has them', async () => {
+    const buffer = await renderInvoicePdf(invoice({
+        bank: { fields: [{ label: 'Account Holder Name', value: 'TEST SELLER LLC' }, { label: 'IBAN', value: 'AE070331234567890123456' }] }
+    }));
+    assert.equal(buffer.slice(0, 5).toString(), '%PDF-');
+    assert.equal(pageCount(buffer), 1);
+});

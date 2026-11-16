@@ -19,6 +19,7 @@ const FileAsset = require('../models/FileAsset');
 const { readStoredAsset } = require('./storedFileReader');
 const { LOW_STOCK_ALERT_FEATURE_FLAG } = require('../constants/inventoryConstants');
 const moduleMasterService = require('./moduleMasterService');
+const bankFieldTemplateService = require('./bankFieldTemplateService');
 
 // The store currency (every price is entered in it - see currencyService.js)
 // must be an active currency of a country the vendor serves
@@ -56,7 +57,7 @@ const SIMPLE_FIELDS = [
     'adminCity', 'adminState', 'adminPincode', 'adminEmail', 'companyName', 'instagramId',
     'facebookId', 'privacyPolicy', 'cancelPolicy', 'termsAndConditions', 'aboutUs', 'returnRefundPolicy', 'shippingPolicy', 'policyDisplayMode',
     'contactEmail', 'contactPhoneNumber', 'contactAddress',
-    'showAnnouncements', 'isAnnouncementRotationOn', 'showBanners', 'isBannerRotationOn', 'showBlog', 'blogNavLabel', 'whatsappNumber', 'showFloatingWhatsapp', 'showFloatingInstagram', 'showFloatingFacebook', 'partnerCertificateText',
+    'showAnnouncements', 'isAnnouncementRotationOn', 'showBanners', 'isBannerRotationOn', 'showBlog', 'blogNavLabel', 'whatsappNumber', 'showFloatingWhatsapp', 'showFloatingInstagram', 'showFloatingFacebook', 'partnerCertificateText', 'partnerBadgeText',
     'isTaxRegistrationOnSignupEnabled', 'isCityOptional',
     'taxRegistrationNumber', 'invoicePrefix', 'invoiceDeclaration',
     'invoicePrintDuplicateCopy', 'invoiceRoundOffToWhole', 'emailInvoiceOnOrderPlaced',
@@ -71,51 +72,41 @@ const SIMPLE_FIELDS = [
     'isFreeCashFeatureOn', 'isFreeCashStackingAllowed', 'isMultipleFreeCashUsageAllowed',
     'isStoringRemainingFreeCashAmountAllowed', 'returnFreeCashOnOrderReturn', 'refundWholeFreeCashAmount',
     'amountToRefund', 'timeForAbondonedCartReflection', 'abondonedCartOnlyForLoggedInUsers',
-    'bankAccountHolderName', 'bankName', 'bankAccountNumber', 'ifscCode', 'branchName',
-    'swiftCode', 'bankAccountType', 'gpayNumber', 'isCODFeatureOn'
+    'gpayNumber', 'isCODFeatureOn'
 ];
 
-// Fields gated together with paymentScanner behind
-// CompanyMaster.showPaymentQRCodeAndBankDetails (+
-// WebsiteMaster.isShowingPaymentQRCodeAndBankDetailsFeatureOn).
-const BANK_TRANSFER_FIELDS = [
-    'bankAccountHolderName', 'bankName', 'bankAccountNumber', 'ifscCode', 'branchName',
-    'swiftCode', 'bankAccountType'
-];
-
-// '' and undefined/null are the same "empty" value for this comparison -
-// Joi normalizes bankAccountType's '' to null before this runs, but the
-// plain string bank fields (bankAccountHolderName etc.) are only
-// .allow('', null), so an untouched form field can legitimately arrive as
-// either depending on which one the caller used.
+// '' and undefined/null are the same "empty" value for the diff-based
+// checks below - an untouched form field can arrive as either.
 const normalizeEmpty = (value) => (value === undefined || value === '' ? null : value);
 
-// Checks whether the request is actually CHANGING the bank-transfer group
-// (any bank field whose incoming value differs from what's already stored,
-// or a new paymentScanner file) or the partnerCertificate file, and if so,
-// verifies the vendor is entitled to it. Returns null when nothing gated
-// was actually touched (caller proceeds normally), otherwise returns the
-// first failing returnResult().
+const checkBankTransferEntitlement = async (vendorId, companyMasterData, websiteMasterData) => {
+    try {
+        return await common.checkFeatureOnOrOff(
+            vendorId, websiteMasterData, companyMasterData,
+            'isShowingPaymentQRCodeAndBankDetailsFeatureOn', 'showPaymentQRCodeAndBankDetails'
+        );
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Checks whether the request is actually CHANGING a gated group (a new
+// paymentScanner file, the GPay number, the partner certificate) and if so,
+// verifies the vendor is entitled to it. Returns null when nothing gated was
+// actually touched (caller proceeds normally), otherwise returns the first
+// failing returnResult(). The bank details have their own (also diff-based)
+// check in prepareBankDetails.
 //
 // Deliberately diff-based rather than presence-based: a caller that sends
 // its whole settings object on every save (not just the fields it means to
 // change) would otherwise trip this gate on every single save, for a group
 // it isn't even trying to edit - confirmed live via the admin Company
 // Settings page, which 403'd on saving an unrelated toggle for a vendor not
-// entitled to Bank Transfer, purely because it sent bankAccountHolderName:
-// '' etc. alongside everything else.
+// entitled to Bank Transfer.
 const checkPaymentDetailsEntitlements = async (vendorId, data, files, companyMasterData, websiteMasterData, existingSettings = null) => {
     try {
-        const bankGroupTouched = BANK_TRANSFER_FIELDS.some((field) => {
-            if (data[field] === undefined) return false;
-            const currentValue = existingSettings ? existingSettings[field] : undefined;
-            return normalizeEmpty(data[field]) !== normalizeEmpty(currentValue);
-        }) || !!files?.paymentScanner?.[0];
-        if (bankGroupTouched) {
-            const check = await common.checkFeatureOnOrOff(
-                vendorId, websiteMasterData, companyMasterData,
-                'isShowingPaymentQRCodeAndBankDetailsFeatureOn', 'showPaymentQRCodeAndBankDetails'
-            );
+        if (files?.paymentScanner?.[0]) {
+            const check = await checkBankTransferEntitlement(vendorId, companyMasterData, websiteMasterData);
             if (!check.isSuccess) return check;
         }
 
@@ -133,7 +124,9 @@ const checkPaymentDetailsEntitlements = async (vendorId, data, files, companyMas
         // (diff-based like the groups above, so an unrelated save never trips it).
         const certificateTextTouched = data.partnerCertificateText !== undefined
             && normalizeEmpty(data.partnerCertificateText) !== normalizeEmpty(existingSettings ? existingSettings.partnerCertificateText : undefined);
-        const certificateTouched = !!files?.partnerCertificate?.[0] || certificateTextTouched;
+        const badgeTextTouched = data.partnerBadgeText !== undefined
+            && normalizeEmpty(data.partnerBadgeText) !== normalizeEmpty(existingSettings ? existingSettings.partnerBadgeText : undefined);
+        const certificateTouched = !!files?.partnerCertificate?.[0] || certificateTextTouched || badgeTextTouched;
         if (certificateTouched) {
             const check = await common.checkFeatureOnOrOff(
                 vendorId, websiteMasterData, companyMasterData,
@@ -143,6 +136,66 @@ const checkPaymentDetailsEntitlements = async (vendorId, data, files, companyMas
         }
 
         return null;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Bank details (data.bankDetails = { countryId, values }, see
+// bankFieldTemplateService.js). The values belong to the store country the
+// document will END UP with (so the store country can be changed in the same
+// save) and are checked against that country's fields. All empty with no
+// store country / no fields = nothing to save.
+// Returns returnResult(true, 200, ..., { bankDetails }) where bankDetails is
+// the whole new list, or undefined when nothing changed (left as it is);
+// otherwise the failure. The Bank Transfer entitlement is only required when
+// something actually changes (diff-based, like checkPaymentDetailsEntitlements).
+const prepareBankDetails = async (vendorId, data, companyMasterData, websiteMasterData, existingSettings = null) => {
+    try {
+        const submitted = data.bankDetails;
+        if (submitted === undefined) {
+            return common.returnResult(true, 200, 'No bank details submitted', { bankDetails: undefined });
+        }
+
+        const storeCountryId = (data.storeCountryId !== undefined ? data.storeCountryId : existingSettings?.storeCountryId) || null;
+        const hasAnyValue = Object.values(submitted.values || {}).some((value) =>
+            value !== null && value !== undefined && String(value).trim() !== '' && !(Array.isArray(value) && value.length === 0)
+        );
+
+        if (!storeCountryId) {
+            return hasAnyValue
+                ? common.returnResult(false, 400, 'Select your store country on the General tab before entering bank details.')
+                : common.returnResult(true, 200, 'No store country - bank details ignored', { bankDetails: undefined });
+        }
+        if (!submitted.countryId || submitted.countryId.toString() !== storeCountryId.toString()) {
+            return common.returnResult(false, 400, 'The bank details were entered for a different country than your store country. Reload the page and enter them again.');
+        }
+
+        const { country, fields } = await bankFieldTemplateService.fetchActiveFieldsForCountry(storeCountryId);
+        if (fields.length === 0) {
+            return hasAnyValue
+                ? common.returnResult(false, 400, `No bank fields are set up for ${country?.name || 'your store country'} yet, so bank details can't be saved.`)
+                : common.returnResult(true, 200, 'No bank fields for the store country - bank details ignored', { bankDetails: undefined });
+        }
+
+        const validation = bankFieldTemplateService.validateBankDetailValues(fields, submitted.values);
+        if (!validation.isSuccess) {
+            return validation;
+        }
+        const newValues = validation.meta.values;
+        const savedValues = bankFieldTemplateService.savedValuesForCountry(existingSettings?.bankDetails, storeCountryId);
+        if (!bankFieldTemplateService.haveValuesChanged(fields, newValues, savedValues)) {
+            return common.returnResult(true, 200, 'Bank details unchanged', { bankDetails: undefined });
+        }
+
+        const entitlement = await checkBankTransferEntitlement(vendorId, companyMasterData, websiteMasterData);
+        if (!entitlement.isSuccess) {
+            return entitlement;
+        }
+
+        return common.returnResult(true, 200, 'Bank details ready to save', {
+            bankDetails: bankFieldTemplateService.mergeCountryValues(existingSettings?.bankDetails, storeCountryId, newValues)
+        });
     } catch (err) {
         throw err;
     }
@@ -336,6 +389,12 @@ const createCompanySettings = async (vendorId, userId, data, files, companyMaste
             return storeLocationFailure;
         }
 
+        // After the store location check - the values belong to the store country.
+        const bankDetailsResult = await prepareBankDetails(vendorId, data, companyMasterData, websiteMasterData);
+        if (!bankDetailsResult.isSuccess) {
+            return bankDetailsResult;
+        }
+
         const storeCurrencyFailure = await validateStoreCurrency(data, companyMasterData);
         if (storeCurrencyFailure) {
             return storeCurrencyFailure;
@@ -359,6 +418,9 @@ const createCompanySettings = async (vendorId, userId, data, files, companyMaste
         }
         normalizeFreeCashReturnFields(settingsData);
         normalizeReviewLimitField(settingsData);
+        if (bankDetailsResult.meta.bankDetails !== undefined) {
+            settingsData.bankDetails = bankDetailsResult.meta.bankDetails;
+        }
 
         const logoFile = files?.companyLogo?.[0];
         if (logoFile) {
@@ -427,6 +489,12 @@ const updateCompanySettings = async (vendorId, userId, data, files, companyMaste
             return storeLocationFailure;
         }
 
+        // After the store location check - the values belong to the store country.
+        const bankDetailsResult = await prepareBankDetails(vendorId, data, companyMasterData, websiteMasterData, settings);
+        if (!bankDetailsResult.isSuccess) {
+            return bankDetailsResult;
+        }
+
         const storeCurrencyFailure = await validateStoreCurrency(data, companyMasterData, settings);
         if (storeCurrencyFailure) {
             return storeCurrencyFailure;
@@ -449,6 +517,9 @@ const updateCompanySettings = async (vendorId, userId, data, files, companyMaste
         }
         normalizeFreeCashReturnFields(settings);
         normalizeReviewLimitField(settings);
+        if (bankDetailsResult.meta.bankDetails !== undefined) {
+            settings.bankDetails = bankDetailsResult.meta.bankDetails;
+        }
 
         const logoFile = files?.companyLogo?.[0];
         if (logoFile) {

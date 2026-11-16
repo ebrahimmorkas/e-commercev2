@@ -10,15 +10,7 @@ import { useStorefrontBanner } from '../../banners/hooks/useStorefrontBanner';
 import { ProductGridSkeleton } from '../../products/components/ProductSkeletons';
 import EmptyState from '../../../../components/common/EmptyState/EmptyState';
 import CertificateSection from '../components/CertificateSection';
-
-const PartnerBadge = () => (
-  <div
-    className={`${theme.partnerBadge.layout} ${theme.partnerBadge.background} ${theme.partnerBadge.border} ${theme.partnerBadge.text}`}
-  >
-    <GemIcon className={`${theme.partnerBadge.iconLayout} ${theme.partnerBadge.icon}`} />
-    Preciosa&reg; Crystals Authorized Partner
-  </div>
-);
+import { useStorefrontCompanySettings } from '../../companySettings/hooks/useStorefrontCompanySettings';
 
 /**
  * Decorative, non-interactive gem shapes floating in 3D behind the hero copy.
@@ -54,6 +46,8 @@ const HomePage = ({ onAddToCart, onProductClick, cartItems = {}, onIncrementItem
 
   const scrollToProducts = () => document.getElementById('all-products')?.scrollIntoView({ behavior: 'smooth' });
   const { banner, loading: bannerLoading, isRotating, next: nextBanner } = useStorefrontBanner();
+  const { companySettings } = useStorefrontCompanySettings();
+  const companyName = (companySettings?.companyName || '').trim();
 
   return (
     <div className={theme.page.background}>
@@ -92,24 +86,21 @@ const HomePage = ({ onAddToCart, onProductClick, cartItems = {}, onIncrementItem
           />
         </section>
       ) : (
-        <section className={`${theme.hero.section} ${theme.hero.background}`}>
+        // No banner (none uploaded, or the banner/settings request failed): a navy hero with the
+        // company name in 3D. Every failure path lands here, so shoppers never see an empty or
+        // broken banner - and the heading has a hardcoded fallback if the name itself is missing.
+        <section className={`${theme.hero.section} ${theme.hero.background} sm:py-32`}>
           <FloatingGems />
           <div className={theme.hero.container}>
-            <p className={`${theme.hero.eyebrowLayout} ${theme.hero.eyebrow}`}>Hutaib Tailoring Materials</p>
-            <h1 className={`${theme.hero.headingLayout} ${theme.hero.heading}`}>
-              Crystals, Pearls &amp; Beads for Every Creation
+            <h1
+              className={`animate-sway3d [transform-style:preserve-3d] text-4xl sm:text-6xl font-extrabold tracking-tight text-white drop-shadow-[0_6px_0_rgba(180,120,10,0.55)] drop-shadow-[0_14px_24px_rgba(0,0,0,0.5)]`}
+            >
+              {companyName || 'Welcome to our store'}
             </h1>
-            <p className={`${theme.hero.subheadingLayout} ${theme.hero.subheading}`}>
-              Genuine Preciosa crystals, rhinestones, buttons, pearls and pressed glass beads —
-              sourced with care, delivered with pride.
-            </p>
             <button type="button" onClick={scrollToProducts} className={`${theme.hero.ctaLayout} ${theme.hero.cta}`}>
               <span className={theme.hero.ctaShine} />
               <span className={theme.hero.ctaLabel}>Shop Now</span>
             </button>
-            <div className={theme.hero.ctaWrapper}>
-              <PartnerBadge />
-            </div>
           </div>
         </section>
       )}

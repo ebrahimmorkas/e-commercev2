@@ -6,8 +6,13 @@ const vendorPaymentGatewayCredentialsService = require('./vendorPaymentGatewayCr
 const { PAYMENT_METHODS, PAYMENT_TRANSACTION_STATUSES } = require('../constants/paymentGatewayConstants');
 const { ORDER_NOTIFICATION_TYPES } = require('../constants/orderRealtimeConstants');
 const { notifyOrderChanged } = require('./orderRealtimeService');
-const fieldConfigService = require('./fieldConfigService');
-const { FIELD_CONFIG_ENTITIES } = require('../constants/fieldConfigConstants');
+const bankFieldTemplateService = require('./bankFieldTemplateService');
+const platformAlertService = require('./platformAlertService');
+const User = require('../models/User');
+const {
+    CHECKOUT_ISSUE_REASON_TEXT,
+    CHECKOUT_ISSUE_REPORT_COOLDOWN_MINUTES
+} = require('../constants/checkoutIssueConstants');
 const logger = require('../utils/logger');
 const common = require('../utils/common');
 
@@ -154,7 +159,7 @@ const selectCashOnDelivery = async (vendorId, userId, orderId, companySettingsDa
 // filled in Company Settings (gated by the same two-level flag that gates
 // editing them). Customer-only - the bank details are never in the public
 // storefront settings.
-const getCheckoutPaymentOptions = async (vendorId, websiteMasterData, companyMasterData, companySettingsData, fieldConfigData = null) => {
+const getCheckoutPaymentOptions = async (vendorId, websiteMasterData, companyMasterData, companySettingsData) => {
     try {
         const codCheck = await common.checkFeatureOnOrOff(vendorId, websiteMasterData, companyMasterData, 'isCODFeatureOn', 'isCODFeatureOn');
         const detailsCheck = await common.checkFeatureOnOrOff(
@@ -170,18 +175,12 @@ const getCheckoutPaymentOptions = async (vendorId, websiteMasterData, companyMas
         const settings = companySettingsData || {};
         // QR + bank and GPay are separate entitlements: a missing one hides only its own part.
         const scannerUrl = detailsCheck.isSuccess ? (settings.paymentScanner?.url || null) : null;
-        const bank = {
-            accountHolderName: settings.bankAccountHolderName || null,
-            bankName: settings.bankName || null,
-            accountNumber: settings.bankAccountNumber || null,
-            ifscCode: settings.ifscCode || null,
-            // The vendor's own name for the field (e.g. "IBAN Number") - see FIELD_REGISTRY.
-            ifscLabel: fieldConfigService.labelOf(fieldConfigData, FIELD_CONFIG_ENTITIES.COMPANY_SETTINGS, 'ifscCode'),
-            branchName: settings.branchName || null,
-            swiftCode: settings.swiftCode || null,
-            accountType: settings.bankAccountType || null
-        };
-        const hasBankDetails = detailsCheck.isSuccess && !!(bank.accountNumber || bank.ifscCode);
+        // The store country's bank fields that are filled in: [{ key, label, value }] or null.
+        const bankFields = detailsCheck.isSuccess
+            ? await bankFieldTemplateService.resolveBankDetailsForDisplay(settings)
+            : null;
+        const bank = bankFields ? { fields: bankFields } : null;
+        const hasBankDetails = !!bank;
         const gpayNumber = gpayCheck.isSuccess ? (settings.gpayNumber || null) : null;
         const onlineEnabled = !!scannerUrl || hasBankDetails || !!gpayNumber;
 
@@ -341,10 +340,133 @@ const getPaymentStatus = async (vendorId, userId, orderId) => {
     }
 };
 
+// Placing an order from checkout needs a way to pay: Cash on Delivery, or
+// the QR / bank details / GPay. With neither, the order is refused (409)
+// instead of being created with no payment method - which the customer took
+// for a COD order. (The storefront never uses the payment gateway at checkout.)
+const checkCustomerCanPay = async (vendorId, websiteMasterData, companyMasterData, companySettingsData) => {
+    try {
+        const options = await getCheckoutPaymentOptions(vendorId, websiteMasterData, companyMasterData, companySettingsData);
+        if (!options.isSuccess) return options;
+        if (!options.meta.cod && !options.meta.online) {
+            return common.returnResult(false, 409, "This store can't take payment right now, so the order can't be placed. Please try again later or report the problem.");
+        }
+        return common.returnResult(true, 200, 'A payment option is available');
+    } catch (err) {
+        throw err;
+    }
+};
+
+// Last report time per customer ("vendorId:userId" -> ms), so one customer
+// can't flood the platform owner's inbox. In memory: a restart resets it,
+// which is fine for a spam guard.
+const lastCheckoutIssueReportAt = new Map();
+
+const forgetOldReports = (now, cooldownMs) => {
+    try {
+        for (const [key, time] of lastCheckoutIssueReportAt) {
+            if (now - time >= cooldownMs) lastCheckoutIssueReportAt.delete(key);
+        }
+    } catch (err) {
+        throw err;
+    }
+};
+
+// What the server sees right now - so the email says whether the problem is
+// still there, and the real error when loading the options breaks.
+const describeCurrentPaymentState = async (vendorId, websiteMasterData, companyMasterData, companySettingsData) => {
+    try {
+        return await getCheckoutPaymentOptions(vendorId, websiteMasterData, companyMasterData, companySettingsData)
+            .then((result) => {
+                if (!result.isSuccess) return `Error ${result.statusCode}: ${result.message}`;
+                const online = result.meta.online;
+                return [
+                    `COD offered: ${result.meta.cod ? 'yes' : 'no'}`,
+                    `QR code: ${online?.scannerUrl ? 'yes' : 'no'}`,
+                    `Bank details: ${online?.bank ? 'yes' : 'no'}`,
+                    `GPay: ${online?.gpayNumber ? 'yes' : 'no'}`
+                ].join(', ');
+            })
+            .catch((checkErr) => `Loading the payment options fails: ${checkErr?.message || checkErr}`);
+    } catch (err) {
+        throw err;
+    }
+};
+
+/**
+ * A customer reports that checkout can't offer them any way to pay (COD off
+ * and the bank details could not be loaded / aren't set up). Emailed to the
+ * platform owner (platformAlertService) with the store, the customer and
+ * what the server sees now. One report per customer per
+ * CHECKOUT_ISSUE_REPORT_COOLDOWN_MINUTES.
+ *
+ * @param {Object} report - { reason, errorMessage, cartTotal, itemCount, pageUrl } (validated)
+ */
+const reportCheckoutPaymentIssue = async (vendorId, userId, vendorData, websiteMasterData, companyMasterData, companySettingsData, report) => {
+    try {
+        const now = Date.now();
+        const cooldownMs = CHECKOUT_ISSUE_REPORT_COOLDOWN_MINUTES * 60 * 1000;
+        forgetOldReports(now, cooldownMs);
+        const reportKey = `${vendorId}:${userId}`;
+        if (lastCheckoutIssueReportAt.has(reportKey)) {
+            return common.returnResult(false, 429, `You have already reported this problem. You can send another report after ${CHECKOUT_ISSUE_REPORT_COOLDOWN_MINUTES} minutes.`);
+        }
+
+        const user = await User.findOne({ _id: userId, vendorId })
+            .select('name username email phone_no whatsapp_no country state city businessFullName trn')
+            .lean();
+        const location = await common.resolveLocationNames({ countryId: user?.country, stateId: user?.state, cityId: user?.city });
+        const serverState = await describeCurrentPaymentState(vendorId, websiteMasterData, companyMasterData, companySettingsData);
+        const storeName = companySettingsData?.companyName || vendorData?.domain || String(vendorId);
+
+        const rows = [
+            ['Store', storeName],
+            ['Store domain', vendorData?.domain],
+            ['Vendor id', String(vendorId)],
+            ['Problem', CHECKOUT_ISSUE_REASON_TEXT[report.reason]],
+            ["Error the customer's browser got", report.errorMessage],
+            ['What the server sees now', serverState],
+            ['Customer name', user?.name],
+            ['Customer username', user?.username],
+            ['Customer email', user?.email],
+            ['Customer phone', user?.phone_no],
+            ['Customer WhatsApp', user?.whatsapp_no],
+            ['Customer location', [location.cityName || user?.city, location.stateName || user?.state, location.countryName || user?.country].filter(Boolean).join(', ')],
+            ['Business name / TRN', [user?.businessFullName, user?.trn].filter(Boolean).join(' / ')],
+            ['Customer id', String(userId)],
+            ['Cart total shown at checkout', report.cartTotal],
+            ['Items in cart', report.itemCount != null ? String(report.itemCount) : null],
+            ['Page', report.pageUrl],
+            ['Reported at', new Date(now).toISOString()]
+        ];
+
+        // Kept in the error log too, whether or not the email goes out.
+        logger.logWarning('Checkout: customer reported that no payment option is available', {
+            additionalData: { vendorId: String(vendorId), userId: String(userId), reason: report.reason, errorMessage: report.errorMessage, serverState }
+        });
+
+        const sent = await platformAlertService.sendToPlatformOwner({
+            subject: `[${storeName}] Checkout problem: customer can't pay`,
+            intro: `A customer of ${storeName} could not place an order: Cash on Delivery is off and no other way to pay could be shown.`,
+            rows
+        });
+        if (!sent.isSuccess) {
+            return common.returnResult(false, sent.statusCode, "Sorry, your report could not be sent right now. Please try again later or contact the store directly.");
+        }
+
+        lastCheckoutIssueReportAt.set(reportKey, now);
+        return common.returnResult(true, 200, 'Thank you - the problem has been reported. Please try again later.');
+    } catch (err) {
+        throw err;
+    }
+};
+
 module.exports = {
     initiateOnlinePayment,
     selectCashOnDelivery,
     getCheckoutPaymentOptions,
+    checkCustomerCanPay,
+    reportCheckoutPaymentIssue,
     selectManualTransfer,
     handleGatewayCallback,
     getPaymentStatus

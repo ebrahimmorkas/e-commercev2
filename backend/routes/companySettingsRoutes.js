@@ -1,6 +1,6 @@
 const express = require('express');
-const { createCompanySettings, updateCompanySettings, getCompanySettings, getCompanySettingsAdmin, getAssignedOrderSteps, assignEmailTemplate, unassignEmailTemplate, addEmailAttachment, removeEmailAttachment, addEmailImage, removeEmailImage, getEmailAccount, saveEmailAccount, removeEmailAccount, sendTestEmail, uploadCatalogue, removeCatalogue, downloadCatalogue } = require('../controllers/companySettingsController');
-const { createCompanySettingsSchema, updateCompanySettingsSchema, assignEmailTemplateSchema, unassignEmailTemplateSchema, addEmailAttachmentSchema, addEmailImageSchema, emailContentIdParamSchema, saveEmailAccountSchema, sendTestEmailSchema } = require('../middlewares/validations/companySettingsValidations');
+const { createCompanySettings, updateCompanySettings, getCompanySettings, getCompanySettingsAdmin, getAssignedOrderSteps, getBankFields, assignEmailTemplate, unassignEmailTemplate, addEmailAttachment, removeEmailAttachment, addEmailImage, removeEmailImage, getEmailAccount, saveEmailAccount, removeEmailAccount, sendTestEmail, uploadCatalogue, removeCatalogue, downloadCatalogue } = require('../controllers/companySettingsController');
+const { createCompanySettingsSchema, updateCompanySettingsSchema, assignEmailTemplateSchema, unassignEmailTemplateSchema, addEmailAttachmentSchema, addEmailImageSchema, emailContentIdParamSchema, saveEmailAccountSchema, sendTestEmailSchema, bankFieldsCountryParamSchema } = require('../middlewares/validations/companySettingsValidations');
 const emailContentUpload = require('../middlewares/emailContentUpload');
 const validate = require('../middlewares/validate');
 const authenticate = require('../middlewares/authenticate');
@@ -22,6 +22,8 @@ const companySettingsFileFields = companySettingsUpload.fields([
 router.get('/get-company-settings', checkModuleAssigned('COMPANY_SETTINGS'), getCompanySettings);
 router.get('/get-company-settings-admin', authenticate, authorize('admin'), checkModuleAssigned('COMPANY_SETTINGS'), getCompanySettingsAdmin);
 router.get('/order-steps', authenticate, authorize('admin'), checkModuleAssigned('COMPANY_SETTINGS'), getAssignedOrderSteps);
+// The bank detail fields of a country (BankFieldTemplate) - the Payment & Bank form is drawn from them.
+router.get('/bank-fields/:countryId', authenticate, authorize('admin'), checkModuleAssigned('COMPANY_SETTINGS'), validate(bankFieldsCountryParamSchema, 'params'), getBankFields);
 router.post('/create-company-settings', authenticate, authorize('admin'), checkModuleAssigned('COMPANY_SETTINGS'), companySettingsFileFields, validate(createCompanySettingsSchema, 'body'), createCompanySettings);
 router.put('/update-company-settings', authenticate, authorize('admin'), checkModuleAssigned('COMPANY_SETTINGS'), companySettingsFileFields, validate(updateCompanySettingsSchema, 'body'), updateCompanySettings);
 router.post('/assign-email-template', authenticate, authorize('admin'), checkModuleAssigned('COMPANY_SETTINGS'), validate(assignEmailTemplateSchema, 'body'), assignEmailTemplate);

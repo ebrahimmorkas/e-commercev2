@@ -124,42 +124,28 @@ const companySettingsSchema = new mongoose.Schema({
   // CompanyMaster.showPaymentQRCodeAndBankDetails (+
   // WebsiteMaster.isShowingPaymentQRCodeAndBankDetailsFeatureOn) - see
   // companySettingsService.js.
-  bankAccountHolderName: {
-    type: String,
-    trim: true,
-    default: null
-  },
-  bankName: {
-    type: String,
-    trim: true,
-    default: null
-  },
-  bankAccountNumber: {
-    type: String,
-    trim: true,
-    default: null
-  },
-  ifscCode: {
-    type: String,
-    trim: true,
-    uppercase: true,
-    default: null
-  },
-  branchName: {
-    type: String,
-    trim: true,
-    default: null
-  },
-  swiftCode: {
-    type: String,
-    trim: true,
-    uppercase: true,
-    default: null
-  },
-  bankAccountType: {
-    type: String,
-    enum: ['SAVINGS', 'CURRENT'],
-    default: null
+  //
+  // The vendor's bank account, per country: which fields there are (IFSC
+  // Code, IBAN, ...) comes from that country's BankFieldTemplate, and only the
+  // entry of the STORE country (storeCountryId) is ever shown or used. Entries
+  // of other countries are kept so switching the store country back brings
+  // them back. values[].key is the template field's key; value is a string,
+  // a number, or a list of option values (checkbox). Saved through create/
+  // update as bankDetails: { countryId, values } - see bankFieldTemplateService.js.
+  bankDetails: {
+    type: [{
+      _id: false,
+      countryId: { type: mongoose.Types.ObjectId, ref: 'CountryMaster', required: true },
+      values: {
+        type: [{
+          _id: false,
+          key: { type: String, required: true, trim: true },
+          value: { type: mongoose.Schema.Types.Mixed, default: null }
+        }],
+        default: []
+      }
+    }],
+    default: []
   },
   // GPay / UPI-style number customers can pay to - gated on its own by
   // CompanyMaster.showGpayNumber (+ WebsiteMaster.isShowingGpayNumberFeatureOn).
@@ -190,6 +176,15 @@ const companySettingsSchema = new mongoose.Schema({
     type: String,
     trim: true,
     maxlength: 300,
+    default: ''
+  },
+
+  // Hero badge on the storefront home page (e.g. "Preciosa® Crystals Authorized Partner")
+  // and the label on the mobile certificate strip. Same entitlement gate as partnerCertificate.
+  partnerBadgeText: {
+    type: String,
+    trim: true,
+    maxlength: 100,
     default: ''
   },
 
